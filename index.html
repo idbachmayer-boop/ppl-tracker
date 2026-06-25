@@ -191,7 +191,7 @@
   <button class="tab active" data-tab="today" onclick="go('today',this)"><span class="ic">🏠</span>Today</button>
   <button class="tab" data-tab="workout" onclick="go('workout',this)"><span class="ic">🏋️</span>Workout</button>
   <button class="tab" data-tab="history" onclick="go('history',this)"><span class="ic">📋</span>History</button>
-  <button class="tab" data-tab="weight" onclick="go('weight',this)"><span class="ic">⚖️</span>Weight</button>
+  <button class="tab" data-tab="weight" onclick="go('weight',this)"><span class="ic">📈</span>Progress</button>
   <button class="tab" data-tab="skincare" onclick="go('skincare',this)"><span class="ic">🧴</span>Skin</button>
   <button class="tab" data-tab="data" onclick="go('data',this)"><span class="ic">⚙️</span>Data</button>
 </div></div>
@@ -352,6 +352,28 @@ function fmtDur(ms){ const t=Math.max(0,Math.floor(ms/1000)); const h=Math.floor
 function fmtClock(ms){ return new Date(ms).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
 /* Format one logged set. Weight of 0 (with reps) = bodyweight → "BW". Blank weight → reps only. */
 function fmtSet(w,r){ if(w===''||w==null) return `${r}`; return `${(+w===0?'BW':w)}×${r}`; }
+function fmtMS(total){ total=+total||0; const m=Math.floor(total/60), s=total%60; return `${m}:${String(s).padStart(2,'0')}`; }
+/* Estimated 1-rep max (Epley). BW(0) or blank → 0 (excluded from strength charts). */
+function e1rm(w,r){ w=+w; r=+r; if(!w||!r) return 0; return w*(1+r/30); }
+function exMuscle(workout, idx){ const sl=PROGRAM[workout] && PROGRAM[workout].slots; return sl && sl[idx] ? sl[idx].muscle : null; }
+function musclesWithData(){
+  const set=new Set();
+  DB.sessions.forEach(s=>{ if(s.skipped||!s.entries) return; s.entries.forEach((e,idx)=>{ const m=exMuscle(s.workout,idx); if(m && e.sets.some(x=>!x.skipped && e1rm(x.w,x.r)>0)) set.add(m); }); });
+  return [...set];
+}
+function muscleSeries(muscle){
+  const out=[];
+  DB.sessions.forEach(s=>{ if(s.skipped||!s.entries) return; let best=0;
+    s.entries.forEach((e,idx)=>{ if(exMuscle(s.workout,idx)!==muscle) return; e.sets.forEach(x=>{ if(!x.skipped){ const v=e1rm(x.w,x.r); if(v>best) best=v; } }); });
+    if(best>0) out.push({date:s.date, value:best}); });
+  return out;
+}
+function musclePRs(muscle){
+  const map={};
+  DB.sessions.forEach(s=>{ if(s.skipped||!s.entries) return; s.entries.forEach((e,idx)=>{ if(exMuscle(s.workout,idx)!==muscle) return;
+    e.sets.forEach(x=>{ if(x.skipped) return; const v=e1rm(x.w,x.r); if(v>0 && (!map[e.name] || v>map[e.name].v)) map[e.name]={v, w:x.w, r:x.r, date:s.date}; }); }); });
+  return Object.entries(map).map(([name,d])=>({name,...d})).sort((a,b)=>b.v-a.v);
+}
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1600); }
 
 /* ───────────────────────── Router ───────────────────────── */
@@ -370,7 +392,7 @@ function render(){
   else if(TAB==="weight") el.innerHTML = viewWeight();
   else if(TAB==="skincare") el.innerHTML = viewSkincare();
   else if(TAB==="data") el.innerHTML = viewData();
-  if(TAB==="weight") drawChart();
+  if(TAB==="weight"){ if(progSub==='strength') drawStrengthChart(); else drawChart(); }
 }
 
 /* ───────────────────────── TODAY ───────────────────────── */
@@ -501,7 +523,7 @@ function viewActive(){
       : `<div class="set-grid">
         <span class="set-no">${k+1}</span>
         <input type="number" inputmode="decimal" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value)">
-        <input type="number" inputmode="numeric" placeholder="reps" value="${st.r}" oninput="setVal(${i},${k},'r',this.value)">
+        <input type="number" inputmode="numeric" placeholder="reps" value="${st.r}" oninput="setVal(${i},${k},'r',this.value)" onchange="repCheck(${i},${k})">
         <button class="skip-set" onclick="skipSet(${i},${k})" title="skip this set">⤼</button>
         <button class="x-set" onclick="rmSet(${i},${k})" title="remove set">×</button>
       </div>`).join('');
@@ -529,8 +551,11 @@ function viewActive(){
 
   // ── Stair Stepper finisher ──
   const st = DB.draft.stairs, ls = lastRealStairs();
+  const stTotal=+(st.seconds||0);
+  const stMin = (st.seconds!=='' && st.seconds!=null) ? Math.floor(stTotal/60) : '';
+  const stSec = (st.seconds!=='' && st.seconds!=null) ? stTotal%60 : '';
   const stairLast = ls
-    ? `Last: level <strong>${esc(String(ls.st.level||'—'))}</strong>, ${esc(String(ls.st.seconds))}s — target <strong>${(+ls.st.seconds)+15}s</strong> (+15)`
+    ? `Last: level <strong>${esc(String(ls.st.level||'—'))}</strong>, ${fmtMS(ls.st.seconds)} — target <strong>${fmtMS(+ls.st.seconds+15)}</strong> (+15s)`
     : `First time — set your starting point. You'll go up 15s each session.`;
   const stairsCard = st.skipped
     ? `<div class="ex-card"><div class="ex-accent acc-bar-cardio"></div><div class="ex-body">
@@ -542,9 +567,10 @@ function viewActive(){
           <span class="range-badge">+15s each time</span>
         </div>
         <div class="lasttime">${stairLast}</div>
-        <div class="stair-grid">
-          <div><label>Level</label><input type="number" inputmode="numeric" placeholder="level" value="${st.level}" oninput="stairVal('level',this.value)"></div>
-          <div><label>Time (seconds)</label><input type="number" inputmode="numeric" placeholder="sec" value="${st.seconds}" oninput="stairVal('seconds',this.value)"></div>
+        <div class="stair-grid" style="grid-template-columns:1fr 1fr 1fr">
+          <div><label>Level</label><input type="number" inputmode="numeric" placeholder="lvl" value="${st.level}" oninput="stairVal('level',this.value)"></div>
+          <div><label>Min</label><input type="number" inputmode="numeric" placeholder="min" value="${stMin}" oninput="stairTimeSet('m',this.value)"></div>
+          <div><label>Sec</label><input type="number" inputmode="numeric" placeholder="sec" value="${stSec}" oninput="stairTimeSet('s',this.value)"></div>
         </div>
         <button class="skip-set" style="font-size:12px;font-weight:600" onclick="skipStairs()">⤼ skip stair stepper</button>
       </div></div>`;
@@ -589,6 +615,34 @@ function skipSet(i,k){
 }
 function unskipSet(i,k){ const st=DB.draft.entries[i].sets[k]; st.skipped=false; st.reason=''; save(); render(); }
 function stairVal(f,v){ DB.draft.stairs[f]=v; save(); }
+function stairTimeSet(part,v){
+  const cur=+(DB.draft.stairs.seconds||0); let m=Math.floor(cur/60), s=cur%60;
+  if(part==='m') m=Math.max(0,parseInt(v)||0); else s=Math.max(0,parseInt(v)||0);
+  DB.draft.stairs.seconds=String(m*60+s); save();
+}
+/* Fire confetti when a set reaches the top of its rep range (the "level up" signal). */
+function repCheck(i,k){
+  const set=DB.draft.entries[i].sets[k]; if(set.skipped) return;
+  const rng=effRange(PROGRAM[DB.draft.workout].slots[i], DB.draft.entries[i].name);
+  if(set.r!=='' && +set.r>=rng.hi){ if(!set._cel){ set._cel=true; save(); confettiBurst(); toast('💥 Top of the range!'); } }
+  else if(set._cel){ set._cel=false; save(); }
+}
+function confettiBurst(){
+  const canvas=document.createElement('canvas');
+  canvas.style.cssText='position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:999';
+  document.body.appendChild(canvas);
+  const ctx=canvas.getContext('2d'), dpr=window.devicePixelRatio||1;
+  canvas.width=innerWidth*dpr; canvas.height=innerHeight*dpr; ctx.scale(dpr,dpr);
+  const colors=['#e08a2e','#44a884','#5a6fcc','#9a7ed0','#e0c14e','#e0567a'];
+  const parts=[];
+  for(let i=0;i<100;i++) parts.push({ x:innerWidth/2, y:innerHeight*0.30, vx:(Math.random()-0.5)*11, vy:Math.random()*-10-3, g:0.28+Math.random()*0.12, rot:Math.random()*6.28, vr:(Math.random()-0.5)*0.4, size:5+Math.random()*6, color:colors[i%colors.length], life:1 });
+  let t=0;
+  (function frame(){ t++; ctx.clearRect(0,0,innerWidth,innerHeight); let alive=false;
+    parts.forEach(p=>{ p.vy+=p.g; p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; p.life-=0.011;
+      if(p.life>0 && p.y<innerHeight+30){ alive=true; ctx.save(); ctx.globalAlpha=Math.max(0,p.life); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.color; ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size*0.6); ctx.restore(); } });
+    if(alive && t<220) requestAnimationFrame(frame); else canvas.remove();
+  })();
+}
 function skipStairs(){ const reason=prompt('Why skipping the stair stepper? (optional)',''); if(reason===null)return; DB.draft.stairs.skipped=true; DB.draft.stairs.reason=reason.trim(); save(); render(); }
 function unskipStairs(){ DB.draft.stairs.skipped=false; DB.draft.stairs.reason=''; save(); render(); }
 function toggleWarm(i){
@@ -609,7 +663,7 @@ function finishWorkout(){
   const hasStairs = d.stairs && (d.stairs.skipped || d.stairs.seconds!=='');
   if(!hasEx && !hasStairs){ alert('Log at least one set before saving.'); return; }
   // keep skipped sets (they carry a reason); drop only blank, unskipped ones
-  d.entries.forEach(e=> e.sets = e.sets.filter(s=> s.skipped || s.w!=='' || s.r!==''));
+  d.entries.forEach(e=>{ e.sets = e.sets.filter(s=> s.skipped || s.w!=='' || s.r!==''); e.sets.forEach(s=>delete s._cel); });
   const endedAt = Date.now(), hist = d.historical;
   DB.sessions.push({
     workout:d.workout, date:d.date,
@@ -682,7 +736,7 @@ function viewHistory(){
           return `<strong>${esc(e.name)}</strong> — ${setStr||'—'}`;
         });
         if(s.stairs && !s.stairs.skipped && s.stairs.seconds!=='' && s.stairs.seconds!=null)
-          lines.push(`<strong>🪜 Stair Stepper</strong> — level ${esc(String(s.stairs.level||'—'))}, ${esc(String(s.stairs.seconds))}s`);
+          lines.push(`<strong>🪜 Stair Stepper</strong> — level ${esc(String(s.stairs.level||'—'))}, ${fmtMS(s.stairs.seconds)}`);
         else if(s.stairs && s.stairs.skipped)
           lines.push(`<strong>🪜 Stair Stepper</strong> — <em>skipped${s.stairs.reason?': '+esc(s.stairs.reason):''}</em>`);
         const timeStr = (s.startedAt&&s.endedAt) ? `<div class="muted" style="margin-top:8px">${fmtClock(s.startedAt)}–${fmtClock(s.endedAt)} · ${s.durationMin} min at the gym</div>` : '';
@@ -707,26 +761,56 @@ function changeSessionDate(idx, v){ if(!v) return; const s=DB.sessions[idx]; s.d
 function deleteSession(idx){ if(!confirm('Delete this entry permanently?')) return; DB.sessions.splice(idx,1); openHist=-1; save(); toast('Entry deleted'); render(); }
 
 /* ───────────────────────── WEIGHT ───────────────────────── */
-let chartRange = 30;
+let chartRange = 30, progSub='body', selectedMuscle=null;
+function progSubTab(t){ progSub=t; render(); }
+function selectMuscle(m){ selectedMuscle=m; render(); }
+function rangeSeg(){ return `<div class="seg" style="margin:14px 0 0">
+    <button class="${chartRange===30?'active':''}" onclick="setRange(30)">30d</button>
+    <button class="${chartRange===90?'active':''}" onclick="setRange(90)">90d</button>
+    <button class="${chartRange===365?'active':''}" onclick="setRange(365)">1y</button>
+    <button class="${chartRange===9999?'active':''}" onclick="setRange(9999)">All</button></div>`; }
 function viewWeight(){
+  const sub = `<div class="seg" style="margin-top:14px">
+    <button class="${progSub==='body'?'active':''}" onclick="progSubTab('body')">Bodyweight</button>
+    <button class="${progSub==='strength'?'active':''}" onclick="progSubTab('strength')">Strength</button></div>`;
+  if(progSub==='strength') return viewStrength(sub);
   const w = DB.weights[DB.weights.length-1];
   return `
-    <h1>Bodyweight</h1>
-    <p class="subtitle">${DB.weights.length} entries · trend over time</p>
-    <div class="card" style="margin-top:14px">
+    <h1>Progress</h1>
+    <p class="subtitle">${DB.weights.length} weigh-ins · trend over time</p>
+    ${sub}
+    <div class="card">
       <div class="row">
         <input type="number" inputmode="decimal" id="wt-input" placeholder="Today's weight (${DB.unit})" style="flex:1">
         <button class="btn" onclick="logWeight()">Log</button>
       </div>
-      <div class="seg" style="margin:14px 0 0">
-        <button class="${chartRange===30?'active':''}" onclick="setRange(30)">30d</button>
-        <button class="${chartRange===90?'active':''}" onclick="setRange(90)">90d</button>
-        <button class="${chartRange===365?'active':''}" onclick="setRange(365)">1y</button>
-        <button class="${chartRange===9999?'active':''}" onclick="setRange(9999)">All</button>
-      </div>
+      ${rangeSeg()}
     </div>
     <div class="card"><svg id="chart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg></div>
     ${DB.weights.length? `<div class="card">${weightList()}</div>` : '<div class="empty">Log your first weigh-in above.</div>'}`;
+}
+function viewStrength(sub){
+  const muscles = musclesWithData();
+  if(!muscles.length) return `<h1>Progress</h1><p class="subtitle">Strength over time</p>${sub}<div class="empty">Log a few weighted workouts and your strength trend shows up here.<br>(Bodyweight-only moves aren't charted.)</div>`;
+  if(!selectedMuscle || !muscles.includes(selectedMuscle)) selectedMuscle=muscles[0];
+  const opts = muscles.map(m=>`<option ${m===selectedMuscle?'selected':''}>${m}</option>`).join('');
+  const series = muscleSeries(selectedMuscle);
+  const latest = series[series.length-1], first=series[0];
+  let delta='';
+  if(series.length>=2){ const d=latest.value-first.value; const cls=d>0?'trend-down':d<0?'trend-up':'trend-flat'; delta=`<span class="${cls}">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(0)} ${DB.unit}</span> since ${fmtDate(first.date)}`; }
+  const prs = musclePRs(selectedMuscle).slice(0,8).map(p=>`<div class="hist-item"><span>${esc(p.name)}</span><span><strong>${Math.round(p.v)} ${DB.unit}</strong> <span class="muted">${fmtSet(p.w,p.r)}</span></span></div>`).join('');
+  return `<h1>Progress</h1><p class="subtitle">Estimated 1-rep max over time</p>${sub}
+    <div class="card">
+      <select onchange="selectMuscle(this.value)">${opts}</select>
+      ${rangeSeg()}
+    </div>
+    <div class="card">
+      <div style="margin-bottom:8px"><div class="stat-big" style="font-size:26px">${latest?Math.round(latest.value):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit} e1RM</span></div>
+      <div class="stat-sub">${delta||('Best estimated 1RM · '+esc(selectedMuscle))}</div></div>
+      <svg id="schart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg>
+    </div>
+    <div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Personal records — ${esc(selectedMuscle)}</div>${prs||'<span class="muted">No weighted sets yet.</span>'}</div>
+    <p class="muted" style="text-align:center;font-size:12px">e1RM = estimated 1-rep max (weight × reps, Epley). Higher = stronger. Bodyweight sets excluded.</p>`;
 }
 function weightList(){
   return DB.weights.slice().reverse().slice(0,12).map((w,ri)=>{
@@ -745,14 +829,11 @@ function logWeight(){
   save(); toast('Weight logged'); render();
 }
 function rmWeight(i){ if(confirm('Delete this entry?')){ DB.weights.splice(i,1); save(); render(); } }
-function drawChart(){
-  const svg = document.getElementById('chart'); if(!svg) return;
+function paintChart(svg, pts, emptyMsg, gradId){
   const cs = getComputedStyle(document.documentElement);
   const C = cs.getPropertyValue('--chart').trim() || '#5a6fcc';
   const AX = cs.getPropertyValue('--chart-axis').trim() || '#bbb';
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-chartRange);
-  const pts = DB.weights.filter(w=> chartRange>=9999 || new Date(w.date)>=cutoff);
-  if(pts.length<2){ svg.innerHTML = `<text x="160" y="78" text-anchor="middle" fill="${AX}" font-size="11">Need 2+ entries in range to draw a trend</text>`; return; }
+  if(pts.length<2){ svg.innerHTML = `<text x="160" y="78" text-anchor="middle" fill="${AX}" font-size="11">${emptyMsg||'Need 2+ entries to draw a trend'}</text>`; return; }
   const vals = pts.map(p=>+p.value), min=Math.min(...vals), max=Math.max(...vals);
   const pad = (max-min)*0.15 || 1, lo=min-pad, hi=max+pad;
   const W=320,H=150,mL=4,mR=4,mT=12,mB=14;
@@ -761,13 +842,26 @@ function drawChart(){
   const line = pts.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(+p.value).toFixed(1)}`).join(' ');
   const area = `M${x(0)},${H-mB} `+pts.map((p,i)=>`L${x(i).toFixed(1)},${y(+p.value).toFixed(1)}`).join(' ')+` L${x(pts.length-1)},${H-mB} Z`;
   const dots = pts.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(+p.value).toFixed(1)}" r="2.5" fill="${C}"/>`).join('');
+  const gid = gradId||'g';
   svg.innerHTML = `
-    <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${C}" stop-opacity="0.18"/><stop offset="1" stop-color="${C}" stop-opacity="0"/></linearGradient></defs>
-    <path d="${area}" fill="url(#g)"/>
+    <defs><linearGradient id="${gid}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${C}" stop-opacity="0.18"/><stop offset="1" stop-color="${C}" stop-opacity="0"/></linearGradient></defs>
+    <path d="${area}" fill="url(#${gid})"/>
     <path d="${line}" fill="none" stroke="${C}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
     ${dots}
     <text x="${mL}" y="9" fill="${AX}" font-size="9">${hi.toFixed(0)}</text>
     <text x="${mL}" y="${H-3}" fill="${AX}" font-size="9">${lo.toFixed(0)}</text>`;
+}
+function drawChart(){
+  const svg = document.getElementById('chart'); if(!svg) return;
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-chartRange);
+  const pts = DB.weights.filter(w=> chartRange>=9999 || new Date(w.date)>=cutoff).map(w=>({value:+w.value}));
+  paintChart(svg, pts, 'Need 2+ entries in range to draw a trend', 'gWeight');
+}
+function drawStrengthChart(){
+  const svg = document.getElementById('schart'); if(!svg) return;
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-chartRange);
+  const pts = muscleSeries(selectedMuscle).filter(p=> chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff);
+  paintChart(svg, pts, 'Need 2+ weighted sessions for this muscle in range', 'gStr');
 }
 
 /* ───────────────────────── SKINCARE & SHAVING ───────────────────────── */
