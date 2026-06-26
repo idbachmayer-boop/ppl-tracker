@@ -197,6 +197,7 @@
   <button class="tab" data-tab="history" onclick="go('history',this)"><span class="ic">📋</span>History</button>
   <button class="tab" data-tab="weight" onclick="go('weight',this)"><span class="ic">📈</span>Progress</button>
   <button class="tab" data-tab="skincare" onclick="go('skincare',this)"><span class="ic">🧴</span>Skin</button>
+  <button class="tab" data-tab="lawn" onclick="go('lawn',this)"><span class="ic">🌱</span>Lawn</button>
   <button class="tab" data-tab="data" onclick="go('data',this)"><span class="ic">⚙️</span>Data</button>
 </div></div>
 
@@ -318,10 +319,19 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside"];
+const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
+const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 let DB = load();
-function load(){ try { const d = JSON.parse(localStorage.getItem(KEY)) || blank(); if(!d.hobbies) d.hobbies = DEFAULT_HOBBIES.slice(); if(!d.hobbyLog) d.hobbyLog = []; if(!d.journal) d.journal = {}; return d; } catch(e){ return blank(); } }
-function blank(){ return { sessions:[], weights:[], draft:null, unit:"lb", hobbies: DEFAULT_HOBBIES.slice(), hobbyLog:[], journal:{} }; }
+function load(){ try { const d = JSON.parse(localStorage.getItem(KEY)) || blank();
+  if(!d.hobbies) d.hobbies = DEFAULT_HOBBIES.slice();
+  if(!d.hobbyLog) d.hobbyLog = [];
+  if(!d.journal) d.journal = {};
+  if(!('lawn' in d)) d.lawn = null;
+  if(!('wx' in d)) d.wx = null;
+  if(!d.hobbySeedV2){ HOBBY_SEED_V2.forEach(h=>{ if(!d.hobbies.includes(h)) d.hobbies.push(h); }); d.hobbySeedV2 = true; }
+  return d;
+} catch(e){ return blank(); } }
+function blank(){ return { sessions:[], weights:[], draft:null, unit:"lb", hobbies: DEFAULT_HOBBIES.slice(), hobbyLog:[], journal:{}, lawn:null, wx:null, hobbySeedV2:true }; }
 function save(){ localStorage.setItem(KEY, JSON.stringify(DB)); }
 
 /* ───────────────────────── Helpers ───────────────────────── */
@@ -419,8 +429,10 @@ function render(){
   else if(TAB==="history") el.innerHTML = viewHistory();
   else if(TAB==="weight") el.innerHTML = viewWeight();
   else if(TAB==="skincare") el.innerHTML = viewSkincare();
+  else if(TAB==="lawn") el.innerHTML = viewLawn();
   else if(TAB==="data") el.innerHTML = viewData();
   if(TAB==="weight"){ if(progSub==='strength') drawStrengthChart(); else drawChart(); }
+  if(TAB==="lawn") maybeFetchWeather();
 }
 
 /* ───────────────────────── TODAY ───────────────────────── */
@@ -1025,6 +1037,114 @@ function viewSkincare(){
         <span class="legend-item"><span class="legend-dot" style="background:#8a7ac2"></span><span class="muted">BHA Exfoliant</span></span>
         <span class="legend-item"><span class="legend-dot" style="background:var(--muted-2)"></span><span class="muted">Spot treatment only</span></span>
       </div></div>`;
+}
+
+/* ───────────────────────── LAWN & WEATHER (Open-Meteo, no API key) ───────────────────────── */
+let weatherFetching=false;
+function wxCode(c){ c=+c;
+  if(c===0) return {icon:'☀️',text:'Clear'};
+  if(c<=2) return {icon:'🌤️',text:'Mostly clear'};
+  if(c===3) return {icon:'☁️',text:'Overcast'};
+  if(c<=48) return {icon:'🌫️',text:'Fog'};
+  if(c<=57) return {icon:'🌦️',text:'Drizzle'};
+  if(c<=67) return {icon:'🌧️',text:'Rain'};
+  if(c<=77) return {icon:'❄️',text:'Snow'};
+  if(c<=82) return {icon:'🌦️',text:'Showers'};
+  if(c<=86) return {icon:'❄️',text:'Snow showers'};
+  return {icon:'⛈️',text:'Thunderstorm'};
+}
+async function fetchWeather(){
+  if(!DB.lawn || DB.lawn.lat==null || weatherFetching) return;
+  weatherFetching=true; render();
+  try{
+    const {lat,lon}=DB.lawn;
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=1&forecast_days=7`;
+    const r=await fetch(url); if(!r.ok) throw 0;
+    DB.wx={ at:Date.now(), lat, lon, data:await r.json() }; save();
+  }catch(e){ /* keep last cached result */ }
+  weatherFetching=false; render();
+}
+function maybeFetchWeather(){
+  if(TAB!=='lawn' || !DB.lawn || DB.lawn.lat==null || weatherFetching) return;
+  const wx=DB.wx, stale = !wx || (Date.now()-wx.at>3600000) || wx.lat!==DB.lawn.lat || wx.lon!==DB.lawn.lon;
+  if(stale) fetchWeather();
+}
+function useMyLocation(){
+  const msg=document.getElementById('loc-msg'); if(msg) msg.textContent='Getting your location…';
+  if(!navigator.geolocation){ if(msg) msg.textContent='Geolocation not available — type a town instead.'; return; }
+  navigator.geolocation.getCurrentPosition(p=>{
+    DB.lawn={ lat:+p.coords.latitude.toFixed(4), lon:+p.coords.longitude.toFixed(4), label:'My location' }; DB.wx=null; save(); fetchWeather();
+  }, err=>{ if(msg) msg.textContent='Couldn’t get location ('+err.message+'). Type a town instead.'; });
+}
+async function geocodeTry(q){ try{ const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en&format=json`); const d=await r.json(); return (d.results && d.results[0]) || null; }catch(e){ return null; } }
+async function searchLocation(){
+  const inp=document.getElementById('loc-input'); const q=(inp.value||'').trim(); if(!q) return;
+  const msg=document.getElementById('loc-msg'); if(msg) msg.textContent='Searching…';
+  // the geocoder wants just a city name — fall back by stripping a trailing state ("Madison, WI" / "Madison WI" → "Madison")
+  let g=await geocodeTry(q);
+  if(!g && q.includes(',')) g=await geocodeTry(q.split(',')[0].trim());
+  if(!g){ const parts=q.replace(/,/g,' ').trim().split(/\s+/); if(parts.length>1 && parts[parts.length-1].length===2) g=await geocodeTry(parts.slice(0,-1).join(' ')); }
+  if(!g){ if(msg) msg.textContent='No match — try just the city name, e.g. “Madison”.'; return; }
+  DB.lawn={ lat:+g.latitude.toFixed(4), lon:+g.longitude.toFixed(4), label:`${g.name}${g.admin1?', '+g.admin1:''}` }; DB.wx=null; save(); fetchWeather();
+}
+function changeLawnLoc(){ DB.lawn=null; DB.wx=null; save(); render(); }
+function lawnSetup(){
+  return `<h1>Lawn & Weather</h1><p class="subtitle">Set your location once for a local forecast and lawn-care timing.</p>
+    <div class="card">
+      <button class="btn btn-block" onclick="useMyLocation()">📍 Use my current location</button>
+      <p class="muted" style="text-align:center;margin:12px 0 8px">— or —</p>
+      <div class="row"><input id="loc-input" placeholder="City name, e.g. Madison" style="flex:1" onkeydown="if(event.key==='Enter')searchLocation()"><button class="btn" onclick="searchLocation()">Find</button></div>
+      <p class="muted" id="loc-msg" style="margin-top:10px"></p>
+    </div>
+    <p class="muted" style="text-align:center;font-size:12px">Weather needs internet. Data from open-meteo.com — free, no account, no tracking.</p>`;
+}
+function viewLawn(){
+  if(!DB.lawn || DB.lawn.lat==null) return lawnSetup();
+  const locBar=`<div class="row" style="margin-bottom:14px"><span class="muted">📍 ${esc(DB.lawn.label||'My location')}</span><button class="btn btn-sm btn-ghost" onclick="changeLawnLoc()">Change</button></div>`;
+  const wx=DB.wx;
+  if(!wx || !wx.data) return `<h1>Lawn & Weather</h1>${locBar}<div class="empty">${weatherFetching?'Loading weather…':'<button class="btn btn-sm" onclick="fetchWeather()">Load weather</button>'}</div>`;
+  const d=wx.data, dy=d.daily, cur=d.current_weather, num=v=>(v==null?0:+v);
+  const times=dy.time, today=todayISO();
+  let ti=times.indexOf(today); if(ti<0) ti=times.length>1?1:0;
+  const P=dy.precipitation_sum, PP=dy.precipitation_probability_max, HI=dy.temperature_2m_max, LO=dy.temperature_2m_min, WC=dy.weathercode;
+  const dayLabel=(k,idx)=> k===0?'today':k===1?'tomorrow':new Date(times[idx]+'T00:00').toLocaleDateString('en-US',{weekday:'long'});
+  const cw=wxCode(cur?cur.weathercode:WC[ti]);
+  const strip=times.slice(ti,ti+7).map((t,k)=>{ const idx=ti+k, c=wxCode(WC[idx]);
+    return `<div style="text-align:center;flex:1;min-width:42px">
+      <div class="muted" style="font-size:10px;font-weight:700">${k===0?'Today':new Date(t+'T00:00').toLocaleDateString('en-US',{weekday:'short'})}</div>
+      <div style="font-size:18px;margin:3px 0">${c.icon}</div>
+      <div style="font-size:11px;font-weight:700">${Math.round(num(HI[idx]))}°</div>
+      <div class="muted" style="font-size:10px">${Math.round(num(LO[idx]))}°</div>
+      <div style="font-size:10px;color:var(--chart);min-height:13px">${num(PP[idx])>=20?num(PP[idx])+'%':''}</div>
+    </div>`;
+  }).join('');
+  const recent=num(P[ti-1])+num(P[ti]), next2=num(P[ti+1])+num(P[ti+2]);
+  let rainTxt='No significant rain in the 7-day forecast.';
+  for(let k=0;k<7;k++){ const idx=ti+k; if(num(PP[idx])>=50 || num(P[idx])>=0.1){ rainTxt=`Rain likely <strong>${dayLabel(k,idx)}</strong>${num(PP[idx])?` (${num(PP[idx])}% chance, ~${num(P[idx]).toFixed(2)}")`:''}.`; break; } }
+  let water;
+  if(recent+next2>=0.5) water=`Skip it — about ${(recent+next2).toFixed(1)}" of rain around now should cover the lawn.`;
+  else if(num(HI[ti])>=85) water=`Water early morning — hot and dry, with little rain coming.`;
+  else water=`Light watering if the soil's dry — only ~${(recent+next2).toFixed(2)}" of rain expected.`;
+  const mow=(num(P[ti])<0.1 && num(P[ti-1])<0.3) ? `Good day to mow — grass should be dry.` : `Hold off — grass is likely wet from recent rain. Mow once it dries out.`;
+  let fert, lightK=-1, heavy=false;
+  for(let k=1;k<=3;k++){ const s=num(P[ti+k]); if(s>0.8) heavy=true; if(lightK<0 && s>=0.1 && s<=0.6) lightK=k; }
+  if(lightK>0) fert=`Good window — light rain ${lightK===1?'tomorrow':'in '+lightK+' days'} will water it in.`;
+  else if(heavy) fert=`Hold off — heavy rain in the next few days could wash it away before it absorbs.`;
+  else fert=`Fine to apply — just water it in yourself afterward.`;
+  const card=(icon,title,body)=>`<div class="card"><div style="display:flex;gap:11px;align-items:flex-start"><span style="font-size:22px">${icon}</span><div><div style="font-weight:700;font-size:14px">${title}</div><div class="muted" style="font-size:13px;line-height:1.5;margin-top:2px">${body}</div></div></div></div>`;
+  return `<h1>Lawn & Weather</h1>${locBar}
+    <div class="card">
+      <div class="row"><div>
+        <div class="stat-big" style="font-size:30px">${Math.round(num(cur?cur.temperature:HI[ti]))}°<span style="font-size:14px;color:var(--muted-2)">F</span></div>
+        <div class="stat-sub">${cw.icon} ${cw.text} · H ${Math.round(num(HI[ti]))}° / L ${Math.round(num(LO[ti]))}°</div>
+      </div><button class="btn btn-sm btn-ghost" onclick="fetchWeather()">↻</button></div>
+      <div style="display:flex;gap:3px;margin-top:14px;overflow-x:auto">${strip}</div>
+    </div>
+    ${card('☔','Rain', rainTxt)}
+    ${card('💧','Watering', water)}
+    ${card('🚜','Mowing', mow)}
+    ${card('🌱','Fertilizer', fert)}
+    <p class="muted" style="text-align:center;font-size:11px">Rule-of-thumb guidance from the forecast — use your judgment. Updated ${new Date(wx.at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}.</p>`;
 }
 
 /* ───────────────────────── DATA / settings ───────────────────────── */
