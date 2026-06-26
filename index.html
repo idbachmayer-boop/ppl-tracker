@@ -304,9 +304,10 @@ const SHAVE_STEPS = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
+const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside"];
 let DB = load();
-function load(){ try { return JSON.parse(localStorage.getItem(KEY)) || blank(); } catch(e){ return blank(); } }
-function blank(){ return { sessions:[], weights:[], draft:null, unit:"lb" }; }
+function load(){ try { const d = JSON.parse(localStorage.getItem(KEY)) || blank(); if(!d.hobbies) d.hobbies = DEFAULT_HOBBIES.slice(); if(!d.hobbyLog) d.hobbyLog = []; return d; } catch(e){ return blank(); } }
+function blank(){ return { sessions:[], weights:[], draft:null, unit:"lb", hobbies: DEFAULT_HOBBIES.slice(), hobbyLog:[] }; }
 function save(){ localStorage.setItem(KEY, JSON.stringify(DB)); }
 
 /* ───────────────────────── Helpers ───────────────────────── */
@@ -376,6 +377,15 @@ function musclePRs(muscle){
 }
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1600); }
 
+/* ───────────────────────── Hobby suggester ───────────────────────── */
+let currentHobby=null;
+function pickHobby(exclude){ const l=DB.hobbies||[]; if(!l.length) return null; if(l.length===1) return l[0]; let h; do{ h=l[Math.floor(Math.random()*l.length)]; }while(h===exclude); return h; }
+function shuffleHobby(){ currentHobby=pickHobby(currentHobby); render(); }
+function didHobby(){ if(!currentHobby) return; DB.hobbyLog.push({date:todayISO(), hobby:currentHobby}); save(); confettiBurst(); toast('Nice — that counts. 🎉'); currentHobby=pickHobby(currentHobby); render(); }
+function hobbyWeekCount(){ const m=+monday(new Date()); return (DB.hobbyLog||[]).filter(h=>+monday(new Date(h.date+'T00:00'))===m).length; }
+function addHobby(){ const inp=document.getElementById('hobby-input'); const v=(inp.value||'').trim(); if(!v) return; DB.hobbies.push(v); save(); toast('Added'); render(); }
+function removeHobby(i){ DB.hobbies.splice(i,1); if(currentHobby && !(DB.hobbies||[]).includes(currentHobby)) currentHobby=pickHobby(); save(); render(); }
+
 /* ───────────────────────── Router ───────────────────────── */
 let TAB = "today";
 function go(tab, btn){
@@ -401,6 +411,8 @@ function viewToday(){
   const last = DB.sessions[DB.sessions.length-1];
   const w = DB.weights[DB.weights.length-1];
   const loggedToday = w && w.date===todayISO();
+  if(currentHobby===null) currentHobby=pickHobby();
+  const hWeek = hobbyWeekCount();
   let trend = '';
   if(DB.weights.length>=2){
     const diff = +(w.kg ? w.kg : w.value) - +(DB.weights[DB.weights.length-2].value);
@@ -420,6 +432,19 @@ function viewToday(){
       <button class="btn btn-block" onclick="startWorkout('${nxt}')">Start ${nxt} →</button>
       <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="skipDay('${nxt}')">Skip this day</button>
       <p class="muted" style="margin-top:10px">Order: Push → Legs → Pull, alternating week 1 / week 2. Skipping advances the rotation but never resets your numbers.</p>
+    </div>
+
+    <h2>Do something — not the couch</h2>
+    <div class="card">
+      <div style="text-align:center;padding:10px 0 14px">
+        <div style="font-size:23px;font-weight:800;letter-spacing:-.3px">${currentHobby? esc(currentHobby) : 'Add a hobby in the Data tab →'}</div>
+      </div>
+      <div class="row" style="gap:8px">
+        <button class="btn btn-ghost" style="flex:1" onclick="shuffleHobby()">🎲 Something else</button>
+        <button class="btn" style="flex:1" onclick="didHobby()">✓ I did it</button>
+      </div>
+      <p class="muted" style="margin-top:13px;line-height:1.55">You'll always be tired, and there's always a reason not to. But you <strong>always feel better after</strong> doing something. Start small — just begin.</p>
+      ${hWeek? `<p class="muted" style="margin-top:8px;font-weight:600">✓ ${hWeek} done this week</p>`:''}
     </div>
 
     <h2>Bodyweight</h2>
@@ -919,6 +944,12 @@ function viewData(){
       <button class="${DB.unit==='lb'?'active':''}" onclick="setUnit('lb')">lb</button>
       <button class="${DB.unit==='kg'?'active':''}" onclick="setUnit('kg')">kg</button>
     </div></div>
+    <h2>Hobbies</h2>
+    <div class="card">
+      <p class="muted" style="margin-bottom:10px">Ideas the Today tab rotates through.</p>
+      ${(DB.hobbies||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeHobby(${i})">×</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
+      <div class="row" style="margin-top:12px"><input id="hobby-input" placeholder="Add a hobby…" style="flex:1"><button class="btn" onclick="addHobby()">Add</button></div>
+    </div>
     <h2>Backup</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:12px">Your data lives only on this device. Export regularly so you never lose it.</p>
