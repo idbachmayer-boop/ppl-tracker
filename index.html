@@ -96,8 +96,8 @@
     .ex-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .ex-title { font-size: 14px; font-weight: 700; }
     .lasttime { font-size: 12px; color: var(--text-2); background: var(--surface-2); border-radius: 8px; padding: 7px 9px; margin: 6px 0 10px; line-height: 1.5; }
-    select, input { font-family: inherit; font-size: 14px; border: 1.5px solid var(--border-2); border-radius: 8px; padding: 9px 10px; background: var(--surface); color: var(--text); width: 100%; }
-    select:focus, input:focus { outline: none; border-color: var(--text); }
+    select, input, textarea { font-family: inherit; font-size: 14px; border: 1.5px solid var(--border-2); border-radius: 8px; padding: 9px 10px; background: var(--surface); color: var(--text); width: 100%; }
+    select:focus, input:focus, textarea:focus { outline: none; border-color: var(--text); }
     .set-grid { display: grid; grid-template-columns: 22px 1fr 1fr 26px 26px; gap: 6px; align-items: center; margin-bottom: 7px; }
     .set-grid .set-no { font-size: 12px; font-weight: 700; color: var(--muted-2); text-align: center; }
     .set-grid input { padding: 8px 6px; text-align: center; }
@@ -320,8 +320,8 @@ const GUIDE = [
 const KEY = "ppl_tracker_v1";
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside"];
 let DB = load();
-function load(){ try { const d = JSON.parse(localStorage.getItem(KEY)) || blank(); if(!d.hobbies) d.hobbies = DEFAULT_HOBBIES.slice(); if(!d.hobbyLog) d.hobbyLog = []; return d; } catch(e){ return blank(); } }
-function blank(){ return { sessions:[], weights:[], draft:null, unit:"lb", hobbies: DEFAULT_HOBBIES.slice(), hobbyLog:[] }; }
+function load(){ try { const d = JSON.parse(localStorage.getItem(KEY)) || blank(); if(!d.hobbies) d.hobbies = DEFAULT_HOBBIES.slice(); if(!d.hobbyLog) d.hobbyLog = []; if(!d.journal) d.journal = {}; return d; } catch(e){ return blank(); } }
+function blank(){ return { sessions:[], weights:[], draft:null, unit:"lb", hobbies: DEFAULT_HOBBIES.slice(), hobbyLog:[], journal:{} }; }
 function save(){ localStorage.setItem(KEY, JSON.stringify(DB)); }
 
 /* ───────────────────────── Helpers ───────────────────────── */
@@ -400,6 +400,10 @@ function hobbyWeekCount(){ const m=+monday(new Date()); return (DB.hobbyLog||[])
 function addHobby(){ const inp=document.getElementById('hobby-input'); const v=(inp.value||'').trim(); if(!v) return; DB.hobbies.push(v); save(); toast('Added'); render(); }
 function removeHobby(i){ DB.hobbies.splice(i,1); if(currentHobby && !(DB.hobbies||[]).includes(currentHobby)) currentHobby=pickHobby(); save(); render(); }
 
+/* ───────────────────────── Daily journal ───────────────────────── */
+function saveJournal(v){ const t=todayISO(); if(v.trim()==='') delete DB.journal[t]; else DB.journal[t]=v; save(); }
+function journalWeekCount(){ const m=+monday(new Date()); let c=0; for(const d in (DB.journal||{})){ if(DB.journal[d].trim() && +monday(new Date(d+'T00:00'))===m) c++; } return c; }
+
 /* ───────────────────────── Router ───────────────────────── */
 let TAB = "today";
 function go(tab, btn){
@@ -427,6 +431,8 @@ function viewToday(){
   const loggedToday = w && w.date===todayISO();
   if(currentHobby===null) currentHobby=pickHobby();
   const hWeek = hobbyWeekCount();
+  const jWeek = journalWeekCount();
+  const isSunday = new Date().getDay()===0;
   let trend = '';
   if(DB.weights.length>=2){
     const diff = +(w.kg ? w.kg : w.value) - +(DB.weights[DB.weights.length-2].value);
@@ -459,6 +465,12 @@ function viewToday(){
       </div>
       <p class="muted" style="margin-top:13px;line-height:1.55">You'll always be tired, and there's always a reason not to. But you <strong>always feel better after</strong> doing something. Start small — just begin.</p>
       ${hWeek? `<p class="muted" style="margin-top:8px;font-weight:600">✓ ${hWeek} done this week</p>`:''}
+    </div>
+
+    <h2>What did you do today?</h2>
+    <div class="card">
+      <textarea id="journal-input" rows="3" placeholder="A few words about your day — wins, workouts, anything…" oninput="saveJournal(this.value)" style="resize:vertical;line-height:1.5;min-height:72px">${esc(DB.journal[todayISO()]||'')}</textarea>
+      <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <a onclick="go('history',document.querySelector('[data-tab=history]'))" style="color:var(--link);cursor:pointer;font-weight:600">${isSunday?'📅 Review your week →':'See your week →'}</a></p>
     </div>
 
     <h2>Bodyweight</h2>
@@ -740,7 +752,50 @@ function sortSessions(){ DB.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt|
 function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; save(); go('workout',document.querySelector('[data-tab=workout]')); } }
 
 /* ───────────────────────── HISTORY ───────────────────────── */
-let openHist = -1, showBackdate = false;
+let openHist = -1, showBackdate = false, reviewWeekOffset = 0;
+function weekShift(d){ reviewWeekOffset = Math.min(0, reviewWeekOffset + d); render(); }
+/* Week in review — merges logged workouts/hobbies/weigh-ins with the daily journal note. */
+function renderWeekReview(){
+  const base = monday(new Date()); base.setDate(base.getDate() + reviewWeekOffset*7);
+  const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const today = todayISO();
+  let nW=0, nH=0, nJ=0;
+  const rows = days.map((dn,di)=>{
+    const dt = new Date(base); dt.setDate(dt.getDate()+di);
+    const iso = dt.toLocaleDateString('en-CA');
+    const future = iso > today;
+    const sess = DB.sessions.filter(s=>s.date===iso);
+    const hb = (DB.hobbyLog||[]).filter(h=>h.date===iso).map(h=>h.hobby);
+    const wt = DB.weights.find(x=>x.date===iso);
+    const note = (DB.journal||{})[iso];
+    nW += sess.filter(s=>!s.skipped).length; nH += hb.length; if(note && note.trim()) nJ++;
+    const tags = [];
+    sess.forEach(s=> s.skipped
+      ? tags.push(`<span class="muted" style="font-size:11px">⤼ skipped ${s.workout}</span>`)
+      : tags.push(`<span class="pill ${accClass(PROGRAM[s.workout]?PROGRAM[s.workout].group:'push')}" style="font-size:9px;padding:2px 7px">${s.workout}</span>`));
+    hb.forEach(h=> tags.push(`<span style="font-size:11px">🎲 ${esc(h)}</span>`));
+    if(wt) tags.push(`<span style="font-size:11px">⚖️ ${(+wt.value).toFixed(1)}</span>`);
+    const noteHTML = note && note.trim() ? `<div style="font-size:13px;color:var(--text-2);line-height:1.5;margin-top:6px;white-space:pre-wrap">${esc(note)}</div>` : '';
+    const emptyHTML = (!tags.length && !noteHTML && !future) ? `<div class="muted" style="font-size:12px;margin-top:3px">—</div>` : '';
+    return `<div style="padding:9px 0;border-bottom:1px solid var(--border-3)">
+      <span style="font-weight:700;font-size:13px">${dn} ${dt.getMonth()+1}/${dt.getDate()}${iso===today?' · today':''}</span>
+      ${tags.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:5px">${tags.join('')}</div>`:''}
+      ${noteHTML}${emptyHTML}
+    </div>`;
+  }).join('');
+  const end = new Date(base); end.setDate(end.getDate()+6);
+  const label = `${base.getMonth()+1}/${base.getDate()} – ${end.getMonth()+1}/${end.getDate()}`;
+  const title = reviewWeekOffset===0?'This week':reviewWeekOffset===-1?'Last week':`${-reviewWeekOffset} weeks ago`;
+  return `<div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn btn-ghost btn-sm" onclick="weekShift(-1)">◀</button>
+      <div style="text-align:center"><div style="font-weight:700">${title}</div><div class="muted" style="font-size:11px">${label}</div></div>
+      <button class="btn btn-ghost btn-sm" onclick="weekShift(1)" ${reviewWeekOffset>=0?'disabled style="opacity:.35"':''}>▶</button>
+    </div>
+    <div class="muted" style="font-size:12px;margin-bottom:4px">${nW} workout${nW!==1?'s':''} · ${nH} hobb${nH!==1?'ies':'y'} · journaled ${nJ}/7</div>
+    ${rows}
+  </div>`;
+}
 function toggleBackdate(){ showBackdate=!showBackdate; render(); }
 function fmtSeconds(t){ if(!t) return '0s'; const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60; if(h) return `${h}h ${m}m`; if(m) return `${m}m${s?' '+s+'s':''}`; return `${s}s`; }
 function monday(d){ const x=new Date(d); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x; }
@@ -774,7 +829,7 @@ function viewHistory(){
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${SEQUENCE.map(n=>`<button class="btn btn-ghost btn-sm" onclick="startBackdate('${n}')">${n}</button>`).join('')}</div>
       <p class="muted" style="margin-top:10px">Tip: enter your 5 oldest-first so each session sees the one before it as "last time".</p>
     </div>`:''}`;
-  if(!DB.sessions.length) return `<h1>History</h1><div style="margin-top:14px">${back}</div><div class="empty">No workouts logged yet.<br>Start one from the Workout tab, or add a past workout above.</div>`;
+  if(!DB.sessions.length) return `<h1>History</h1><h2>Week in review</h2>${renderWeekReview()}<div style="margin:14px 0">${back}</div><div class="empty">No workouts logged yet.<br>Start one from the Workout tab, or add a past workout above.</div>`;
   const items = DB.sessions.slice().reverse().map((s,ri)=>{
     const idx = DB.sessions.length-1-ri; const g=PROGRAM[s.workout]?PROGRAM[s.workout].group:'push';
     const open = openHist===idx;
@@ -810,6 +865,8 @@ function viewHistory(){
   }).join('');
   return `<h1>History</h1><p class="subtitle">${DB.sessions.length} entries logged</p>
     ${summary}
+    <h2>Week in review</h2>
+    ${renderWeekReview()}
     <div style="margin:14px 0">${back}</div>
     <div class="card">${items}</div>`;
 }
