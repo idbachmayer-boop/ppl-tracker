@@ -146,6 +146,10 @@
     .phase-title { font-size: 15px; font-weight: 600; }
     .phase-count { font-size: 12px; color: var(--muted-2); }
     .phase-body { padding: 0 16px 14px; }
+    .phase-body p { font-size: 13px; color: var(--text-2); line-height: 1.55; margin-bottom: 8px; }
+    .phase-body p:last-child { margin-bottom: 0; }
+    .phase-body ul { margin: 0 0 8px 18px; }
+    .phase-body li { font-size: 13px; color: var(--text-2); line-height: 1.5; margin-bottom: 4px; }
     .shave-step { padding: 10px 0; border-top: 1px solid var(--border-3); }
     .shave-step-title { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
     .shave-step-note { font-size: 13px; color: var(--text-2); line-height: 1.5; }
@@ -300,6 +304,16 @@ const SHAVE_STEPS = [
     { step:"Rinse brush", note:"Rinse until water runs clear. Gently squeeze out water, don't wring." },
     { step:"Store on stand", note:"Both razor and brush hang bristle/blade down on the Perfecto stand to dry properly and extend life." },
     { step:"Blade lifespan", note:"Replace Astra blade every 3–5 shaves. Dull blades = more irritation, not less." } ]}
+];
+
+/* ───────────────────────── Program guide (how PPL works) ───────────────────────── */
+const GUIDE = [
+  { t:"The split & schedule", b:`<p><strong>Push / Pull / Legs</strong>, 3 days a week, with at least <strong>1 rest day between every session</strong>. Recommended order: <strong>Push → Legs → Pull</strong> (gives the upper body more recovery).</p><p>It runs on a <strong>2-week cycle</strong> — week 1 uses version 1 of each day, week 2 uses version 2, then it repeats. The app rotates you through this automatically and suggests your next session.</p>` },
+  { t:"Rep ranges & how hard to push", b:`<p>Every exercise has a target <strong>rep range</strong>. Take each set to <strong>failure</strong> — <em>unless</em> you reach the <strong>top of the range</strong>, then stop even if you have more in the tank (extra reps just fatigue you for the next set).</p>` },
+  { t:"How to progress", b:`<ul><li><strong>Each session:</strong> beat the last one by at least <strong>1 rep</strong> on any set.</li><li><strong>Tiebreaker:</strong> total reps — 10+9+8 (27) → 10+10+8 (28) still counts as progress.</li><li><strong>Add weight</strong> once you hit the top of the range on <strong>all sets</strong> — add the smallest plate and start the range over. The app flags this with the green <strong>⬆ Add weight</strong> tag.</li></ul><p>Progress naturally slows as you get more advanced. That's expected and normal.</p>` },
+  { t:"Warm-up", b:`<p><strong>General:</strong> get genuinely warm — loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles), optionally 5–10 min of easy cardio.</p><p><strong>First-exercise ramp:</strong> empty bar → ~50% → ~75% → working sets. The <strong>🔥 Warm-up ramp</strong> on each exercise does this math for you.</p>` },
+  { t:"Cardio", b:`<p>Aim for <strong>~150 min/week</strong> of easy, steady-state cardio (fast walking is the top pick) over 2+ sessions, at a pace where you could still hold a conversation. Keep it separate from lifting when you can. Your <strong>stair-stepper finisher</strong> counts toward this.</p>` },
+  { t:"Optional add-ons", b:`<p>Not part of the core routine — add if you want:</p><ul><li><strong>Abs:</strong> 3 sets of 8–15 reps, 2–4×/week (machine/cable crunch, weighted sit-up).</li><li><strong>Forearms:</strong> wrist curls, grippers, or rice-bucket work — not right before a workout.</li></ul>` }
 ];
 
 /* ───────────────────────── Storage ───────────────────────── */
@@ -483,7 +497,13 @@ function viewPicker(){
       </div>
     </div>`;
   }).join('');
-  return `<h1>Pick a workout</h1><p class="subtitle">Suggested next: <strong>${nxt}</strong></p><div style="margin-top:16px">${cards}</div>`;
+  return `<h1>Pick a workout</h1><p class="subtitle">Suggested next: <strong>${nxt}</strong></p>
+    <div style="margin-top:16px">${cards}</div>
+    <h2 style="margin-top:22px">📖 How this program works</h2>
+    ${GUIDE.map((s,i)=>{ const o=guideOpen.has(i); return `<div class="phase-card">
+      <button class="phase-header" onclick="toggleGuide(${i})"><span class="phase-title" style="font-size:14px">${s.t}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${o?180:0}deg);transition:.2s">⌄</span></button>
+      ${o?`<div class="phase-body">${s.b}</div>`:''}
+    </div>`; }).join('')}`;
 }
 
 function startWorkout(name){
@@ -547,8 +567,8 @@ function viewActive(){
       ? `<div class="skip-note"><span>⤼ Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipSet(${i},${k})">Undo</button></div>`
       : `<div class="set-grid">
         <span class="set-no">${k+1}</span>
-        <input type="number" inputmode="decimal" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value)">
-        <input type="number" inputmode="numeric" placeholder="reps" value="${st.r}" oninput="setVal(${i},${k},'r',this.value)" onchange="repCheck(${i},${k})">
+        <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setCell(${i},${k},'w',this.value)">
+        <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="reps" value="${st.r}" oninput="setCell(${i},${k},'r',this.value)" onchange="repCheck(${i},${k})">
         <button class="skip-set" onclick="skipSet(${i},${k})" title="skip this set">⤼</button>
         <button class="x-set" onclick="rmSet(${i},${k})" title="remove set">×</button>
       </div>`).join('');
@@ -630,6 +650,19 @@ function pickEx(i, sel){
   DB.draft.entries[i].name = sel.value; save(); render();
 }
 function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; save(); /* live save, no re-render to keep focus */ }
+/* Set a cell, then "roll down" the value into still-empty cells below in the same column
+   (first-pass shortcut — already-filled cells are left untouched so edits are preserved). */
+function setCell(i,k,field,value){
+  const sets=DB.draft.entries[i].sets;
+  sets[k][field]=value;
+  if(value!==''){
+    for(let j=k+1;j<sets.length;j++){
+      if(sets[j].skipped) continue;
+      if(sets[j][field]===''){ sets[j][field]=value; const el=document.getElementById(`${field}-${i}-${j}`); if(el) el.value=value; }
+    }
+  }
+  save();
+}
 function addSet(i){ DB.draft.entries[i].sets.push({w:'',r:'',skipped:false,reason:''}); save(); render(); }
 function rmSet(i,k){ if(DB.draft.entries[i].sets.length<=1)return; DB.draft.entries[i].sets.splice(k,1); save(); render(); }
 function skipSet(i,k){
@@ -892,6 +925,8 @@ function drawStrengthChart(){
 /* ───────────────────────── SKINCARE & SHAVING ───────────────────────── */
 let skinSub='routine', skinDay=null;
 const skinOpenPhases=new Set();
+const guideOpen=new Set();
+function toggleGuide(i){ guideOpen.has(i)?guideOpen.delete(i):guideOpen.add(i); render(); }
 function skinSubTab(t){ skinSub=t; render(); }
 function skinSelectDay(d){ skinDay=d; render(); }
 function skinTogglePhase(i){ skinOpenPhases.has(i)?skinOpenPhases.delete(i):skinOpenPhases.add(i); render(); }
