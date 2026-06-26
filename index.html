@@ -402,6 +402,7 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
 let currentHobby=null;
 function pickHobby(exclude){ const l=DB.hobbies||[]; if(!l.length) return null; if(l.length===1) return l[0]; let h; do{ h=l[Math.floor(Math.random()*l.length)]; }while(h===exclude); return h; }
 function shuffleHobby(){ currentHobby=pickHobby(currentHobby); render(); }
+function selectHobby(v){ currentHobby=v; render(); }
 function didHobby(){ if(!currentHobby) return; DB.hobbyLog.push({date:todayISO(), hobby:currentHobby}); save(); confettiBurst(); toast('Nice — that counts. 🎉'); currentHobby=pickHobby(currentHobby); render(); }
 function hobbyWeekCount(){ const m=+monday(new Date()); return (DB.hobbyLog||[]).filter(h=>+monday(new Date(h.date+'T00:00'))===m).length; }
 function addHobby(){ const inp=document.getElementById('hobby-input'); const v=(inp.value||'').trim(); if(!v) return; DB.hobbies.push(v); save(); toast('Added'); render(); }
@@ -489,6 +490,7 @@ function viewToday(){
       ${kicker('Do something — not the couch')}
       <div style="text-align:center;padding:8px 0 12px"><div style="font-size:22px;font-weight:800;letter-spacing:-.3px">${currentHobby?esc(currentHobby):'Add a hobby in Settings →'}</div></div>
       <div class="row" style="gap:8px"><button class="btn btn-ghost" style="flex:1" onclick="shuffleHobby()">🎲 Something else</button><button class="btn" style="flex:1" onclick="didHobby()">✓ I did it</button></div>
+      <select onchange="selectHobby(this.value)" style="margin-top:10px" aria-label="Pick a specific hobby">${(DB.hobbies||[]).map(h=>`<option ${h===currentHobby?'selected':''}>${esc(h)}</option>`).join('')}</select>
       <p class="muted" style="margin-top:12px;line-height:1.5">You'll always be tired, and there's always a reason not to. But you <strong>always feel better after</strong>. Start small — just begin.</p>
       ${hWeek?`<p class="muted" style="margin-top:6px;font-weight:600">✓ ${hWeek} done this week</p>`:''}
     </div>`;
@@ -604,8 +606,8 @@ function viewActive(){
       ? `<div class="skip-note"><span>⤼ Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipSet(${i},${k})">Undo</button></div>`
       : `<div class="set-grid">
         <span class="set-no">${k+1}</span>
-        <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setCell(${i},${k},'w',this.value)">
-        <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="reps" value="${st.r}" oninput="setCell(${i},${k},'r',this.value)" onchange="repCheck(${i},${k})">
+        <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value)" onchange="rollWeight(${i},${k},this.value)">
+        <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="reps" value="${st.r}" oninput="setVal(${i},${k},'r',this.value)" onchange="repCheck(${i},${k})">
         <button class="skip-set" onclick="skipSet(${i},${k})" title="skip this set">⤼</button>
         <button class="x-set" onclick="rmSet(${i},${k})" title="remove set">×</button>
       </div>`).join('');
@@ -687,15 +689,15 @@ function pickEx(i, sel){
   DB.draft.entries[i].name = sel.value; save(); render();
 }
 function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; save(); /* live save, no re-render to keep focus */ }
-/* Set a cell, then "roll down" the value into still-empty cells below in the same column
-   (first-pass shortcut — already-filled cells are left untouched so edits are preserved). */
-function setCell(i,k,field,value){
+/* Roll the WEIGHT down into still-empty sets below. Fired on `change` (after the full
+   number is entered), weight only — reps are never rolled. Filled cells stay untouched. */
+function rollWeight(i,k,value){
   const sets=DB.draft.entries[i].sets;
-  sets[k][field]=value;
+  sets[k].w=value;
   if(value!==''){
     for(let j=k+1;j<sets.length;j++){
       if(sets[j].skipped) continue;
-      if(sets[j][field]===''){ sets[j][field]=value; const el=document.getElementById(`${field}-${i}-${j}`); if(el) el.value=value; }
+      if(sets[j].w===''){ sets[j].w=value; const el=document.getElementById(`w-${i}-${j}`); if(el) el.value=value; }
     }
   }
   save();
