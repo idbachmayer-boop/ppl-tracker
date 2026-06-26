@@ -193,12 +193,9 @@
 
 <div class="tabbar"><div class="tabbar-inner">
   <button class="tab active" data-tab="today" onclick="go('today',this)"><span class="ic">🏠</span>Today</button>
-  <button class="tab" data-tab="workout" onclick="go('workout',this)"><span class="ic">🏋️</span>Workout</button>
-  <button class="tab" data-tab="history" onclick="go('history',this)"><span class="ic">📋</span>History</button>
-  <button class="tab" data-tab="weight" onclick="go('weight',this)"><span class="ic">📈</span>Progress</button>
-  <button class="tab" data-tab="skincare" onclick="go('skincare',this)"><span class="ic">🧴</span>Skin</button>
-  <button class="tab" data-tab="lawn" onclick="go('lawn',this)"><span class="ic">🌱</span>Lawn</button>
-  <button class="tab" data-tab="data" onclick="go('data',this)"><span class="ic">⚙️</span>Data</button>
+  <button class="tab" data-tab="train" onclick="go('train',this)"><span class="ic">🏋️</span>Train</button>
+  <button class="tab" data-tab="care" onclick="go('care',this)"><span class="ic">✨</span>Care</button>
+  <button class="tab" data-tab="settings" onclick="go('settings',this)"><span class="ic">⚙️</span>Settings</button>
 </div></div>
 
 <div class="toast" id="toast"></div>
@@ -415,92 +412,110 @@ function saveJournal(v){ const t=todayISO(); if(v.trim()==='') delete DB.journal
 function journalWeekCount(){ const m=+monday(new Date()); let c=0; for(const d in (DB.journal||{})){ if(DB.journal[d].trim() && +monday(new Date(d+'T00:00'))===m) c++; } return c; }
 
 /* ───────────────────────── Router ───────────────────────── */
-let TAB = "today";
+let TAB = "today", trainSub = "log", careSub = "skin";
 function go(tab, btn){
   TAB = tab;
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
   render();
   window.scrollTo(0,0);
 }
+/* Jump to a sub-view within a grouped tab, keeping the bottom-bar highlight in sync. */
+function goTrain(sub){ if(sub) trainSub=sub; TAB="train"; document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab==='train')); render(); window.scrollTo(0,0); }
+function goCare(sub){ if(sub) careSub=sub; TAB="care"; document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab==='care')); render(); window.scrollTo(0,0); }
+function setTrainSub(s){ trainSub=s; render(); window.scrollTo(0,0); }
+function setCareSub(s){ careSub=s; render(); window.scrollTo(0,0); }
+/* Segmented sub-navigation control. */
+function segNav(items, active, fn){
+  return `<div class="seg" style="margin-bottom:16px">${items.map(([k,label])=>`<button class="${k===active?'active':''}" onclick="${fn}('${k}')">${label}</button>`).join('')}</div>`;
+}
+function viewTrain(){
+  const seg = segNav([['log','Log'],['history','History'],['progress','Progress']], trainSub, 'setTrainSub');
+  const body = trainSub==='log' ? (DB.draft ? viewActive() : viewPicker())
+             : trainSub==='history' ? viewHistory()
+             : viewWeight();
+  return seg + body;
+}
+function viewCare(){
+  const seg = segNav([['skin','Skin'],['lawn','Lawn']], careSub, 'setCareSub');
+  return seg + (careSub==='skin' ? viewSkincare() : viewLawn());
+}
 function render(){
   const el = document.getElementById('app');
   if(TAB==="today") el.innerHTML = viewToday();
-  else if(TAB==="workout") el.innerHTML = DB.draft ? viewActive() : viewPicker();
-  else if(TAB==="history") el.innerHTML = viewHistory();
-  else if(TAB==="weight") el.innerHTML = viewWeight();
-  else if(TAB==="skincare") el.innerHTML = viewSkincare();
-  else if(TAB==="lawn") el.innerHTML = viewLawn();
-  else if(TAB==="data") el.innerHTML = viewData();
-  if(TAB==="weight"){ if(progSub==='strength') drawStrengthChart(); else drawChart(); }
-  if(TAB==="lawn") maybeFetchWeather();
+  else if(TAB==="train") el.innerHTML = viewTrain();
+  else if(TAB==="care") el.innerHTML = viewCare();
+  else if(TAB==="settings") el.innerHTML = viewData();
+  if(TAB==="train" && trainSub==='progress'){ if(progSub==='strength') drawStrengthChart(); else drawChart(); }
+  if(TAB==="care" && careSub==='lawn') maybeFetchWeather();
 }
 
-/* ───────────────────────── TODAY ───────────────────────── */
+/* ───────────────────────── TODAY (time-aware hub) ───────────────────────── */
+function wxGlance(){
+  const wx=DB.wx; if(!wx||!wx.data) return null;
+  const dy=wx.data.daily, cur=wx.data.current_weather;
+  let ti=dy.time.indexOf(todayISO()); if(ti<0) ti=dy.time.length>1?1:0;
+  const c=wxCode(cur?cur.weathercode:dy.weathercode[ti]);
+  return { temp:Math.round(cur?cur.temperature:dy.temperature_2m_max[ti]), icon:c.icon, text:c.text,
+    hi:Math.round(dy.temperature_2m_max[ti]), lo:Math.round(dy.temperature_2m_min[ti]),
+    rainProb:Math.round(dy.precipitation_probability_max[ti]||0), loc:(DB.lawn&&DB.lawn.label)||'' };
+}
+function weekTally(){
+  const m=+monday(new Date());
+  const wk=DB.sessions.filter(s=>!s.skipped && +monday(new Date(s.date+'T00:00'))===m).length;
+  const hb=(DB.hobbyLog||[]).filter(h=>+monday(new Date(h.date+'T00:00'))===m).length;
+  return `${wk} workout${wk!==1?'s':''} · ${hb} hobb${hb!==1?'ies':'y'} · journaled ${journalWeekCount()}/7`;
+}
+const kicker = t => `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${t}</div>`;
 function viewToday(){
-  const nxt = nextWorkout(); const g = PROGRAM[nxt].group;
+  const nxt = nextWorkout(), g = PROGRAM[nxt].group;
   const last = DB.sessions[DB.sessions.length-1];
   const w = DB.weights[DB.weights.length-1];
   const loggedToday = w && w.date===todayISO();
   if(currentHobby===null) currentHobby=pickHobby();
-  const hWeek = hobbyWeekCount();
-  const jWeek = journalWeekCount();
-  const isSunday = new Date().getDay()===0;
-  let trend = '';
-  if(DB.weights.length>=2){
-    const diff = +(w.kg ? w.kg : w.value) - +(DB.weights[DB.weights.length-2].value);
-    const cls = diff>0.05?'trend-up':diff<-0.05?'trend-down':'trend-flat';
-    trend = `<span class="${cls}">${diff>0?'▲':diff<0?'▼':'='} ${Math.abs(diff).toFixed(1)} ${DB.unit}</span> since last`;
-  }
-  return `
-    <h1>PPL Tracker</h1>
-    <p class="subtitle">Push · Pull · Legs — Bodybuilding Simplified</p>
+  const hWeek = hobbyWeekCount(), jWeek = journalWeekCount();
+  const now = new Date(), hr = now.getHours();
+  const part = hr<12?'morning':hr<17?'afternoon':'evening';
+  const greeting = part==='morning'?'Good morning':part==='afternoon'?'Good afternoon':'Good evening';
+  const gl = wxGlance();
+  let trend='';
+  if(DB.weights.length>=2){ const diff=+w.value-+(DB.weights[DB.weights.length-2].value); const cls=diff>0.05?'trend-up':diff<-0.05?'trend-down':'trend-flat'; trend=`<span class="${cls}">${diff>0?'▲':diff<0?'▼':'='} ${Math.abs(diff).toFixed(1)} ${DB.unit}</span>`; }
 
-    <h2>Next session</h2>
-    <div class="card">
-      <div class="row" style="margin-bottom:12px">
-        <div><span class="pill ${accClass(g)}">${nxt}</span></div>
-        <span class="muted">${last? 'Last: '+fmtDate(last.date) : 'Not started yet'}</span>
-      </div>
+  const cWorkout = `<div class="card">
+      <div class="row" style="margin-bottom:12px"><div>${kicker(part==='evening'?'Next workout':'Today’s workout')}<span class="pill ${accClass(g)}" style="margin-top:5px">${nxt}</span></div><span class="muted">${last?'Last '+fmtDate(last.date):'—'}</span></div>
       <button class="btn btn-block" onclick="startWorkout('${nxt}')">Start ${nxt} →</button>
       <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="skipDay('${nxt}')">Skip this day</button>
-      <p class="muted" style="margin-top:10px">Order: Push → Legs → Pull, alternating week 1 / week 2. Skipping advances the rotation but never resets your numbers.</p>
-    </div>
-
-    <h2>Do something — not the couch</h2>
-    <div class="card">
-      <div style="text-align:center;padding:10px 0 14px">
-        <div style="font-size:23px;font-weight:800;letter-spacing:-.3px">${currentHobby? esc(currentHobby) : 'Add a hobby in the Data tab →'}</div>
-      </div>
-      <div class="row" style="gap:8px">
-        <button class="btn btn-ghost" style="flex:1" onclick="shuffleHobby()">🎲 Something else</button>
-        <button class="btn" style="flex:1" onclick="didHobby()">✓ I did it</button>
-      </div>
-      <p class="muted" style="margin-top:13px;line-height:1.55">You'll always be tired, and there's always a reason not to. But you <strong>always feel better after</strong> doing something. Start small — just begin.</p>
-      ${hWeek? `<p class="muted" style="margin-top:8px;font-weight:600">✓ ${hWeek} done this week</p>`:''}
-    </div>
-
-    <h2>What did you do today?</h2>
-    <div class="card">
-      <textarea id="journal-input" rows="3" placeholder="A few words about your day — wins, workouts, anything…" oninput="saveJournal(this.value)" style="resize:vertical;line-height:1.5;min-height:72px">${esc(DB.journal[todayISO()]||'')}</textarea>
-      <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <a onclick="go('history',document.querySelector('[data-tab=history]'))" style="color:var(--link);cursor:pointer;font-weight:600">${isSunday?'📅 Review your week →':'See your week →'}</a></p>
-    </div>
-
-    <h2>Bodyweight</h2>
-    <div class="card">
-      <div class="row">
-        <div>
-          <div class="stat-big">${w? (+w.value).toFixed(1) : '—'} <span style="font-size:16px;color:#aaa;font-weight:600">${DB.unit}</span></div>
-          <div class="stat-sub">${w? (loggedToday?'Logged today':'Last: '+fmtDate(w.date)) : 'No entries yet'} ${trend?'· '+trend:''}</div>
-        </div>
-        <button class="btn ${loggedToday?'btn-ghost':''}" onclick="go('weight',document.querySelector('[data-tab=weight]'))">${loggedToday?'View':'Weigh in'}</button>
-      </div>
-    </div>
-
-    <h2>Reminders</h2>
-    <div class="card">
-      <p class="muted" id="notif-status">In-app nudges are always on. Optional: allow notifications for weigh-in reminders.</p>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="enableNotif()">Enable notifications</button>
     </div>`;
+  const cHobby = `<div class="card">
+      ${kicker('Do something — not the couch')}
+      <div style="text-align:center;padding:8px 0 12px"><div style="font-size:22px;font-weight:800;letter-spacing:-.3px">${currentHobby?esc(currentHobby):'Add a hobby in Settings →'}</div></div>
+      <div class="row" style="gap:8px"><button class="btn btn-ghost" style="flex:1" onclick="shuffleHobby()">🎲 Something else</button><button class="btn" style="flex:1" onclick="didHobby()">✓ I did it</button></div>
+      <p class="muted" style="margin-top:12px;line-height:1.5">You'll always be tired, and there's always a reason not to. But you <strong>always feel better after</strong>. Start small — just begin.</p>
+      ${hWeek?`<p class="muted" style="margin-top:6px;font-weight:600">✓ ${hWeek} done this week</p>`:''}
+    </div>`;
+  const cJournal = `<div class="card">
+      ${kicker('What did you do today?')}
+      <textarea id="journal-input" rows="3" placeholder="A few words about your day — wins, workouts, anything…" oninput="saveJournal(this.value)" style="resize:vertical;line-height:1.5;min-height:72px;margin-top:8px">${esc(DB.journal[todayISO()]||'')}</textarea>
+      <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <a onclick="goTrain('history')" style="color:var(--link);cursor:pointer;font-weight:600">${part==='evening'?'📅 Review your week →':'See your week →'}</a></p>
+    </div>`;
+  const cWeight = `<div class="card"><div class="row">
+      <div><div class="stat-big" style="font-size:26px">${w?(+w.value).toFixed(1):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
+      <div class="stat-sub">${w?(loggedToday?'Weighed in today':'Last '+fmtDate(w.date)):'No weigh-ins yet'}${trend?' · '+trend:''}</div></div>
+      <button class="btn btn-sm ${loggedToday?'btn-ghost':''}" onclick="progSub='body';goTrain('progress')">${loggedToday?'View':'Weigh in'}</button>
+    </div></div>`;
+  const cWeather = gl ? `<div class="card" style="cursor:pointer" onclick="goCare('lawn')"><div class="row">
+      <div><div style="font-weight:700;font-size:16px">${gl.icon} ${gl.temp}° · ${gl.text}</div>
+      <div class="muted" style="font-size:12px;margin-top:2px">H ${gl.hi}° / L ${gl.lo}°${gl.rainProb>=40?` · ${gl.rainProb}% rain`:''}${gl.loc?' · '+esc(gl.loc):''}</div></div>
+      <span class="muted">Lawn →</span></div></div>` : '';
+  const cWeek = `<div class="card" style="cursor:pointer" onclick="goTrain('history')"><div class="row">
+      <div>${kicker('This week')}<div style="font-weight:700;margin-top:4px">${weekTally()}</div></div><span class="muted">Review →</span></div></div>`;
+
+  let order;
+  if(part==='morning') order=[cWeather, cWorkout, cHobby, cWeight, cJournal];
+  else if(part==='afternoon') order=[cWorkout, cHobby, cWeather, cWeight, cJournal];
+  else order=[cJournal, cWeek, cHobby, cWorkout, cWeight];
+
+  return `<div style="margin-bottom:16px"><h1>${greeting}</h1><p class="subtitle">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}${gl?` · ${gl.icon} ${gl.temp}°`:''}</p></div>
+    ${order.filter(Boolean).join('\n    ')}`;
 }
 
 /* ───────────────────────── WORKOUT — picker ───────────────────────── */
@@ -546,9 +561,7 @@ function startWorkout(name){
     if(ls){ DB.draft.stairs.seconds = String((+ls.st.seconds)+15); DB.draft.stairs.level = String(ls.st.level||''); }
     save();
   }
-  TAB="workout";
-  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab==='workout'));
-  render(); window.scrollTo(0,0);
+  goTrain('log');
 }
 function skipDay(name){
   const reason = prompt(`Skip ${name} entirely? Add a reason (optional):`, '');
@@ -564,7 +577,7 @@ function startBackdate(name){
     stairs:{ level:'', seconds:'', skipped:false, reason:'' } };
   const ls=lastRealStairs(); if(ls){ DB.draft.stairs.seconds=String((+ls.st.seconds)+15); DB.draft.stairs.level=String(ls.st.level||''); }
   showBackdate=false; save();
-  go('workout', document.querySelector('[data-tab=workout]'));
+  goTrain('log');
 }
 
 /* ───────────────────────── WORKOUT — active session ───────────────────────── */
@@ -758,10 +771,10 @@ function finishWorkout(){
   sortSessions();
   DB.draft = null; save();
   toast(hist?'Past workout added':'Workout saved 💪');
-  go('history', document.querySelector('[data-tab=history]'));
+  goTrain('history');
 }
 function sortSessions(){ DB.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : a.date.localeCompare(b.date)); }
-function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; save(); go('workout',document.querySelector('[data-tab=workout]')); } }
+function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; save(); goTrain('log'); } }
 
 /* ───────────────────────── HISTORY ───────────────────────── */
 let openHist = -1, showBackdate = false, reviewWeekOffset = 0;
@@ -841,7 +854,7 @@ function viewHistory(){
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${SEQUENCE.map(n=>`<button class="btn btn-ghost btn-sm" onclick="startBackdate('${n}')">${n}</button>`).join('')}</div>
       <p class="muted" style="margin-top:10px">Tip: enter your 5 oldest-first so each session sees the one before it as "last time".</p>
     </div>`:''}`;
-  if(!DB.sessions.length) return `<h1>History</h1><h2>Week in review</h2>${renderWeekReview()}<div style="margin:14px 0">${back}</div><div class="empty">No workouts logged yet.<br>Start one from the Workout tab, or add a past workout above.</div>`;
+  if(!DB.sessions.length) return `<h2>Week in review</h2>${renderWeekReview()}<div style="margin:14px 0">${back}</div><div class="empty">No workouts logged yet.<br>Start one from the Workout tab, or add a past workout above.</div>`;
   const items = DB.sessions.slice().reverse().map((s,ri)=>{
     const idx = DB.sessions.length-1-ri; const g=PROGRAM[s.workout]?PROGRAM[s.workout].group:'push';
     const open = openHist===idx;
@@ -875,7 +888,7 @@ function viewHistory(){
       </div>${detail}
     </div>`;
   }).join('');
-  return `<h1>History</h1><p class="subtitle">${DB.sessions.length} entries logged</p>
+  return `<p class="subtitle">${DB.sessions.length} entries logged</p>
     ${summary}
     <h2>Week in review</h2>
     ${renderWeekReview()}
@@ -903,8 +916,7 @@ function viewWeight(){
   if(progSub==='strength') return viewStrength(sub);
   const w = DB.weights[DB.weights.length-1];
   return `
-    <h1>Progress</h1>
-    <p class="subtitle">${DB.weights.length} weigh-ins · trend over time</p>
+        <p class="subtitle">${DB.weights.length} weigh-ins · trend over time</p>
     ${sub}
     <div class="card">
       <div class="row">
@@ -1150,12 +1162,17 @@ function viewLawn(){
 /* ───────────────────────── DATA / settings ───────────────────────── */
 function viewData(){
   return `
-    <h1>Data & Settings</h1>
+    <h1>Settings</h1>
     <h2>Units</h2>
     <div class="card"><div class="seg" style="margin:0">
       <button class="${DB.unit==='lb'?'active':''}" onclick="setUnit('lb')">lb</button>
       <button class="${DB.unit==='kg'?'active':''}" onclick="setUnit('kg')">kg</button>
     </div></div>
+    <h2>Reminders</h2>
+    <div class="card">
+      <p class="muted" id="notif-status">In-app nudges are always on. Optionally allow notifications for weigh-in reminders.</p>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="enableNotif()">Enable notifications</button>
+    </div>
     <h2>Hobbies</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Ideas the Today tab rotates through.</p>
