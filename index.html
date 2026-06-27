@@ -161,8 +161,14 @@
     .warm-table div { display: flex; justify-content: space-between; padding: 2px 0; }
 
     /* Tab bar */
-    .tabbar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--tabbar-bg); backdrop-filter: blur(8px); border-top: 1px solid var(--border); display: flex; z-index: 50; }
+    .tabbar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--tabbar-bg); backdrop-filter: blur(8px); border-top: 1px solid var(--border); display: flex; flex-direction: column; z-index: 50; }
     .tabbar-inner { max-width: 520px; margin: 0 auto; width: 100%; display: flex; }
+    .stopwatch { max-width: 520px; margin: 0 auto; width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+    .stopwatch .sw-label { font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+    .stopwatch .sw-time { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 19px; flex: 1; }
+    .sw-btn { border: none; border-radius: 8px; padding: 7px 16px; font-size: 13px; font-weight: 700; cursor: pointer; background: var(--btn-bg); color: var(--btn-fg); }
+    .sw-btn.sw-clear { background: var(--surface-3); color: var(--text); padding: 7px 12px; }
+    body.sw-on { padding-bottom: 124px; }
     .tab { flex: 1; background: none; border: none; cursor: pointer; padding: 9px 0 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--muted-2); font-size: 10px; font-weight: 600; }
     .tab.active { color: var(--text); }
     .tab .ic { font-size: 19px; line-height: 1; }
@@ -191,7 +197,15 @@
 
 <div class="container" id="app"></div>
 
-<div class="tabbar"><div class="tabbar-inner" id="tabbar"><!-- generated from TABS registry --></div></div>
+<div class="tabbar">
+  <div class="stopwatch" id="stopwatch" style="display:none">
+    <span class="sw-label">⏱ Rest</span>
+    <span class="sw-time" id="sw-time">0:00</span>
+    <button class="sw-btn" id="sw-toggle" onclick="swToggle()">▶</button>
+    <button class="sw-btn sw-clear" onclick="swClear()">Clear</button>
+  </div>
+  <div class="tabbar-inner" id="tabbar"><!-- generated from TABS registry --></div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -315,7 +329,7 @@ const GUIDE = [
   { t:"The split & schedule", b:`<p><strong>Push / Pull / Legs</strong>, 3 days a week, with at least <strong>1 rest day between every session</strong>. Recommended order: <strong>Push → Legs → Pull</strong> (gives the upper body more recovery).</p><p>It runs on a <strong>2-week cycle</strong> — week 1 uses version 1 of each day, week 2 uses version 2, then it repeats. The app rotates you through this automatically and suggests your next session.</p>` },
   { t:"Rep ranges & how hard to push", b:`<p>Every exercise has a target <strong>rep range</strong>. Take each set to <strong>failure</strong> — <em>unless</em> you reach the <strong>top of the range</strong>, then stop even if you have more in the tank (extra reps just fatigue you for the next set).</p>` },
   { t:"How to progress", b:`<ul><li><strong>Each session:</strong> beat the last one by at least <strong>1 rep</strong> on any set.</li><li><strong>Tiebreaker:</strong> total reps — 10+9+8 (27) → 10+10+8 (28) still counts as progress.</li><li><strong>Add weight</strong> once you hit the top of the range on <strong>all sets</strong> — add the smallest plate and start the range over. The app flags this with the green <strong>⬆ Add weight</strong> tag.</li></ul><p>Progress naturally slows as you get more advanced. That's expected and normal.</p>` },
-  { t:"Warm-up", b:`<p><strong>General:</strong> get genuinely warm — loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles), optionally 5–10 min of easy cardio.</p><p><strong>First-exercise ramp:</strong> empty bar → ~50% → ~75% → working sets. The <strong>🔥 Warm-up ramp</strong> on each exercise does this math for you.</p>` },
+  { t:"Warm-up", b:`<p><strong>General:</strong> get genuinely warm — loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles), optionally 5–10 min of easy cardio.</p><p><strong>First-exercise ramp:</strong> empty bar → ~50% → ~75% → working sets. The <strong>🔥 Warm-up ramp</strong> on the first exercise does this math for you — you don't need to ramp every exercise.</p>` },
   { t:"Cardio", b:`<p>Aim for <strong>~150 min/week</strong> of easy, steady-state cardio (fast walking is the top pick) over 2+ sessions, at a pace where you could still hold a conversation. Keep it separate from lifting when you can. Your <strong>stair-stepper finisher</strong> counts toward this.</p>` },
   { t:"Optional add-ons", b:`<p>Not part of the core routine — add if you want:</p><ul><li><strong>Abs:</strong> 3 sets of 8–15 reps, 2–4×/week (machine/cable crunch, weighted sit-up).</li><li><strong>Forearms:</strong> wrist curls, grippers, or rice-bucket work — not right before a workout.</li></ul>` }
 ];
@@ -396,22 +410,23 @@ function fmtSet(w,r){ if(w===''||w==null) return `${r}`; return `${(+w===0?'BW':
 function fmtMS(total){ total=+total||0; const m=Math.floor(total/60), s=total%60; return `${m}:${String(s).padStart(2,'0')}`; }
 /* Estimated 1-rep max (Epley). BW(0) or blank → 0 (excluded from strength charts). */
 function e1rm(w,r){ w=+w; r=+r; if(!w||!r) return 0; return w*(1+r/30); }
-function exMuscle(workout, idx){ const sl=PROGRAM[workout] && PROGRAM[workout].slots; return sl && sl[idx] ? sl[idx].muscle : null; }
-function musclesWithData(){
+/* Strength is tracked PER EXERCISE (not pooled by muscle) so the trend reflects one
+   movement — "DB bench" rising — instead of jumping between bench/incline/fly. */
+function exercisesWithData(){
   const set=new Set();
-  DB.sessions.forEach(s=>{ if(s.skipped||!s.entries) return; s.entries.forEach((e,idx)=>{ const m=exMuscle(s.workout,idx); if(m && e.sets.some(x=>!x.skipped && e1rm(x.w,x.r)>0)) set.add(m); }); });
-  return [...set];
+  DB.sessions.forEach(s=>{ if(s.skipped||!s.entries) return; s.entries.forEach(e=>{ if(e.sets.some(x=>!x.skipped && e1rm(x.w,x.r)>0)) set.add(e.name); }); });
+  return [...set].sort();
 }
-function muscleSeries(muscle){
+function exerciseSeries(name){
   const out=[];
   DB.sessions.forEach(s=>{ if(s.skipped||!s.entries) return; let best=0;
-    s.entries.forEach((e,idx)=>{ if(exMuscle(s.workout,idx)!==muscle) return; e.sets.forEach(x=>{ if(!x.skipped){ const v=e1rm(x.w,x.r); if(v>best) best=v; } }); });
+    s.entries.forEach(e=>{ if(e.name!==name) return; e.sets.forEach(x=>{ if(!x.skipped){ const v=e1rm(x.w,x.r); if(v>best) best=v; } }); });
     if(best>0) out.push({date:s.date, value:best}); });
   return out;
 }
-function musclePRs(muscle){
+function exercisePRs(){
   const map={};
-  DB.sessions.forEach(s=>{ if(s.skipped||!s.entries) return; s.entries.forEach((e,idx)=>{ if(exMuscle(s.workout,idx)!==muscle) return;
+  DB.sessions.forEach(s=>{ if(s.skipped||!s.entries) return; s.entries.forEach(e=>{
     e.sets.forEach(x=>{ if(x.skipped) return; const v=e1rm(x.w,x.r); if(v>0 && (!map[e.name] || v>map[e.name].v)) map[e.name]={v, w:x.w, r:x.r, date:s.date}; }); }); });
   return Object.entries(map).map(([name,d])=>({name,...d})).sort((a,b)=>b.v-a.v);
 }
@@ -483,6 +498,7 @@ function render(){
       <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="location.reload()">Reload app</button>
     </div>`;
   }
+  if(typeof updateStopwatch==='function') updateStopwatch();
 }
 
 /* ───────────────────────── TODAY (time-aware hub) ───────────────────────── */
@@ -667,10 +683,10 @@ function viewActive(){
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span></div>
         ${setRows}
         <button class="addset" onclick="addSet(${i})">+ Add set</button>
-        <div class="warm">
+        ${i===0?`<div class="warm">
           <button class="warm-toggle" onclick="toggleWarm(${i})">🔥 Warm-up ramp</button>
           <div class="warm-table hidden" id="warm-${i}"></div>
-        </div>
+        </div>`:''}
       </div>
     </div>`;
   }).join('');
@@ -717,9 +733,10 @@ function viewActive(){
         </div>
         <span class="timer-badge" id="session-timer">${fmtDur(Date.now()-(DB.draft.startedAt||Date.now()))}</span>
       </div>`;
+  const acc = accessoryBlocks(g);
   return `
     ${header}
-    <div style="margin-top:16px">${cards}${stairsCard}</div>
+    <div style="margin-top:16px">${acc.warm}${cards}${stairsCard}${acc.accessories}</div>
     <button class="btn btn-block" style="margin-top:6px" onclick="finishWorkout()">${DB.draft.historical?'Save past workout':'Finish & save workout'}</button>
     <button class="btn btn-danger btn-block" style="margin-top:10px" onclick="discardWorkout()">Discard</button>`;
 }
@@ -945,9 +962,10 @@ function changeSessionDate(idx, v){ if(!v) return; const s=DB.sessions[idx]; s.d
 function deleteSession(idx){ if(!confirm('Delete this entry permanently?')) return; DB.sessions.splice(idx,1); openHist=-1; save(); toast('Entry deleted'); render(); }
 
 /* ───────────────────────── WEIGHT ───────────────────────── */
-let chartRange = 30, progSub='body', selectedMuscle=null;
+let chartRange = 30, progSub='body', selectedExercise=null;
 function progSubTab(t){ progSub=t; render(); }
-function selectMuscle(m){ selectedMuscle=m; render(); }
+function selectExercise(m){ selectedExercise=m; render(); }
+function selectPR(i){ const p=exercisePRs()[i]; if(p) selectExercise(p.name); }
 function rangeSeg(){ return `<div class="seg" style="margin:14px 0 0">
     <button class="${chartRange===30?'active':''}" onclick="setRange(30)">30d</button>
     <button class="${chartRange===90?'active':''}" onclick="setRange(90)">90d</button>
@@ -973,26 +991,26 @@ function viewWeight(){
     ${DB.weights.length? `<div class="card">${weightList()}</div>` : '<div class="empty">Log your first weigh-in above.</div>'}`;
 }
 function viewStrength(sub){
-  const muscles = musclesWithData();
-  if(!muscles.length) return `<h1>Progress</h1><p class="subtitle">Strength over time</p>${sub}<div class="empty">Log a few weighted workouts and your strength trend shows up here.<br>(Bodyweight-only moves aren't charted.)</div>`;
-  if(!selectedMuscle || !muscles.includes(selectedMuscle)) selectedMuscle=muscles[0];
-  const opts = muscles.map(m=>`<option ${m===selectedMuscle?'selected':''}>${m}</option>`).join('');
-  const series = muscleSeries(selectedMuscle);
+  const exes = exercisesWithData();
+  if(!exes.length) return `<h1>Progress</h1><p class="subtitle">Strength over time</p>${sub}<div class="empty">Log a few weighted workouts and your strength trend shows up here.<br>(Bodyweight-only moves aren't charted.)</div>`;
+  if(!selectedExercise || !exes.includes(selectedExercise)) selectedExercise=exes[0];
+  const opts = exes.map(m=>`<option ${m===selectedExercise?'selected':''}>${esc(m)}</option>`).join('');
+  const series = exerciseSeries(selectedExercise);
   const latest = series[series.length-1], first=series[0];
   let delta='';
   if(series.length>=2){ const d=latest.value-first.value; const cls=d>0?'trend-down':d<0?'trend-up':'trend-flat'; delta=`<span class="${cls}">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(0)} ${DB.unit}</span> since ${fmtDate(first.date)}`; }
-  const prs = musclePRs(selectedMuscle).slice(0,8).map(p=>`<div class="hist-item"><span>${esc(p.name)}</span><span><strong>${Math.round(p.v)} ${DB.unit}</strong> <span class="muted">${fmtSet(p.w,p.r)}</span></span></div>`).join('');
-  return `<h1>Progress</h1><p class="subtitle">Estimated 1-rep max over time</p>${sub}
+  const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.name===selectedExercise?'▸ ':''}${esc(p.name)}</span><span><strong>${Math.round(p.v)} ${DB.unit}</strong> <span class="muted">${fmtSet(p.w,p.r)}</span></span></div>`).join('');
+  return `<h1>Progress</h1><p class="subtitle">Estimated 1-rep max per exercise</p>${sub}
     <div class="card">
-      <select onchange="selectMuscle(this.value)">${opts}</select>
+      <select onchange="selectExercise(this.value)">${opts}</select>
       ${rangeSeg()}
     </div>
     <div class="card">
       <div style="margin-bottom:8px"><div class="stat-big" style="font-size:26px">${latest?Math.round(latest.value):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit} e1RM</span></div>
-      <div class="stat-sub">${delta||('Best estimated 1RM · '+esc(selectedMuscle))}</div></div>
+      <div class="stat-sub">${delta||('Best estimated 1RM · '+esc(selectedExercise))}</div></div>
       <svg id="schart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg>
     </div>
-    <div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Personal records — ${esc(selectedMuscle)}</div>${prs||'<span class="muted">No weighted sets yet.</span>'}</div>
+    <div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Personal records (tap to chart)</div>${prs||'<span class="muted">No weighted sets yet.</span>'}</div>
     <p class="muted" style="text-align:center;font-size:12px">e1RM = estimated 1-rep max (weight × reps, Epley). Higher = stronger. Bodyweight sets excluded.</p>`;
 }
 function weightList(){
@@ -1043,8 +1061,8 @@ function drawChart(){
 function drawStrengthChart(){
   const svg = document.getElementById('schart'); if(!svg) return;
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-chartRange);
-  const pts = muscleSeries(selectedMuscle).filter(p=> chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff);
-  paintChart(svg, pts, 'Need 2+ weighted sessions for this muscle in range', 'gStr');
+  const pts = exerciseSeries(selectedExercise).filter(p=> chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff);
+  paintChart(svg, pts, 'Need 2+ weighted sessions for this exercise in range', 'gStr');
 }
 
 /* ───────────────────────── SKINCARE & SHAVING ───────────────────────── */
@@ -1052,6 +1070,31 @@ let skinSub='routine', skinDay=null;
 const skinOpenPhases=new Set();
 const guideOpen=new Set();
 function toggleGuide(i){ guideOpen.has(i)?guideOpen.delete(i):guideOpen.add(i); render(); }
+
+/* Collapsible reference sections inside the active workout (warm-up, abs, forearms, stretches). */
+const accOpen=new Set();
+function toggleAcc(k){ accOpen.has(k)?accOpen.delete(k):accOpen.add(k); render(); }
+function accItem(key, title, bodyHTML){
+  const open=accOpen.has(key);
+  return `<div class="phase-card">
+    <button class="phase-header" onclick="toggleAcc('${key}')"><span class="phase-title" style="font-size:14px">${title}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">⌄</span></button>
+    ${open?`<div class="phase-body">${bodyHTML}</div>`:''}
+  </div>`;
+}
+const gsearch = q => 'https://www.google.com/search?q='+encodeURIComponent(q+' stretch how to');
+const STRETCHES = {
+  push:["Doorway chest stretch","Cross-body shoulder stretch","Overhead triceps stretch","Child's pose"],
+  legs:["Standing quad stretch","Seated hamstring stretch","Figure-four glute stretch","Standing calf stretch","Kneeling hip flexor stretch"],
+  pull:["Lat stretch (overhead reach)","Doorway biceps stretch","Cat-cow","Cross-body shoulder stretch"]
+};
+function accessoryBlocks(group){
+  const warm = accItem('warmup','🔥 Warm-up', `<p><strong>General:</strong> loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles) until they feel warm. Optional 5–10 min easy treadmill or elliptical.</p><p><strong>First exercise:</strong> ramp up — empty bar → ~50% → ~75% → working sets (use the 🔥 ramp on exercise 1 below).</p>`);
+  const abs = accItem('abs','💥 Abs (optional)', `<p>3 sets of 8–15 reps, 2–4× a week — machine crunch, cable crunch, or weighted sit-up. Add weight over time like any lift.</p>`);
+  const fore = accItem('forearms','🤜 Forearms (optional)', `<p>Wrist curls 3×8–12 (barbell or DB), or grippers, or rice-bucket work. Don't do these right before lifting.</p>`);
+  const list = (STRETCHES[group]||STRETCHES.push).map(n=>`<li style="margin-bottom:5px"><a href="${gsearch(n)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">${n}</a></li>`).join('');
+  const stretch = accItem('stretch','🧘 Cool-down stretches', `<p>Hold each ~20–30s. Tap one to see how:</p><ul style="margin:0 0 4px 18px">${list}</ul>`);
+  return { warm, accessories: abs+fore+stretch };
+}
 function skinSubTab(t){ skinSub=t; render(); }
 function skinSelectDay(d){ skinDay=d; render(); }
 function skinTogglePhase(i){ skinOpenPhases.has(i)?skinOpenPhases.delete(i):skinOpenPhases.add(i); render(); }
@@ -1278,15 +1321,33 @@ function maybeNudge(){
   sync();
 })();
 
-/* ───────────────────────── Live gym timer ───────────────────────── */
+/* ───────────────────────── Rest stopwatch (manual, separate from gym timer) ───────────────────────── */
+let sw = { running:false, start:0, acc:0 };
+function swElapsed(){ return sw.acc + (sw.running ? Date.now()-sw.start : 0); }
+function swToggle(){ if(sw.running){ sw.acc+=Date.now()-sw.start; sw.running=false; } else { sw.start=Date.now(); sw.running=true; } updateStopwatch(); }
+function swClear(){ sw.running=false; sw.acc=0; updateStopwatch(); }
+function updateStopwatch(){
+  const bar=document.getElementById('stopwatch'); if(!bar) return;
+  const show=!!DB.draft;                       // only during an active workout
+  bar.style.display = show?'flex':'none';
+  document.body.classList.toggle('sw-on', show);
+  if(show){
+    const t=document.getElementById('sw-time'); if(t) t.textContent=fmtDur(swElapsed());
+    const b=document.getElementById('sw-toggle'); if(b) b.textContent = sw.running?'❚❚':'▶';
+  }
+}
+
+/* ───────────────────────── Live gym timer + stopwatch tick ───────────────────────── */
 setInterval(()=>{
   const el = document.getElementById('session-timer');
   if(el && DB.draft && DB.draft.startedAt) el.textContent = fmtDur(Date.now()-DB.draft.startedAt);
+  updateStopwatch();
 }, 1000);
 
 /* ───────────────────────── Boot ───────────────────────── */
 buildTabBar();
 render();
+updateStopwatch();
 setTimeout(maybeNudge, 1500);
 </script>
 </body>
