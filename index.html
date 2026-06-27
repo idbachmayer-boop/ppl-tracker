@@ -191,12 +191,7 @@
 
 <div class="container" id="app"></div>
 
-<div class="tabbar"><div class="tabbar-inner">
-  <button class="tab active" data-tab="today" onclick="go('today',this)"><span class="ic">🏠</span>Today</button>
-  <button class="tab" data-tab="train" onclick="go('train',this)"><span class="ic">🏋️</span>Train</button>
-  <button class="tab" data-tab="care" onclick="go('care',this)"><span class="ic">✨</span>Care</button>
-  <button class="tab" data-tab="settings" onclick="go('settings',this)"><span class="ic">⚙️</span>Settings</button>
-</div></div>
+<div class="tabbar"><div class="tabbar-inner" id="tabbar"><!-- generated from TABS registry --></div></div>
 
 <div class="toast" id="toast"></div>
 
@@ -436,43 +431,49 @@ function removeHobby(i){ DB.hobbies.splice(i,1); if(currentHobby && !(DB.hobbies
 function saveJournal(v){ const t=todayISO(); if(v.trim()==='') delete DB.journal[t]; else DB.journal[t]=v; save(); }
 function journalWeekCount(){ const m=+monday(new Date()); let c=0; for(const d in (DB.journal||{})){ if(DB.journal[d].trim() && +monday(new Date(d+'T00:00'))===m) c++; } return c; }
 
-/* ───────────────────────── Router ───────────────────────── */
-let TAB = "today", trainSub = "log", careSub = "skin";
-function go(tab, btn){
-  TAB = tab;
-  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
-  render();
-  window.scrollTo(0,0);
+/* ───────────────────────── Router — feature registry ─────────────────────────
+   Each tab is ONE entry. Adding a feature = append one object here; the bottom
+   bar, the router, and the sub-nav all generate from this list — no more
+   four-site edits, and tab ids live in one place (kills the stale-string bugs). */
+const TABS = [
+  { id:'today', label:'Today', icon:'🏠', view:()=>viewToday() },
+  { id:'train', label:'Train', icon:'🏋️', sub:[['log','Log'],['history','History'],['progress','Progress']],
+    view:sub => sub==='log' ? (DB.draft ? viewActive() : viewPicker()) : sub==='history' ? viewHistory() : viewWeight(),
+    onRender:sub => { if(sub==='progress') drawActiveChart(); } },
+  { id:'care', label:'Care', icon:'✨', sub:[['skin','Skin'],['lawn','Lawn']],
+    view:sub => sub==='skin' ? viewSkincare() : viewLawn(),
+    onRender:sub => { if(sub==='lawn') maybeFetchWeather(); } },
+  { id:'settings', label:'Settings', icon:'⚙️', view:()=>viewData() },
+];
+const tabDef = id => TABS.find(t=>t.id===id);
+let TAB = TABS[0].id;
+const subState = {};
+TABS.forEach(t=>{ if(t.sub) subState[t.id]=t.sub[0][0]; });
+
+function buildTabBar(){
+  document.getElementById('tabbar').innerHTML = TABS.map(t=>
+    `<button class="tab${t.id===TAB?' active':''}" data-tab="${t.id}" onclick="go('${t.id}')"><span class="ic">${t.icon}</span>${t.label}</button>`
+  ).join('');
 }
-/* Jump to a sub-view within a grouped tab, keeping the bottom-bar highlight in sync. */
-function goTrain(sub){ if(sub) trainSub=sub; TAB="train"; document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab==='train')); render(); window.scrollTo(0,0); }
-function goCare(sub){ if(sub) careSub=sub; TAB="care"; document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab==='care')); render(); window.scrollTo(0,0); }
-function setTrainSub(s){ trainSub=s; render(); window.scrollTo(0,0); }
-function setCareSub(s){ careSub=s; render(); window.scrollTo(0,0); }
-/* Segmented sub-navigation control. */
-function segNav(items, active, fn){
-  return `<div class="seg" style="margin-bottom:16px">${items.map(([k,label])=>`<button class="${k===active?'active':''}" onclick="${fn}('${k}')">${label}</button>`).join('')}</div>`;
+function syncTabBar(){ document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===TAB)); }
+function go(id){ if(!tabDef(id)) return; TAB=id; syncTabBar(); render(); window.scrollTo(0,0); }
+/* Jump straight to a sub-view of a grouped tab, e.g. goSub('train','history'). */
+function goSub(id, sub){ const t=tabDef(id); if(!t) return; if(t.sub && sub) subState[id]=sub; go(id); }
+/* Switch sub-view within the CURRENT tab (used by the segmented control). */
+function setSub(sub){ const t=tabDef(TAB); if(t && t.sub) subState[TAB]=sub; render(); window.scrollTo(0,0); }
+function segNav(items, active){
+  return `<div class="seg" style="margin-bottom:16px">${items.map(([k,label])=>`<button class="${k===active?'active':''}" onclick="setSub('${k}')">${label}</button>`).join('')}</div>`;
 }
-function viewTrain(){
-  const seg = segNav([['log','Log'],['history','History'],['progress','Progress']], trainSub, 'setTrainSub');
-  const body = trainSub==='log' ? (DB.draft ? viewActive() : viewPicker())
-             : trainSub==='history' ? viewHistory()
-             : viewWeight();
-  return seg + body;
-}
-function viewCare(){
-  const seg = segNav([['skin','Skin'],['lawn','Lawn']], careSub, 'setCareSub');
-  return seg + (careSub==='skin' ? viewSkincare() : viewLawn());
-}
+/* Whichever Progress chart is active — shared by render() and the theme-change redraw. */
+function drawActiveChart(){ if(TAB==='train' && subState.train==='progress'){ if(progSub==='strength') drawStrengthChart(); else drawChart(); } }
+
 function render(){
   const el = document.getElementById('app');
   try {
-    if(TAB==="today") el.innerHTML = viewToday();
-    else if(TAB==="train") el.innerHTML = viewTrain();
-    else if(TAB==="care") el.innerHTML = viewCare();
-    else if(TAB==="settings") el.innerHTML = viewData();
-    if(TAB==="train" && trainSub==='progress'){ if(progSub==='strength') drawStrengthChart(); else drawChart(); }
-    if(TAB==="care" && careSub==='lawn') maybeFetchWeather();
+    const t = tabDef(TAB) || TABS[0];
+    const sub = t.sub ? subState[t.id] : null;
+    el.innerHTML = (t.sub ? segNav(t.sub, sub) : '') + t.view(sub);
+    if(t.onRender) t.onRender(sub);
   } catch(e){
     el.innerHTML = `<div class="card" style="margin-top:24px">
       <h2>Something broke on this screen</h2>
@@ -531,18 +532,18 @@ function viewToday(){
   const cJournal = `<div class="card">
       ${kicker('What did you do today?')}
       <textarea id="journal-input" rows="3" placeholder="A few words about your day — wins, workouts, anything…" oninput="saveJournal(this.value)" style="resize:vertical;line-height:1.5;min-height:72px;margin-top:8px">${esc(DB.journal[todayISO()]||'')}</textarea>
-      <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <a onclick="goTrain('history')" style="color:var(--link);cursor:pointer;font-weight:600">${part==='evening'?'📅 Review your week →':'See your week →'}</a></p>
+      <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <a onclick="goSub('train','history')" style="color:var(--link);cursor:pointer;font-weight:600">${part==='evening'?'📅 Review your week →':'See your week →'}</a></p>
     </div>`;
   const cWeight = `<div class="card"><div class="row">
       <div><div class="stat-big" style="font-size:26px">${w?(+w.value).toFixed(1):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
       <div class="stat-sub">${w?(loggedToday?'Weighed in today':'Last '+fmtDate(w.date)):'No weigh-ins yet'}${trend?' · '+trend:''}</div></div>
-      <button class="btn btn-sm ${loggedToday?'btn-ghost':''}" onclick="progSub='body';goTrain('progress')">${loggedToday?'View':'Weigh in'}</button>
+      <button class="btn btn-sm ${loggedToday?'btn-ghost':''}" onclick="progSub='body';goSub('train','progress')">${loggedToday?'View':'Weigh in'}</button>
     </div></div>`;
-  const cWeather = gl ? `<div class="card" style="cursor:pointer" onclick="goCare('lawn')"><div class="row">
+  const cWeather = gl ? `<div class="card" style="cursor:pointer" onclick="goSub('care','lawn')"><div class="row">
       <div><div style="font-weight:700;font-size:16px">${gl.icon} ${gl.temp}° · ${gl.text}</div>
       <div class="muted" style="font-size:12px;margin-top:2px">H ${gl.hi}° / L ${gl.lo}°${gl.rainProb>=40?` · ${gl.rainProb}% rain`:''}${gl.loc?' · '+esc(gl.loc):''}</div></div>
       <span class="muted">Lawn →</span></div></div>` : '';
-  const cWeek = `<div class="card" style="cursor:pointer" onclick="goTrain('history')"><div class="row">
+  const cWeek = `<div class="card" style="cursor:pointer" onclick="goSub('train','history')"><div class="row">
       <div>${kicker('This week')}<div style="font-weight:700;margin-top:4px">${weekTally()}</div></div><span class="muted">Review →</span></div></div>`;
 
   const cBackup = backupStale() ? `<div class="card" style="border:1.5px solid var(--warm-bd);background:var(--warm-bg)">
@@ -604,14 +605,14 @@ function startWorkout(name){
     if(ls){ DB.draft.stairs.seconds = String((+ls.st.seconds)+15); DB.draft.stairs.level = String(ls.st.level||''); }
     save();
   }
-  goTrain('log');
+  goSub('train','log');
 }
 function skipDay(name){
   const reason = prompt(`Skip ${name} entirely? Add a reason (optional):`, '');
   if(reason===null) return;
   DB.sessions.push({ workout:name, date:todayISO(), skipped:true, reason:reason.trim(), entries:[], stairs:null, durationMin:null });
   sortSessions(); save(); toast(`${name} skipped`);
-  go('today', document.querySelector('[data-tab=today]'));
+  go('today');
 }
 function startBackdate(name){
   if(DB.draft && !confirm(`You have an unfinished ${DB.draft.workout}. Discard it?`)) return;
@@ -620,7 +621,7 @@ function startBackdate(name){
     stairs:{ level:'', seconds:'', skipped:false, reason:'' } };
   const ls=lastRealStairs(); if(ls){ DB.draft.stairs.seconds=String((+ls.st.seconds)+15); DB.draft.stairs.level=String(ls.st.level||''); }
   showBackdate=false; save();
-  goTrain('log');
+  goSub('train','log');
 }
 
 /* ───────────────────────── WORKOUT — active session ───────────────────────── */
@@ -814,10 +815,10 @@ function finishWorkout(){
   sortSessions();
   DB.draft = null; save();
   toast(hist?'Past workout added':'Workout saved 💪');
-  goTrain('history');
+  goSub('train','history');
 }
 function sortSessions(){ DB.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : a.date.localeCompare(b.date)); }
-function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; save(); goTrain('log'); } }
+function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; save(); goSub('train','log'); } }
 
 /* ───────────────────────── HISTORY ───────────────────────── */
 let openHist = -1, showBackdate = false, reviewWeekOffset = 0;
@@ -1120,7 +1121,7 @@ async function fetchWeather(){
   weatherFetching=false; render();
 }
 function maybeFetchWeather(){
-  if(TAB!=='care' || careSub!=='lawn' || !DB.lawn || DB.lawn.lat==null || weatherFetching) return;
+  if(!DB.lawn || DB.lawn.lat==null || weatherFetching) return; // only called from the Care/Lawn onRender
   const wx=DB.wx, stale = !wx || (Date.now()-wx.at>3600000) || wx.lat!==DB.lawn.lat || wx.lon!==DB.lawn.lon;
   if(stale) fetchWeather();
 }
@@ -1247,7 +1248,7 @@ function importData(inp){
     catch(e){ alert('Not a valid backup file.'); } };
   r.readAsText(f);
 }
-function wipe(){ if(confirm('Erase ALL workouts and weights? This cannot be undone.')){ DB=blank(); save(); toast('Data erased'); go('today',document.querySelector('[data-tab=today]')); } }
+function wipe(){ if(confirm('Erase ALL workouts and weights? This cannot be undone.')){ DB=blank(); save(); toast('Data erased'); go('today'); } }
 
 /* ───────────────────────── Notifications (best-effort) ───────────────────────── */
 function enableNotif(){
@@ -1272,7 +1273,7 @@ function maybeNudge(){
 (function(){
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   const meta = document.querySelector('meta[name="theme-color"]');
-  const sync = () => { meta.setAttribute('content', mq.matches ? '#141417' : '#fafaf9'); if(TAB==='train' && trainSub==='progress'){ if(progSub==='strength') drawStrengthChart(); else drawChart(); } };
+  const sync = () => { meta.setAttribute('content', mq.matches ? '#141417' : '#fafaf9'); drawActiveChart(); };
   mq.addEventListener ? mq.addEventListener('change', sync) : mq.addListener(sync);
   sync();
 })();
@@ -1284,6 +1285,7 @@ setInterval(()=>{
 }, 1000);
 
 /* ───────────────────────── Boot ───────────────────────── */
+buildTabBar();
 render();
 setTimeout(maybeNudge, 1500);
 </script>
