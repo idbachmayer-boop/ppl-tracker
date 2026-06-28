@@ -97,6 +97,7 @@
     .ex-title { font-size: 14px; font-weight: 700; }
     .lasttime { font-size: 12px; color: var(--text-2); background: var(--surface-2); border-radius: 8px; padding: 7px 9px; margin: 6px 0 10px; line-height: 1.5; }
     select, input, textarea { font-family: inherit; font-size: 14px; border: 1.5px solid var(--border-2); border-radius: 8px; padding: 9px 10px; background: var(--surface); color: var(--text); width: 100%; }
+    input[type=checkbox] { width: 20px; height: 20px; min-width: 20px; padding: 0; border: none; accent-color: #5a6fcc; }
     select:focus, input:focus, textarea:focus { outline: none; border-color: var(--text); }
     .set-grid { display: grid; grid-template-columns: 22px 1fr 1fr 26px 26px; gap: 6px; align-items: center; margin-bottom: 7px; }
     .set-grid .set-no { font-size: 12px; font-weight: 700; color: var(--muted-2); text-align: center; }
@@ -631,7 +632,8 @@ function startWorkout(name){
         const ref = lastRealEntry(name,i);
         return { name: ref? ref.entry.name : s.examples[0], sets: Array.from({length:s.sets},()=>({ w:'', r:'', skipped:false, reason:'' })) };
       }),
-      stairs: { level:'', seconds:'', skipped:false, reason:'' }
+      stairs: { level:'', seconds:'', skipped:false, reason:'' },
+      extras: blankExtras()
     };
     const ls = lastRealStairs();
     if(ls){ DB.draft.stairs.seconds = String((+ls.st.seconds)+15); DB.draft.stairs.level = String(ls.st.level||''); }
@@ -650,7 +652,7 @@ function startBackdate(name){
   if(DB.draft && !confirm(`You have an unfinished ${DB.draft.workout}. Discard it?`)) return;
   DB.draft = { workout:name, date:todayISO(), historical:true, startedAt:null, durationMin:'',
     entries: PROGRAM[name].slots.map((s,i)=>{ const ref=lastRealEntry(name,i); return { name: ref?ref.entry.name:s.examples[0], sets: Array.from({length:s.sets},()=>({w:'',r:'',skipped:false,reason:''})) }; }),
-    stairs:{ level:'', seconds:'', skipped:false, reason:'' } };
+    stairs:{ level:'', seconds:'', skipped:false, reason:'' }, extras: blankExtras() };
   const ls=lastRealStairs(); if(ls){ DB.draft.stairs.seconds=String((+ls.st.seconds)+15); DB.draft.stairs.level=String(ls.st.level||''); }
   showBackdate=false; save();
   goSub('train','log');
@@ -833,9 +835,12 @@ function finishWorkout(){
   const d = DB.draft;
   const hasEx = d.entries.some(e=> e.sets.some(s=> s.skipped || s.w!=='' || s.r!==''));
   const hasStairs = d.stairs && (d.stairs.skipped || d.stairs.seconds!=='');
-  if(!hasEx && !hasStairs){ alert('Log at least one set before saving.'); return; }
+  const x = d.extras || blankExtras();
+  const hasExtra = ['abs','forearms'].some(w=> x[w].sets.some(s=> s.w!=='' || s.r!=='')) || Object.values(x.mobility||{}).some(Boolean);
+  if(!hasEx && !hasStairs && !hasExtra){ alert('Log at least one set before saving.'); return; }
   // keep skipped sets (they carry a reason); drop only blank, unskipped ones
   d.entries.forEach(e=>{ e.sets = e.sets.filter(s=> s.skipped || s.w!=='' || s.r!==''); e.sets.forEach(s=>delete s._cel); });
+  ['abs','forearms'].forEach(w=>{ x[w].sets = x[w].sets.filter(s=> s.w!=='' || s.r!==''); });
   const endedAt = Date.now(), hist = d.historical;
   DB.sessions.push({
     workout:d.workout, date:d.date,
@@ -843,7 +848,7 @@ function finishWorkout(){
     endedAt: hist ? null : endedAt,
     durationMin: hist ? (d.durationMin? +d.durationMin : null)
                       : (d.startedAt ? Math.max(1, Math.round((endedAt-d.startedAt)/60000)) : null),
-    entries:d.entries, stairs:d.stairs
+    entries:d.entries, stairs:d.stairs, extras:x
   });
   sortSessions();
   DB.draft = null; save();
@@ -954,6 +959,11 @@ function viewHistory(){
           lines.push(`<strong>🪜 Stair Stepper</strong> — level ${esc(String(s.stairs.level||'—'))}, ${fmtMS(s.stairs.seconds)}`);
         else if(s.stairs && s.stairs.skipped)
           lines.push(`<strong>🪜 Stair Stepper</strong> — <em>skipped${s.stairs.reason?': '+esc(s.stairs.reason):''}</em>`);
+        if(s.extras){
+          ['abs','forearms'].forEach(w=>{ const e=s.extras[w]; if(e && e.sets && e.sets.length){ lines.push(`<strong>${w==='abs'?'💥 Abs':'🤜 Forearms'}${e.name?' — '+esc(e.name):''}</strong> — ${e.sets.map(z=>fmtSet(z.w,z.r)).join(', ')}`); } });
+          const mob=s.extras.mobility?Object.keys(s.extras.mobility).filter(k=>s.extras.mobility[k]):[];
+          if(mob.length) lines.push(`<strong>🧎 Mobility</strong> — ${mob.length} done`);
+        }
         const timeStr = (s.startedAt&&s.endedAt) ? `<div class="muted" style="margin-top:8px">${fmtClock(s.startedAt)}–${fmtClock(s.endedAt)} · ${s.durationMin} min at the gym</div>` : '';
         detail = `<div class="hist-detail">${lines.join('<br>')}${timeStr}${editRow}</div>`;
       }
@@ -1120,19 +1130,73 @@ function accItem(key, title, bodyHTML){
     ${open?`<div class="phase-body">${bodyHTML}</div>`:''}
   </div>`;
 }
-const gsearch = q => 'https://www.google.com/search?q='+encodeURIComponent(q+' stretch how to');
+const gsearch = q => 'https://www.google.com/search?q='+encodeURIComponent(q+' how to');
 const STRETCHES = {
   push:["Doorway chest stretch","Cross-body shoulder stretch","Overhead triceps stretch","Child's pose"],
   legs:["Standing quad stretch","Seated hamstring stretch","Figure-four glute stretch","Standing calf stretch","Kneeling hip flexor stretch"],
   pull:["Lat stretch (overhead reach)","Doorway biceps stretch","Cat-cow","Cross-body shoulder stretch"]
 };
+/* Anterior pelvic tilt routine — stretch tight (hip flexors / lumbar) + strengthen weak (glutes / deep core). */
+const MOBILITY = [
+  {n:'Half-kneeling hip flexor stretch', t:'30s per side — the key one'},
+  {n:'Knee-to-chest stretch', t:'15–20s, 3 reps'},
+  {n:'Cat-cow', t:'10 slow reps'},
+  {n:"Child's pose", t:'60s'},
+  {n:'Glute bridge', t:'3×12, hold 5–10s'},
+  {n:'Dead bug', t:'10 per side, low back flat'},
+  {n:'Plank (pelvis tucked)', t:'3 sets, no arching'},
+  {n:'Bird dog', t:'10 per side, neutral spine'},
+  {n:'Posterior pelvic tilt drill', t:'10 slow reps'},
+];
+function lastExtraName(which){ for(let i=DB.sessions.length-1;i>=0;i--){ const e=DB.sessions[i].extras; if(e && e[which] && e[which].name) return e[which].name; } return ''; }
+function blankExtras(){ return { abs:{name:lastExtraName('abs'), sets:[{w:'',r:'',skipped:false}]}, forearms:{name:lastExtraName('forearms'), sets:[{w:'',r:'',skipped:false}]}, mobility:{} }; }
+function exPick(which, sel){ if(sel.value==='__custom'){ const v=prompt('Exercise name:', DB.draft.extras[which].name); if(v) DB.draft.extras[which].name=v.trim(); save(); render(); return; } DB.draft.extras[which].name=sel.value; save(); }
+function exSet(which,k,f,v){ DB.draft.extras[which].sets[k][f]=v; save(); }
+function exRoll(which,k,v){ const sets=DB.draft.extras[which].sets; sets[k].w=v; if(v!==''){ for(let j=k+1;j<sets.length;j++){ if(sets[j].w===''){ sets[j].w=v; const el=document.getElementById(`ex-${which}-w-${j}`); if(el) el.value=v; } } } save(); }
+function exAddSet(which){ DB.draft.extras[which].sets.push({w:'',r:'',skipped:false}); save(); render(); }
+function exRmSet(which,k){ const s=DB.draft.extras[which].sets; if(s.length<=1) return; s.splice(k,1); save(); render(); }
+function toggleMobility(i){ const name=MOBILITY[i].n, m=DB.draft.extras.mobility; m[name]=!m[name]; save(); render(); }
+function extraCard(which, label, examples){
+  const e=DB.draft.extras[which], open=accOpen.has(which);
+  const logged=e.sets.some(s=> s.w!=='' || s.r!=='');
+  const opts=examples.map(x=>`<option ${x===e.name?'selected':''}>${esc(x)}</option>`).join('')
+    + ((!e.name||examples.includes(e.name))?'':`<option selected>${esc(e.name)}</option>`)
+    + `<option value="__custom">+ Custom…</option>`;
+  const rows=e.sets.map((st,k)=>`<div class="set-grid" style="grid-template-columns:22px 1fr 1fr 26px">
+      <span class="set-no">${k+1}</span>
+      <input type="number" inputmode="decimal" id="ex-${which}-w-${k}" placeholder="0=BW" value="${st.w}" oninput="exSet('${which}',${k},'w',this.value)" onchange="exRoll('${which}',${k},this.value)">
+      <input type="number" inputmode="numeric" placeholder="reps" value="${st.r}" oninput="exSet('${which}',${k},'r',this.value)">
+      <button class="x-set" onclick="exRmSet('${which}',${k})">×</button>
+    </div>`).join('');
+  return `<div class="phase-card">
+    <button class="phase-header" onclick="toggleAcc('${which}')"><span class="phase-title" style="font-size:14px">${label}${logged?' <span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">⌄</span></button>
+    ${open?`<div class="phase-body">
+      <select onchange="exPick('${which}',this)" style="margin-bottom:8px">${opts}</select>
+      <div class="set-grid" style="grid-template-columns:22px 1fr 1fr 26px;margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span></div>
+      ${rows}
+      <button class="addset" onclick="exAddSet('${which}')">+ Add set</button>
+    </div>`:''}
+  </div>`;
+}
+function mobilityCard(){
+  const m=DB.draft.extras.mobility, open=accOpen.has('mobility'), done=MOBILITY.filter(x=>m[x.n]).length;
+  const rows=MOBILITY.map((x,i)=>`<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-3);cursor:pointer">
+      <input type="checkbox" ${m[x.n]?'checked':''} onchange="toggleMobility(${i})">
+      <span style="flex:1"><span style="font-weight:600;font-size:14px">${x.n}</span> · <a href="${gsearch(x.n)}" target="_blank" rel="noopener" style="color:var(--link);font-size:12px">how-to ↗</a><div class="muted" style="font-size:12px">${x.t}</div></span>
+    </label>`).join('');
+  return `<div class="phase-card">
+    <button class="phase-header" onclick="toggleAcc('mobility')"><span class="phase-title" style="font-size:14px">🧎 Core &amp; mobility (pelvic tilt)${done?` <span class="flag">${done}/${MOBILITY.length}</span>`:''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">⌄</span></button>
+    ${open?`<div class="phase-body"><p class="muted" style="font-size:12px;margin-bottom:2px">Anterior pelvic-tilt routine — check off what you do. Consistency over weeks is what fixes it.</p>${rows}</div>`:''}
+  </div>`;
+}
 function accessoryBlocks(group){
   const warm = accItem('warmup','🔥 Warm-up', `<p><strong>General:</strong> loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles) until they feel warm. Optional 5–10 min easy treadmill or elliptical.</p><p><strong>First exercise:</strong> ramp up — empty bar → ~50% → ~75% → working sets (use the 🔥 ramp on exercise 1 below).</p>`);
-  const abs = accItem('abs','💥 Abs (optional)', `<p>3 sets of 8–15 reps, 2–4× a week — machine crunch, cable crunch, or weighted sit-up. Add weight over time like any lift.</p>`);
-  const fore = accItem('forearms','🤜 Forearms (optional)', `<p>Wrist curls 3×8–12 (barbell or DB), or grippers, or rice-bucket work. Don't do these right before lifting.</p>`);
+  const abs = extraCard('abs','💥 Abs', ['Machine crunch','Cable crunch','Weighted sit-up','Hanging leg raise','Dead bug','Plank']);
+  const fore = extraCard('forearms','🤜 Forearms', ['Wrist curls','Reverse wrist curls','Behind-the-back wrist curls','Farmer carry']);
+  const mob = mobilityCard();
   const list = (STRETCHES[group]||STRETCHES.push).map(n=>`<li style="margin-bottom:5px"><a href="${gsearch(n)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">${n}</a></li>`).join('');
   const stretch = accItem('stretch','🧘 Cool-down stretches', `<p>Hold each ~20–30s. Tap one to see how:</p><ul style="margin:0 0 4px 18px">${list}</ul>`);
-  return { warm, accessories: abs+fore+stretch };
+  return { warm, accessories: abs+fore+mob+stretch };
 }
 function skinSubTab(t){ skinSub=t; render(); }
 function skinSelectDay(d){ skinDay=d; render(); }
