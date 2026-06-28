@@ -336,14 +336,22 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 3;
+const SCHEMA = 4;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
+const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
+const PRODUCTIVITY_DEFAULT = ["🧹 Clean up crafting station","🗂️ Clean off work desk","📦 Organize the basement","🌀 Vacuum the basement","🌿 Pull weeds","✂️ Edge and trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🍱 Meal prep","💼 Clean the office room","🛋️ Wash couch cushions","🍳 Clean the stovetop","🧊 Clean out the fridge"];
 /* Ordered schema migrations. Each takes the data object up one version. Must be idempotent. */
 const MIGRATIONS = {
   1:d=>{ if(!d.hobbies) d.hobbies=DEFAULT_HOBBIES.slice(); if(!d.hobbyLog) d.hobbyLog=[]; if(!('lawn' in d)) d.lawn=null; if(!('wx' in d)) d.wx=null; return d; },
   2:d=>{ if(!d.journal) d.journal={}; return d; },
-  3:d=>{ if(!d.hobbySeedV2){ HOBBY_SEED_V2.forEach(h=>{ if(!d.hobbies.includes(h)) d.hobbies.push(h); }); d.hobbySeedV2=true; } return d; }
+  3:d=>{ if(!d.hobbySeedV2){ HOBBY_SEED_V2.forEach(h=>{ if(!d.hobbies.includes(h)) d.hobbies.push(h); }); d.hobbySeedV2=true; } return d; },
+  4:d=>{ // split the single list into Hobbies + Productivity, keeping any custom adds
+    if(!d.productivity) d.productivity=PRODUCTIVITY_DEFAULT.slice();
+    const customs=(d.hobbies||[]).filter(h=> !DEFAULT_HOBBIES.includes(h)); // anything added beyond the old defaults
+    d.hobbies=HOBBIES_DEFAULT.slice();
+    customs.forEach(h=>{ if(!d.hobbies.includes(h) && !d.productivity.includes(h)) d.hobbies.push(h); });
+    return d; }
 };
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
 function normalize(raw){
@@ -357,7 +365,7 @@ function normalize(raw){
 }
 let DB = load();
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
-function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", hobbies:DEFAULT_HOBBIES.slice(), hobbyLog:[], journal:{}, lawn:null, wx:null, hobbySeedV2:true }; }
+function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, lawn:null, wx:null, hobbySeedV2:true }; }
 function save(){ localStorage.setItem(KEY, JSON.stringify(DB)); }
 /* Backup durability — localStorage is the only copy, so nag if it's been a while. */
 function daysSince(ts){ return ts ? (Date.now()-ts)/86400000 : Infinity; }
@@ -433,14 +441,18 @@ function exercisePRs(){
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1600); }
 
 /* ───────────────────────── Hobby suggester ───────────────────────── */
-let currentHobby=null;
-function pickHobby(exclude){ const l=DB.hobbies||[]; if(!l.length) return null; if(l.length===1) return l[0]; let h; do{ h=l[Math.floor(Math.random()*l.length)]; }while(h===exclude); return h; }
-function shuffleHobby(){ currentHobby=pickHobby(currentHobby); render(); }
-function selectHobby(v){ currentHobby=v; render(); }
-function didHobby(){ if(!currentHobby) return; DB.hobbyLog.push({date:todayISO(), hobby:currentHobby}); save(); confettiBurst(); toast('Nice — that counts. 🎉'); currentHobby=pickHobby(currentHobby); render(); }
-function hobbyWeekCount(){ const m=+monday(new Date()); return (DB.hobbyLog||[]).filter(h=>+monday(new Date(h.date+'T00:00'))===m).length; }
-function addHobby(){ const inp=document.getElementById('hobby-input'); const v=(inp.value||'').trim(); if(!v) return; DB.hobbies.push(v); save(); toast('Added'); render(); }
-function removeHobby(i){ DB.hobbies.splice(i,1); if(currentHobby && !(DB.hobbies||[]).includes(currentHobby)) currentHobby=pickHobby(); save(); render(); }
+/* "Do something" picker — two lists: hobbies (fun) and productivity (chores). */
+let pickCat='hobby';
+let currentPick={ hobby:null, productivity:null };
+function listFor(cat){ return (cat==='productivity'? DB.productivity : DB.hobbies) || []; }
+function pickRandom(cat, exclude){ const l=listFor(cat); if(!l.length) return null; if(l.length===1) return l[0]; let h; do{ h=l[Math.floor(Math.random()*l.length)]; }while(h===exclude); return h; }
+function setPickCat(c){ pickCat=c; if(!currentPick[c]) currentPick[c]=pickRandom(c); render(); }
+function shufflePick(){ currentPick[pickCat]=pickRandom(pickCat, currentPick[pickCat]); render(); }
+function selectPick(v){ currentPick[pickCat]=v; render(); }
+function didPick(){ const item=currentPick[pickCat]; if(!item) return; DB.hobbyLog.push({date:todayISO(), item, cat:pickCat}); save(); confettiBurst(); toast('Nice — that counts. 🎉'); currentPick[pickCat]=pickRandom(pickCat, item); render(); }
+function catWeekCount(cat){ const m=+monday(new Date()); return (DB.hobbyLog||[]).filter(h=> (h.cat||'hobby')===cat && +monday(new Date(h.date+'T00:00'))===m).length; }
+function addItem(cat){ const inp=document.getElementById(cat+'-input'); const v=(inp.value||'').trim(); if(!v) return; listFor(cat).push(v); save(); toast('Added'); render(); }
+function removeItem(cat,i){ listFor(cat).splice(i,1); if(currentPick[cat] && !listFor(cat).includes(currentPick[cat])) currentPick[cat]=pickRandom(cat); save(); render(); }
 
 /* ───────────────────────── Daily journal ───────────────────────── */
 function saveJournal(v){ const t=todayISO(); if(v.trim()==='') delete DB.journal[t]; else DB.journal[t]=v; save(); }
@@ -515,7 +527,7 @@ function weekTally(){
   const m=+monday(new Date());
   const wk=DB.sessions.filter(s=>!s.skipped && +monday(new Date(s.date+'T00:00'))===m).length;
   const hb=(DB.hobbyLog||[]).filter(h=>+monday(new Date(h.date+'T00:00'))===m).length;
-  return `${wk} workout${wk!==1?'s':''} · ${hb} hobb${hb!==1?'ies':'y'} · journaled ${journalWeekCount()}/7`;
+  return `${wk} workout${wk!==1?'s':''} · ${hb} activit${hb!==1?'ies':'y'} · journaled ${journalWeekCount()}/7`;
 }
 const kicker = t => `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${t}</div>`;
 function viewToday(){
@@ -523,8 +535,9 @@ function viewToday(){
   const last = DB.sessions[DB.sessions.length-1];
   const w = DB.weights[DB.weights.length-1];
   const loggedToday = w && w.date===todayISO();
-  if(currentHobby===null) currentHobby=pickHobby();
-  const hWeek = hobbyWeekCount(), jWeek = journalWeekCount();
+  if(currentPick[pickCat]===null) currentPick[pickCat]=pickRandom(pickCat);
+  const catWeek = catWeekCount(pickCat), jWeek = journalWeekCount();
+  const pick = currentPick[pickCat];
   const now = new Date(), hr = now.getHours();
   const part = hr<12?'morning':hr<17?'afternoon':'evening';
   const greeting = part==='morning'?'Good morning':part==='afternoon'?'Good afternoon':'Good evening';
@@ -536,13 +549,17 @@ function viewToday(){
       <button class="btn btn-block" onclick="startWorkout('${nxt}')">Start ${nxt} →</button>
       <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="skipDay('${nxt}')">Skip this day</button>
     </div>`;
-  const cHobby = `<div class="card">
+  const cDo = `<div class="card">
       ${kicker('Do something — not the couch')}
-      <div style="text-align:center;padding:8px 0 12px"><div style="font-size:22px;font-weight:800;letter-spacing:-.3px">${currentHobby?esc(currentHobby):'Add a hobby in Settings →'}</div></div>
-      <div class="row" style="gap:8px"><button class="btn btn-ghost" style="flex:1" onclick="shuffleHobby()">🎲 Something else</button><button class="btn" style="flex:1" onclick="didHobby()">✓ I did it</button></div>
-      <select onchange="selectHobby(this.value)" style="margin-top:10px" aria-label="Pick a specific hobby">${(DB.hobbies||[]).map(h=>`<option ${h===currentHobby?'selected':''}>${esc(h)}</option>`).join('')}</select>
+      <div class="seg" style="margin:8px 0 12px">
+        <button class="${pickCat==='hobby'?'active':''}" onclick="setPickCat('hobby')">Hobby</button>
+        <button class="${pickCat==='productivity'?'active':''}" onclick="setPickCat('productivity')">Productivity</button>
+      </div>
+      <div style="text-align:center;padding:4px 0 12px"><div style="font-size:22px;font-weight:800;letter-spacing:-.3px">${pick?esc(pick):'Add some in Settings →'}</div></div>
+      <div class="row" style="gap:8px"><button class="btn btn-ghost" style="flex:1" onclick="shufflePick()">🎲 Something else</button><button class="btn" style="flex:1" onclick="didPick()">✓ I did it</button></div>
+      <select onchange="selectPick(this.value)" style="margin-top:10px" aria-label="Pick a specific item">${listFor(pickCat).map(h=>`<option ${h===pick?'selected':''}>${esc(h)}</option>`).join('')}</select>
       <p class="muted" style="margin-top:12px;line-height:1.5">You'll always be tired, and there's always a reason not to. But you <strong>always feel better after</strong>. Start small — just begin.</p>
-      ${hWeek?`<p class="muted" style="margin-top:6px;font-weight:600">✓ ${hWeek} done this week</p>`:''}
+      ${catWeek?`<p class="muted" style="margin-top:6px;font-weight:600">✓ ${catWeek} ${pickCat==='hobby'?'hobbies':'chores'} this week</p>`:''}
     </div>`;
   const cJournal = `<div class="card">
       ${kicker('What did you do today?')}
@@ -568,9 +585,9 @@ function viewToday(){
     </div>` : '';
 
   let order;
-  if(part==='morning') order=[cWeather, cWorkout, cHobby, cWeight, cJournal];
-  else if(part==='afternoon') order=[cWorkout, cHobby, cWeather, cWeight, cJournal];
-  else order=[cJournal, cWeek, cHobby, cWorkout, cWeight];
+  if(part==='morning') order=[cWeather, cWorkout, cDo, cWeight, cJournal];
+  else if(part==='afternoon') order=[cWorkout, cDo, cWeather, cWeight, cJournal];
+  else order=[cJournal, cWeek, cDo, cWorkout, cWeight];
 
   return `<div style="margin-bottom:16px"><h1>${greeting}</h1><p class="subtitle">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}${gl?` · ${gl.icon} ${gl.temp}°`:''}</p></div>
     ${cBackup}
@@ -850,7 +867,7 @@ function renderWeekReview(){
     const iso = dt.toLocaleDateString('en-CA');
     const future = iso > today;
     const sess = DB.sessions.filter(s=>s.date===iso);
-    const hb = (DB.hobbyLog||[]).filter(h=>h.date===iso).map(h=>h.hobby);
+    const hb = (DB.hobbyLog||[]).filter(h=>h.date===iso).map(h=>h.item||h.hobby);
     const wt = DB.weights.find(x=>x.date===iso);
     const note = (DB.journal||{})[iso];
     nW += sess.filter(s=>!s.skipped).length; nH += hb.length; if(note && note.trim()) nJ++;
@@ -877,7 +894,7 @@ function renderWeekReview(){
       <div style="text-align:center"><div style="font-weight:700">${title}</div><div class="muted" style="font-size:11px">${label}</div></div>
       <button class="btn btn-ghost btn-sm" onclick="weekShift(1)" ${reviewWeekOffset>=0?'disabled style="opacity:.35"':''}>▶</button>
     </div>
-    <div class="muted" style="font-size:12px;margin-bottom:4px">${nW} workout${nW!==1?'s':''} · ${nH} hobb${nH!==1?'ies':'y'} · journaled ${nJ}/7</div>
+    <div class="muted" style="font-size:12px;margin-bottom:4px">${nW} workout${nW!==1?'s':''} · ${nH} activit${nH!==1?'ies':'y'} · journaled ${nJ}/7</div>
     ${rows}
   </div>`;
 }
@@ -1279,9 +1296,15 @@ function viewData(){
     </div></div>
     <h2>Hobbies</h2>
     <div class="card">
-      <p class="muted" style="margin-bottom:10px">Ideas the Today tab rotates through.</p>
-      ${(DB.hobbies||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeHobby(${i})">×</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
-      <div class="row" style="margin-top:12px"><input id="hobby-input" placeholder="Add a hobby…" style="flex:1"><button class="btn" onclick="addHobby()">Add</button></div>
+      <p class="muted" style="margin-bottom:10px">Fun things the Today tab rotates through.</p>
+      ${(DB.hobbies||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeItem('hobby',${i})">×</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
+      <div class="row" style="margin-top:12px"><input id="hobby-input" placeholder="Add a hobby…" style="flex:1"><button class="btn" onclick="addItem('hobby')">Add</button></div>
+    </div>
+    <h2>Productivity</h2>
+    <div class="card">
+      <p class="muted" style="margin-bottom:10px">Chores and house-keeping the Today tab rotates through.</p>
+      ${(DB.productivity||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeItem('productivity',${i})">×</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
+      <div class="row" style="margin-top:12px"><input id="productivity-input" placeholder="Add a chore…" style="flex:1"><button class="btn" onclick="addItem('productivity')">Add</button></div>
     </div>
     <h2>Backup</h2>
     <div class="card">
