@@ -529,8 +529,7 @@ function viewToday(){
   const part = hr<12?'morning':hr<17?'afternoon':'evening';
   const greeting = part==='morning'?'Good morning':part==='afternoon'?'Good afternoon':'Good evening';
   const gl = wxGlance();
-  let trend='';
-  if(DB.weights.length>=2){ const diff=+w.value-+(DB.weights[DB.weights.length-2].value); const cls=diff>0.05?'trend-up':diff<-0.05?'trend-down':'trend-flat'; trend=`<span class="${cls}">${diff>0?'▲':diff<0?'▼':'='} ${Math.abs(diff).toFixed(1)} ${DB.unit}</span>`; }
+  const avg = currentAvg();
 
   const cWorkout = `<div class="card">
       <div class="row" style="margin-bottom:12px"><div>${kicker(part==='evening'?'Next workout':'Today’s workout')}<span class="pill ${accClass(g)}" style="margin-top:5px">${nxt}</span></div><span class="muted">${last?'Last '+fmtDate(last.date):'—'}</span></div>
@@ -551,8 +550,8 @@ function viewToday(){
       <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <a onclick="goSub('train','history')" style="color:var(--link);cursor:pointer;font-weight:600">${part==='evening'?'📅 Review your week →':'See your week →'}</a></p>
     </div>`;
   const cWeight = `<div class="card"><div class="row">
-      <div><div class="stat-big" style="font-size:26px">${w?(+w.value).toFixed(1):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
-      <div class="stat-sub">${w?(loggedToday?'Weighed in today':'Last '+fmtDate(w.date)):'No weigh-ins yet'}${trend?' · '+trend:''}</div></div>
+      <div><div class="stat-big" style="font-size:26px">${avg!=null? avg.toFixed(1) : '—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
+      <div class="stat-sub">${avg!=null? '7-day average' : 'No weigh-ins yet'}${w?` · latest ${(+w.value).toFixed(1)}${loggedToday?' today':''}`:''}</div></div>
       <button class="btn btn-sm ${loggedToday?'btn-ghost':''}" onclick="progSub='body';goSub('train','progress')">${loggedToday?'View':'Weigh in'}</button>
     </div></div>`;
   const cWeather = gl ? `<div class="card" style="cursor:pointer" onclick="goSub('care','lawn')"><div class="row">
@@ -977,8 +976,13 @@ function viewWeight(){
     <button class="${progSub==='strength'?'active':''}" onclick="progSubTab('strength')">Strength</button></div>`;
   if(progSub==='strength') return viewStrength(sub);
   const w = DB.weights[DB.weights.length-1];
+  const avg = currentAvg(), wd = avgWeekDelta();
+  const statCard = DB.weights.length ? `<div class="card">
+      <div class="stat-big" style="font-size:28px">${avg!=null?avg.toFixed(1):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
+      <div class="stat-sub">7-day average${wd!=null?` · <span class="muted">${wd>0?'▲':wd<0?'▼':'·'} ${Math.abs(wd).toFixed(1)} ${DB.unit} vs last week</span>`:''}${w?` · latest ${(+w.value).toFixed(1)}`:''}</div>
+    </div>` : '';
   return `
-        <p class="subtitle">${DB.weights.length} weigh-ins · trend over time</p>
+        <p class="subtitle">${DB.weights.length} weigh-ins · 7-day average trend</p>
     ${sub}
     <div class="card">
       <div class="row">
@@ -987,8 +991,9 @@ function viewWeight(){
       </div>
       ${rangeSeg()}
     </div>
-    <div class="card"><svg id="chart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg></div>
-    ${DB.weights.length? `<div class="card">${weightList()}</div>` : '<div class="empty">Log your first weigh-in above.</div>'}`;
+    ${statCard}
+    <div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">7-day average</div><svg id="chart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg></div>
+    ${DB.weights.length? `<div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Daily entries</div>${weightList()}</div>` : '<div class="empty">Log your first weigh-in above.</div>'}`;
 }
 function viewStrength(sub){
   const exes = exercisesWithData();
@@ -1018,6 +1023,23 @@ function weightList(){
     const idx = DB.weights.length-1-ri;
     return `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" onclick="rmWeight(${idx})">×</button></span></div>`;
   }).join('');
+}
+/* 7-day rolling average — smooths daily water-weight noise into the real signal.
+   For each weigh-in date, average every entry in the trailing 7 days. */
+function rollingAvgSeries(){
+  const ws = DB.weights.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  return ws.map(w=>{
+    const end=new Date(w.date+'T00:00'), start=new Date(end); start.setDate(start.getDate()-6);
+    const win=ws.filter(x=>{ const d=new Date(x.date+'T00:00'); return d>=start && d<=end; });
+    return { date:w.date, value: win.reduce((a,x)=>a+ +x.value,0)/win.length };
+  });
+}
+function currentAvg(){ const s=rollingAvgSeries(); return s.length? s[s.length-1].value : null; }
+function avgWeekDelta(){
+  const s=rollingAvgSeries(); if(s.length<2) return null;
+  const cur=s[s.length-1], target=new Date(cur.date+'T00:00'); target.setDate(target.getDate()-7);
+  let prev=null; for(let i=s.length-2;i>=0;i--){ if(new Date(s[i].date+'T00:00')<=target){ prev=s[i]; break; } }
+  return prev ? cur.value-prev.value : null; // only once there's ~a week of history
 }
 function setRange(r){ chartRange=r; render(); }
 function logWeight(){
@@ -1055,8 +1077,8 @@ function paintChart(svg, pts, emptyMsg, gradId){
 function drawChart(){
   const svg = document.getElementById('chart'); if(!svg) return;
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-chartRange);
-  const pts = DB.weights.filter(w=> chartRange>=9999 || new Date(w.date)>=cutoff).map(w=>({value:+w.value}));
-  paintChart(svg, pts, 'Need 2+ entries in range to draw a trend', 'gWeight');
+  const pts = rollingAvgSeries().filter(p=> chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff).map(p=>({value:p.value}));
+  paintChart(svg, pts, 'Log a few days and your 7-day average appears', 'gWeight');
 }
 function drawStrengthChart(){
   const svg = document.getElementById('schart'); if(!svg) return;
@@ -1255,11 +1277,6 @@ function viewData(){
       <button class="${DB.unit==='lb'?'active':''}" onclick="setUnit('lb')">lb</button>
       <button class="${DB.unit==='kg'?'active':''}" onclick="setUnit('kg')">kg</button>
     </div></div>
-    <h2>Reminders</h2>
-    <div class="card">
-      <p class="muted" id="notif-status">In-app nudges are always on. Optionally allow notifications for weigh-in reminders.</p>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="enableNotif()">Enable notifications</button>
-    </div>
     <h2>Hobbies</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Ideas the Today tab rotates through.</p>
@@ -1292,25 +1309,6 @@ function importData(inp){
   r.readAsText(f);
 }
 function wipe(){ if(confirm('Erase ALL workouts and weights? This cannot be undone.')){ DB=blank(); save(); toast('Data erased'); go('today'); } }
-
-/* ───────────────────────── Notifications (best-effort) ───────────────────────── */
-function enableNotif(){
-  if(!('Notification' in window)){ alert('This device/browser does not support notifications.'); return; }
-  Notification.requestPermission().then(p=>{
-    const el=document.getElementById('notif-status');
-    if(p==='granted'){ if(el) el.textContent='Notifications enabled ✓ — you’ll get an in-app nudge to weigh in.'; new Notification('PPL Tracker',{body:'Reminders are on. Time to crush it 💪'}); }
-    else if(el) el.textContent='Notifications blocked. In-app nudges still work.';
-  });
-}
-function maybeNudge(){
-  // In-app nudge: if notifications granted and no weigh-in today, fire one once per session open.
-  if(('Notification' in window) && Notification.permission==='granted'){
-    const w=DB.weights[DB.weights.length-1];
-    if(!(w && w.date===todayISO())){
-      try{ new Notification('PPL Tracker',{body:"Don't forget today's weigh-in ⚖️"}); }catch(e){}
-    }
-  }
-}
 
 /* ───────────────────────── Theme: sync status-bar color to system ───────────────────────── */
 (function(){
@@ -1348,7 +1346,6 @@ setInterval(()=>{
 buildTabBar();
 render();
 updateStopwatch();
-setTimeout(maybeNudge, 1500);
 </script>
 </body>
 </html>
