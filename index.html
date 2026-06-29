@@ -425,21 +425,27 @@ function fmtMS(total){ total=+total||0; const m=Math.floor(total/60), s=total%60
 function e1rm(w,r){ w=+w; r=+r; if(!w||!r) return 0; return w*(1+r/30); }
 /* Strength is tracked PER EXERCISE (not pooled by muscle) so the trend reflects one
    movement — "DB bench" rising — instead of jumping between bench/incline/fly. */
+/* All logged exercises in a session = main entries + abs/forearms accessories. */
+function sessionExercises(s){
+  const list = (s.entries||[]).slice();
+  if(s.extras) ['abs','forearms'].forEach(w=>{ const e=s.extras[w]; if(e && e.name && e.sets && e.sets.length) list.push(e); });
+  return list;
+}
 function exercisesWithData(){
   const set=new Set();
-  DB.sessions.forEach(s=>{ if(s.skipped||!s.entries) return; s.entries.forEach(e=>{ if(e.sets.some(x=>!x.skipped && e1rm(x.w,x.r)>0)) set.add(e.name); }); });
+  DB.sessions.forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{ if(e.sets.some(x=>!x.skipped && e1rm(x.w,x.r)>0)) set.add(e.name); }); });
   return [...set].sort();
 }
 function exerciseSeries(name){
   const out=[];
-  DB.sessions.forEach(s=>{ if(s.skipped||!s.entries) return; let best=0;
-    s.entries.forEach(e=>{ if(e.name!==name) return; e.sets.forEach(x=>{ if(!x.skipped){ const v=e1rm(x.w,x.r); if(v>best) best=v; } }); });
+  DB.sessions.forEach(s=>{ if(s.skipped) return; let best=0;
+    sessionExercises(s).forEach(e=>{ if(e.name!==name) return; e.sets.forEach(x=>{ if(!x.skipped){ const v=e1rm(x.w,x.r); if(v>best) best=v; } }); });
     if(best>0) out.push({date:s.date, value:best}); });
   return out;
 }
 function exercisePRs(){
   const map={};
-  DB.sessions.forEach(s=>{ if(s.skipped||!s.entries) return; s.entries.forEach(e=>{
+  DB.sessions.forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{
     e.sets.forEach(x=>{ if(x.skipped) return; const v=e1rm(x.w,x.r); if(v>0 && (!map[e.name] || v>map[e.name].v)) map[e.name]={v, w:x.w, r:x.r, date:s.date}; }); }); });
   return Object.entries(map).map(([name,d])=>({name,...d})).sort((a,b)=>b.v-a.v);
 }
@@ -767,7 +773,7 @@ function viewActive(){
   const acc = accessoryBlocks(g);
   return `
     ${header}
-    <div style="margin-top:16px">${acc.warm}${cards}${stairsCard}${acc.accessories}</div>
+    <div style="margin-top:16px">${acc.warm}${cards}${acc.lifts}${stairsCard}${acc.cooldown}</div>
     <button class="btn btn-block" style="margin-top:6px" onclick="finishWorkout()">${DB.draft.historical?'Save past workout':'Finish & save workout'}</button>
     <button class="btn btn-danger btn-block" style="margin-top:10px" onclick="discardWorkout()">Discard</button>`;
 }
@@ -1162,7 +1168,7 @@ const MOBILITY = [
   {n:'Posterior pelvic tilt drill', t:'10 slow reps'},
 ];
 function lastExtraName(which){ for(let i=DB.sessions.length-1;i>=0;i--){ const e=DB.sessions[i].extras; if(e && e[which] && e[which].name) return e[which].name; } return ''; }
-function blankExtras(){ return { abs:{name:lastExtraName('abs'), sets:[{w:'',r:'',skipped:false}]}, forearms:{name:lastExtraName('forearms'), sets:[{w:'',r:'',skipped:false}]} }; }
+function blankExtras(){ const ss=()=>[0,0,0].map(()=>({w:'',r:'',skipped:false})); return { abs:{name:lastExtraName('abs'), sets:ss()}, forearms:{name:lastExtraName('forearms'), sets:ss()} }; }
 function exPick(which, sel){ if(sel.value==='__custom'){ const v=prompt('Exercise name:', DB.draft.extras[which].name); if(v) DB.draft.extras[which].name=v.trim(); save(); render(); return; } DB.draft.extras[which].name=sel.value; save(); }
 function exSet(which,k,f,v){ DB.draft.extras[which].sets[k][f]=v; save(); }
 function exRoll(which,k,v){ const sets=DB.draft.extras[which].sets; sets[k].w=v; if(v!==''){ for(let j=k+1;j<sets.length;j++){ if(sets[j].w===''){ sets[j].w=v; const el=document.getElementById(`ex-${which}-w-${j}`); if(el) el.value=v; } } } save(); }
@@ -1199,21 +1205,13 @@ function extraCard(which, label, examples){
     </div>`:''}
   </div>`;
 }
-function mobilityCard(){
-  const open=accOpen.has('mobility'), done=Object.keys(mobToday()).length;
-  return `<div class="phase-card">
-    <button class="phase-header" onclick="toggleAcc('mobility')"><span class="phase-title" style="font-size:14px">🧎 Core &amp; mobility (pelvic tilt)${done?` <span class="flag">${done}/${MOBILITY.length} today</span>`:''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">⌄</span></button>
-    ${open?`<div class="phase-body"><p class="muted" style="font-size:12px;margin-bottom:2px">Counts toward today's mobility (also on the Today tab). Consistency over weeks is what fixes it.</p>${mobilityRows()}</div>`:''}
-  </div>`;
-}
 function accessoryBlocks(group){
   const warm = accItem('warmup','🔥 Warm-up', `<p><strong>General:</strong> loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles) until they feel warm. Optional 5–10 min easy treadmill or elliptical.</p><p><strong>First exercise:</strong> ramp up — empty bar → ~50% → ~75% → working sets (use the 🔥 ramp on exercise 1 below).</p>`);
   const abs = extraCard('abs','💥 Abs', ['Machine crunch','Cable crunch','Weighted sit-up','Hanging leg raise','Dead bug','Plank']);
   const fore = extraCard('forearms','🤜 Forearms', ['Wrist curls','Reverse wrist curls','Behind-the-back wrist curls','Farmer carry']);
-  const mob = mobilityCard();
   const list = (STRETCHES[group]||STRETCHES.push).map(n=>`<li style="margin-bottom:5px"><a href="${gsearch(n)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">${n}</a></li>`).join('');
-  const stretch = accItem('stretch','🧘 Cool-down stretches', `<p>Hold each ~20–30s. Tap one to see how:</p><ul style="margin:0 0 4px 18px">${list}</ul>`);
-  return { warm, accessories: abs+fore+mob+stretch };
+  const cooldown = accItem('stretch','🧘 Cool-down stretches', `<p>Hold each ~20–30s. Tap one to see how:</p><ul style="margin:0 0 4px 18px">${list}</ul>`);
+  return { warm, lifts: abs+fore, cooldown };
 }
 function skinSubTab(t){ skinSub=t; render(); }
 function skinSelectDay(d){ skinDay=d; render(); }
