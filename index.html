@@ -337,7 +337,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 4;
+const SCHEMA = 5;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -352,6 +352,10 @@ const MIGRATIONS = {
     const customs=(d.hobbies||[]).filter(h=> !DEFAULT_HOBBIES.includes(h)); // anything added beyond the old defaults
     d.hobbies=HOBBIES_DEFAULT.slice();
     customs.forEach(h=>{ if(!d.hobbies.includes(h) && !d.productivity.includes(h)) d.hobbies.push(h); });
+    return d; },
+  5:d=>{ // daily mobility log; fold any per-session mobility into it
+    if(!d.mobilityLog) d.mobilityLog={};
+    (d.sessions||[]).forEach(s=>{ if(s.extras && s.extras.mobility){ const done=Object.entries(s.extras.mobility).filter(([k,v])=>v); if(done.length) d.mobilityLog[s.date]=Object.assign({}, d.mobilityLog[s.date]||{}, Object.fromEntries(done)); delete s.extras.mobility; } });
     return d; }
 };
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
@@ -366,7 +370,7 @@ function normalize(raw){
 }
 let DB = load();
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
-function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, lawn:null, wx:null, hobbySeedV2:true }; }
+function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
 function save(){ localStorage.setItem(KEY, JSON.stringify(DB)); }
 /* Backup durability — localStorage is the only copy, so nag if it's been a while. */
 function daysSince(ts){ return ts ? (Date.now()-ts)/86400000 : Infinity; }
@@ -579,6 +583,15 @@ function viewToday(){
   const cWeek = `<div class="card" style="cursor:pointer" onclick="goSub('train','history')"><div class="row">
       <div>${kicker('This week')}<div style="font-weight:700;margin-top:4px">${weekTally()}</div></div><span class="muted">Review →</span></div></div>`;
 
+  const mobDone = Object.keys(mobToday()).length, mobOpen = accOpen.has('mob-today'), streak = mobStreak();
+  const cMobility = `<div class="card">
+      <div class="row" style="cursor:pointer" onclick="toggleAcc('mob-today')">
+        <div>${kicker('Core & mobility — pelvic tilt')}<div style="font-weight:700;margin-top:4px">${mobDone}/${MOBILITY.length} today${streak?` · 🔥 ${streak}-day streak`:''}</div></div>
+        <span class="muted">${mobOpen?'▲':'▼'}</span>
+      </div>
+      ${mobOpen?`<div style="margin-top:6px">${mobilityRows()}</div>`:'<p class="muted" style="margin-top:8px;font-size:12px">A little every day fixes the tilt — tap to check off.</p>'}
+    </div>`;
+
   const cBackup = backupStale() ? `<div class="card" style="border:1.5px solid var(--warm-bd);background:var(--warm-bg)">
       <div style="font-weight:700;font-size:14px">⚠️ Back up your data</div>
       <p class="muted" style="line-height:1.5;margin-top:4px">It's been a while since your last backup. Everything lives only on this device — export a copy so a phone reset or storage cleanup can't wipe it.</p>
@@ -586,9 +599,9 @@ function viewToday(){
     </div>` : '';
 
   let order;
-  if(part==='morning') order=[cWeather, cWorkout, cDo, cWeight, cJournal];
-  else if(part==='afternoon') order=[cWorkout, cDo, cWeather, cWeight, cJournal];
-  else order=[cJournal, cWeek, cDo, cWorkout, cWeight];
+  if(part==='morning') order=[cWeather, cWorkout, cMobility, cDo, cWeight, cJournal];
+  else if(part==='afternoon') order=[cWorkout, cDo, cMobility, cWeather, cWeight, cJournal];
+  else order=[cJournal, cMobility, cWeek, cDo, cWorkout, cWeight];
 
   return `<div style="margin-bottom:16px"><h1>${greeting}</h1><p class="subtitle">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}${gl?` · ${gl.icon} ${gl.temp}°`:''}</p></div>
     ${cBackup}
@@ -836,7 +849,7 @@ function finishWorkout(){
   const hasEx = d.entries.some(e=> e.sets.some(s=> s.skipped || s.w!=='' || s.r!==''));
   const hasStairs = d.stairs && (d.stairs.skipped || d.stairs.seconds!=='');
   const x = d.extras || blankExtras();
-  const hasExtra = ['abs','forearms'].some(w=> x[w].sets.some(s=> s.w!=='' || s.r!=='')) || Object.values(x.mobility||{}).some(Boolean);
+  const hasExtra = ['abs','forearms'].some(w=> x[w].sets.some(s=> s.w!=='' || s.r!==''));
   if(!hasEx && !hasStairs && !hasExtra){ alert('Log at least one set before saving.'); return; }
   // keep skipped sets (they carry a reason); drop only blank, unskipped ones
   d.entries.forEach(e=>{ e.sets = e.sets.filter(s=> s.skipped || s.w!=='' || s.r!==''); e.sets.forEach(s=>delete s._cel); });
@@ -882,6 +895,7 @@ function renderWeekReview(){
       : tags.push(`<span class="pill ${accClass(PROGRAM[s.workout]?PROGRAM[s.workout].group:'push')}" style="font-size:9px;padding:2px 7px">${s.workout}</span>`));
     hb.forEach(h=> tags.push(`<span style="font-size:11px">🎲 ${esc(h)}</span>`));
     if(wt) tags.push(`<span style="font-size:11px">⚖️ ${(+wt.value).toFixed(1)}</span>`);
+    if(mobDoneOn(iso)) tags.push(`<span style="font-size:11px">🧎 ${mobDoneOn(iso)}</span>`);
     const noteHTML = note && note.trim() ? `<div style="font-size:13px;color:var(--text-2);line-height:1.5;margin-top:6px;white-space:pre-wrap">${esc(note)}</div>` : '';
     const emptyHTML = (!tags.length && !noteHTML && !future) ? `<div class="muted" style="font-size:12px;margin-top:3px">—</div>` : '';
     return `<div style="padding:9px 0;border-bottom:1px solid var(--border-3)">
@@ -961,9 +975,8 @@ function viewHistory(){
           lines.push(`<strong>🪜 Stair Stepper</strong> — <em>skipped${s.stairs.reason?': '+esc(s.stairs.reason):''}</em>`);
         if(s.extras){
           ['abs','forearms'].forEach(w=>{ const e=s.extras[w]; if(e && e.sets && e.sets.length){ lines.push(`<strong>${w==='abs'?'💥 Abs':'🤜 Forearms'}${e.name?' — '+esc(e.name):''}</strong> — ${e.sets.map(z=>fmtSet(z.w,z.r)).join(', ')}`); } });
-          const mob=s.extras.mobility?Object.keys(s.extras.mobility).filter(k=>s.extras.mobility[k]):[];
-          if(mob.length) lines.push(`<strong>🧎 Mobility</strong> — ${mob.length} done`);
         }
+        if(mobDoneOn(s.date)) lines.push(`<strong>🧎 Mobility</strong> — ${mobDoneOn(s.date)} done that day`);
         const timeStr = (s.startedAt&&s.endedAt) ? `<div class="muted" style="margin-top:8px">${fmtClock(s.startedAt)}–${fmtClock(s.endedAt)} · ${s.durationMin} min at the gym</div>` : '';
         detail = `<div class="hist-detail">${lines.join('<br>')}${timeStr}${editRow}</div>`;
       }
@@ -1149,13 +1162,21 @@ const MOBILITY = [
   {n:'Posterior pelvic tilt drill', t:'10 slow reps'},
 ];
 function lastExtraName(which){ for(let i=DB.sessions.length-1;i>=0;i--){ const e=DB.sessions[i].extras; if(e && e[which] && e[which].name) return e[which].name; } return ''; }
-function blankExtras(){ return { abs:{name:lastExtraName('abs'), sets:[{w:'',r:'',skipped:false}]}, forearms:{name:lastExtraName('forearms'), sets:[{w:'',r:'',skipped:false}]}, mobility:{} }; }
+function blankExtras(){ return { abs:{name:lastExtraName('abs'), sets:[{w:'',r:'',skipped:false}]}, forearms:{name:lastExtraName('forearms'), sets:[{w:'',r:'',skipped:false}]} }; }
 function exPick(which, sel){ if(sel.value==='__custom'){ const v=prompt('Exercise name:', DB.draft.extras[which].name); if(v) DB.draft.extras[which].name=v.trim(); save(); render(); return; } DB.draft.extras[which].name=sel.value; save(); }
 function exSet(which,k,f,v){ DB.draft.extras[which].sets[k][f]=v; save(); }
 function exRoll(which,k,v){ const sets=DB.draft.extras[which].sets; sets[k].w=v; if(v!==''){ for(let j=k+1;j<sets.length;j++){ if(sets[j].w===''){ sets[j].w=v; const el=document.getElementById(`ex-${which}-w-${j}`); if(el) el.value=v; } } } save(); }
 function exAddSet(which){ DB.draft.extras[which].sets.push({w:'',r:'',skipped:false}); save(); render(); }
 function exRmSet(which,k){ const s=DB.draft.extras[which].sets; if(s.length<=1) return; s.splice(k,1); save(); render(); }
-function toggleMobility(i){ const name=MOBILITY[i].n, m=DB.draft.extras.mobility; m[name]=!m[name]; save(); render(); }
+/* Mobility is a DAILY log (DB.mobilityLog[date]), not per-session — APT work is daily. */
+function mobToday(){ const t=todayISO(); return (DB.mobilityLog && DB.mobilityLog[t]) || {}; }
+function toggleMobility(i){ const t=todayISO(); if(!DB.mobilityLog) DB.mobilityLog={}; if(!DB.mobilityLog[t]) DB.mobilityLog[t]={}; const name=MOBILITY[i].n, m=DB.mobilityLog[t]; if(m[name]) delete m[name]; else m[name]=true; save(); render(); }
+function mobDoneOn(iso){ const e=DB.mobilityLog&&DB.mobilityLog[iso]; return e?Object.keys(e).length:0; }
+function mobStreak(){ const has=iso=>mobDoneOn(iso)>0; let probe=new Date(); if(!has(probe.toLocaleDateString('en-CA'))) probe.setDate(probe.getDate()-1); let n=0; while(has(probe.toLocaleDateString('en-CA'))){ n++; probe.setDate(probe.getDate()-1); } return n; }
+function mobilityRows(){ const m=mobToday(); return MOBILITY.map((x,i)=>`<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-3);cursor:pointer">
+    <input type="checkbox" ${m[x.n]?'checked':''} onchange="toggleMobility(${i})">
+    <span style="flex:1"><span style="font-weight:600;font-size:14px">${x.n}</span> · <a href="${gsearch(x.n)}" target="_blank" rel="noopener" style="color:var(--link);font-size:12px">how-to ↗</a><div class="muted" style="font-size:12px">${x.t}</div></span>
+  </label>`).join(''); }
 function extraCard(which, label, examples){
   const e=DB.draft.extras[which], open=accOpen.has(which);
   const logged=e.sets.some(s=> s.w!=='' || s.r!=='');
@@ -1179,14 +1200,10 @@ function extraCard(which, label, examples){
   </div>`;
 }
 function mobilityCard(){
-  const m=DB.draft.extras.mobility, open=accOpen.has('mobility'), done=MOBILITY.filter(x=>m[x.n]).length;
-  const rows=MOBILITY.map((x,i)=>`<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-3);cursor:pointer">
-      <input type="checkbox" ${m[x.n]?'checked':''} onchange="toggleMobility(${i})">
-      <span style="flex:1"><span style="font-weight:600;font-size:14px">${x.n}</span> · <a href="${gsearch(x.n)}" target="_blank" rel="noopener" style="color:var(--link);font-size:12px">how-to ↗</a><div class="muted" style="font-size:12px">${x.t}</div></span>
-    </label>`).join('');
+  const open=accOpen.has('mobility'), done=Object.keys(mobToday()).length;
   return `<div class="phase-card">
-    <button class="phase-header" onclick="toggleAcc('mobility')"><span class="phase-title" style="font-size:14px">🧎 Core &amp; mobility (pelvic tilt)${done?` <span class="flag">${done}/${MOBILITY.length}</span>`:''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">⌄</span></button>
-    ${open?`<div class="phase-body"><p class="muted" style="font-size:12px;margin-bottom:2px">Anterior pelvic-tilt routine — check off what you do. Consistency over weeks is what fixes it.</p>${rows}</div>`:''}
+    <button class="phase-header" onclick="toggleAcc('mobility')"><span class="phase-title" style="font-size:14px">🧎 Core &amp; mobility (pelvic tilt)${done?` <span class="flag">${done}/${MOBILITY.length} today</span>`:''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">⌄</span></button>
+    ${open?`<div class="phase-body"><p class="muted" style="font-size:12px;margin-bottom:2px">Counts toward today's mobility (also on the Today tab). Consistency over weeks is what fixes it.</p>${mobilityRows()}</div>`:''}
   </div>`;
 }
 function accessoryBlocks(group){
