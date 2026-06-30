@@ -103,6 +103,10 @@
     .tgt-badge { font-size: 13px; font-weight: 800; text-align: center; line-height: 1; }
     .tgt-badge.beat { color: var(--good); }
     .tgt-badge.tie { color: var(--muted); }
+    .coach { font-size: 12px; line-height: 1.5; border-radius: 8px; padding: 7px 10px; margin: 6px 0 10px; color: var(--text-2); }
+    .coach.stall { background: var(--warm-bg); border: 1px solid var(--warm-bd); }
+    .coach.deload { background: var(--pull-bg); border: 1px solid var(--pull-bd); }
+    .coach-btn { background: none; border: none; color: var(--link); font-weight: 700; font-size: 12px; cursor: pointer; padding: 0; }
     .set-grid .set-no { font-size: 12px; font-weight: 700; color: var(--muted-2); text-align: center; }
     .set-grid input { padding: 8px 6px; text-align: center; }
     .set-grid .colhead { font-size: 10px; font-weight: 700; color: var(--muted-2); text-transform: uppercase; letter-spacing: .5px; text-align: center; }
@@ -407,7 +411,7 @@ function lastRealEntry(workout, slotIndex){
     const s=DB.sessions[i];
     if(s.workout!==workout || s.skipped || !s.entries) continue;
     const e=s.entries[slotIndex];
-    if(e && e.sets && e.sets.some(x=>!x.skipped && x.r!=='')) return {entry:e, date:s.date};
+    if(e && !e.deload && e.sets && e.sets.some(x=>!x.skipped && x.r!=='')) return {entry:e, date:s.date}; // deloads never reset the baseline
   }
   return null;
 }
@@ -445,6 +449,25 @@ function badgeState(st, t){
 }
 function targetSet(i,k){ const ref=lastRealEntry(DB.draft.workout,i); if(!ref) return null; return ref.entry.sets.filter(x=>!x.skipped && x.r!=='')[k]||null; }
 function updTargetBadge(i,k){ const el=document.getElementById(`tgt-${i}-${k}`); if(!el) return; const [t,c]=badgeState(DB.draft.entries[i].sets[k], targetSet(i,k)); el.textContent=t; el.className='tgt-badge '+c; }
+/* Stall = no new best e1RM in the last 3 real (non-deload) sessions of an exercise. */
+function stallSeries(name){
+  const out=[];
+  DB.sessions.forEach(s=>{ if(s.skipped) return; let best=0, deloaded=false;
+    sessionExercises(s).forEach(e=>{ if(e.name!==name) return; if(e.deload) deloaded=true; e.sets.forEach(x=>{ if(!x.skipped){ const v=e1rm(x.w,x.r); if(v>best) best=v; } }); });
+    if(best>0 && !deloaded) out.push(best); });
+  return out;
+}
+function isStalled(name){ const v=stallSeries(name); if(v.length<4) return false; const maxBefore=Math.max(...v.slice(0,-3)); return v.slice(-3).every(x=> x<=maxBefore); }
+/* Deload: drop this exercise's working weight ~10% for the session and flag it,
+   so lastRealEntry skips it and the baseline-to-beat stays your pre-deload best. */
+function deloadExercise(i){
+  const ref=lastRealEntry(DB.draft.workout, i), e=DB.draft.entries[i];
+  let lastW=0; if(ref){ const real=ref.entry.sets.filter(x=>!x.skipped && x.r!==''); lastW=Math.max(0, ...real.map(x=> x.w===''?0:+x.w)); }
+  const dw = lastW>0 ? String(round5(lastW*0.9)) : '';
+  e.deload=true; e.sets.forEach(st=>{ if(!st.skipped) st.w=dw; });
+  save(); render();
+}
+function undeloadExercise(i){ DB.draft.entries[i].deload=false; save(); render(); }
 /* Strength is tracked PER EXERCISE (not pooled by muscle) so the trend reflects one
    movement — "DB bench" rising — instead of jumping between bench/incline/fly. */
 /* All logged exercises in a session = main entries + abs/forearms accessories. */
@@ -722,6 +745,9 @@ function viewActive(){
       const aw = addWeightInfo(s, ref, entry.name);
       flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${aw.newW} ${DB.unit}`:''}</span>` : '';
     }
+    let coachHint='';
+    if(entry.deload) coachHint = `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" onclick="undeloadExercise(${i})">undo</button></div>`;
+    else if(isStalled(entry.name)) coachHint = `<div class="coach stall">⚠ Stalled — no new best in 3 sessions. <button class="coach-btn" onclick="deloadExercise(${i})">Deload −10%</button> or swap the exercise above.</div>`;
     const opts = s.examples.map(e=>`<option ${e===entry.name?'selected':''}>${esc(e)}</option>`).join('') +
                  (s.examples.includes(entry.name)?'':`<option selected>${esc(entry.name)}</option>`) +
                  `<option value="__custom">+ Custom…</option>`;
@@ -748,6 +774,7 @@ function viewActive(){
         </div>
         <select onchange="pickEx(${i},this)">${opts}</select>
         <div class="lasttime">${lastLine}</div>
+        ${coachHint}
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
         ${setRows}
         <button class="addset" onclick="addSet(${i})">+ Add set</button>
@@ -1016,7 +1043,7 @@ function viewHistory(){
       if(open){
         const lines = (s.entries||[]).map(e=>{
           const setStr = e.sets.map(x=> x.skipped? '<em>skip</em>' : fmtSet(x.w,x.r)).join(', ');
-          return `<strong>${esc(e.name)}</strong> — ${setStr||'—'}`;
+          return `<strong>${esc(e.name)}</strong> — ${setStr||'—'}${e.deload?' <em>(deload)</em>':''}`;
         });
         if(s.stairs && !s.stairs.skipped && s.stairs.seconds!=='' && s.stairs.seconds!=null)
           lines.push(`<strong>🪜 Stair Stepper</strong> — level ${esc(String(s.stairs.level||'—'))}, ${fmtMS(s.stairs.seconds)}`);
