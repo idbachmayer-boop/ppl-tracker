@@ -494,6 +494,30 @@ function exercisePRs(){
     e.sets.forEach(x=>{ if(x.skipped) return; const v=e1rm(x.w,x.r); if(v>0 && (!map[e.name] || v>map[e.name].v)) map[e.name]={v, w:x.w, r:x.r, date:s.date}; }); }); });
   return Object.entries(map).map(([name,d])=>({name,...d})).sort((a,b)=>b.v-a.v);
 }
+/* Bodyweight exercises (weight-0 sets with reps) that aren't tracked as loaded lifts. */
+function bwExercisesWithData(){
+  const loaded=new Set(exercisesWithData()), set=new Set();
+  DB.sessions.forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{ if(loaded.has(e.name)) return;
+    if(e.sets.some(x=>!x.skipped && x.r!=='' && (x.w===''||+x.w===0))) set.add(e.name); }); });
+  return [...set].sort();
+}
+function bwSeries(name){
+  const out=[];
+  DB.sessions.forEach(s=>{ if(s.skipped) return; let total=0, has=false;
+    sessionExercises(s).forEach(e=>{ if(e.name!==name) return; e.sets.forEach(x=>{ if(!x.skipped && x.r!==''){ total+=+x.r; has=true; } }); });
+    if(has) out.push({date:s.date, value:total}); });
+  return out;
+}
+/* Working sets per muscle in the current week (main slots' muscle + Abs/Forearms). */
+function weeklySetsByMuscle(){
+  const m=+monday(new Date()), counts={};
+  const add=(mus,n)=>{ if(mus&&n) counts[mus]=(counts[mus]||0)+n; };
+  DB.sessions.forEach(s=>{ if(s.skipped || +monday(new Date(s.date+'T00:00'))!==m) return;
+    (s.entries||[]).forEach((e,idx)=>{ const sl=PROGRAM[s.workout]&&PROGRAM[s.workout].slots[idx]; add(sl&&sl.muscle, e.sets.filter(x=>!x.skipped && x.r!=='').length); });
+    if(s.extras) ['abs','forearms'].forEach(w=>{ const e=s.extras[w]; if(e&&e.sets) add(w==='abs'?'Abs':'Forearms', e.sets.filter(x=>!x.skipped && x.r!=='').length); });
+  });
+  return counts;
+}
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),1600); }
 
 /* ───────────────────────── Hobby suggester ───────────────────────── */
@@ -548,7 +572,7 @@ function segNav(items, active){
   return `<div class="seg" style="margin-bottom:16px">${items.map(([k,label])=>`<button class="${k===active?'active':''}" onclick="setSub('${k}')">${label}</button>`).join('')}</div>`;
 }
 /* Whichever Progress chart is active — shared by render() and the theme-change redraw. */
-function drawActiveChart(){ if(TAB==='train' && subState.train==='progress'){ if(progSub==='strength') drawStrengthChart(); else drawChart(); } }
+function drawActiveChart(){ if(TAB==='train' && subState.train==='progress'){ if(progSub==='strength') drawStrengthChart(); else if(progSub==='body') drawChart(); } }
 
 function render(){
   const el = document.getElementById('app');
@@ -1088,9 +1112,11 @@ function rangeSeg(){ return `<div class="seg" style="margin:14px 0 0">
     <button class="${chartRange===9999?'active':''}" onclick="setRange(9999)">All</button></div>`; }
 function viewWeight(){
   const sub = `<div class="seg" style="margin-top:14px">
-    <button class="${progSub==='body'?'active':''}" onclick="progSubTab('body')">Bodyweight</button>
-    <button class="${progSub==='strength'?'active':''}" onclick="progSubTab('strength')">Strength</button></div>`;
+    <button class="${progSub==='body'?'active':''}" onclick="progSubTab('body')">Weight</button>
+    <button class="${progSub==='strength'?'active':''}" onclick="progSubTab('strength')">Strength</button>
+    <button class="${progSub==='volume'?'active':''}" onclick="progSubTab('volume')">Volume</button></div>`;
   if(progSub==='strength') return viewStrength(sub);
+  if(progSub==='volume') return viewVolume(sub);
   const w = DB.weights[DB.weights.length-1];
   const avg = currentAvg(), wd = avgWeekDelta();
   const statCard = DB.weights.length ? `<div class="card">
@@ -1112,27 +1138,47 @@ function viewWeight(){
     ${DB.weights.length? `<div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Daily entries</div>${weightList()}</div>` : '<div class="empty">Log your first weigh-in above.</div>'}`;
 }
 function viewStrength(sub){
-  const exes = exercisesWithData();
-  if(!exes.length) return `<h1>Progress</h1><p class="subtitle">Strength over time</p>${sub}<div class="empty">Log a few weighted workouts and your strength trend shows up here.<br>(Bodyweight-only moves aren't charted.)</div>`;
-  if(!selectedExercise || !exes.includes(selectedExercise)) selectedExercise=exes[0];
-  const opts = exes.map(m=>`<option ${m===selectedExercise?'selected':''}>${esc(m)}</option>`).join('');
-  const series = exerciseSeries(selectedExercise);
+  const loadEx = exercisesWithData(), bwEx = bwExercisesWithData(), all = loadEx.concat(bwEx);
+  if(!all.length) return `<h1>Progress</h1><p class="subtitle">Strength over time</p>${sub}<div class="empty">Log a few workouts and your per-exercise trend shows up here.</div>`;
+  if(!selectedExercise || !all.includes(selectedExercise)) selectedExercise=all[0];
+  const isReps = bwEx.includes(selectedExercise);
+  const series = isReps ? bwSeries(selectedExercise) : exerciseSeries(selectedExercise);
   const latest = series[series.length-1], first=series[0];
   let delta='';
-  if(series.length>=2){ const d=latest.value-first.value; const cls=d>0?'trend-down':d<0?'trend-up':'trend-flat'; delta=`<span class="${cls}">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(0)} ${DB.unit}</span> since ${fmtDate(first.date)}`; }
+  if(series.length>=2){ const d=latest.value-first.value; const cls=d>0?'trend-down':d<0?'trend-up':'trend-flat'; delta=`<span class="${cls}">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(0)} ${isReps?'reps':DB.unit}</span> since ${fmtDate(first.date)}`; }
+  const opts = loadEx.map(m=>`<option ${m===selectedExercise?'selected':''}>${esc(m)}</option>`).join('')
+    + bwEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(m)} (reps)</option>`).join('');
   const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.name===selectedExercise?'▸ ':''}${esc(p.name)}</span><span><strong>${Math.round(p.v)} ${DB.unit}</strong> <span class="muted">${fmtSet(p.w,p.r)}</span></span></div>`).join('');
-  return `<h1>Progress</h1><p class="subtitle">Estimated 1-rep max per exercise</p>${sub}
+  return `<h1>Progress</h1><p class="subtitle">${isReps?'Total reps per session':'Estimated 1-rep max per exercise'}</p>${sub}
     <div class="card">
       <select onchange="selectExercise(this.value)">${opts}</select>
       ${rangeSeg()}
     </div>
     <div class="card">
-      <div style="margin-bottom:8px"><div class="stat-big" style="font-size:26px">${latest?Math.round(latest.value):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit} e1RM</span></div>
-      <div class="stat-sub">${delta||('Best estimated 1RM · '+esc(selectedExercise))}</div></div>
+      <div style="margin-bottom:8px"><div class="stat-big" style="font-size:26px">${latest?Math.round(latest.value):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${isReps?'reps':DB.unit+' e1RM'}</span></div>
+      <div class="stat-sub">${delta||((isReps?'Total reps · ':'Best estimated 1RM · ')+esc(selectedExercise))}</div></div>
       <svg id="schart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg>
     </div>
-    <div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Personal records (tap to chart)</div>${prs||'<span class="muted">No weighted sets yet.</span>'}</div>
-    <p class="muted" style="text-align:center;font-size:12px">e1RM = estimated 1-rep max (weight × reps, Epley). Higher = stronger. Bodyweight sets excluded.</p>`;
+    ${prs?`<div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Personal records (tap to chart)</div>${prs}</div>`:''}
+    <p class="muted" style="text-align:center;font-size:12px">e1RM = estimated 1-rep max (weight × reps). Bodyweight moves chart <strong>total reps</strong> per session instead.</p>`;
+}
+function viewVolume(sub){
+  const counts = weeklySetsByMuscle();
+  const muscles = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
+  if(!muscles.length) return `<h1>Progress</h1><p class="subtitle">Working sets this week</p>${sub}<div class="empty">Log some workouts this week and your sets-per-muscle shows up here.</div>`;
+  const max = Math.max(20, ...muscles.map(m=>counts[m]));
+  const inRange = n => n>=10 && n<=20;
+  const color = n => inRange(n) ? 'var(--legs-bar)' : 'var(--push-bar)';
+  const label = n => n<10 ? 'under' : n<=20 ? 'good' : 'high';
+  const rows = muscles.map(m=>{ const n=counts[m];
+    return `<div style="margin-bottom:11px">
+      <div class="row" style="margin-bottom:3px"><span style="font-weight:600;font-size:13px">${m}</span><span class="muted" style="font-size:12px">${n} set${n!==1?'s':''} · ${label(n)}</span></div>
+      <div style="height:8px;background:var(--surface-3);border-radius:5px;overflow:hidden"><div style="height:100%;width:${Math.round(n/max*100)}%;background:${color(n)};border-radius:5px"></div></div>
+    </div>`;
+  }).join('');
+  return `<h1>Progress</h1><p class="subtitle">Working sets this week, per muscle</p>${sub}
+    <div class="card">${rows}</div>
+    <p class="muted" style="text-align:center;font-size:12px"><strong>10–20 sets/week</strong> per muscle is the evidence-backed hypertrophy range. Under 10 = room to add; over 20 = likely junk volume. Only counts sets with reps logged this week.</p>`;
 }
 function weightList(){
   return DB.weights.slice().reverse().slice(0,12).map((w,ri)=>{
@@ -1199,8 +1245,10 @@ function drawChart(){
 function drawStrengthChart(){
   const svg = document.getElementById('schart'); if(!svg) return;
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-chartRange);
-  const pts = exerciseSeries(selectedExercise).filter(p=> chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff);
-  paintChart(svg, pts, 'Need 2+ weighted sessions for this exercise in range', 'gStr');
+  const isReps = bwExercisesWithData().includes(selectedExercise);
+  const raw = isReps ? bwSeries(selectedExercise) : exerciseSeries(selectedExercise);
+  const pts = raw.filter(p=> chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff);
+  paintChart(svg, pts, 'Need 2+ sessions for this exercise in range', 'gStr');
 }
 
 /* ───────────────────────── SKINCARE & SHAVING ───────────────────────── */
