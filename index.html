@@ -99,7 +99,10 @@
     select, input, textarea { font-family: inherit; font-size: 14px; border: 1.5px solid var(--border-2); border-radius: 8px; padding: 9px 10px; background: var(--surface); color: var(--text); width: 100%; }
     input[type=checkbox] { width: 20px; height: 20px; min-width: 20px; padding: 0; border: none; accent-color: #5a6fcc; }
     select:focus, input:focus, textarea:focus { outline: none; border-color: var(--text); }
-    .set-grid { display: grid; grid-template-columns: 22px 1fr 1fr 26px 26px; gap: 6px; align-items: center; margin-bottom: 7px; }
+    .set-grid { display: grid; grid-template-columns: 20px 1fr 1fr 16px 24px 24px; gap: 5px; align-items: center; margin-bottom: 7px; }
+    .tgt-badge { font-size: 13px; font-weight: 800; text-align: center; line-height: 1; }
+    .tgt-badge.beat { color: var(--good); }
+    .tgt-badge.tie { color: var(--muted); }
     .set-grid .set-no { font-size: 12px; font-weight: 700; color: var(--muted-2); text-align: center; }
     .set-grid input { padding: 8px 6px; text-align: center; }
     .set-grid .colhead { font-size: 10px; font-weight: 700; color: var(--muted-2); text-transform: uppercase; letter-spacing: .5px; text-align: center; }
@@ -423,6 +426,25 @@ function fmtSet(w,r){ if(w===''||w==null) return `${r}`; return `${(+w===0?'BW':
 function fmtMS(total){ total=+total||0; const m=Math.floor(total/60), s=total%60; return `${m}:${String(s).padStart(2,'0')}`; }
 /* Estimated 1-rep max (Epley). BW(0) or blank → 0 (excluded from strength charts). */
 function e1rm(w,r){ w=+w; r=+r; if(!w||!r) return 0; return w*(1+r/30); }
+const INCREMENT = { lb:5, kg:2.5 };
+/* Should we bump the load, and to what? Uses the last real entry's worked sets. */
+function addWeightInfo(slot, ref, name){
+  if(!ref) return null;
+  const rng=effRange(slot, name), real=ref.entry.sets.filter(x=>!x.skipped && x.r!=='');
+  if(!real.length) return null;
+  const lastW=Math.max(0, ...real.map(x=> x.w===''?0:+x.w));
+  return { allTop: real.every(x=> +x.r >= rng.hi), lastW, newW: lastW+(INCREMENT[DB.unit]||5), hasLoad: lastW>0 };
+}
+/* Per-set "beat last time" badge: ✓ beat, = tied, '' under (compared at the matched weight). */
+function badgeState(st, t){
+  if(!t || st.r==='') return ['',''];
+  const cw=st.w===''?0:+st.w, tw=t.w===''?0:+t.w, cr=+st.r, tr=+t.r;
+  if(cw>tw || (cw===tw && cr>tr)) return ['✓','beat'];
+  if(cw===tw && cr===tr) return ['=','tie'];
+  return ['',''];
+}
+function targetSet(i,k){ const ref=lastRealEntry(DB.draft.workout,i); if(!ref) return null; return ref.entry.sets.filter(x=>!x.skipped && x.r!=='')[k]||null; }
+function updTargetBadge(i,k){ const el=document.getElementById(`tgt-${i}-${k}`); if(!el) return; const [t,c]=badgeState(DB.draft.entries[i].sets[k], targetSet(i,k)); el.textContent=t; el.className='tgt-badge '+c; }
 /* Strength is tracked PER EXERCISE (not pooled by muscle) so the trend reflects one
    movement — "DB bench" rising — instead of jumping between bench/incline/fly. */
 /* All logged exercises in a session = main entries + abs/forearms accessories. */
@@ -649,7 +671,14 @@ function startWorkout(name){
     DB.draft = { workout:name, date:todayISO(), startedAt:Date.now(),
       entries: PROGRAM[name].slots.map((s,i)=>{
         const ref = lastRealEntry(name,i);
-        return { name: ref? ref.entry.name : s.examples[0], sets: Array.from({length:s.sets},()=>({ w:'', r:'', skipped:false, reason:'' })) };
+        const exName = ref? ref.entry.name : s.examples[0];
+        const aw = addWeightInfo(s, ref, exName);
+        const real = ref? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
+        return { name: exName, sets: Array.from({length:s.sets},(_,k)=>{
+          let w='';
+          if(aw) w = (aw.allTop && aw.hasLoad) ? String(aw.newW) : (real[k]? real[k].w : (real.length? real[real.length-1].w : ''));
+          return { w, r:'', skipped:false, reason:'' };
+        }) };
       }),
       stairs: { level:'', seconds:'', skipped:false, reason:'' },
       extras: blankExtras()
@@ -685,27 +714,29 @@ function viewActive(){
     const entry = DB.draft.entries[i];
     const ref = lastRealEntry(name,i);
     const rng = effRange(s, entry.name);
-    // last-time string + add-weight flag, from the last REAL (non-skipped) session
+    const real = ref ? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
+    // last-time string + add-weight suggestion, from the last REAL (non-skipped) session
     let lastLine = `<span class="muted">No previous data — set your baseline.</span>`, flag='';
     if(ref){
-      const real = ref.entry.sets.filter(x=>!x.skipped && x.r!=='');
-      const setsStr = real.map(x=> fmtSet(x.w,x.r)).join(',  ');
-      lastLine = `Last time (${fmtDate(ref.date)}): <strong>${setsStr||'—'}</strong>`;
-      const allTop = real.length>0 && real.every(x=> +x.r >= rng.hi);
-      flag = allTop ? `<span class="flag">⬆ Add weight</span>` : '';
+      lastLine = `Last time (${fmtDate(ref.date)}): <strong>${real.map(x=> fmtSet(x.w,x.r)).join(',  ')||'—'}</strong>`;
+      const aw = addWeightInfo(s, ref, entry.name);
+      flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${aw.newW} ${DB.unit}`:''}</span>` : '';
     }
     const opts = s.examples.map(e=>`<option ${e===entry.name?'selected':''}>${esc(e)}</option>`).join('') +
                  (s.examples.includes(entry.name)?'':`<option selected>${esc(entry.name)}</option>`) +
                  `<option value="__custom">+ Custom…</option>`;
-    const setRows = entry.sets.map((st,k)=> st.skipped
-      ? `<div class="skip-note"><span>⤼ Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipSet(${i},${k})">Undo</button></div>`
-      : `<div class="set-grid">
+    const setRows = entry.sets.map((st,k)=>{
+      if(st.skipped) return `<div class="skip-note"><span>⤼ Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipSet(${i},${k})">Undo</button></div>`;
+      const tgt = real[k], [bt,bc] = badgeState(st, tgt);
+      return `<div class="set-grid">
         <span class="set-no">${k+1}</span>
-        <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value)" onchange="rollWeight(${i},${k},this.value)">
-        <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="reps" value="${st.r}" oninput="setVal(${i},${k},'r',this.value)" onchange="repCheck(${i},${k})">
+        <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value);updTargetBadge(${i},${k})" onchange="rollWeight(${i},${k},this.value)">
+        <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="${tgt?'≥'+tgt.r:'reps'}" value="${st.r}" oninput="setVal(${i},${k},'r',this.value);updTargetBadge(${i},${k})" onchange="repCheck(${i},${k})">
+        <span id="tgt-${i}-${k}" class="tgt-badge ${bc}">${bt}</span>
         <button class="skip-set" onclick="skipSet(${i},${k})" title="skip this set">⤼</button>
         <button class="x-set" onclick="rmSet(${i},${k})" title="remove set">×</button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     return `<div class="ex-card">
       <div class="ex-accent ${barClass(g)}"></div>
       <div class="ex-body">
@@ -717,7 +748,7 @@ function viewActive(){
         </div>
         <select onchange="pickEx(${i},this)">${opts}</select>
         <div class="lasttime">${lastLine}</div>
-        <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span></div>
+        <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
         ${setRows}
         <button class="addset" onclick="addSet(${i})">+ Add set</button>
         ${i===0?`<div class="warm">
@@ -852,26 +883,37 @@ function toggleWarm(i){
 }
 function finishWorkout(){
   const d = DB.draft;
-  const hasEx = d.entries.some(e=> e.sets.some(s=> s.skipped || s.w!=='' || s.r!==''));
+  // A set counts as WORKED iff reps are entered (pre-filled weight alone is not data).
+  const hasEx = d.entries.some(e=> e.sets.some(s=> s.skipped || s.r!==''));
   const hasStairs = d.stairs && (d.stairs.skipped || d.stairs.seconds!=='');
   const x = d.extras || blankExtras();
-  const hasExtra = ['abs','forearms'].some(w=> x[w].sets.some(s=> s.w!=='' || s.r!==''));
-  if(!hasEx && !hasStairs && !hasExtra){ alert('Log at least one set before saving.'); return; }
-  // keep skipped sets (they carry a reason); drop only blank, unskipped ones
-  d.entries.forEach(e=>{ e.sets = e.sets.filter(s=> s.skipped || s.w!=='' || s.r!==''); e.sets.forEach(s=>delete s._cel); });
-  ['abs','forearms'].forEach(w=>{ x[w].sets = x[w].sets.filter(s=> s.w!=='' || s.r!==''); });
+  const hasExtra = ['abs','forearms'].some(w=> x[w].sets.some(s=> s.r!==''));
+  if(!hasEx && !hasStairs && !hasExtra){ alert('Log at least one set (with reps) before saving.'); return; }
+  // keep skipped sets (they carry a reason); drop sets with no reps (incl. pre-filled-weight-only)
+  d.entries.forEach(e=>{ e.sets = e.sets.filter(s=> s.skipped || s.r!==''); e.sets.forEach(s=>delete s._cel); });
+  ['abs','forearms'].forEach(w=>{ x[w].sets = x[w].sets.filter(s=> s.r!==''); });
   const endedAt = Date.now(), hist = d.historical;
-  DB.sessions.push({
+  const prior = hist ? {} : Object.fromEntries(exercisePRs().map(p=>[p.name,p.v]));
+  const sess = {
     workout:d.workout, date:d.date,
     startedAt: hist ? null : (d.startedAt||null),
     endedAt: hist ? null : endedAt,
     durationMin: hist ? (d.durationMin? +d.durationMin : null)
                       : (d.startedAt ? Math.max(1, Math.round((endedAt-d.startedAt)/60000)) : null),
     entries:d.entries, stairs:d.stairs, extras:x
-  });
+  };
+  // PR detection: an exercise whose best e1RM this session beats its prior all-time best
+  let prs=[];
+  if(!hist){
+    sessionExercises(sess).forEach(e=>{ let best=0; e.sets.forEach(z=>{ if(!z.skipped){ const v=e1rm(z.w,z.r); if(v>best) best=v; } });
+      if(best>0 && best>(prior[e.name]||0)) prs.push({name:e.name, v:Math.round(best), prev:Math.round(prior[e.name]||0)}); });
+    if(prs.length) sess.prs = prs.map(p=>p.name);
+  }
+  DB.sessions.push(sess);
   sortSessions();
   DB.draft = null; save();
-  toast(hist?'Past workout added':'Workout saved 💪');
+  if(prs.length){ confettiBurst(); toast(prs.length===1 ? `🏆 PR! ${prs[0].name} ${prs[0].prev||'—'}→${prs[0].v}` : `🏆 ${prs.length} PRs this session!`); }
+  else toast(hist?'Past workout added':'Workout saved 💪');
   goSub('train','history');
 }
 function sortSessions(){ DB.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : a.date.localeCompare(b.date)); }
@@ -902,6 +944,7 @@ function renderWeekReview(){
     hb.forEach(h=> tags.push(`<span style="font-size:11px">🎲 ${esc(h)}</span>`));
     if(wt) tags.push(`<span style="font-size:11px">⚖️ ${(+wt.value).toFixed(1)}</span>`);
     if(mobDoneOn(iso)) tags.push(`<span style="font-size:11px">🧎 ${mobDoneOn(iso)}</span>`);
+    if(sess.some(s=>s.prs&&s.prs.length)) tags.push(`<span style="font-size:11px">🏆 PR</span>`);
     const noteHTML = note && note.trim() ? `<div style="font-size:13px;color:var(--text-2);line-height:1.5;margin-top:6px;white-space:pre-wrap">${esc(note)}</div>` : '';
     const emptyHTML = (!tags.length && !noteHTML && !future) ? `<div class="muted" style="font-size:12px;margin-top:3px">—</div>` : '';
     return `<div style="padding:9px 0;border-bottom:1px solid var(--border-3)">
@@ -989,7 +1032,7 @@ function viewHistory(){
     }
     return `<div>
       <div class="hist-item" onclick="toggleHist(${idx})">
-        <div><span class="pill ${accClass(g)}">${s.workout}</span> <span class="muted" style="margin-left:6px">${fmtDate(s.date)}</span></div>
+        <div><span class="pill ${accClass(g)}">${s.workout}</span> <span class="muted" style="margin-left:6px">${fmtDate(s.date)}</span>${s.prs&&s.prs.length?' 🏆':''}</div>
         ${right}
       </div>${detail}
     </div>`;
