@@ -542,7 +542,7 @@ function logToJournal(line){ const d=todayISO(); DB.journal[d] = DB.journal[d] ?
 
 /* ───────────────────────── To-do list (rolls over until checked) ───────────────────────── */
 function addTodo(){ const inp=document.getElementById('todo-input'); const v=(inp.value||'').trim(); if(!v) return; DB.todos.push({text:v, created:todayISO()}); save(); render(); const n=document.getElementById('todo-input'); if(n) n.focus(); }
-function doneTodo(i){ const t=DB.todos[i]; if(!t) return; logToJournal('✓ '+t.text); DB.todos.splice(i,1); save(); toast('Logged to journal ✓'); render(); }
+function doneTodo(i){ const t=DB.todos[i]; if(!t) return; logToJournal('✓ '+fmtClock(Date.now())+' — '+t.text); DB.todos.splice(i,1); save(); toast('Logged to journal ✓'); render(); }
 function removeTodo(i){ DB.todos.splice(i,1); save(); render(); }
 function todoAge(created){ return Math.floor((Date.now()-new Date(created+'T00:00'))/86400000); }
 
@@ -676,17 +676,20 @@ function viewToday(){
     </div>`;
 
   const todos = DB.todos||[];
+  const TODO_CAP = 5, todosExpanded = accOpen.has('todos-all');
+  const shownTodos = todosExpanded ? todos : todos.slice(0, TODO_CAP);
   const cTodo = `<div class="card">
       ${kicker('To-do'+(todos.length?` · ${todos.length} open`:''))}
       <div class="row" style="gap:8px;margin:8px 0 ${todos.length?'10px':'0'}">
         <input id="todo-input" placeholder="Add a task…" style="flex:1" onkeydown="if(event.key==='Enter')addTodo()">
         <button class="btn" onclick="addTodo()">Add</button>
       </div>
-      ${todos.map((t,i)=>{ const age=todoAge(t.created); return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-3)">
+      ${shownTodos.map((t,i)=>{ const age=todoAge(t.created); return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-3)">
         <input type="checkbox" onchange="doneTodo(${i})" style="margin-top:1px">
         <span style="flex:1;font-size:14px">${esc(t.text)}${age>0?` <span class="muted" style="font-size:11px">· ${age}d</span>`:''}</span>
         <button class="x-set" onclick="removeTodo(${i})" title="remove">×</button>
       </div>`; }).join('')}
+      ${todos.length>TODO_CAP?`<button class="addset" onclick="toggleAcc('todos-all')">${todosExpanded?'Show less':`+ ${todos.length-TODO_CAP} more`}</button>`:''}
       ${todos.length?'':'<p class="muted" style="margin-top:8px;font-size:12px">Nothing pending. Tasks roll over until you check them off — checking one logs it to your journal.</p>'}
     </div>`;
 
