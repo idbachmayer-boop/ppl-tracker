@@ -96,6 +96,7 @@
     .ex-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .ex-title { font-size: 14px; font-weight: 700; }
     .lasttime { font-size: 12px; color: var(--text-2); background: var(--surface-2); border-radius: 8px; padding: 7px 9px; margin: 6px 0 10px; line-height: 1.5; }
+    .last-note { font-size: 12px; color: var(--warm-fg); background: var(--warm-bg); border: 1px solid var(--warm-bd); border-radius: 8px; padding: 7px 9px; margin: -4px 0 10px; line-height: 1.5; }
     select, input, textarea { font-family: inherit; font-size: 14px; border: 1.5px solid var(--border-2); border-radius: 8px; padding: 9px 10px; background: var(--surface); color: var(--text); width: 100%; }
     input[type=checkbox] { width: 20px; height: 20px; min-width: 20px; padding: 0; border: none; accent-color: #5a6fcc; }
     select:focus, input:focus, textarea:focus { outline: none; border-color: var(--text); }
@@ -789,11 +790,12 @@ function viewActive(){
     const rng = effRange(s, entry.name);
     const real = ref ? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
     // last-time string + add-weight suggestion, from the last REAL (non-skipped) session
-    let lastLine = `<span class="muted">No previous data — set your baseline.</span>`, flag='';
+    let lastLine = `<span class="muted">No previous data — set your baseline.</span>`, flag='', noteHint='';
     if(ref){
       lastLine = `Last time (${fmtDate(ref.date)}): <strong>${real.map(x=> fmtSet(x.w,x.r)).join(',  ')||'—'}</strong>`;
       const aw = addWeightInfo(s, ref, entry.name);
       flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${aw.newW} ${DB.unit}`:''}</span>` : '';
+      if(ref.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(ref.entry.note)}</div>`;
     }
     let coachHint='';
     if(entry.deload) coachHint = `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" onclick="undeloadExercise(${i})">undo</button></div>`;
@@ -824,6 +826,7 @@ function viewActive(){
         </div>
         <select onchange="pickEx(${i},this)">${opts}</select>
         <div class="lasttime">${lastLine}</div>
+        ${noteHint}
         ${coachHint}
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
         ${setRows}
