@@ -747,14 +747,14 @@ function startWorkout(name){
         const exName = ref? ref.entry.name : s.examples[0];
         const aw = addWeightInfo(s, ref, exName);
         const real = ref? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
-        return { name: exName, sets: Array.from({length:s.sets},(_,k)=>{
+        return { name: exName, note:'', sets: Array.from({length:s.sets},(_,k)=>{
           let w='';
           if(aw) w = (aw.allTop && aw.hasLoad) ? String(aw.newW) : (real[k]? real[k].w : (real.length? real[real.length-1].w : ''));
           return { w, r:'', skipped:false, reason:'' };
         }) };
       }),
       stairs: { level:'', seconds:'', skipped:false, reason:'' },
-      extras: blankExtras()
+      extras: blankExtras(), sessionNote:''
     };
     const ls = lastRealStairs();
     if(ls){ DB.draft.stairs.seconds = String((+ls.st.seconds)+15); DB.draft.stairs.level = String(ls.st.level||''); }
@@ -772,8 +772,8 @@ function skipDay(name){
 function startBackdate(name){
   if(DB.draft && !confirm(`You have an unfinished ${DB.draft.workout}. Discard it?`)) return;
   DB.draft = { workout:name, date:todayISO(), historical:true, startedAt:null, durationMin:'',
-    entries: PROGRAM[name].slots.map((s,i)=>{ const ref=lastRealEntry(name,i); return { name: ref?ref.entry.name:s.examples[0], sets: Array.from({length:s.sets},()=>({w:'',r:'',skipped:false,reason:''})) }; }),
-    stairs:{ level:'', seconds:'', skipped:false, reason:'' }, extras: blankExtras() };
+    entries: PROGRAM[name].slots.map((s,i)=>{ const ref=lastRealEntry(name,i); return { name: ref?ref.entry.name:s.examples[0], note:'', sets: Array.from({length:s.sets},()=>({w:'',r:'',skipped:false,reason:''})) }; }),
+    stairs:{ level:'', seconds:'', skipped:false, reason:'' }, extras: blankExtras(), sessionNote:'' };
   const ls=lastRealStairs(); if(ls){ DB.draft.stairs.seconds=String((+ls.st.seconds)+15); DB.draft.stairs.level=String(ls.st.level||''); }
   showBackdate=false; save();
   goSub('train','log');
@@ -832,6 +832,7 @@ function viewActive(){
           <button class="warm-toggle" onclick="toggleWarm(${i})">🔥 Warm-up ramp</button>
           <div class="warm-table hidden" id="warm-${i}"></div>
         </div>`:''}
+        <input type="text" placeholder="Note — pain, tempo, how it felt…" value="${esc(entry.note||'')}" oninput="setNote(${i},this.value)" style="margin-top:10px;font-size:13px;padding:7px 9px">
       </div>
     </div>`;
   }).join('');
@@ -882,6 +883,10 @@ function viewActive(){
   return `
     ${header}
     <div style="margin-top:16px">${acc.warm}${cards}${acc.lifts}${stairsCard}${acc.cooldown}</div>
+    <div class="card">
+      <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Session note</div>
+      <textarea id="session-note" rows="2" placeholder="How did the session feel? Overall notes…" oninput="setSessionNote(this.value)" style="resize:vertical;line-height:1.5;min-height:56px">${esc(DB.draft.sessionNote||'')}</textarea>
+    </div>
     <button class="btn btn-block" style="margin-top:6px" onclick="finishWorkout()">${DB.draft.historical?'Save past workout':'Finish & save workout'}</button>
     <button class="btn btn-danger btn-block" style="margin-top:10px" onclick="discardWorkout()">Discard</button>`;
 }
@@ -893,6 +898,8 @@ function pickEx(i, sel){
   DB.draft.entries[i].name = sel.value; save(); render();
 }
 function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; save(); /* live save, no re-render to keep focus */ }
+function setNote(i,v){ DB.draft.entries[i].note=v; save(); }
+function setSessionNote(v){ DB.draft.sessionNote=v; save(); }
 /* Roll the WEIGHT down into still-empty sets below. Fired on `change` (after the full
    number is entered), weight only — reps are never rolled. Filled cells stay untouched. */
 function rollWeight(i,k,value){
@@ -977,7 +984,7 @@ function finishWorkout(){
     endedAt: hist ? null : endedAt,
     durationMin: hist ? (d.durationMin? +d.durationMin : null)
                       : (d.startedAt ? Math.max(1, Math.round((endedAt-d.startedAt)/60000)) : null),
-    entries:d.entries, stairs:d.stairs, extras:x
+    entries:d.entries, stairs:d.stairs, extras:x, note:(d.sessionNote||'').trim()
   };
   // PR detection: an exercise whose best e1RM this session beats its prior all-time best
   let prs=[];
@@ -1093,7 +1100,7 @@ function viewHistory(){
       if(open){
         const lines = (s.entries||[]).map(e=>{
           const setStr = e.sets.map(x=> x.skipped? '<em>skip</em>' : fmtSet(x.w,x.r)).join(', ');
-          return `<strong>${esc(e.name)}</strong> — ${setStr||'—'}${e.deload?' <em>(deload)</em>':''}`;
+          return `<strong>${esc(e.name)}</strong> — ${setStr||'—'}${e.deload?' <em>(deload)</em>':''}${e.note?` <span class="muted">· ${esc(e.note)}</span>`:''}`;
         });
         if(s.stairs && !s.stairs.skipped && s.stairs.seconds!=='' && s.stairs.seconds!=null)
           lines.push(`<strong>🪜 Stair Stepper</strong> — level ${esc(String(s.stairs.level||'—'))}, ${fmtMS(s.stairs.seconds)}`);
@@ -1103,8 +1110,9 @@ function viewHistory(){
           ['abs','forearms'].forEach(w=>{ const e=s.extras[w]; if(e && e.sets && e.sets.length){ lines.push(`<strong>${w==='abs'?'💥 Abs':'🤜 Forearms'}${e.name?' — '+esc(e.name):''}</strong> — ${e.sets.map(z=>fmtSet(z.w,z.r)).join(', ')}`); } });
         }
         if(mobDoneOn(s.date)) lines.push(`<strong>🧎 Mobility</strong> — ${mobDoneOn(s.date)} done that day`);
+        const noteStr = s.note ? `<div style="margin-top:8px;font-size:13px;color:var(--text-2);line-height:1.5;white-space:pre-wrap">📝 ${esc(s.note)}</div>` : '';
         const timeStr = (s.startedAt&&s.endedAt) ? `<div class="muted" style="margin-top:8px">${fmtClock(s.startedAt)}–${fmtClock(s.endedAt)} · ${s.durationMin} min at the gym</div>` : '';
-        detail = `<div class="hist-detail">${lines.join('<br>')}${timeStr}${editRow}</div>`;
+        detail = `<div class="hist-detail">${lines.join('<br>')}${noteStr}${timeStr}${editRow}</div>`;
       }
     }
     return `<div>
