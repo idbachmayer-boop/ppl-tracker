@@ -538,6 +538,12 @@ function removeItem(cat,i){ listFor(cat).splice(i,1); if(currentPick[cat] && !li
 
 /* ───────────────────────── Daily journal ───────────────────────── */
 function saveJournal(v){ const t=todayISO(); if(v.trim()==='') delete DB.journal[t]; else DB.journal[t]=v; save(); }
+/* Edit any date's journal entry from Week in Review. saveJournalFor saves live without
+   re-rendering (keeps textarea focus); open/close toggle the inline editor + refresh counts. */
+let editJournalDate = null;
+function saveJournalFor(iso,v){ if(v.trim()==='') delete DB.journal[iso]; else DB.journal[iso]=v; save(); }
+function editJournal(iso){ editJournalDate=iso; render(); const el=document.getElementById('journal-edit-'+iso); if(el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
+function closeJournalEdit(){ editJournalDate=null; render(); }
 function journalWeekCount(){ const m=+monday(new Date()); let c=0; for(const d in (DB.journal||{})){ if(DB.journal[d].trim() && +monday(new Date(d+'T00:00'))===m) c++; } return c; }
 function logToJournal(line){ const d=todayISO(); DB.journal[d] = DB.journal[d] ? (DB.journal[d].replace(/\s+$/,'')+'\n'+line) : line; }
 
@@ -1032,12 +1038,23 @@ function renderWeekReview(){
     if(wt) tags.push(`<span style="font-size:11px">⚖️ ${(+wt.value).toFixed(1)}</span>`);
     if(mobDoneOn(iso)) tags.push(`<span style="font-size:11px">🧎 ${mobDoneOn(iso)}</span>`);
     if(sess.some(s=>s.prs&&s.prs.length)) tags.push(`<span style="font-size:11px">🏆 PR</span>`);
-    const noteHTML = note && note.trim() ? `<div style="font-size:13px;color:var(--text-2);line-height:1.5;margin-top:6px;white-space:pre-wrap">${esc(note)}</div>` : '';
-    const emptyHTML = (!tags.length && !noteHTML && !future) ? `<div class="muted" style="font-size:12px;margin-top:3px">—</div>` : '';
+    const hasNote = note && note.trim();
+    const editLink = iso => `<a onclick="editJournal('${iso}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">✏️ ${hasNote?'Edit note':'Add note'}</a>`;
+    let noteHTML;
+    if(future){ noteHTML=''; }
+    else if(editJournalDate===iso){
+      noteHTML = `<div style="margin-top:6px">
+        <textarea id="journal-edit-${iso}" rows="3" placeholder="What did you do on this day?" oninput="saveJournalFor('${iso}',this.value)" style="resize:vertical;line-height:1.5;min-height:64px;font-size:13px">${esc(note||'')}</textarea>
+        <button class="btn btn-sm" style="margin-top:6px" onclick="closeJournalEdit()">Done</button>
+      </div>`;
+    } else {
+      noteHTML = `${hasNote?`<div style="font-size:13px;color:var(--text-2);line-height:1.5;margin-top:6px;white-space:pre-wrap">${esc(note)}</div>`:''}
+        <div style="margin-top:${hasNote?4:3}px">${editLink(iso)}</div>`;
+    }
     return `<div style="padding:9px 0;border-bottom:1px solid var(--border-3)">
       <span style="font-weight:700;font-size:13px">${dn} ${dt.getMonth()+1}/${dt.getDate()}${iso===today?' · today':''}</span>
       ${tags.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:5px">${tags.join('')}</div>`:''}
-      ${noteHTML}${emptyHTML}
+      ${noteHTML}
     </div>`;
   }).join('');
   const end = new Date(base); end.setDate(end.getDate()+6);
