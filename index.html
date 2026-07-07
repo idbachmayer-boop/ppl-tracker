@@ -174,7 +174,11 @@
     .tabbar-inner { max-width: 520px; margin: 0 auto; width: 100%; display: flex; }
     .stopwatch { max-width: 520px; margin: 0 auto; width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
     .stopwatch .sw-label { font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; }
-    .stopwatch .sw-time { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 19px; flex: 1; }
+    .stopwatch .sw-time { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 19px; transition: color .2s; }
+    .stopwatch .sw-time.in { color: var(--good); }
+    .stopwatch .sw-time.over { color: var(--push-fg); }
+    .stopwatch .sw-target { flex: 1; font-size: 11px; font-weight: 700; color: var(--muted); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .stopwatch .sw-target.in { color: var(--good); }
     .sw-btn { border: none; border-radius: 8px; padding: 7px 16px; font-size: 13px; font-weight: 700; cursor: pointer; background: var(--btn-bg); color: var(--btn-fg); }
     .sw-btn.sw-clear { background: var(--surface-3); color: var(--text); padding: 7px 12px; }
     body.sw-on { padding-bottom: 124px; }
@@ -215,6 +219,7 @@
   <div class="stopwatch" id="stopwatch" style="display:none">
     <span class="sw-label">⏱ Rest</span>
     <span class="sw-time" id="sw-time">0:00</span>
+    <span class="sw-target" id="sw-target"></span>
     <button class="sw-btn" id="sw-toggle" onclick="swToggle()">▶</button>
     <button class="sw-btn sw-clear" onclick="swClear()">Clear</button>
   </div>
@@ -401,6 +406,21 @@ const barClass = g => g==='push'?'acc-bar-push':g==='legs'?'acc-bar-legs':'acc-b
 const rangeText = s => s.lo===s.hi ? `${s.lo}${s.note==='each leg'?'/leg':''}` : `${s.lo}–${s.hi}`;
 /* Per-exercise rep-range override (e.g. Goblet squat → 12–15). Falls back to the slot's range. */
 function effRange(slot, name){ const o = slot.overrides && slot.overrides[name]; return o ? {lo:o[0],hi:o[1],note:slot.note} : {lo:slot.lo,hi:slot.hi,note:slot.note}; }
+/* Rest-time guidance keyed off the TOP of the effective rep range (heavier/low-rep = rest longer).
+   These are sensible defaults (NOT from the Bodybuilding Simplified source, which doesn't prescribe
+   rest) — tune the windows here. Ephemeral only: nothing persisted, no schema impact. */
+const REST_TARGETS = [
+  { maxHi: 8,        lo:120, hi:180, label:'2–3 min' },   // heavy compounds
+  { maxHi: 12,       lo:90,  hi:120, label:'1.5–2 min' }, // mid-range
+  { maxHi: Infinity, lo:60,  hi:90,  label:'1–1.5 min' }, // isolation / high-rep
+];
+function restTargetFor(hi){ for(const t of REST_TARGETS){ if(hi<=t.maxHi) return t; } return REST_TARGETS[REST_TARGETS.length-1]; }
+/* Rest window for a given draft slot (uses the chosen exercise's effective range, overrides included). */
+function restTargetForSlot(i){
+  const wk = DB.draft && DB.draft.workout, sl = wk && PROGRAM[wk] && PROGRAM[wk].slots[i];
+  if(!sl) return null; return restTargetFor(effRange(sl, DB.draft.entries[i].name).hi);
+}
+let restCtx = null; // the rest window shown on the bar — points at the most recently logged set's exercise
 
 function nextWorkout(){
   if(!DB.sessions.length) return "PUSH 1";
@@ -918,7 +938,7 @@ function pickEx(i, sel){
   if(sel.value==='__custom'){ const v=prompt('Exercise name:', DB.draft.entries[i].name); if(v){DB.draft.entries[i].name=v.trim();} save(); render(); return; }
   DB.draft.entries[i].name = sel.value; save(); render();
 }
-function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; save(); /* live save, no re-render to keep focus */ }
+function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; if(f==='r' && v!=='') restCtx=restTargetForSlot(i); save(); /* live save, no re-render to keep focus */ }
 function setNote(i,v){ DB.draft.entries[i].note=v; save(); }
 function setSessionNote(v){ DB.draft.sessionNote=v; save(); }
 /* Roll the WEIGHT down into still-empty sets below. Fired on `change` (after the full
@@ -953,6 +973,7 @@ function stairTimeSet(part,v){
 function repCheck(i,k){
   const set=DB.draft.entries[i].sets[k]; if(set.skipped) return;
   const rng=effRange(PROGRAM[DB.draft.workout].slots[i], DB.draft.entries[i].name);
+  if(set.r!==''){ restCtx=restTargetFor(rng.hi); sw.acc=0; sw.start=Date.now(); sw.running=true; updateStopwatch(); } // committing a set starts the rest clock for that exercise
   if(set.r!=='' && +set.r>=rng.hi){ if(!set._cel){ set._cel=true; save(); confettiBurst(); toast('💥 Top of the range!'); } }
   else if(set._cel){ set._cel=false; save(); }
 }
@@ -1617,11 +1638,25 @@ function updateStopwatch(){
   const show=!!DB.draft;                       // only during an active workout
   bar.style.display = show?'flex':'none';
   document.body.classList.toggle('sw-on', show);
-  if(show){
-    const t=document.getElementById('sw-time'); if(t) t.textContent=fmtDur(swElapsed());
-    const b=document.getElementById('sw-toggle'); if(b) b.textContent = sw.running?'❚❚':'▶';
-  }
+  if(!show){ restCtx=null; return; }           // no draft → drop any stale rest context
+  const t=document.getElementById('sw-time'); if(t) t.textContent=fmtDur(swElapsed());
+  const b=document.getElementById('sw-toggle'); if(b) b.textContent = sw.running?'❚❚':'▶';
+  const tgt=document.getElementById('sw-target'), el=Math.floor(swElapsed()/1000);
+  const inWin = restCtx && el>=restCtx.lo && el<=restCtx.hi, overWin = restCtx && el>restCtx.hi;
+  if(tgt){ tgt.textContent = restCtx ? ('Target '+restCtx.label) : ''; tgt.classList.toggle('in', !!inWin); }
+  if(t){ t.classList.toggle('in', !!inWin); t.classList.toggle('over', !!overWin); }
 }
+/* Keep the rest bar (with its target) visible above the on-screen keyboard during a workout.
+   VisualViewport shrinks when the keyboard opens; lift the fixed tab bar by that inset. */
+(function(){
+  const vv = window.visualViewport; if(!vv) return;
+  const bar = document.querySelector('.tabbar'); if(!bar) return;
+  const apply = () => {
+    const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    bar.style.transform = (inset>4 && document.body.classList.contains('sw-on')) ? `translateY(-${inset}px)` : '';
+  };
+  vv.addEventListener('resize', apply); vv.addEventListener('scroll', apply);
+})();
 
 /* ───────────────────────── Live gym timer + stopwatch tick ───────────────────────── */
 setInterval(()=>{
@@ -1646,6 +1681,9 @@ function fmtMin(min){ min=Math.round(+min||0); if(min<60) return min+' min'; con
 function cardioUid(){ return 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function weeklyCardio(){ const m=+monday(new Date()); let min=0,km=0;
   (DB.cardio||[]).forEach(c=>{ if(+monday(new Date(c.date+'T00:00'))===m){ min+=(+c.minutes||0); km+=(+c.distanceKm||0); } });
+  // stair-stepper finisher counts toward cardio (per the program guide) — read live from logged sessions
+  (DB.sessions||[]).forEach(s=>{ const st=s.stairs;
+    if(!s.skipped && st && !st.skipped && st.seconds!=='' && st.seconds!=null && +monday(new Date(s.date+'T00:00'))===m) min += (+st.seconds||0)/60; });
   return {min,km}; }
 function haversineKm(a,b){ const R=6371, toR=x=>x*Math.PI/180;
   const dLat=toR(b.lat-a.lat), dLon=toR(b.lon-a.lon);
@@ -1781,7 +1819,7 @@ function viewCardio(){
       <div class="row"><div>${kicker('This week')}<div style="font-weight:800;font-size:20px;margin-top:4px">${Math.round(cw.min)} <span style="font-size:13px;color:var(--muted-2)">/ ${CARDIO_GOAL} min</span></div></div>
       <div style="text-align:right"><div style="font-weight:700">${cw.km>0?fmtDist(cw.km):'—'}</div><div class="muted" style="font-size:11px">this week</div></div></div>
       <div style="height:8px;background:var(--surface-3);border-radius:4px;margin-top:12px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--cardio-bar);border-radius:4px"></div></div>
-      <p class="muted" style="font-size:12px;margin-top:8px">Target: ~${CARDIO_GOAL} min/week of easy steady-state cardio. Your longboard sessions count.</p>
+      <p class="muted" style="font-size:12px;margin-top:8px">Target: ~${CARDIO_GOAL} min/week of easy steady-state cardio. Longboard sessions and your stair-stepper finishers count toward it.</p>
     </div>
     ${pending}
     <h2>Log cardio</h2>
