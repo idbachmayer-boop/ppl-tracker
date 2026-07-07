@@ -201,6 +201,11 @@
     .toast { position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%); background: var(--toast-bg); color: var(--toast-fg); font-size: 13px; font-weight: 600; padding: 10px 18px; border-radius: 22px; z-index: 200; opacity: 0; transition: opacity .2s; pointer-events: none; }
     .toast.show { opacity: 1; }
   </style>
+  <!-- Firebase (Auth + Firestore) for cross-device sync. Deferred so they never block boot;
+       the app is fully functional offline / signed-out without them. -->
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -231,9 +236,9 @@
     self.addEventListener('activate',e=>{ e.waitUntil(self.clients.claim()); });
     self.addEventListener('fetch',e=>{
       const req=e.request; if(req.method!=='GET') return;
-      const sameOrigin = new URL(req.url).origin===self.location.origin;
+      if(new URL(req.url).origin!==self.location.origin) return; // Firebase/gstatic bypass the SW entirely
       e.respondWith(
-        fetch(req).then(res=>{ if(sameOrigin){ const copy=res.clone(); caches.open(C).then(c=>c.put(req,copy)).catch(()=>{}); } return res; })
+        fetch(req).then(res=>{ const copy=res.clone(); caches.open(C).then(c=>c.put(req,copy)).catch(()=>{}); return res; })
         .catch(()=> caches.match(req).then(r=> r || (req.mode==='navigate' ? caches.match('./index.html') : undefined)))
       );
     });`;
@@ -380,7 +385,7 @@ function normalize(raw){
 let DB = load();
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
 function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], lawn:null, wx:null, hobbySeedV2:true }; }
-function save(){ localStorage.setItem(KEY, JSON.stringify(DB)); }
+function save(){ DB.updatedAt = Date.now(); localStorage.setItem(KEY, JSON.stringify(DB)); if(typeof schedulePush==='function') schedulePush(); }
 /* Backup durability — localStorage is the only copy, so nag if it's been a while. */
 function daysSince(ts){ return ts ? (Date.now()-ts)/86400000 : Infinity; }
 function backupStale(){ return daysSince(DB.lastBackupAt) >= 14 && daysSince(DB.backupSnoozeAt) >= 3; }
@@ -1545,6 +1550,8 @@ function viewData(){
       <button class="${DB.unit==='lb'?'active':''}" onclick="setUnit('lb')">lb</button>
       <button class="${DB.unit==='kg'?'active':''}" onclick="setUnit('kg')">kg</button>
     </div></div>
+    <h2>Cloud Sync</h2>
+    ${syncCardHTML()}
     <h2>Hobbies</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Fun things the Today tab rotates through.</p>
@@ -1559,7 +1566,7 @@ function viewData(){
     </div>
     <h2>Backup</h2>
     <div class="card">
-      <p class="muted" style="margin-bottom:12px">Your data lives only on this device. Export regularly so you never lose it.</p>
+      <p class="muted" style="margin-bottom:12px">A downloadable copy of your data — handy as an extra safety net even with Cloud Sync on.</p>
       <button class="btn btn-block" onclick="exportData()">⬇ Export backup (.json)</button>
       <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="document.getElementById('imp').click()">⬆ Import backup</button>
       <input type="file" id="imp" accept="application/json" class="hidden" onchange="importData(this)">
@@ -1615,6 +1622,131 @@ setInterval(()=>{
   if(el && DB.draft && DB.draft.startedAt) el.textContent = fmtDur(Date.now()-DB.draft.startedAt);
   updateStopwatch();
 }, 1000);
+
+/* ───────────────────────── Cloud sync (Firebase Auth + Firestore) ─────────────────────────
+   Whole DB is stored as one JSON blob at users/{uid}. Strategy: pull on sign-in, push on
+   every save (debounced), plus a live listener so the other device updates in near-real-time.
+   Conflicts resolve last-write-wins by `updatedAt`; the FIRST connect asks which copy to keep
+   if both sides already hold data, so nothing is silently overwritten. Signed-out = local only. */
+const firebaseConfig = {
+  apiKey: "AIzaSyA7fxqZoTkHvhRJVSZKC4RVjotIujZMN_4",
+  authDomain: "ppl-tracker-a1d87.firebaseapp.com",
+  projectId: "ppl-tracker-a1d87",
+  storageBucket: "ppl-tracker-a1d87.firebasestorage.app",
+  messagingSenderId: "771855906872",
+  appId: "1:771855906872:web:edabc4861e707571828ecd"
+};
+let fbAuth=null, fbDb=null;
+const SYNC = { user:null, ready:false, status:'', lastSyncAt:null, unsub:null, docRef:null };
+let pushTimer=null;
+
+function initSync(){
+  if(SYNC.ready || !window.firebase) return;
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    fbAuth=firebase.auth(); fbDb=firebase.firestore();
+    fbDb.enablePersistence({synchronizeTabs:true}).catch(()=>{}); // offline cache; ignore multi-tab errors
+    fbAuth.onAuthStateChanged(u=>{
+      SYNC.user=u;
+      if(u){ onSignedIn(u); } else { if(SYNC.unsub){SYNC.unsub();SYNC.unsub=null;} SYNC.docRef=null; SYNC.status=''; SYNC.lastSyncAt=null; }
+      if(TAB==='settings') render();
+    });
+    SYNC.ready=true;
+  }catch(e){ SYNC.status='Sync init error'; }
+}
+window.addEventListener('load', initSync);
+
+function authErr(e){ const c=(e&&e.code)||'';
+  if(c.includes('wrong-password')||c.includes('invalid-credential')) return 'Wrong email or password.';
+  if(c.includes('user-not-found')) return 'No account yet — tap Create account.';
+  if(c.includes('email-already-in-use')) return 'Account exists — tap Sign in.';
+  if(c.includes('weak-password')) return 'Password must be 6+ characters.';
+  if(c.includes('invalid-email')) return 'That email looks invalid.';
+  if(c.includes('network-request-failed')) return 'Network error — check your connection.';
+  return (e&&e.message)||'Sync error.'; }
+
+function syncSignIn(create){
+  if(!fbAuth){ toast('Sync not ready yet'); return; }
+  const em=(document.getElementById('sync-email')||{}).value, pw=(document.getElementById('sync-pass')||{}).value;
+  const email=(em||'').trim(), pass=pw||'';
+  if(!email || !pass){ SYNC.status='Enter email + password.'; updateSyncUI(); return; }
+  SYNC.status='Connecting…'; updateSyncUI();
+  const p = create ? fbAuth.createUserWithEmailAndPassword(email,pass) : fbAuth.signInWithEmailAndPassword(email,pass);
+  p.catch(e=>{ SYNC.status=authErr(e); updateSyncUI(); });
+}
+function syncSignOut(){ if(!fbAuth) return; if(SYNC.unsub){SYNC.unsub();SYNC.unsub=null;} fbAuth.signOut(); }
+
+/* Adopt the remote copy into local WITHOUT re-pushing (write straight to localStorage, no save()). */
+function adoptRemote(remote){
+  try{ const raw=JSON.parse(remote.blob); DB=normalize(raw); DB.updatedAt=remote.updatedAt||Date.now();
+    localStorage.setItem(KEY, JSON.stringify(DB)); render(); return true; }catch(e){ return false; }
+}
+const SYNCED_UID_KEY='ppl_synced_uid'; // device-local: which account this device has already linked to
+async function onSignedIn(user){
+  SYNC.docRef = fbDb.collection('users').doc(user.uid);
+  SYNC.status='Syncing…'; updateSyncUI();
+  try{
+    const snap = await SYNC.docRef.get();
+    const remote = snap.exists ? snap.data() : null;
+    const localHasData = (DB.sessions&&DB.sessions.length)||(DB.weights&&DB.weights.length);
+    // Only the FIRST time this device links to this account do we risk a real conflict; after that
+    // it's routine catch-up and we resolve silently by timestamp (last-write-wins).
+    const firstLink = localStorage.getItem(SYNCED_UID_KEY)!==user.uid;
+    if(remote && remote.blob){
+      const rUpd=remote.updatedAt||0, lUpd=DB.updatedAt||0, differs = remote.blob!==JSON.stringify(DB);
+      if(differs && localHasData && lUpd>0 && firstLink){
+        const useCloud = confirm('This device and the cloud both have workout data.\n\nOK = use the CLOUD copy (replaces what\'s on this device).\nCancel = keep THIS device (replaces the cloud copy).');
+        if(useCloud) adoptRemote(remote); else await pushNow(true);
+      } else if(rUpd >= lUpd){ adoptRemote(remote); }
+      else { await pushNow(true); }
+    } else { await pushNow(true); } // cloud empty → seed it from this device
+    localStorage.setItem(SYNCED_UID_KEY, user.uid); // mark this device linked; no more first-link prompt
+    startLiveSync();
+    SYNC.lastSyncAt=Date.now(); SYNC.status='Synced'; updateSyncUI();
+  }catch(e){ SYNC.status='Sync error: '+((e&&e.code)||(e&&e.message)||''); updateSyncUI(); }
+}
+function startLiveSync(){
+  if(!SYNC.docRef) return; if(SYNC.unsub) SYNC.unsub();
+  SYNC.unsub = SYNC.docRef.onSnapshot(snap=>{
+    if(!snap.exists || snap.metadata.hasPendingWrites) return; // skip the echo of our own writes
+    const remote=snap.data(); const rUpd=remote.updatedAt||0, lUpd=DB.updatedAt||0;
+    if(remote.blob && rUpd>lUpd && remote.blob!==JSON.stringify(DB)){ adoptRemote(remote); SYNC.lastSyncAt=Date.now(); updateSyncUI(); toast('Synced from another device'); }
+  }, ()=>{ SYNC.status='Sync error'; updateSyncUI(); });
+}
+async function pushNow(silent){
+  if(!SYNC.docRef){ if(!silent) toast('Sign in to sync'); return; }
+  try{
+    if(!DB.updatedAt) DB.updatedAt=Date.now();
+    await SYNC.docRef.set({ blob: JSON.stringify(DB), updatedAt: DB.updatedAt, schema: SCHEMA, at: Date.now() });
+    SYNC.lastSyncAt=Date.now(); SYNC.status='Synced'; if(!silent) toast('Synced ✓'); updateSyncUI();
+  }catch(e){ SYNC.status='Sync error'; updateSyncUI(); if(!silent) toast('Sync failed'); }
+}
+function schedulePush(){ if(!SYNC.user || !SYNC.docRef) return; clearTimeout(pushTimer); pushTimer=setTimeout(()=>pushNow(true), 1500); }
+/* Patch the status/last-synced lines in place so we don't re-render (and clobber) the Settings form. */
+function updateSyncUI(){
+  const s=document.getElementById('sync-status'); if(s) s.textContent=SYNC.status||'';
+  const l=document.getElementById('sync-last'); if(l) l.textContent = SYNC.lastSyncAt ? ('Last synced: '+new Date(SYNC.lastSyncAt).toLocaleString()) : 'Not synced yet';
+}
+function syncCardHTML(){
+  if(!window.firebase) return `<div class="card"><p class="muted">Cloud sync couldn't load (no connection to the sync library). Reopen the app while online.</p></div>`;
+  if(SYNC.user){
+    return `<div class="card">
+      <div class="row"><div><div style="font-weight:700">✓ Connected</div><div class="muted" style="font-size:12px">${esc(SYNC.user.email||'')}</div></div><span class="flag">Sync on</span></div>
+      <p class="muted" id="sync-last" style="margin:10px 0 4px">${SYNC.lastSyncAt?('Last synced: '+new Date(SYNC.lastSyncAt).toLocaleString()):'Not synced yet'}</p>
+      <p class="muted" id="sync-status" style="margin:0 0 12px">${esc(SYNC.status||'')}</p>
+      <button class="btn btn-block" onclick="pushNow(false)">⟳ Sync now</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="syncSignOut()">Sign out</button>
+    </div>`;
+  }
+  return `<div class="card">
+    <p class="muted" style="margin-bottom:12px">Sign in with the <strong>same email + password on every device</strong> to keep your data in sync. Your data is private to your login.</p>
+    <input id="sync-email" type="email" placeholder="Email" autocomplete="username" style="margin-bottom:8px">
+    <input id="sync-pass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password" style="margin-bottom:12px">
+    <button class="btn btn-block" onclick="syncSignIn(false)">Sign in</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="syncSignIn(true)">Create account</button>
+    <p class="muted" id="sync-status" style="margin-top:10px">${esc(SYNC.status||'')}</p>
+  </div>`;
+}
 
 /* ───────────────────────── Boot ───────────────────────── */
 buildTabBar();
