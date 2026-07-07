@@ -350,7 +350,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 6;
+const SCHEMA = 7;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -370,7 +370,8 @@ const MIGRATIONS = {
     if(!d.mobilityLog) d.mobilityLog={};
     (d.sessions||[]).forEach(s=>{ if(s.extras && s.extras.mobility){ const done=Object.entries(s.extras.mobility).filter(([k,v])=>v); if(done.length) d.mobilityLog[s.date]=Object.assign({}, d.mobilityLog[s.date]||{}, Object.fromEntries(done)); delete s.extras.mobility; } });
     return d; },
-  6:d=>{ if(!d.todos) d.todos=[]; return d; } // rolling to-do list
+  6:d=>{ if(!d.todos) d.todos=[]; return d; }, // rolling to-do list
+  7:d=>{ if(!d.cardio) d.cardio=[]; return d; } // cardio / Strava log
 };
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
 function normalize(raw){
@@ -384,7 +385,7 @@ function normalize(raw){
 }
 let DB = load();
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
-function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], lawn:null, wx:null, hobbySeedV2:true }; }
+function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], lawn:null, wx:null, hobbySeedV2:true }; }
 function save(){ DB.updatedAt = Date.now(); localStorage.setItem(KEY, JSON.stringify(DB)); if(typeof schedulePush==='function') schedulePush(); }
 /* Backup durability — localStorage is the only copy, so nag if it's been a while. */
 function daysSince(ts){ return ts ? (Date.now()-ts)/86400000 : Infinity; }
@@ -564,8 +565,8 @@ function todoAge(created){ return Math.floor((Date.now()-new Date(created+'T00:0
    four-site edits, and tab ids live in one place (kills the stale-string bugs). */
 const TABS = [
   { id:'today', label:'Today', icon:'🏠', view:()=>viewToday() },
-  { id:'train', label:'Train', icon:'🏋️', sub:[['log','Log'],['history','History'],['progress','Progress']],
-    view:sub => sub==='log' ? (DB.draft ? viewActive() : viewPicker()) : sub==='history' ? viewHistory() : viewWeight(),
+  { id:'train', label:'Train', icon:'🏋️', sub:[['log','Log'],['history','History'],['cardio','Cardio'],['progress','Progress']],
+    view:sub => sub==='log' ? (DB.draft ? viewActive() : viewPicker()) : sub==='history' ? viewHistory() : sub==='cardio' ? viewCardio() : viewWeight(),
     onRender:sub => { if(sub==='progress') drawActiveChart(); } },
   { id:'care', label:'Care', icon:'✨', sub:[['skin','Skin'],['lawn','Lawn']],
     view:sub => sub==='skin' ? viewSkincare() : viewLawn(),
@@ -678,6 +679,12 @@ function viewToday(){
   const cWeek = `<div class="card" style="cursor:pointer" onclick="goSub('train','history')"><div class="row">
       <div>${kicker('This week')}<div style="font-weight:700;margin-top:4px">${weekTally()}</div></div><span class="muted">Review →</span></div></div>`;
 
+  const cw = weeklyCardio(), cardioPct = Math.min(100, Math.round(cw.min/CARDIO_GOAL*100));
+  const cCardio = `<div class="card" style="cursor:pointer" onclick="goSub('train','cardio')">
+      <div class="row"><div>${kicker('Cardio this week')}<div style="font-weight:700;margin-top:4px">${Math.round(cw.min)} / ${CARDIO_GOAL} min${cw.km>0?` · ${fmtDist(cw.km)}`:''}</div></div><span class="muted">Log →</span></div>
+      <div style="height:6px;background:var(--surface-3);border-radius:4px;margin-top:10px;overflow:hidden"><div style="height:100%;width:${cardioPct}%;background:var(--cardio-bar);border-radius:4px"></div></div>
+    </div>`;
+
   const mobDone = Object.keys(mobToday()).length, mobOpen = accOpen.has('mob-today'), streak = mobStreak();
   const cMobility = `<div class="card">
       <div class="row" style="cursor:pointer" onclick="toggleAcc('mob-today')">
@@ -712,9 +719,9 @@ function viewToday(){
     </div>` : '';
 
   let order;
-  if(part==='morning') order=[cWeather, cWorkout, cTodo, cMobility, cDo, cWeight, cJournal];
-  else if(part==='afternoon') order=[cWorkout, cTodo, cDo, cMobility, cWeather, cWeight, cJournal];
-  else order=[cJournal, cTodo, cMobility, cWeek, cDo, cWorkout, cWeight];
+  if(part==='morning') order=[cWeather, cWorkout, cTodo, cMobility, cDo, cCardio, cWeight, cJournal];
+  else if(part==='afternoon') order=[cWorkout, cTodo, cDo, cMobility, cCardio, cWeather, cWeight, cJournal];
+  else order=[cJournal, cTodo, cMobility, cWeek, cDo, cCardio, cWorkout, cWeight];
 
   return `<div style="margin-bottom:16px"><h1>${greeting}</h1><p class="subtitle">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}${gl?` · ${gl.icon} ${gl.temp}°`:''}</p></div>
     ${cBackup}
@@ -1622,6 +1629,181 @@ setInterval(()=>{
   if(el && DB.draft && DB.draft.startedAt) el.textContent = fmtDur(Date.now()-DB.draft.startedAt);
   updateStopwatch();
 }, 1000);
+
+/* ───────────────────────── Cardio log (manual + Strava file import) ─────────────────────────
+   Stored canonically as { id, date, type, minutes, distanceKm, note, source }. Distance is kept
+   in km internally and displayed in mi/km per the weight-unit preference. Strava .gpx computes
+   distance (haversine over trackpoints) + elapsed time; .tcx reads structured laps; the bulk
+   activities.csv is parsed row-by-row. Rolls up weekly minutes vs the ~150 min/week goal. */
+const CARDIO_GOAL = 150;
+const CARDIO_TYPES = ['Longboard','Walk','Run','Bike','Hike','Row','Swim','Elliptical','Other'];
+let pendingCardio = null; // a single parsed import awaiting confirm
+const distUnit = () => DB.unit==='kg' ? 'km' : 'mi';
+const kmToDisp = km => DB.unit==='kg' ? km : km*0.621371;
+const dispToKm = d => DB.unit==='kg' ? d : d/0.621371;
+function fmtDist(km){ if(km==null||km==='') return ''; return (Math.round(kmToDisp(+km)*100)/100)+' '+distUnit(); }
+function fmtMin(min){ min=Math.round(+min||0); if(min<60) return min+' min'; const h=Math.floor(min/60), m=min%60; return h+'h'+(m?' '+String(m).padStart(2,'0'):''); }
+function cardioUid(){ return 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function weeklyCardio(){ const m=+monday(new Date()); let min=0,km=0;
+  (DB.cardio||[]).forEach(c=>{ if(+monday(new Date(c.date+'T00:00'))===m){ min+=(+c.minutes||0); km+=(+c.distanceKm||0); } });
+  return {min,km}; }
+function haversineKm(a,b){ const R=6371, toR=x=>x*Math.PI/180;
+  const dLat=toR(b.lat-a.lat), dLon=toR(b.lon-a.lon);
+  const s=Math.sin(dLat/2)**2 + Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(s))); }
+function mapCardioType(raw){ const s=String(raw||'').toLowerCase();
+  if(s.includes('skate')||s.includes('board')) return 'Longboard';
+  if(s.includes('run')) return 'Run';
+  if(s.includes('walk')) return 'Walk';
+  if(s.includes('hik')) return 'Hike';
+  if(s.includes('ride')||s.includes('bik')||s.includes('cycl')) return 'Bike';
+  if(s.includes('row')) return 'Row';
+  if(s.includes('swim')) return 'Swim';
+  if(s.includes('ellip')) return 'Elliptical';
+  return 'Longboard'; } // default to his main activity; editable before save
+
+function addCardio(){
+  const date=(document.getElementById('cardio-date')||{}).value||todayISO();
+  const type=(document.getElementById('cardio-type')||{}).value||'Longboard';
+  const min=parseFloat((document.getElementById('cardio-min')||{}).value)||0;
+  const distV=parseFloat((document.getElementById('cardio-dist')||{}).value);
+  const note=((document.getElementById('cardio-note')||{}).value||'').trim();
+  if(!(min>0) && !(distV>0)){ toast('Enter minutes or distance'); return; }
+  DB.cardio.push({ id:cardioUid(), date, type, minutes:min, distanceKm:(distV>0?dispToKm(distV):0), note, source:'manual' });
+  save(); toast('Cardio logged 🛹'); render();
+}
+function removeCardio(id){ DB.cardio=(DB.cardio||[]).filter(c=>c.id!==id); save(); render(); }
+
+function pickCardioFile(){ const el=document.getElementById('cardio-file'); if(el) el.click(); }
+function handleCardioFile(inp){
+  const f=inp.files[0]; if(!f) return; const name=(f.name||'').toLowerCase(); const r=new FileReader();
+  r.onload=()=>{ try{
+    let res;
+    if(name.endsWith('.csv')) res=parseStravaCSV(r.result);
+    else if(name.endsWith('.tcx') || r.result.indexOf('TrainingCenterDatabase')>=0) res=[parseTCX(r.result)];
+    else res=[parseGPX(r.result)];
+    res=(res||[]).filter(Boolean);
+    if(!res.length) toast('No activities found in that file');
+    else if(res.length===1){ pendingCardio=res[0]; render(); }
+    else importCardioBatch(res);
+  }catch(e){ toast('Could not read that file'); } finally { inp.value=''; } };
+  r.readAsText(f);
+}
+function parseGPX(text){
+  const doc=new DOMParser().parseFromString(text,'application/xml');
+  const pts=[...doc.getElementsByTagName('trkpt')]; if(!pts.length) return null;
+  let km=0, prev=null, firstT=null, lastT=null;
+  pts.forEach(p=>{ const lat=parseFloat(p.getAttribute('lat')), lon=parseFloat(p.getAttribute('lon'));
+    const tEl=p.getElementsByTagName('time')[0], t=tEl?Date.parse(tEl.textContent):NaN;
+    if(!isNaN(t)){ if(firstT==null)firstT=t; lastT=t; }
+    if(prev && !isNaN(lat) && !isNaN(lon)) km+=haversineKm(prev,{lat,lon}); if(!isNaN(lat)&&!isNaN(lon)) prev={lat,lon}; });
+  const minutes = (firstT!=null&&lastT!=null) ? Math.max(0,(lastT-firstT)/60000) : 0;
+  const date = firstT!=null ? new Date(firstT).toLocaleDateString('en-CA') : todayISO();
+  const tp=doc.getElementsByTagName('type')[0];
+  return { id:cardioUid(), date, type:mapCardioType(tp?tp.textContent:''), minutes:Math.round(minutes), distanceKm:Math.round(km*1000)/1000, note:'', source:'strava' };
+}
+function parseTCX(text){
+  const doc=new DOMParser().parseFromString(text,'application/xml');
+  const act=doc.getElementsByTagName('Activity')[0], laps=[...doc.getElementsByTagName('Lap')];
+  if(!laps.length && !act) return null;
+  let sec=0, m=0;
+  laps.forEach(l=>{ const ts=l.getElementsByTagName('TotalTimeSeconds')[0], ds=l.getElementsByTagName('DistanceMeters')[0];
+    if(ts) sec+=parseFloat(ts.textContent)||0; if(ds) m+=parseFloat(ds.textContent)||0; });
+  const idEl=act?act.getElementsByTagName('Id')[0]:null;
+  const dRaw=idEl?idEl.textContent:''; const d=dRaw?new Date(dRaw):null;
+  const date = d && !isNaN(d) ? d.toLocaleDateString('en-CA') : todayISO();
+  return { id:cardioUid(), date, type:mapCardioType(act?act.getAttribute('Sport'):''), minutes:Math.round(sec/60), distanceKm:Math.round(m)/1000, note:'', source:'strava' };
+}
+/* Minimal CSV reader honoring quoted fields and embedded newlines. */
+function csvRows(text){
+  const rows=[]; let row=[], field='', q=false;
+  for(let i=0;i<text.length;i++){ const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){field+='"';i++;} else q=false; } else field+=c; }
+    else if(c==='"') q=true;
+    else if(c===',') { row.push(field); field=''; }
+    else if(c==='\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+    else if(c!=='\r') field+=c; }
+  if(field.length||row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+function parseStravaCSV(text){
+  const rows=csvRows(text); if(rows.length<2) return [];
+  const head=rows[0].map(h=>h.trim().toLowerCase());
+  const idx=names=>{ for(const n of names){ const i=head.indexOf(n); if(i>=0) return i; }
+    for(let i=0;i<head.length;i++){ if(names.some(n=>head[i].includes(n))) return i; } return -1; };
+  const iDate=idx(['activity date','date']), iType=idx(['activity type','type']),
+        iMov=idx(['moving time']), iEla=idx(['elapsed time']), iDist=idx(['distance']);
+  const out=[];
+  for(let r=1;r<rows.length;r++){ const row=rows[r]; if(!row||!row.length) continue;
+    const dRaw=iDate>=0?row[iDate]:''; const d=dRaw?new Date(dRaw):null;
+    const date = d && !isNaN(d) ? d.toLocaleDateString('en-CA') : null; if(!date) continue;
+    let sec=iMov>=0?parseFloat(row[iMov]):NaN; if(isNaN(sec)&&iEla>=0) sec=parseFloat(row[iEla]);
+    const minutes=isNaN(sec)?0:Math.round(sec/60);
+    let km=iDist>=0?parseFloat(row[iDist]):NaN; if(isNaN(km)) km=0; if(km>300) km=km/1000; // guard: a huge value is meters
+    if(!minutes && !(km>0)) continue;
+    out.push({ id:cardioUid(), date, type:mapCardioType(iType>=0?row[iType]:''), minutes, distanceKm:km, note:'', source:'strava' });
+  }
+  return out;
+}
+function importCardioBatch(list){
+  const key=c=>`${c.date}|${c.type}|${Math.round(c.minutes)}|${Math.round((c.distanceKm||0)*100)}`;
+  const seen=new Set((DB.cardio||[]).map(key)); let added=0, dup=0;
+  list.forEach(c=>{ const k=key(c); if(seen.has(k)){ dup++; return; } seen.add(k); DB.cardio.push(c); added++; });
+  save(); render(); toast(`Imported ${added}${dup?` · skipped ${dup} dup${dup!==1?'s':''}`:''}`);
+}
+function confirmCardioImport(){
+  if(!pendingCardio) return;
+  const t=(document.getElementById('imp-type')||{}).value; if(t) pendingCardio.type=t;
+  const d=(document.getElementById('imp-date')||{}).value; if(d) pendingCardio.date=d;
+  const c=pendingCardio; pendingCardio=null; importCardioBatch([c]);
+}
+function discardCardioImport(){ pendingCardio=null; render(); }
+
+function viewCardio(){
+  const cw=weeklyCardio(), pct=Math.min(100,Math.round(cw.min/CARDIO_GOAL*100)), u=distUnit();
+  const list=(DB.cardio||[]).slice().sort((a,b)=> b.date.localeCompare(a.date) || (b.minutes-a.minutes));
+  const pending = pendingCardio ? `<div class="card" style="border:1.5px solid var(--cardio-bd);background:var(--cardio-bg)">
+      <div style="font-weight:700;margin-bottom:8px">📥 Import — confirm &amp; save</div>
+      <div class="stair-grid">
+        <div><label>Date</label><input type="date" id="imp-date" value="${esc(pendingCardio.date)}"></div>
+        <div><label>Type</label><select id="imp-type">${CARDIO_TYPES.map(t=>`<option ${t===pendingCardio.type?'selected':''}>${t}</option>`).join('')}</select></div>
+      </div>
+      <p class="muted" style="margin:10px 0">${fmtMin(pendingCardio.minutes)}${pendingCardio.distanceKm>0?` · ${fmtDist(pendingCardio.distanceKm)}`:''}</p>
+      <div class="row" style="gap:8px"><button class="btn" style="flex:1" onclick="confirmCardioImport()">Save</button><button class="btn btn-ghost" style="flex:1" onclick="discardCardioImport()">Discard</button></div>
+    </div>` : '';
+  const rows = list.length ? list.map(c=>`<div class="hist-item" style="cursor:default">
+      <div><div style="font-weight:600">${esc(c.type)}${c.source==='strava'?' <span class="range-badge" style="font-size:10px">Strava</span>':''}</div>
+        <div class="muted" style="font-size:12px">${fmtDate(c.date)} · ${fmtMin(c.minutes)}${c.distanceKm>0?` · ${fmtDist(c.distanceKm)}`:''}${c.note?' · '+esc(c.note):''}</div></div>
+      <button class="x-set" onclick="removeCardio('${c.id}')" title="delete">×</button>
+    </div>`).join('') : '<p class="empty">No cardio logged yet. Add one below or import a Strava file.</p>';
+  return `<h1>Cardio</h1>
+    <div class="card">
+      <div class="row"><div>${kicker('This week')}<div style="font-weight:800;font-size:20px;margin-top:4px">${Math.round(cw.min)} <span style="font-size:13px;color:var(--muted-2)">/ ${CARDIO_GOAL} min</span></div></div>
+      <div style="text-align:right"><div style="font-weight:700">${cw.km>0?fmtDist(cw.km):'—'}</div><div class="muted" style="font-size:11px">this week</div></div></div>
+      <div style="height:8px;background:var(--surface-3);border-radius:4px;margin-top:12px;overflow:hidden"><div style="height:100%;width:${pct}%;background:var(--cardio-bar);border-radius:4px"></div></div>
+      <p class="muted" style="font-size:12px;margin-top:8px">Target: ~${CARDIO_GOAL} min/week of easy steady-state cardio. Your longboard sessions count.</p>
+    </div>
+    ${pending}
+    <h2>Log cardio</h2>
+    <div class="card">
+      <div class="stair-grid">
+        <div><label>Date</label><input type="date" id="cardio-date" value="${todayISO()}"></div>
+        <div><label>Type</label><select id="cardio-type">${CARDIO_TYPES.map(t=>`<option ${t==='Longboard'?'selected':''}>${t}</option>`).join('')}</select></div>
+        <div><label>Minutes</label><input type="number" inputmode="numeric" id="cardio-min" placeholder="min"></div>
+        <div><label>Distance (${u})</label><input type="number" inputmode="decimal" id="cardio-dist" placeholder="optional"></div>
+      </div>
+      <input id="cardio-note" placeholder="Note (optional)" style="margin-top:10px">
+      <button class="btn btn-block" style="margin-top:12px" onclick="addCardio()">Add cardio</button>
+    </div>
+    <h2>Import from Strava</h2>
+    <div class="card">
+      <p class="muted" style="margin-bottom:12px;line-height:1.5">Upload a <strong>.gpx</strong> or <strong>.tcx</strong> from a Strava activity (activity page → <strong>⋯</strong> → Export), or the <strong>activities.csv</strong> from Strava's bulk “Export your data.” Distance &amp; time are read automatically — confirm the activity type before saving.</p>
+      <button class="btn btn-ghost btn-block" onclick="pickCardioFile()">📥 Choose Strava file</button>
+      <input type="file" id="cardio-file" accept=".gpx,.tcx,.csv" class="hidden" onchange="handleCardioFile(this)">
+    </div>
+    <h2>History</h2>
+    <div class="card">${rows}</div>`;
+}
 
 /* ───────────────────────── Cloud sync (Firebase Auth + Firestore) ─────────────────────────
    Whole DB is stored as one JSON blob at users/{uid}. Strategy: pull on sign-in, push on
