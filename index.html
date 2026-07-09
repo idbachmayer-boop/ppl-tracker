@@ -357,7 +357,9 @@ const SHAVE_STEPS = [
     { step:"Third pass (optional): against the grain (ATG)", note:"Only once skin is conditioned to DE shaving. Skip until you're comfortable." } ]},
   { phase:"Post-shave", steps:[
     { step:"Cold water rinse", note:"Closes pores, reduces irritation." },
+    { step:"Stop any nicks — Clubman styptic pencil", note:"Wet the tip and press it to any bleeding nick for a few seconds. Stings briefly, then seals the cut. Rinse the pencil tip and let it air-dry before storing." },
     { step:"Proraso aftershave splash", note:"Pat on — don't rub. Stings briefly, that's normal." },
+    { step:"Witch hazel on the neck (shave days)", note:"Sweep Thayers Alcohol-Free Rose Petal Witch Hazel over the neck with a cotton pad — after the aftershave, before moisturizer. Anti-inflammatory: calms redness and helps prevent ingrown breakouts. Neck only, not the dry cheeks — and use the alcohol-free version so it doesn't dry the skin out." },
     { step:"Continue skincare routine", note:"Resume at toner → serum → moisturizer → SPF (AM)." } ]},
   { phase:"Gear care", steps:[
     { step:"Rinse razor under hot water", note:"Remove blade, rinse both sides of head. Pat dry." },
@@ -424,6 +426,9 @@ function snoozeBackup(){ DB.backupSnoozeAt=Date.now(); save(); render(); }
 /* ───────────────────────── Helpers ───────────────────────── */
 const todayISO = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
 const fmtDate = iso => { const [y,m,d]=iso.split('-'); return new Date(y,m-1,d).toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
+/* Whole days from today to an ISO date (midnight-to-midnight). Negative once past → null. */
+const WEDDING_DATE = '2026-08-21';
+function daysUntil(iso){ const [y,m,d]=iso.split('-').map(Number); const target=new Date(y,m-1,d); target.setHours(0,0,0,0); const now=new Date(); now.setHours(0,0,0,0); const diff=Math.round((target-now)/86400000); return diff<0 ? null : diff; }
 const round5 = n => Math.max(0, Math.round(n/5)*5);
 const accClass = g => g==='push'?'acc-push':g==='legs'?'acc-legs':'acc-pull';
 const barClass = g => g==='push'?'acc-bar-push':g==='legs'?'acc-bar-legs':'acc-bar-pull';
@@ -771,12 +776,19 @@ function viewToday(){
       <div class="row" style="gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="exportData()">⬇ Back up now</button><button class="btn btn-ghost" style="flex:1" onclick="snoozeBackup()">Later</button></div>
     </div>` : '';
 
+  const wDays = daysUntil(WEDDING_DATE);
+  const cWedding = wDays===null ? '' : `<div class="card" style="text-align:center;background:var(--pull-bg);border:1.5px solid var(--pull-bd)">
+      <div style="font-weight:800;font-size:19px;color:var(--pull-fg);letter-spacing:-.3px">💍 ${wDays===0?'It’s the big day! 🎉':wDays===1?'1 day to go!':`${wDays} days to go`}</div>
+      <div class="muted" style="font-size:12px;margin-top:2px">Wedding · August 21, 2026</div>
+    </div>`;
+
   let order;
   if(part==='morning') order=[cWeather, cWorkout, cTodo, cMobility, cDo, cCardio, cWeight, cJournal];
   else if(part==='afternoon') order=[cWorkout, cTodo, cDo, cMobility, cCardio, cWeather, cWeight, cJournal];
   else order=[cJournal, cTodo, cMobility, cWeek, cDo, cCardio, cWorkout, cWeight];
 
-  return `<div style="margin-bottom:16px"><h1>${greeting}</h1><p class="subtitle">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}${gl?` · ${gl.icon} ${gl.temp}°`:''}</p></div>
+  return `${cWedding}
+    <div style="margin-bottom:16px"><h1>${greeting}</h1><p class="subtitle">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}${gl?` · ${gl.icon} ${gl.temp}°`:''}</p></div>
     ${cBackup}
     ${order.filter(Boolean).join('\n    ')}`;
 }
@@ -1509,6 +1521,10 @@ function viewSkincare(){
     ${badges?`<div class="badge-row">${badges}</div>`:''}
     <div class="card"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span>☀️</span><span class="card-label label-am">Morning</span></div>${steps(data.am)}</div>
     <div class="card"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span>🌙</span><span class="card-label label-pm">Evening</span></div>${steps(data.pm)}</div>
+    <div class="card" style="background:var(--legs-bg);border:1px solid var(--legs-bd)">
+      <div class="card-label" style="color:var(--legs-fg);margin-bottom:6px">🪒 Neck care · shave days</div>
+      <p class="muted" style="font-size:13px;line-height:1.5">After shaving — post-aftershave, before moisturizer — sweep <strong>Thayers Alcohol-Free Rose Petal Witch Hazel</strong> over the neck with a cotton pad to calm redness and head off ingrown breakouts. Neck only; keep rosewater toner for the full face daily. Keep a <strong>Clubman styptic pencil</strong> handy for nicks. Full steps in the <strong>Shaving</strong> tab.</p>
+    </div>
     <div class="card"><div class="muted" style="font-weight:700;margin-bottom:8px">Key</div>
       <div style="display:flex;gap:16px;flex-wrap:wrap">
         <span class="legend-item"><span class="legend-dot" style="background:#5aaa8a"></span><span class="muted">Retinol Night</span></span>
