@@ -414,7 +414,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 8;
+const SCHEMA = 9;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -436,7 +436,8 @@ const MIGRATIONS = {
     return d; },
   6:d=>{ if(!d.todos) d.todos=[]; return d; }, // rolling to-do list
   7:d=>{ if(!d.cardio) d.cardio=[]; return d; }, // cardio / Strava log
-  8:d=>{ if(!d.ideas) d.ideas=[]; return d; } // in-app dev-idea capture
+  8:d=>{ if(!d.ideas) d.ideas=[]; return d; }, // in-app dev-idea capture
+  9:d=>{ (d.sessions||[]).forEach((s,i)=>{ if(!s.id) s.id='s'+i+'_'+(s.date||'')+'_'+(s.endedAt||'h'); }); return d; } // stable session ids (enables edit-in-place)
 };
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
 function normalize(raw){
@@ -1166,6 +1167,7 @@ function finishWorkout(){
   const endedAt = Date.now(), hist = d.historical;
   const prior = hist ? {} : Object.fromEntries(exercisePRs().map(p=>[p.name,p.v]));
   const sess = {
+    id: d.editRef || ('w'+Date.now().toString(36)+Math.random().toString(36).slice(2,5)),
     workout:d.workout, date:d.date,
     startedAt: hist ? null : (d.startedAt||null),
     endedAt: hist ? null : endedAt,
@@ -1173,6 +1175,7 @@ function finishWorkout(){
                       : (d.startedAt ? Math.max(1, Math.round((endedAt-d.startedAt)/60000)) : null),
     entries:d.entries, stairs:d.stairs, extras:x, note:(d.sessionNote||'').trim()
   };
+  if(d.editRef) DB.sessions = DB.sessions.filter(z=> z.id!==d.editRef); // editing → drop the original before re-inserting
   // PR detection: an exercise whose best e1RM this session beats its prior all-time best
   let prs=[];
   if(!hist){
@@ -1307,6 +1310,7 @@ function viewHistory(){
     let right, detail='';
     const editRow = `<div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap;border-top:1px solid var(--border-3);padding-top:10px">
         <label style="font-size:11px;font-weight:600;color:var(--muted)">Date <input type="date" value="${s.date}" max="${todayISO()}" onchange="changeSessionDate(${idx},this.value)" style="width:auto;display:inline-block;margin-left:4px;padding:6px 8px"></label>
+        ${s.skipped?'':`<button onclick="editSession(${idx})" style="background:none;border:none;color:var(--link);font-size:12px;font-weight:600;cursor:pointer;padding:0">✎ Edit workout</button>`}
         <button onclick="deleteSession(${idx})" style="background:none;border:none;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer;padding:0">Delete entry</button>
       </div>`;
     if(s.skipped){
@@ -1350,6 +1354,26 @@ function e_count(s){ return (s.entries||[]).reduce((a,e)=>a+e.sets.filter(x=>!x.
 function toggleHist(i){ openHist = openHist===i?-1:i; render(); }
 function changeSessionDate(idx, v){ if(!v) return; const s=DB.sessions[idx]; s.date=v; sortSessions(); openHist=DB.sessions.indexOf(s); save(); toast('Date updated'); render(); }
 function deleteSession(idx){ if(!confirm('Delete this entry permanently?')) return; DB.sessions.splice(idx,1); openHist=-1; save(); toast('Entry deleted'); render(); }
+/* Re-open a past workout into the editor to fix exercises/sets (e.g. logged the wrong day).
+   Re-saving replaces the original (matched by stable id); discarding leaves it untouched. */
+function editSession(idx){
+  const s=DB.sessions[idx]; if(!s || s.skipped) return;
+  if(!PROGRAM[s.workout]){ toast('Can’t edit — unknown workout type'); return; }
+  if(DB.draft && !confirm('You have an unfinished workout. Discard it to edit this one?')) return;
+  if(!s.id) s.id='w'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  collapsedEx.clear();
+  DB.draft = {
+    workout:s.workout, date:s.date, historical:true, startedAt:null, durationMin:(s.durationMin||''),
+    editRef: s.id,
+    entries: PROGRAM[s.workout].slots.map((sl,i)=>{ const e=(s.entries||[])[i];
+      return e ? { name:e.name, note:e.note||'', deload:!!e.deload, sets:(e.sets||[]).map(x=>({w:x.w,r:x.r,skipped:!!x.skipped,reason:x.reason||''})) }
+               : { name:sl.examples[0], note:'', sets:[] }; }),
+    stairs: s.stairs ? { level:s.stairs.level, seconds:s.stairs.seconds, skipped:!!s.stairs.skipped, reason:s.stairs.reason||'' } : { level:'', seconds:'', skipped:false, reason:'' },
+    extras: s.extras ? JSON.parse(JSON.stringify(s.extras)) : blankExtras(s.workout),
+    sessionNote: s.note || ''
+  };
+  save(); openHist=-1; toast('Editing — re-save to update this entry'); goSub('train','log');
+}
 
 /* ───────────────────────── WEIGHT ───────────────────────── */
 let chartRange = 30, progSub='body', selectedExercise=null;
