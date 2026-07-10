@@ -562,15 +562,25 @@ function updTargetBadge(i,k){
   const rEl=document.getElementById(`r-${i}-${k}`); if(rEl) rEl.placeholder=repHint(i,k);
   const el=document.getElementById(`tgt-${i}-${k}`); if(!el) return; const [t,c]=setStatus(i,k); el.textContent=t; el.className='tgt-badge '+c;
 }
-/* Stall = no new best e1RM in the last 3 real (non-deload) sessions of an exercise. */
-function stallSeries(name){
-  const out=[];
-  DB.sessions.forEach(s=>{ if(s.skipped) return; let best=0, deloaded=false;
-    sessionExercises(s).forEach(e=>{ if(e.name!==name) return; if(e.deload) deloaded=true; e.sets.forEach(x=>{ if(!x.skipped){ const v=e1rm(x.w,x.r); if(v>best) best=v; } }); });
-    if(best>0 && !deloaded) out.push(best); });
-  return out;
+/* Stall = no new best e1RM in the last 3 real (non-deload) sessions of THIS exercise in THIS
+   workout+slot. Scoping to the slot is critical: the same exercise is trained at different rep
+   ranges on different days (heavy low-rep vs light high-rep), and pooling them made a light day
+   look like a stall against a heavy day. Within one range, adding even one rep raises e1RM, so a
+   genuine +1-rep session clears the stall and never triggers a deload. */
+function slotE1rmSeries(name, workout, slotIndex){
+  const v=[];
+  DB.sessions.forEach(s=>{ if(s.skipped || s.workout!==workout || !s.entries) return;
+    const e=s.entries[slotIndex]; if(!e || e.deload || e.name!==name) return;
+    let best=0; e.sets.forEach(x=>{ if(!x.skipped){ const val=e1rm(x.w,x.r); if(val>best) best=val; } });
+    if(best>0) v.push(best); });
+  return v;
 }
-function isStalled(name){ const v=stallSeries(name); if(v.length<4) return false; const maxBefore=Math.max(...v.slice(0,-3)); return v.slice(-3).every(x=> x<=maxBefore); }
+function isStalledSlot(name, workout, slotIndex){
+  const v=slotE1rmSeries(name, workout, slotIndex);
+  if(v.length<4) return false;
+  const maxBefore=Math.max(...v.slice(0,-3));
+  return v.slice(-3).every(x=> x<=maxBefore);
+}
 /* Deload: drop this exercise's working weight ~10% for the session and flag it,
    so lastRealEntry skips it and the baseline-to-beat stays your pre-deload best. */
 function deloadExercise(i){
@@ -942,7 +952,7 @@ function viewActive(){
     }
     let coachHint='';
     if(entry.deload) coachHint = `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" onclick="undeloadExercise(${i})">undo</button></div>`;
-    else if(isStalled(entry.name)) coachHint = `<div class="coach stall">⚠ Stalled — no new best in 3 sessions. <button class="coach-btn" onclick="deloadExercise(${i})">Deload −10%</button> or swap the exercise above.</div>`;
+    else if(isStalledSlot(entry.name, name, i)) coachHint = `<div class="coach stall">⚠ Stalled — no new best for this exercise on ${name} in 3 sessions. <button class="coach-btn" onclick="deloadExercise(${i})">Deload −10%</button> or swap the exercise above.</div>`;
     const opts = s.examples.map(e=>`<option ${e===entry.name?'selected':''}>${esc(e)}</option>`).join('') +
                  (s.examples.includes(entry.name)?'':`<option selected>${esc(entry.name)}</option>`) +
                  `<option value="__custom">+ Custom…</option>`;
@@ -1354,9 +1364,9 @@ function viewStrength(sub){
   if(!selectedExercise || !all.includes(selectedExercise)) selectedExercise=all[0];
   const isReps = bwEx.includes(selectedExercise);
   const series = isReps ? bwSeries(selectedExercise) : exerciseSeries(selectedExercise);
-  const latest = series[series.length-1], first=series[0];
+  const first=series[0], best = series.length ? Math.max(...series.map(s=>s.value)) : 0;
   let delta='';
-  if(series.length>=2){ const d=latest.value-first.value; const cls=d>0?'trend-down':d<0?'trend-up':'trend-flat'; delta=`<span class="${cls}">${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(0)} ${isReps?'reps':DB.unit}</span> since ${fmtDate(first.date)}`; }
+  if(series.length>=2){ const d=best-first.value; const cls=d>0?'trend-down':'trend-flat'; delta=`<span class="${cls}">▲ ${Math.abs(d).toFixed(0)} ${isReps?'reps':DB.unit}</span> since ${fmtDate(first.date)}`; }
   const opts = loadEx.map(m=>`<option ${m===selectedExercise?'selected':''}>${esc(m)}</option>`).join('')
     + bwEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(m)} (reps)</option>`).join('');
   const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.name===selectedExercise?'▸ ':''}${esc(p.name)}</span><span><strong>${Math.round(p.v)} ${DB.unit}</strong> <span class="muted">${fmtSet(p.w,p.r)}</span></span></div>`).join('');
@@ -1366,12 +1376,13 @@ function viewStrength(sub){
       ${rangeSeg()}
     </div>
     <div class="card">
-      <div style="margin-bottom:8px"><div class="stat-big" style="font-size:26px">${latest?Math.round(latest.value):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${isReps?'reps':DB.unit+' e1RM'}</span></div>
-      <div class="stat-sub">${delta||((isReps?'Total reps · ':'Best estimated 1RM · ')+esc(selectedExercise))}</div></div>
+      <div style="margin-bottom:8px"><div class="stat-big" style="font-size:26px">${series.length?Math.round(best):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${isReps?'best reps':DB.unit+' best e1RM'}</span></div>
+      <div class="stat-sub">${delta||((isReps?'Best total reps · ':'Best estimated 1RM · ')+esc(selectedExercise))}</div></div>
       <svg id="schart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg>
+      <p class="muted" style="font-size:11px;margin-top:6px;text-align:center">Bold line = <strong>best to date</strong> (only rises) · dots = each session</p>
     </div>
     ${prs?`<div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Personal records (tap to chart)</div>${prs}</div>`:''}
-    <p class="muted" style="text-align:center;font-size:12px">e1RM = estimated 1-rep max (weight × reps). Bodyweight moves chart <strong>total reps</strong> per session instead.</p>`;
+    <p class="muted" style="text-align:center;font-size:12px">e1RM = estimated 1-rep max (weight × reps), so it normalizes heavy/low-rep and light/high-rep days into one number. The <strong>best-to-date</strong> line rises whenever you set a new estimated 1RM — even from a single extra rep. Bodyweight moves chart <strong>total reps</strong> instead.</p>`;
 }
 function viewVolume(sub){
   const counts = weeklySetsByMuscle();
@@ -1454,28 +1465,43 @@ function logWeight(){
   save(); toast('Weight logged'); render();
 }
 function rmWeight(i){ if(confirm('Delete this entry?')){ DB.weights.splice(i,1); save(); render(); } }
-function paintChart(svg, pts, emptyMsg, gradId){
+/* trend (optional): a parallel series (same length as pts) drawn as the bold primary line, with
+   pts shown as faint dots + a hairline. Used for the running-best strength trend. */
+function paintChart(svg, pts, emptyMsg, gradId, trend){
   const cs = getComputedStyle(document.documentElement);
   const C = cs.getPropertyValue('--chart').trim() || '#5a6fcc';
   const AX = cs.getPropertyValue('--chart-axis').trim() || '#bbb';
   if(pts.length<2){ svg.innerHTML = `<text x="160" y="78" text-anchor="middle" fill="${AX}" font-size="11">${emptyMsg||'Need 2+ entries to draw a trend'}</text>`; return; }
-  const vals = pts.map(p=>+p.value), min=Math.min(...vals), max=Math.max(...vals);
+  const vals = pts.map(p=>+p.value).concat(trend?trend.map(p=>+p.value):[]);
+  const min=Math.min(...vals), max=Math.max(...vals);
   const pad = (max-min)*0.15 || 1, lo=min-pad, hi=max+pad;
   const W=320,H=150,mL=4,mR=4,mT=12,mB=14;
   const x = i => mL + i*(W-mL-mR)/(pts.length-1);
   const y = v => mT + (1-(v-lo)/(hi-lo))*(H-mT-mB);
-  const line = pts.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(+p.value).toFixed(1)}`).join(' ');
-  const area = `M${x(0)},${H-mB} `+pts.map((p,i)=>`L${x(i).toFixed(1)},${y(+p.value).toFixed(1)}`).join(' ')+` L${x(pts.length-1)},${H-mB} Z`;
-  const dots = pts.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(+p.value).toFixed(1)}" r="2.5" fill="${C}"/>`).join('');
+  const pathOf = arr => arr.map((p,i)=>`${i?'L':'M'}${x(i).toFixed(1)},${y(+p.value).toFixed(1)}`).join(' ');
+  const areaOf = arr => `M${x(0)},${H-mB} `+arr.map((p,i)=>`L${x(i).toFixed(1)},${y(+p.value).toFixed(1)}`).join(' ')+` L${x(arr.length-1)},${H-mB} Z`;
   const gid = gradId||'g';
-  svg.innerHTML = `
-    <defs><linearGradient id="${gid}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${C}" stop-opacity="0.18"/><stop offset="1" stop-color="${C}" stop-opacity="0"/></linearGradient></defs>
-    <path d="${area}" fill="url(#${gid})"/>
-    <path d="${line}" fill="none" stroke="${C}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-    ${dots}
-    <text x="${mL}" y="9" fill="${AX}" font-size="9">${hi.toFixed(0)}</text>
-    <text x="${mL}" y="${H-3}" fill="${AX}" font-size="9">${lo.toFixed(0)}</text>`;
+  const defs = `<defs><linearGradient id="${gid}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${C}" stop-opacity="0.18"/><stop offset="1" stop-color="${C}" stop-opacity="0"/></linearGradient></defs>`;
+  const axis = `<text x="${mL}" y="9" fill="${AX}" font-size="9">${hi.toFixed(0)}</text><text x="${mL}" y="${H-3}" fill="${AX}" font-size="9">${lo.toFixed(0)}</text>`;
+  if(trend){
+    const dots = pts.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(+p.value).toFixed(1)}" r="1.8" fill="${C}" opacity="0.5"/>`).join('');
+    svg.innerHTML = `${defs}
+      <path d="${areaOf(trend)}" fill="url(#${gid})"/>
+      <path d="${pathOf(pts)}" fill="none" stroke="${C}" stroke-width="1" stroke-opacity="0.35" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}
+      <path d="${pathOf(trend)}" fill="none" stroke="${C}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+      ${axis}`;
+  } else {
+    const dots = pts.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(+p.value).toFixed(1)}" r="2.5" fill="${C}"/>`).join('');
+    svg.innerHTML = `${defs}
+      <path d="${areaOf(pts)}" fill="url(#${gid})"/>
+      <path d="${pathOf(pts)}" fill="none" stroke="${C}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}
+      ${axis}`;
+  }
 }
+/* Cumulative best-to-date: monotonic non-decreasing running max of a [{date,value}] series. */
+function runningMax(pts){ let m=-Infinity; return pts.map(p=>{ m=Math.max(m,+p.value); return {date:p.date, value:m}; }); }
 function drawChart(){
   const svg = document.getElementById('chart'); if(!svg) return;
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-chartRange);
@@ -1487,8 +1513,10 @@ function drawStrengthChart(){
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-chartRange);
   const isReps = bwExercisesWithData().includes(selectedExercise);
   const raw = isReps ? bwSeries(selectedExercise) : exerciseSeries(selectedExercise);
-  const pts = raw.filter(p=> chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff);
-  paintChart(svg, pts, 'Need 2+ sessions for this exercise in range', 'gStr');
+  const rmax = runningMax(raw); // cumulative best across ALL time, so the trend at the window start reflects prior bests
+  const inRange = p => chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff;
+  const pts = raw.filter(inRange), trend = rmax.filter(inRange);
+  paintChart(svg, pts, 'Need 2+ sessions for this exercise in range', 'gStr', pts.length>=2 ? trend : null);
 }
 
 /* ───────────────────────── SKINCARE & SHAVING ───────────────────────── */
