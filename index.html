@@ -1296,9 +1296,11 @@ function viewWeight(){
   const sub = `<div class="seg" style="margin-top:14px">
     <button class="${progSub==='body'?'active':''}" onclick="progSubTab('body')">Weight</button>
     <button class="${progSub==='strength'?'active':''}" onclick="progSubTab('strength')">Strength</button>
-    <button class="${progSub==='volume'?'active':''}" onclick="progSubTab('volume')">Volume</button></div>`;
+    <button class="${progSub==='volume'?'active':''}" onclick="progSubTab('volume')">Volume</button>
+    <button class="${progSub==='cardio'?'active':''}" onclick="progSubTab('cardio')">Cardio</button></div>`;
   if(progSub==='strength') return viewStrength(sub);
   if(progSub==='volume') return viewVolume(sub);
+  if(progSub==='cardio') return viewCardioTrend(sub);
   const w = DB.weights[DB.weights.length-1];
   const avg = currentAvg(), wd = avgWeekDelta();
   const statCard = DB.weights.length ? `<div class="card">
@@ -1361,6 +1363,35 @@ function viewVolume(sub){
   return `<h1>Progress</h1><p class="subtitle">Working sets this week, per muscle</p>${sub}
     <div class="card">${rows}</div>
     <p class="muted" style="text-align:center;font-size:12px"><strong>10–20 sets/week</strong> per muscle is the evidence-backed hypertrophy range. Under 10 = room to add; over 20 = likely junk volume. Only counts sets with reps logged this week.</p>`;
+}
+/* Weekly cardio minutes (cardio log + stair-stepper finishers) for the last n weeks, oldest → newest. */
+function cardioWeeks(n){
+  const base=monday(new Date()), out=[];
+  for(let i=n-1;i>=0;i--){ const ws=new Date(base); ws.setDate(ws.getDate()-i*7); const wsTs=+ws; let min=0,km=0;
+    (DB.cardio||[]).forEach(c=>{ if(+monday(new Date(c.date+'T00:00'))===wsTs){ min+=(+c.minutes||0); km+=(+c.distanceKm||0); } });
+    (DB.sessions||[]).forEach(s=>{ const st=s.stairs; if(!s.skipped && st && !st.skipped && st.seconds!=='' && st.seconds!=null && +monday(new Date(s.date+'T00:00'))===wsTs) min+=(+st.seconds||0)/60; });
+    out.push({ start:ws, min:Math.round(min), km }); }
+  return out;
+}
+function viewCardioTrend(sub){
+  const weeks=cardioWeeks(8);
+  if(!weeks.some(w=>w.min>0) && !(DB.cardio||[]).length)
+    return `<h1>Progress</h1><p class="subtitle">Cardio minutes per week</p>${sub}<div class="empty">Log cardio (or a stair-stepper finisher) and your weekly trend shows up here.</div>`;
+  const maxV=Math.max(CARDIO_GOAL, ...weeks.map(w=>w.min));
+  const bars=weeks.map(w=>{ const h=Math.max(2,Math.round(w.min/maxV*100)), hit=w.min>=CARDIO_GOAL;
+    return `<div class="wkbar"><div class="cnt">${w.min||''}</div><div class="bar" style="height:${h}%;background:${hit?'var(--legs-bar)':'var(--cardio-bar)'}"></div><div class="lbl">${w.start.getMonth()+1}/${w.start.getDate()}</div></div>`; }).join('');
+  const cw=weeklyCardio(), hitWeeks=weeks.filter(w=>w.min>=CARDIO_GOAL).length;
+  return `<h1>Progress</h1><p class="subtitle">Cardio minutes per week · goal ${CARDIO_GOAL}</p>${sub}
+    <div class="card">
+      <div class="stat-big" style="font-size:26px">${Math.round(cw.min)} <span style="font-size:14px;color:var(--muted-2);font-weight:600">min this week</span></div>
+      <div class="stat-sub">${cw.km>0?fmtDist(cw.km)+' · ':''}${hitWeeks}/8 weeks hit the goal</div>
+    </div>
+    <div class="card">
+      <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Last 8 weeks</div>
+      <div class="wkbars" style="height:120px">${bars}</div>
+      <div class="muted" style="font-size:11px;text-align:center;margin-top:8px"><span style="color:var(--legs-fg)">■</span> hit goal · <span style="color:var(--cardio-fg)">■</span> under</div>
+    </div>
+    <p class="muted" style="text-align:center;font-size:12px">Longboard, walks, and your stair-stepper finishers all count toward ~${CARDIO_GOAL} min/week.</p>`;
 }
 function weightList(){
   return DB.weights.slice().reverse().slice(0,12).map((w,ri)=>{
