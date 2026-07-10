@@ -6,49 +6,31 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="PPL" />
-  <meta name="theme-color" content="#fafaf9" />
+  <meta name="theme-color" content="#0A0A0F" />
   <link rel="manifest" href="#" id="manifest-placeholder" />
   <title>PPL Tracker</title>
   <style>
     /* ── Theme tokens (light defaults) ── */
+    /* ── Minimalist Dark: always-dark, layered slate (#0A0A0F → #12121A → #1A1A24) + warm amber accent ── */
     :root {
-      --bg:#fafaf9; --surface:#fff; --surface-2:#f7f7f5; --surface-3:#efefed;
-      --text:#1a1a1a; --text-2:#555; --muted:#888; --muted-2:#aaa; --muted-3:#ccc;
-      --border:#e8e8e6; --border-2:#e0e0de; --border-3:#f0f0ee;
-      --btn-bg:#1a1a1a; --btn-fg:#fff;
-      --tabbar-bg:rgba(255,255,255,.94); --shadow:rgba(0,0,0,.1);
-      --good:#2d7a5a; --bad:#c0392b; --danger:#c0392b; --danger-bd:#f0c8c2;
-      --link:#5a6aaa;
-      --push-fg:#c0691f; --push-bg:#fdf1e6; --push-bd:#f0c79a; --push-bar:#e08a2e;
-      --legs-fg:#2d7a5a; --legs-bg:#e8f4f0; --legs-bd:#9fd3bf; --legs-bar:#44a884;
-      --pull-fg:#41549c; --pull-bg:#eef0fb; --pull-bd:#b9c2ef; --pull-bar:#5a6fcc;
-      --badge-bg:#f0f0ee; --badge-fg:#555;
-      --flag-fg:#1d7a4d; --flag-bg:#e3f6ec; --flag-bd:#a8e0c2;
-      --warm-fg:#c0691f; --warm-bg:#fdf8f1; --warm-bd:#f0e2cc;
-      --cardio-fg:#7a5aa8; --cardio-bg:#f2eefb; --cardio-bd:#cdbceb; --cardio-bar:#9a7ed0;
-      --chart:#5a6fcc; --chart-axis:#bbb;
-      --toast-bg:#1a1a1a; --toast-fg:#fff;
-    }
-    /* ── Dark theme: follows the phone's system setting ── */
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg:#141417; --surface:#1e1e23; --surface-2:#26262c; --surface-3:#2a2a31;
-        --text:#ececec; --text-2:#b8b8bd; --muted:#8c8c95; --muted-2:#6a6a74; --muted-3:#55555e;
-        --border:#2d2d35; --border-2:#3a3a44; --border-3:#2a2a31;
-        --btn-bg:#ececec; --btn-fg:#141417;
-        --tabbar-bg:rgba(20,20,23,.9); --shadow:rgba(0,0,0,.4);
-        --good:#5fd0a0; --bad:#ff6b5e; --danger:#ff6b5e; --danger-bd:rgba(255,107,94,.4);
-        --link:#97a6f0;
-        --push-fg:#f0a861; --push-bg:rgba(224,138,46,.16); --push-bd:rgba(224,138,46,.4); --push-bar:#e08a2e;
-        --legs-fg:#6bd3a8; --legs-bg:rgba(68,168,132,.16); --legs-bd:rgba(68,168,132,.42); --legs-bar:#44a884;
-        --pull-fg:#97a6f0; --pull-bg:rgba(90,111,204,.2); --pull-bd:rgba(90,111,204,.45); --pull-bar:#5a6fcc;
-        --badge-bg:#2a2a31; --badge-fg:#b8b8bd;
-        --flag-fg:#6bd3a8; --flag-bg:rgba(45,122,90,.2); --flag-bd:rgba(45,122,90,.45);
-        --warm-fg:#f0a861; --warm-bg:rgba(224,138,46,.1); --warm-bd:rgba(224,138,46,.28);
-        --cardio-fg:#c0a8f0; --cardio-bg:rgba(154,126,208,.18); --cardio-bd:rgba(154,126,208,.45); --cardio-bar:#9a7ed0;
-        --chart:#8aa0ff; --chart-axis:#666;
-        --toast-bg:#ececec; --toast-fg:#141417;
-      }
+      --bg:#0A0A0F; --surface:rgba(26,26,36,0.6); --surface-solid:#1A1A24; --surface-2:#12121A; --surface-3:#20202b;
+      --text:#FAFAFA; --text-2:#c9c9d1; --muted:#8b8b95; --muted-2:#71717A; --muted-3:#4a4a55;
+      --border:rgba(255,255,255,0.08); --border-2:rgba(255,255,255,0.14); --border-3:rgba(255,255,255,0.06);
+      --btn-bg:#F59E0B; --btn-fg:#0A0A0F;
+      --accent:#F59E0B; --accent-muted:rgba(245,158,11,0.15);
+      --tabbar-bg:rgba(10,10,15,0.85); --shadow:rgba(0,0,0,.45);
+      --good:#5fd0a0; --bad:#ff6b5e; --danger:#ff6b5e; --danger-bd:rgba(255,107,94,.4);
+      --link:#F59E0B;
+      --push-fg:#f4b063; --push-bg:rgba(245,158,11,.14); --push-bd:rgba(245,158,11,.38); --push-bar:#F59E0B;
+      --legs-fg:#6bd3a8; --legs-bg:rgba(68,168,132,.15); --legs-bd:rgba(68,168,132,.42); --legs-bar:#44a884;
+      --pull-fg:#97a6f0; --pull-bg:rgba(90,111,204,.18); --pull-bd:rgba(90,111,204,.45); --pull-bar:#5a6fcc;
+      --badge-bg:#20202b; --badge-fg:#c9c9d1;
+      --flag-fg:#6bd3a8; --flag-bg:rgba(45,122,90,.2); --flag-bd:rgba(45,122,90,.45);
+      --warm-fg:#f4b063; --warm-bg:rgba(245,158,11,.1); --warm-bd:rgba(245,158,11,.28);
+      --cardio-fg:#c0a8f0; --cardio-bg:rgba(154,126,208,.18); --cardio-bd:rgba(154,126,208,.45); --cardio-bar:#9a7ed0;
+      --chart:#F59E0B; --chart-axis:#4a4a55;
+      --toast-bg:#1A1A24; --toast-fg:#FAFAFA;
+      --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -216,6 +198,37 @@
     .idea-item:last-child { border-bottom: none; }
     .idea-item .txt { flex: 1; font-size: 14px; line-height: 1.45; }
     .idea-item.done .txt { text-decoration: line-through; color: var(--muted); }
+
+    /* ─────────── Minimalist Dark: atmosphere, glass, ember glows, mono labels ─────────── */
+    body { background: radial-gradient(120% 55% at 50% -8%, rgba(245,158,11,0.05), transparent 55%), var(--bg); background-repeat: no-repeat; }
+    /* Ambient orb — warm light bleeding through the dark, bottom-right (soft radial, no filter for perf) */
+    body::after { content:''; position:fixed; bottom:0; right:0; width:80vw; height:55vh; max-width:460px; max-height:460px; background:radial-gradient(circle at bottom right, rgba(245,158,11,0.07), transparent 68%); z-index:-1; pointer-events:none; }
+
+    /* Glass cards */
+    .card, .ex-card, .phase-card, .stat-tile { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+    .card { box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+
+    /* Buttons: amber primary with ember glow, subtle press, amber focus ring */
+    .btn { transition: all .2s ease-out; }
+    .btn:active { transform: scale(.98); opacity: 1; }
+    .btn:not(.btn-ghost):not(.btn-danger):hover { filter: brightness(1.08); box-shadow: 0 0 20px rgba(245,158,11,.4); }
+    .btn-ghost { background: transparent; }
+    .btn-ghost:hover { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.25); }
+    .btn:focus-visible, .day-btn:focus-visible, .sw-btn:focus-visible, .tab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+
+    /* Inputs: amber focus glow */
+    select:focus, input:focus, textarea:focus { border-color: rgba(245,158,11,.5); box-shadow: 0 0 0 3px rgba(245,158,11,.15); }
+    input[type=checkbox] { accent-color: var(--accent); }
+
+    /* Tab bar + FAB: glass + accent + ember glow */
+    .tabbar { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    .tab.active { color: var(--accent); }
+    .fab { box-shadow: 0 3px 14px var(--shadow), 0 0 22px rgba(245,158,11,.28); }
+    .fab:hover { box-shadow: 0 3px 14px var(--shadow), 0 0 30px rgba(245,158,11,.45); }
+
+    /* Technical mono labels — geometric personality without web fonts */
+    .card-label, .stat-tile .k, .set-grid .colhead, .pill, .badge, .range-badge, .flag, .sw-label, .stair-grid label { font-family: var(--font-mono); }
+    h1, h2 { letter-spacing: -0.02em; }
   </style>
   <!-- Firebase (Auth + Firestore) for cross-device sync. Deferred so they never block boot;
        the app is fully functional offline / signed-out without them. -->
@@ -254,8 +267,8 @@
 <script>
 /* ───────────────────────── PWA (inline manifest + SW) ───────────────────────── */
 (function(){
-  const icon = sz => `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${sz} ${sz}'%3E%3Crect width='${sz}' height='${sz}' rx='${sz*0.2}' fill='%231a1a1a'/%3E%3Ctext x='50%25' y='68%25' font-size='${sz*0.55}' text-anchor='middle'%3E💪%3C/text%3E%3C/svg%3E`;
-  const manifest = { name:"PPL Tracker", short_name:"PPL", start_url:"./", display:"standalone", background_color:"#fafaf9", theme_color:"#fafaf9",
+  const icon = sz => `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${sz} ${sz}'%3E%3Crect width='${sz}' height='${sz}' rx='${sz*0.2}' fill='%230A0A0F'/%3E%3Ctext x='50%25' y='68%25' font-size='${sz*0.55}' text-anchor='middle'%3E💪%3C/text%3E%3C/svg%3E`;
+  const manifest = { name:"PPL Tracker", short_name:"PPL", start_url:"./", display:"standalone", background_color:"#0A0A0F", theme_color:"#0A0A0F",
     icons:[{src:icon(192),sizes:"192x192",type:"image/svg+xml"},{src:icon(512),sizes:"512x512",type:"image/svg+xml"}] };
   document.getElementById('manifest-placeholder').href = URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/json'}));
   const sw = `
@@ -777,9 +790,9 @@ function viewToday(){
     </div>` : '';
 
   const wDays = daysUntil(WEDDING_DATE);
-  const cWedding = wDays===null ? '' : `<div class="card" style="text-align:center;background:var(--pull-bg);border:1.5px solid var(--pull-bd)">
-      <div style="font-weight:800;font-size:19px;color:var(--pull-fg);letter-spacing:-.3px">💍 ${wDays===0?'It’s the big day! 🎉':wDays===1?'1 day to go!':`${wDays} days to go`}</div>
-      <div class="muted" style="font-size:12px;margin-top:2px">Wedding · August 21, 2026</div>
+  const cWedding = wDays===null ? '' : `<div class="card" style="text-align:center;background:var(--accent-muted);border:1px solid rgba(245,158,11,.3);box-shadow:0 0 0 1px rgba(245,158,11,.15),0 0 30px rgba(245,158,11,.12)">
+      <div style="font-weight:800;font-size:19px;color:var(--accent);letter-spacing:-.3px">💍 ${wDays===0?'It’s the big day! 🎉':wDays===1?'1 day to go!':`${wDays} days to go`}</div>
+      <div class="muted" style="font-size:12px;margin-top:2px;font-family:var(--font-mono)">WEDDING · AUGUST 21, 2026</div>
     </div>`;
 
   let order;
@@ -1712,7 +1725,7 @@ function wipe(){ if(confirm('Erase ALL workouts and weights? This cannot be undo
 (function(){
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   const meta = document.querySelector('meta[name="theme-color"]');
-  const sync = () => { meta.setAttribute('content', mq.matches ? '#141417' : '#fafaf9'); drawActiveChart(); };
+  const sync = () => { meta.setAttribute('content', '#0A0A0F'); drawActiveChart(); }; // always-dark (Minimalist Dark)
   mq.addEventListener ? mq.addEventListener('change', sync) : mq.addListener(sync);
   sync();
 })();
