@@ -596,7 +596,7 @@ function undeloadExercise(i){ DB.draft.entries[i].deload=false; save(); render()
 /* All logged exercises in a session = main entries + abs/forearms accessories. */
 function sessionExercises(s){
   const list = (s.entries||[]).slice();
-  if(s.extras) ['abs','forearms'].forEach(w=>{ const e=s.extras[w]; if(e && e.name && e.sets && e.sets.length) list.push(e); });
+  if(s.extras) Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.name && e.sets && e.sets.length) list.push(e); });
   return list;
 }
 function exercisesWithData(){
@@ -637,7 +637,7 @@ function weeklySetsByMuscle(){
   const add=(mus,n)=>{ if(mus&&n) counts[mus]=(counts[mus]||0)+n; };
   DB.sessions.forEach(s=>{ if(s.skipped || +monday(new Date(s.date+'T00:00'))!==m) return;
     (s.entries||[]).forEach((e,idx)=>{ const sl=PROGRAM[s.workout]&&PROGRAM[s.workout].slots[idx]; add(sl&&sl.muscle, e.sets.filter(x=>!x.skipped && x.r!=='').length); });
-    if(s.extras) ['abs','forearms'].forEach(w=>{ const e=s.extras[w]; if(e&&e.sets) add(w==='abs'?'Abs':'Forearms', e.sets.filter(x=>!x.skipped && x.r!=='').length); });
+    if(s.extras) Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e&&e.sets){ const mus=(ACCESSORIES[w]&&ACCESSORIES[w].muscle)||(w.charAt(0).toUpperCase()+w.slice(1)); add(mus, e.sets.filter(x=>!x.skipped && x.r!=='').length); } });
   });
   return counts;
 }
@@ -908,7 +908,7 @@ function startWorkout(name){
         }) };
       }),
       stairs: { level:'', seconds:'', skipped:false, reason:'' },
-      extras: blankExtras(), sessionNote:''
+      extras: blankExtras(name), sessionNote:''
     };
     const ls = lastRealStairs();
     if(ls){ DB.draft.stairs.seconds = String((+ls.st.seconds)+15); DB.draft.stairs.level = String(ls.st.level||''); }
@@ -927,7 +927,7 @@ function startBackdate(name){
   if(DB.draft && !confirm(`You have an unfinished ${DB.draft.workout}. Discard it?`)) return;
   DB.draft = { workout:name, date:todayISO(), historical:true, startedAt:null, durationMin:'',
     entries: PROGRAM[name].slots.map((s,i)=>{ const ref=lastRealEntry(name,i); return { name: ref?ref.entry.name:s.examples[0], note:'', sets: Array.from({length:s.sets},()=>({w:'',r:'',skipped:false,reason:''})) }; }),
-    stairs:{ level:'', seconds:'', skipped:false, reason:'' }, extras: blankExtras(), sessionNote:'' };
+    stairs:{ level:'', seconds:'', skipped:false, reason:'' }, extras: blankExtras(name), sessionNote:'' };
   const ls=lastRealStairs(); if(ls){ DB.draft.stairs.seconds=String((+ls.st.seconds)+15); DB.draft.stairs.level=String(ls.st.level||''); }
   showBackdate=false; save();
   goSub('train','log');
@@ -1035,7 +1035,8 @@ function viewActive(){
         </div>
         <span class="timer-badge" id="session-timer">${fmtDur(Date.now()-(DB.draft.startedAt||Date.now()))}</span>
       </div>`;
-  const acc = accessoryBlocks(g);
+  ensureExtras();
+  const acc = accessoryBlocks(g, name);
   return `
     ${header}
     <div style="margin-top:16px">${acc.warm}${cards}${acc.lifts}${stairsCard}${acc.cooldown}</div>
@@ -1127,12 +1128,12 @@ function finishWorkout(){
   // A set counts as WORKED iff reps are entered (pre-filled weight alone is not data).
   const hasEx = d.entries.some(e=> e.sets.some(s=> s.skipped || s.r!==''));
   const hasStairs = d.stairs && (d.stairs.skipped || d.stairs.seconds!=='');
-  const x = d.extras || blankExtras();
-  const hasExtra = ['abs','forearms'].some(w=> x[w].sets.some(s=> s.r!==''));
+  const x = d.extras || {};
+  const hasExtra = Object.keys(x).some(w=> x[w].sets.some(s=> s.r!==''));
   if(!hasEx && !hasStairs && !hasExtra){ alert('Log at least one set (with reps) before saving.'); return; }
   // keep skipped sets (they carry a reason); drop sets with no reps (incl. pre-filled-weight-only)
   d.entries.forEach(e=>{ e.sets = e.sets.filter(s=> s.skipped || s.r!==''); e.sets.forEach(s=>delete s._cel); });
-  ['abs','forearms'].forEach(w=>{ x[w].sets = x[w].sets.filter(s=> s.r!==''); });
+  Object.keys(x).forEach(w=>{ x[w].sets = x[w].sets.filter(s=> s.r!==''); });
   const endedAt = Date.now(), hist = d.historical;
   const prior = hist ? {} : Object.fromEntries(exercisePRs().map(p=>[p.name,p.v]));
   const sess = {
@@ -1292,7 +1293,7 @@ function viewHistory(){
         else if(s.stairs && s.stairs.skipped)
           lines.push(`<strong>🪜 Stair Stepper</strong> — <em>skipped${s.stairs.reason?': '+esc(s.stairs.reason):''}</em>`);
         if(s.extras){
-          ['abs','forearms'].forEach(w=>{ const e=s.extras[w]; if(e && e.sets && e.sets.length){ lines.push(`<strong>${w==='abs'?'💥 Abs':'🤜 Forearms'}${e.name?' — '+esc(e.name):''}</strong> — ${e.sets.map(z=>fmtSet(z.w,z.r)).join(', ')}`); } });
+          Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.sets && e.sets.length){ const d2=ACCESSORIES[w]; const lbl=d2?`${d2.icon} ${d2.label}`:(w.charAt(0).toUpperCase()+w.slice(1)); lines.push(`<strong>${lbl}${e.name?' — '+esc(e.name):''}</strong> — ${e.sets.map(z=>fmtSet(z.w,z.r)).join(', ')}`); } });
         }
         if(dayComplete(s.date)) lines.push(`<strong>🧎 Mobility</strong> — ${hasMobSession(s.date)?'yoga / full session':mobDoneOn(s.date)+' done that day'}`);
         const noteStr = s.note ? `<div style="margin-top:8px;font-size:13px;color:var(--text-2);line-height:1.5;white-space:pre-wrap">📝 ${esc(s.note)}</div>` : '';
@@ -1559,8 +1560,27 @@ const ACTIVATION_ITEMS = MOBILITY.filter(x=>x.g==='activation');
    this split shipped keep the old rule (any checked item counts) so historical streaks don't regress. */
 const MOB_STRICT_FROM = '2026-07-07';
 const isReservedMobKey = k => k.indexOf('__')===0; // e.g. __session — never an exercise name
+/* Scheduled accessories — appear on assigned workout days with a recommended rep range (was
+   "optional on every day"). Dead hang is time-based (reps field = seconds held). */
+const ACCESSORIES = {
+  abs:      { label:'Abs',       icon:'💥', muscle:'Abs',      lo:8,  hi:15, sets:3, examples:['Machine crunch','Cable crunch','Weighted sit-up','Hanging leg raise','Dead bug','Plank'], days:['PUSH 1','PUSH 2','LEGS 1','LEGS 2'] },
+  forearms: { label:'Forearms',  icon:'🤜', muscle:'Forearms', lo:12, hi:20, sets:3, examples:['Wrist curls','Reverse wrist curls','Behind-the-back wrist curls','Farmer carry'], days:['PULL 1','PULL 2'] },
+  deadhang: { label:'Dead hang', icon:'🧗', muscle:'Grip',     lo:20, hi:40, sets:2, unit:'sec', examples:['Dead hang','Active hang','Towel dead hang'], days:['PULL 1','PULL 2'] },
+};
+function accessoryIdsFor(workout){ return Object.keys(ACCESSORIES).filter(id=>ACCESSORIES[id].days.includes(workout)); }
+function emptyExtraSets(n){ return Array.from({length:n},()=>({w:'',r:'',skipped:false})); }
 function lastExtraName(which){ for(let i=DB.sessions.length-1;i>=0;i--){ const e=DB.sessions[i].extras; if(e && e[which] && e[which].name) return e[which].name; } return ''; }
-function blankExtras(){ const ss=()=>[0,0,0].map(()=>({w:'',r:'',skipped:false})); return { abs:{name:lastExtraName('abs'), sets:ss()}, forearms:{name:lastExtraName('forearms'), sets:ss()} }; }
+function blankExtras(workout){
+  const out={};
+  accessoryIdsFor(workout).forEach(id=>{ out[id]={ name:lastExtraName(id)||ACCESSORIES[id].examples[0], sets:emptyExtraSets(ACCESSORIES[id].sets) }; });
+  return out;
+}
+/* Self-heal a draft's extras so it has an entry for every accessory assigned to its workout
+   (covers drafts started before scheduling, or a workout whose accessories changed). */
+function ensureExtras(){
+  if(!DB.draft) return; if(!DB.draft.extras) DB.draft.extras={};
+  accessoryIdsFor(DB.draft.workout).forEach(id=>{ if(!DB.draft.extras[id]) DB.draft.extras[id]={ name:lastExtraName(id)||ACCESSORIES[id].examples[0], sets:emptyExtraSets(ACCESSORIES[id].sets) }; });
+}
 function exPick(which, sel){ if(sel.value==='__custom'){ const v=prompt('Exercise name:', DB.draft.extras[which].name); if(v) DB.draft.extras[which].name=v.trim(); save(); render(); return; } DB.draft.extras[which].name=sel.value; save(); }
 function exSet(which,k,f,v){ DB.draft.extras[which].sets[k][f]=v; save(); }
 function exRoll(which,k,v){ const sets=DB.draft.extras[which].sets; sets[k].w=v; if(v!==''){ for(let j=k+1;j<sets.length;j++){ if(sets[j].w===''){ sets[j].w=v; const el=document.getElementById(`ex-${which}-w-${j}`); if(el) el.value=v; } } } save(); }
@@ -1592,35 +1612,36 @@ function mobilityRows(){ const m=mobToday();
     + MOBILITY.map((x,i)=> x.g===group ? row(x,i) : '').join('');
   return section('Stretches · daily','stretch') + section('Activation · optional, aim 3–4×/week','activation');
 }
-function extraCard(which, label, examples){
-  const e=DB.draft.extras[which], open=accOpen.has(which);
-  const logged=e.sets.some(s=> s.w!=='' || s.r!=='');
-  const opts=examples.map(x=>`<option ${x===e.name?'selected':''}>${esc(x)}</option>`).join('')
-    + ((!e.name||examples.includes(e.name))?'':`<option selected>${esc(e.name)}</option>`)
+function extraCard(id){
+  const def=ACCESSORIES[id], e=DB.draft.extras[id]; if(!def || !e) return '';
+  const open=accOpen.has(id), isSec=def.unit==='sec';
+  const logged=e.sets.some(s=> s.r!=='');
+  const rangeTxt = def.lo===def.hi ? `${def.lo}` : `${def.lo}–${def.hi}`;
+  const opts=def.examples.map(x=>`<option ${x===e.name?'selected':''}>${esc(x)}</option>`).join('')
+    + ((!e.name||def.examples.includes(e.name))?'':`<option selected>${esc(e.name)}</option>`)
     + `<option value="__custom">+ Custom…</option>`;
   const rows=e.sets.map((st,k)=>`<div class="set-grid" style="grid-template-columns:22px 1fr 1fr 26px">
       <span class="set-no">${k+1}</span>
-      <input type="number" inputmode="decimal" id="ex-${which}-w-${k}" placeholder="0=BW" value="${st.w}" oninput="exSet('${which}',${k},'w',this.value)" onchange="exRoll('${which}',${k},this.value)">
-      <input type="number" inputmode="numeric" placeholder="reps" value="${st.r}" oninput="exSet('${which}',${k},'r',this.value)">
-      <button class="x-set" onclick="exRmSet('${which}',${k})">×</button>
+      <input type="number" inputmode="decimal" id="ex-${id}-w-${k}" placeholder="0=BW" value="${st.w}" oninput="exSet('${id}',${k},'w',this.value)" onchange="exRoll('${id}',${k},this.value)">
+      <input type="number" inputmode="numeric" placeholder="${isSec?'sec':rangeTxt}" value="${st.r}" oninput="exSet('${id}',${k},'r',this.value)">
+      <button class="x-set" onclick="exRmSet('${id}',${k})">×</button>
     </div>`).join('');
   return `<div class="phase-card">
-    <button class="phase-header" onclick="toggleAcc('${which}')"><span class="phase-title" style="font-size:14px">${label}${logged?' <span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">⌄</span></button>
+    <button class="phase-header" onclick="toggleAcc('${id}')"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${def.icon} ${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">⌄</span></button>
     ${open?`<div class="phase-body">
-      <select onchange="exPick('${which}',this)" style="margin-bottom:8px">${opts}</select>
-      <div class="set-grid" style="grid-template-columns:22px 1fr 1fr 26px;margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span></div>
+      <select onchange="exPick('${id}',this)" style="margin-bottom:8px">${opts}</select>
+      <div class="set-grid" style="grid-template-columns:22px 1fr 1fr 26px;margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">${isSec?'Sec':'Reps'}</span><span></span></div>
       ${rows}
-      <button class="addset" onclick="exAddSet('${which}')">+ Add set</button>
+      <button class="addset" onclick="exAddSet('${id}')">+ Add set</button>
     </div>`:''}
   </div>`;
 }
-function accessoryBlocks(group){
+function accessoryBlocks(group, workout){
   const warm = accItem('warmup','🔥 Warm-up', `<p><strong>General:</strong> loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles) until they feel warm. Optional 5–10 min easy treadmill or elliptical.</p><p><strong>First exercise:</strong> ramp up — empty bar → ~50% → ~75% → working sets (use the 🔥 ramp on exercise 1 below).</p>`);
-  const abs = extraCard('abs','💥 Abs', ['Machine crunch','Cable crunch','Weighted sit-up','Hanging leg raise','Dead bug','Plank']);
-  const fore = extraCard('forearms','🤜 Forearms', ['Wrist curls','Reverse wrist curls','Behind-the-back wrist curls','Farmer carry']);
+  const lifts = accessoryIdsFor(workout).map(id=>extraCard(id)).join('');
   const list = (STRETCHES[group]||STRETCHES.push).map(n=>`<li style="margin-bottom:5px"><a href="${gsearch(n)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">${n}</a></li>`).join('');
   const cooldown = accItem('stretch','🧘 Cool-down stretches', `<p>Hold each ~20–30s. Tap one to see how:</p><ul style="margin:0 0 4px 18px">${list}</ul>`);
-  return { warm, lifts: abs+fore, cooldown };
+  return { warm, lifts, cooldown };
 }
 function skinSubTab(t){ skinSub=t; render(); }
 function skinSelectDay(d){ skinDay=d; render(); }
