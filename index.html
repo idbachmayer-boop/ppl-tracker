@@ -521,6 +521,23 @@ function fmtSet(w,r){ if(w===''||w==null) return `${r}`; return `${(+w===0?'BW':
 function fmtMS(total){ total=+total||0; const m=Math.floor(total/60), s=total%60; return `${m}:${String(s).padStart(2,'0')}`; }
 /* Estimated 1-rep max (Epley). BW(0) or blank → 0 (excluded from strength charts). */
 function e1rm(w,r){ w=+w; r=+r; if(!w||!r) return 0; return w*(1+r/30); }
+/* Plate calculator (lb): 45 lb bar, plates 45/25/10/5/2.5 per side. */
+const BARBELL_LB = 45, PLATES_LB = [45,25,10,5,2.5];
+const isBarbell = name => /barbell/i.test(name||'');
+function plateBreakdown(total){ let perSide=(+total-BARBELL_LB)/2; const out=[]; if(perSide<0) return null;
+  PLATES_LB.forEach(p=>{ while(perSide >= p-1e-9){ out.push(p); perSide=+(perSide-p).toFixed(2); } }); return { plates:out, leftover:perSide }; }
+function platesText(total){
+  if(total===''||total==null||DB.unit!=='lb') return '';
+  const t=+total; if(t===BARBELL_LB) return `🏋️ Just the ${BARBELL_LB} lb bar`;
+  const b=plateBreakdown(t); if(!b) return `🏋️ Under bar weight (${BARBELL_LB} lb)`;
+  const grp={}; b.plates.forEach(p=>grp[p]=(grp[p]||0)+1);
+  const str=Object.keys(grp).sort((a,c)=>c-a).map(p=>`${grp[p]}×${p}`).join(' + ');
+  return `🏋️ Per side: ${str}${b.leftover>0.01?` <span style="color:var(--warm-fg)">(+${b.leftover} can't load)</span>`:''}`;
+}
+/* Live plate readout for a barbell exercise → the heaviest weight entered across its sets. */
+function updPlates(i){ const el=document.getElementById(`plates-${i}`); if(!el) return;
+  const ws=DB.draft.entries[i].sets.filter(s=>!s.skipped && s.w!=='' && +s.w>0).map(s=>+s.w);
+  el.innerHTML = ws.length ? platesText(Math.max(...ws)) : ''; }
 const INCREMENT = { lb:5, kg:2.5 };
 /* Should we bump the load, and to what? Uses the last real entry's worked sets. */
 function addWeightInfo(slot, ref, name){
@@ -895,6 +912,7 @@ function startWorkout(name){
     if(!confirm(`You have an unfinished ${DB.draft.workout}. Discard it and start ${name}?`)) return;
   }
   if(!DB.draft || DB.draft.workout!==name){
+    collapsedEx.clear();
     DB.draft = { workout:name, date:todayISO(), startedAt:Date.now(),
       entries: PROGRAM[name].slots.map((s,i)=>{
         const ref = lastRealEntry(name,i);
@@ -925,6 +943,7 @@ function skipDay(name){
 }
 function startBackdate(name){
   if(DB.draft && !confirm(`You have an unfinished ${DB.draft.workout}. Discard it?`)) return;
+  collapsedEx.clear();
   DB.draft = { workout:name, date:todayISO(), historical:true, startedAt:null, durationMin:'',
     entries: PROGRAM[name].slots.map((s,i)=>{ const ref=lastRealEntry(name,i); return { name: ref?ref.entry.name:s.examples[0], note:'', sets: Array.from({length:s.sets},()=>({w:'',r:'',skipped:false,reason:''})) }; }),
     stairs:{ level:'', seconds:'', skipped:false, reason:'' }, extras: blankExtras(name), sessionNote:'' };
@@ -939,6 +958,14 @@ function viewActive(){
   const slots = PROGRAM[name].slots;
   const cards = slots.map((s,i)=>{
     const entry = DB.draft.entries[i];
+    if(collapsedEx.has(i)){ // collapsed to a one-line summary to cut scrolling
+      const done = entry.sets.filter(x=>!x.skipped && x.r!=='');
+      const summary = done.length ? done.map(x=>fmtSet(x.w,x.r)).join(', ') : 'no sets yet';
+      return `<div class="ex-card"><div class="ex-accent ${barClass(g)}"></div>
+        <div class="ex-body" style="padding:11px 14px;cursor:pointer" onclick="toggleExCollapse(${i})">
+          <div class="row"><div style="min-width:0"><span style="font-weight:700;font-size:14px">${esc(entry.name)}</span> <span class="muted" style="font-size:12px">${done.length?'✓ ':''}${summary}</span></div><span class="muted" style="white-space:nowrap">▾ expand</span></div>
+        </div></div>`;
+    }
     const ref = lastRealEntry(name,i);
     const rng = effRange(s, entry.name);
     const real = ref ? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
@@ -961,7 +988,7 @@ function viewActive(){
       const [bt,bc] = setStatus(i,k);
       return `<div class="set-grid">
         <span class="set-no">${k+1}</span>
-        <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value);updTargetBadge(${i},${k})" onchange="rollWeight(${i},${k},this.value)">
+        <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value);updTargetBadge(${i},${k});updPlates(${i})" onchange="rollWeight(${i},${k},this.value)">
         <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="${repHint(i,k)}" value="${st.r}" oninput="setVal(${i},${k},'r',this.value);updTargetBadge(${i},${k})" onchange="repCheck(${i},${k})">
         <span id="tgt-${i}-${k}" class="tgt-badge ${bc}">${bt}</span>
         <button class="skip-set" onclick="skipSet(${i},${k})" title="skip this set">⤼</button>
@@ -974,6 +1001,7 @@ function viewActive(){
         <div class="ex-head">
           <div><div class="ex-meta">${s.muscle} · ${s.movement}${s.note?' · '+s.note:''} · <a href="${gsearch(entry.name)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">how-to ↗</a></div></div>
           <div style="text-align:right;white-space:nowrap">
+            <button class="skip-set" onclick="toggleExCollapse(${i})" title="collapse" style="font-size:16px;vertical-align:middle">⌃</button>
             <span class="range-badge">${rangeText(rng)} reps</span>${flag?'<br>'+flag:''}
           </div>
         </div>
@@ -984,6 +1012,7 @@ function viewActive(){
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
         ${setRows}
         <button class="addset" onclick="addSet(${i})">+ Add set</button>
+        ${isBarbell(entry.name)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'')}</div>`:''}
         ${i===0?`<div class="warm">
           <button class="warm-toggle" onclick="toggleWarm(${i})">🔥 Warm-up ramp</button>
           <div class="warm-table hidden" id="warm-${i}"></div>
@@ -1153,16 +1182,18 @@ function finishWorkout(){
   }
   DB.sessions.push(sess);
   sortSessions();
-  DB.draft = null; save();
+  DB.draft = null; collapsedEx.clear(); save();
   if(prs.length){ confettiBurst(); toast(prs.length===1 ? `🏆 PR! ${prs[0].name} ${prs[0].prev||'—'}→${prs[0].v}` : `🏆 ${prs.length} PRs this session!`); }
   else toast(hist?'Past workout added':'Workout saved 💪');
   goSub('train','history');
 }
 function sortSessions(){ DB.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : a.date.localeCompare(b.date)); }
-function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; save(); goSub('train','log'); } }
+function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; collapsedEx.clear(); save(); goSub('train','log'); } }
 
 /* ───────────────────────── HISTORY ───────────────────────── */
 let openHist = -1, showBackdate = false, reviewWeekOffset = 0;
+let collapsedEx = new Set(); // slot indices collapsed to a summary in the active workout (ephemeral UI)
+function toggleExCollapse(i){ if(collapsedEx.has(i)) collapsedEx.delete(i); else collapsedEx.add(i); render(); }
 function weekShift(d){ reviewWeekOffset = Math.min(0, reviewWeekOffset + d); render(); }
 /* Backfill a hobby/productivity item onto a past day from Week in Review (in case you forgot to log it). */
 let addActivityDate=null, actAddCat='hobby';
