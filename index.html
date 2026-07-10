@@ -452,7 +452,7 @@ function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, 
 function save(){ DB.updatedAt = Date.now(); localStorage.setItem(KEY, JSON.stringify(DB)); if(typeof schedulePush==='function') schedulePush(); }
 /* Backup durability — localStorage is the only copy, so nag if it's been a while. */
 function daysSince(ts){ return ts ? (Date.now()-ts)/86400000 : Infinity; }
-function backupStale(){ return daysSince(DB.lastBackupAt) >= 14 && daysSince(DB.backupSnoozeAt) >= 3; }
+function backupStale(){ if(typeof SYNC!=='undefined' && SYNC && SYNC.user) return false; /* cloud sync is the backup */ return daysSince(DB.lastBackupAt) >= 14 && daysSince(DB.backupSnoozeAt) >= 3; }
 function snoozeBackup(){ DB.backupSnoozeAt=Date.now(); save(); render(); }
 
 /* ───────────────────────── Helpers ───────────────────────── */
@@ -804,8 +804,9 @@ function viewToday(){
 
   const cBackup = backupStale() ? `<div class="card" style="border:1.5px solid var(--warm-bd);background:var(--warm-bg)">
       <div style="font-weight:700;font-size:14px">⚠️ Back up your data</div>
-      <p class="muted" style="line-height:1.5;margin-top:4px">It's been a while since your last backup. Everything lives only on this device — export a copy so a phone reset or storage cleanup can't wipe it.</p>
-      <div class="row" style="gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="exportData()">⬇ Back up now</button><button class="btn btn-ghost" style="flex:1" onclick="snoozeBackup()">Later</button></div>
+      <p class="muted" style="line-height:1.5;margin-top:4px">Your data lives only on this device. Turn on <strong>Cloud Sync</strong> and it's backed up automatically — and available on your laptop too. A one-off export works as a fallback.</p>
+      <div class="row" style="gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="go('settings')">☁ Set up sync</button><button class="btn btn-ghost" style="flex:1" onclick="exportData()">⬇ Export</button></div>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="snoozeBackup()">Later</button>
     </div>` : '';
 
   const wDays = daysUntil(WEDDING_DATE);
