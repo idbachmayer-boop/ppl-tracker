@@ -86,6 +86,8 @@
     .tgt-badge { font-size: 13px; font-weight: 800; text-align: center; line-height: 1; }
     .tgt-badge.beat { color: var(--good); }
     .tgt-badge.tie { color: var(--muted); }
+    .tgt-badge.over { color: var(--warm-fg); }
+    .tgt-badge.under { color: var(--bad); }
     .coach { font-size: 12px; line-height: 1.5; border-radius: 8px; padding: 7px 10px; margin: 6px 0 10px; color: var(--text-2); }
     .coach.stall { background: var(--warm-bg); border: 1px solid var(--warm-bd); }
     .coach.deload { background: var(--pull-bg); border: 1px solid var(--pull-bd); }
@@ -264,8 +266,8 @@
     <span class="sw-label">⏱ Rest</span>
     <span class="sw-time" id="sw-time">0:00</span>
     <span class="sw-target" id="sw-target"></span>
-    <button class="sw-btn" id="sw-toggle" onclick="swToggle()">▶</button>
-    <button class="sw-btn sw-clear" onclick="swClear()">Clear</button>
+    <button class="sw-btn" id="sw-toggle" onpointerdown="event.preventDefault()" onclick="swToggle()">▶</button>
+    <button class="sw-btn sw-clear" onpointerdown="event.preventDefault()" onclick="swClear()">Clear</button>
   </div>
   <div class="tabbar-inner" id="tabbar"><!-- generated from TABS registry --></div>
 </div>
@@ -537,7 +539,29 @@ function badgeState(st, t){
   return ['',''];
 }
 function targetSet(i,k){ const ref=lastRealEntry(DB.draft.workout,i); if(!ref) return null; return ref.entry.sets.filter(x=>!x.skipped && x.r!=='')[k]||null; }
-function updTargetBadge(i,k){ const el=document.getElementById(`tgt-${i}-${k}`); if(!el) return; const [t,c]=badgeState(DB.draft.entries[i].sets[k], targetSet(i,k)); el.textContent=t; el.className='tgt-badge '+c; }
+/* Rep aim shown as the input placeholder: fresh weight (moved up) → range bottom; last set was at the
+   top → match with "=" (don't blow past the cap); otherwise beat last with "≥". */
+function repHint(i,k){
+  const entry=DB.draft.entries[i], rng=effRange(PROGRAM[DB.draft.workout].slots[i], entry.name), tgt=targetSet(i,k);
+  if(!tgt) return '≥'+rng.lo;
+  const curW=entry.sets[k].w===''?null:+entry.sets[k].w, lastW=tgt.w===''?0:+tgt.w;
+  if(curW!=null && curW>lastW) return '≥'+rng.lo;   // moved up in weight → restart at the bottom of the range
+  const last=+tgt.r;
+  if(last>=rng.hi) return '='+rng.hi;               // last set was at the top → match it, don't exceed the cap
+  return '≥'+last;
+}
+/* Badge cell status: out-of-range (↑ over / ↓ under) takes priority, else the "beat last" mark (✓/=). */
+function setStatus(i,k){
+  const st=DB.draft.entries[i].sets[k]; if(st.r==='') return ['',''];
+  const rng=effRange(PROGRAM[DB.draft.workout].slots[i], DB.draft.entries[i].name), r=+st.r;
+  if(r>rng.hi) return ['↑','over'];
+  if(r<rng.lo) return ['↓','under'];
+  return badgeState(st, targetSet(i,k));
+}
+function updTargetBadge(i,k){
+  const rEl=document.getElementById(`r-${i}-${k}`); if(rEl) rEl.placeholder=repHint(i,k);
+  const el=document.getElementById(`tgt-${i}-${k}`); if(!el) return; const [t,c]=setStatus(i,k); el.textContent=t; el.className='tgt-badge '+c;
+}
 /* Stall = no new best e1RM in the last 3 real (non-deload) sessions of an exercise. */
 function stallSeries(name){
   const out=[];
@@ -726,7 +750,10 @@ function viewToday(){
   const gl = wxGlance();
   const avg = currentAvg();
 
-  const cWorkout = `<div class="card">
+  const cWorkout = DB.draft ? `<div class="card">
+      <div class="row" style="margin-bottom:12px"><div>${kicker('Workout in progress')}<span class="pill ${accClass(PROGRAM[DB.draft.workout]?PROGRAM[DB.draft.workout].group:'push')}" style="margin-top:5px">${DB.draft.workout}</span></div><span class="muted">▶ active</span></div>
+      <button class="btn btn-block" onclick="goSub('train','log')">Resume ${DB.draft.workout} →</button>
+    </div>` : `<div class="card">
       <div class="row" style="margin-bottom:12px"><div>${kicker(part==='evening'?'Next workout':'Today’s workout')}<span class="pill ${accClass(g)}" style="margin-top:5px">${nxt}</span></div><span class="muted">${last?'Last '+fmtDate(last.date):'—'}</span></div>
       <button class="btn btn-block" onclick="startWorkout('${nxt}')">Start ${nxt} →</button>
       <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="skipDay('${nxt}')">Skip this day</button>
@@ -921,11 +948,11 @@ function viewActive(){
                  `<option value="__custom">+ Custom…</option>`;
     const setRows = entry.sets.map((st,k)=>{
       if(st.skipped) return `<div class="skip-note"><span>⤼ Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipSet(${i},${k})">Undo</button></div>`;
-      const tgt = real[k], [bt,bc] = badgeState(st, tgt);
+      const [bt,bc] = setStatus(i,k);
       return `<div class="set-grid">
         <span class="set-no">${k+1}</span>
         <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value);updTargetBadge(${i},${k})" onchange="rollWeight(${i},${k},this.value)">
-        <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="${tgt?'≥'+tgt.r:'reps'}" value="${st.r}" oninput="setVal(${i},${k},'r',this.value);updTargetBadge(${i},${k})" onchange="repCheck(${i},${k})">
+        <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="${repHint(i,k)}" value="${st.r}" oninput="setVal(${i},${k},'r',this.value);updTargetBadge(${i},${k})" onchange="repCheck(${i},${k})">
         <span id="tgt-${i}-${k}" class="tgt-badge ${bc}">${bt}</span>
         <button class="skip-set" onclick="skipSet(${i},${k})" title="skip this set">⤼</button>
         <button class="x-set" onclick="rmSet(${i},${k})" title="remove set">×</button>
@@ -935,7 +962,7 @@ function viewActive(){
       <div class="ex-accent ${barClass(g)}"></div>
       <div class="ex-body">
         <div class="ex-head">
-          <div><div class="ex-meta">${s.muscle} · ${s.movement}${s.note?' · '+s.note:''}</div></div>
+          <div><div class="ex-meta">${s.muscle} · ${s.movement}${s.note?' · '+s.note:''} · <a href="${gsearch(entry.name)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">how-to ↗</a></div></div>
           <div style="text-align:right;white-space:nowrap">
             <span class="range-badge">${rangeText(rng)} reps</span>${flag?'<br>'+flag:''}
           </div>
