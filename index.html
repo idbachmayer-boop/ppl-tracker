@@ -414,7 +414,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 9;
+const SCHEMA = 10;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -437,7 +437,8 @@ const MIGRATIONS = {
   6:d=>{ if(!d.todos) d.todos=[]; return d; }, // rolling to-do list
   7:d=>{ if(!d.cardio) d.cardio=[]; return d; }, // cardio / Strava log
   8:d=>{ if(!d.ideas) d.ideas=[]; return d; }, // in-app dev-idea capture
-  9:d=>{ (d.sessions||[]).forEach((s,i)=>{ if(!s.id) s.id='s'+i+'_'+(s.date||'')+'_'+(s.endedAt||'h'); }); return d; } // stable session ids (enables edit-in-place)
+  9:d=>{ (d.sessions||[]).forEach((s,i)=>{ if(!s.id) s.id='s'+i+'_'+(s.date||'')+'_'+(s.endedAt||'h'); }); return d; }, // stable session ids (enables edit-in-place)
+  10:d=>{ if(!d.lawnLog) d.lawnLog={}; return d; } // adaptive lawn watering/mowing log
 };
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
 function normalize(raw){
@@ -451,7 +452,7 @@ function normalize(raw){
 }
 let DB = load();
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
-function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawn:null, wx:null, hobbySeedV2:true }; }
+function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
 function save(){ DB.updatedAt = Date.now(); localStorage.setItem(KEY, JSON.stringify(DB)); if(typeof schedulePush==='function') schedulePush(); }
 /* Backup durability — localStorage is the only copy, so nag if it's been a while. */
 function daysSince(ts){ return ts ? (Date.now()-ts)/86400000 : Infinity; }
@@ -697,7 +698,7 @@ function todoAge(created){ return Math.floor((Date.now()-new Date(created+'T00:0
    bar, the router, and the sub-nav all generate from this list — no more
    four-site edits, and tab ids live in one place (kills the stale-string bugs). */
 const TABS = [
-  { id:'today', label:'Today', icon:'🏠', view:()=>viewToday() },
+  { id:'today', label:'Today', icon:'🏠', view:()=>viewToday(), onRender:()=>{ if(DB.lawn && DB.lawn.lat!=null && lawnSeason(new Date())) maybeFetchWeather(); } },
   { id:'train', label:'Train', icon:'🏋️', sub:[['log','Log'],['history','History'],['cardio','Cardio'],['progress','Progress']],
     view:sub => sub==='log' ? (DB.draft ? viewActive() : viewPicker()) : sub==='history' ? viewHistory() : sub==='cardio' ? viewCardio() : viewWeight(),
     onRender:sub => { if(sub==='progress') drawActiveChart(); } },
@@ -812,6 +813,7 @@ function viewToday(){
       <div><div style="font-weight:700;font-size:16px">${gl.icon} ${gl.temp}° · ${gl.text}</div>
       <div class="muted" style="font-size:12px;margin-top:2px">H ${gl.hi}° / L ${gl.lo}°${gl.rainProb>=40?` · ${gl.rainProb}% rain`:''}${gl.loc?' · '+esc(gl.loc):''}</div></div>
       <span class="muted">Lawn →</span></div></div>` : '';
+  const cLawn = cLawnCard();
   const cWeek = `<div class="card" style="cursor:pointer" onclick="goSub('train','history')"><div class="row">
       <div>${kicker('This week')}<div style="font-weight:700;margin-top:4px">${weekTally()}</div></div><span class="muted">Review →</span></div></div>`;
 
@@ -871,9 +873,9 @@ function viewToday(){
     </div>`;
 
   let order;
-  if(part==='morning') order=[cWeather, cWorkout, cTodo, cMobility, cDo, cCardio, cWeight, cJournal];
-  else if(part==='afternoon') order=[cWorkout, cTodo, cDo, cMobility, cCardio, cWeather, cWeight, cJournal];
-  else order=[cJournal, cTodo, cMobility, cWeek, cDo, cCardio, cWorkout, cWeight];
+  if(part==='morning') order=[cWeather, cLawn, cWorkout, cTodo, cMobility, cDo, cCardio, cWeight, cJournal];
+  else if(part==='afternoon') order=[cWorkout, cTodo, cDo, cMobility, cLawn, cCardio, cWeather, cWeight, cJournal];
+  else order=[cJournal, cTodo, cMobility, cWeek, cLawn, cDo, cCardio, cWorkout, cWeight];
 
   return `${cWedding}
     <div style="margin-bottom:16px"><h1>${greeting}</h1><p class="subtitle">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}${gl?` · ${gl.icon} ${gl.temp}°`:''}</p></div>
@@ -1764,7 +1766,7 @@ async function fetchWeather(){
   weatherFetching=true; render();
   try{
     const {lat,lon}=DB.lawn;
-    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=1&forecast_days=7`;
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max&hourly=temperature_2m,precipitation&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=3&forecast_days=7`;
     const r=await fetch(url); if(!r.ok) throw 0;
     DB.wx={ at:Date.now(), lat, lon, data:await r.json() }; save();
   }catch(e){ /* keep last cached result */ }
@@ -1803,6 +1805,108 @@ function lawnSetup(){
       <p class="muted" id="loc-msg" style="margin-top:10px"></p>
     </div>
     <p class="muted" style="text-align:center;font-size:12px">Weather needs internet. Data from open-meteo.com — free, no account, no tracking.</p>`;
+}
+/* ───────────────────────── Smart lawn scheduler ─────────────────────────
+   Cool-season grass (St. Louis Park, MN) — hardcoded seasonal rules. Recommendations are
+   weather-adaptive (Open-Meteo daily precip + hourly temps) with hard rules the user can
+   override per day. Logging watered/mowed drives the "days since" recency checks. */
+const SEASON_RULES = {
+  spring: { months:[4,5],  waterPerWeek:2,   rainSkip:0.5, heatLimit:null },
+  summer: { months:[6,7,8],waterPerWeek:3.5, rainSkip:0.3, heatLimit:85 }, // 3–4×/week
+  fall:   { months:[9,10], waterPerWeek:2,   rainSkip:0.5, heatLimit:null },
+};
+function lawnSeason(date){ const m=date.getMonth()+1; for(const s in SEASON_RULES) if(SEASON_RULES[s].months.includes(m)) return s; return null; }
+function dsFmt(n){ if(n===Infinity) return 'never'; if(n===0) return 'today'; return n+' day'+(n>1?'s':'')+' ago'; }
+function dsWithDate(n){ if(n===Infinity) return 'never'; const d=new Date(); d.setDate(d.getDate()-n); return dsFmt(n)+' ('+d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+')'; }
+function fmtHour(h){ const ap=h>=12?'pm':'am'; let hh=h%12; if(hh===0) hh=12; return hh+ap; }
+/* Days since the last date logged {key:true}. Infinity if never. */
+function daysSinceLawn(key){ const log=DB.lawnLog||{}; const base=new Date(); base.setHours(0,0,0,0);
+  for(let n=0;n<400;n++){ const d=new Date(base); d.setDate(d.getDate()-n); const iso=d.toLocaleDateString('en-CA'); if(log[iso] && log[iso][key]) return n; }
+  return Infinity; }
+/* Scan today's 8am–8pm hourly temps for the heat limit. */
+function lawnHeatWindow(limit){
+  if(limit==null) return {status:'none'};
+  const h=DB.wx && DB.wx.data && DB.wx.data.hourly;
+  if(!h || !h.time || !h.temperature_2m) return {status:'nowx'};
+  const today=todayISO(); let firstHot=null, any=false;
+  for(let i=0;i<h.time.length;i++){ const t=h.time[i]; if(t.slice(0,10)!==today) continue; const hr=+t.slice(11,13); if(hr<8||hr>20) continue; any=true; if(+h.temperature_2m[i]>=limit && firstHot==null) firstHot=hr; }
+  if(!any) return {status:'nowx'};
+  if(firstHot==null) return {status:'none'};        // never reaches the limit in the window
+  if(firstHot<=8) return {status:'allhot'};          // already hot when the window opens
+  return {status:'before', hour:firstHot};
+}
+/* The full recommendation object, computed fresh each render (this is what makes it adaptive). */
+function lawnStatus(){
+  const now=new Date(), season=lawnSeason(now);
+  if(!season) return { season:null };
+  const rules=SEASON_RULES[season], today=todayISO(), num=v=>(v==null?0:+v);
+  const dy=DB.wx && DB.wx.data && DB.wx.data.daily;
+  let ti=-1, P=[], PP=[]; if(dy){ ti=dy.time.indexOf(today); P=dy.precipitation_sum||[]; PP=dy.precipitation_probability_max||[]; }
+  const havewx = ti>=0;
+  const rain3 = havewx ? (num(P[ti])+num(P[ti-1])+num(P[ti-2])) : 0;   // today + 2 prior days
+  const recentWet = havewx && (num(P[ti-1])>=0.1 || num(P[ti])>=0.1 || num(PP[ti])>=50);
+  const dsWater=daysSinceLawn('watered'), dsMow=daysSinceLawn('mowed');
+  const log=(DB.lawnLog||{})[today]||{};
+  // ── WATERING ──
+  const waterEvery=Math.ceil(7/rules.waterPerWeek);
+  const water={ recommend:false, hard:false, override:!!log.overrideWater, text:'' };
+  if(water.override){ water.text='Watering anyway (override)'; water.recommend=true; }
+  else if(dsWater < waterEvery){ water.text=`Watered ${dsFmt(dsWater)} — hold off`; }
+  else if(havewx && rain3 >= rules.rainSkip){ water.text=`Rained recently (~${rain3.toFixed(2)}") — hold off`; water.hard=true; }
+  else { water.text = dsWater===Infinity ? 'Time to water' : `Time to water (last ${dsFmt(dsWater)})`; water.recommend=true; }
+  // ── MOWING ──
+  const growthSpike = havewx && rain3 >= 0.5;
+  const mowDue = dsMow>7 || (dsMow>=5 && growthSpike);
+  const heat = lawnHeatWindow(rules.heatLimit);
+  const mow={ recommend:false, hard:false, override:!!log.overrideMow, text:'' };
+  if(mow.override){ mow.text='Mowing anyway (override)'; mow.recommend=true; }
+  else if(dsMow < 5){ mow.text=`Last mowed ${dsFmt(dsMow)} — too soon`; }
+  else if(recentWet){ mow.text='Wet conditions — don’t mow'; mow.hard=true; }
+  else if(heat.status==='allhot'){ mow.text='Too hot today — don’t mow'; mow.hard=true; }
+  else if(!mowDue){ mow.text=`Last mowed ${dsFmt(dsMow)} — wait a day or two`; }
+  else { mow.recommend=true;
+    if(heat.status==='before') mow.text=`Mow before ${fmtHour(heat.hour)} (before heat)`;
+    else if(dsMow>7) mow.text='Overdue — mow today (8am–9pm)';
+    else mow.text='Mow today (8am–9pm)';
+  }
+  return { season, dsWater, dsMow, water, mow, rain3, havewx, growthSpike };
+}
+function toggleLawnLog(action){ const t=todayISO(); if(!DB.lawnLog) DB.lawnLog={}; const e=DB.lawnLog[t]||(DB.lawnLog[t]={});
+  e[action]=!e[action]; if(action==='watered') e.overrideWater=false; if(action==='mowed') e.overrideMow=false;  // logging clears that override
+  if(!e.watered && !e.mowed && !e.overrideWater && !e.overrideMow) delete DB.lawnLog[t];
+  save(); toast(e[action]?(action==='watered'?'Logged watering 💧':'Logged mowing 🚜'):'Unlogged'); render(); }
+function toggleLawnOverride(which){ const t=todayISO(); if(!DB.lawnLog) DB.lawnLog={}; const e=DB.lawnLog[t]||(DB.lawnLog[t]={});
+  const key = which==='water'?'overrideWater':'overrideMow'; e[key]=!e[key];
+  if(!e.watered && !e.mowed && !e.overrideWater && !e.overrideMow) delete DB.lawnLog[t];
+  save(); render(); }
+function cLawnCard(){
+  const st=lawnStatus();
+  if(!st.season || !DB.lawn || DB.lawn.lat==null) return '';   // hidden Nov–Mar or before location is set
+  const t=todayISO(), log=(DB.lawnLog||{})[t]||{};
+  const line=(label,icon,r,which)=>`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-3)">
+      <div style="font-size:13px;line-height:1.5">${r.override?'⚠':(r.recommend?'✅':'⏸')} <strong>${label}:</strong> ${esc(r.text)}</div>
+      <a onclick="toggleLawnOverride('${which}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${r.override?'↩ Undo override':'Override if needed'}</a>
+    </div>`;
+  return `<div class="card">
+    ${kicker('Lawn · '+st.season)}
+    <div class="muted" style="font-size:12px;margin-top:5px">💧 Watered ${dsWithDate(st.dsWater)}<br>🚜 Mowed ${dsWithDate(st.dsMow)}</div>
+    ${line('Watering','💧',st.water,'water')}
+    ${line('Mowing','🚜',st.mow,'mow')}
+    <div class="row" style="gap:8px;margin-top:12px">
+      <button class="btn ${log.watered?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('watered')">${log.watered?'✓ Watered':'Mark watered'}</button>
+      <button class="btn ${log.mowed?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('mowed')">${log.mowed?'✓ Mowed':'Mark mowed'}</button>
+    </div>
+  </div>`;
+}
+function lawnHistory(){
+  const log=DB.lawnLog||{}; const rows=[];
+  for(let n=0;n<14;n++){ const d=new Date(); d.setDate(d.getDate()-n); const iso=d.toLocaleDateString('en-CA'); const e=log[iso]; if(!e||(!e.watered&&!e.mowed)) continue;
+    const parts=[]; if(e.watered) parts.push(`💧 Watered${e.overrideWater?' <span style="color:var(--warm-fg)">(override)</span>':''}`);
+    if(e.mowed) parts.push(`🚜 Mowed${e.overrideMow?' <span style="color:var(--warm-fg)">(override)</span>':''}`);
+    rows.push(`<div class="hist-item"><span style="font-weight:600;font-size:13px">${new Date(iso+'T00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</span><span style="font-size:12px;text-align:right">${parts.join(' · ')}</span></div>`);
+  }
+  return rows.length ? `<div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Past 2 weeks</div>${rows.join('')}</div>`
+                     : `<div class="card"><div class="muted" style="font-size:13px">No lawn activity logged yet — use the ✓ Watered / ✓ Mowed buttons above or on the Today tab.</div></div>`;
 }
 function viewLawn(){
   if(!DB.lawn || DB.lawn.lat==null) return lawnSetup();
@@ -1846,11 +1950,14 @@ function viewLawn(){
       </div><button class="btn btn-sm btn-ghost" onclick="fetchWeather()">↻</button></div>
       <div style="display:flex;gap:3px;margin-top:14px;overflow-x:auto">${strip}</div>
     </div>
+    ${lawnSeason(new Date()) ? cLawnCard() : `<div class="card"><div class="muted" style="font-size:13px">🌙 Off-season (Nov–Mar) — smart watering & mowing scheduling resumes in April. Forecast still available above.</div></div>`}
+    <h2 style="margin-top:20px">Forecast guidance</h2>
     ${card('☔','Rain', rainTxt)}
     ${card('💧','Watering', water)}
     ${card('🚜','Mowing', mow)}
     ${card('🌱','Fertilizer', fert)}
-    <p class="muted" style="text-align:center;font-size:11px">Rule-of-thumb guidance from the forecast — use your judgment. Updated ${new Date(wx.at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}.</p>`;
+    ${lawnSeason(new Date()) ? lawnHistory() : ''}
+    <p class="muted" style="text-align:center;font-size:11px">Guidance blends hardcoded cool-season rules with the live forecast — use your judgment. Updated ${new Date(wx.at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}.</p>`;
 }
 
 /* ───────────────────────── DATA / settings ───────────────────────── */
