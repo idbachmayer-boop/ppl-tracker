@@ -1816,6 +1816,14 @@ const SEASON_RULES = {
   fall:   { months:[9,10], waterPerWeek:2,   rainSkip:0.5, heatLimit:null },
 };
 function lawnSeason(date){ const m=date.getMonth()+1; for(const s in SEASON_RULES) if(SEASON_RULES[s].months.includes(m)) return s; return null; }
+/* St. Louis Park sprinkling ordinance: odd-numbered addresses may sprinkle only on odd calendar
+   days (even → even), and no sprinkling noon–6pm. Ian's address ends odd. Exemptions (new sod/seed,
+   new plantings, flower gardens) aren't the established lawn — use the per-day override for those. */
+const LAWN_ADDR_PARITY = 'odd';
+const LAWN_HOURS_NOTE = 'before noon or after 6pm';
+function dateParity(n){ return n%2===0 ? 'even' : 'odd'; }
+function ordinal(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
+function nextSprinkleDate(){ const base=new Date(); for(let i=1;i<=2;i++){ const n=new Date(base); n.setDate(base.getDate()+i); if(dateParity(n.getDate())===LAWN_ADDR_PARITY) return n.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); } return null; }
 function dsFmt(n){ if(n===Infinity) return 'never'; if(n===0) return 'today'; return n+' day'+(n>1?'s':'')+' ago'; }
 function dsWithDate(n){ if(n===Infinity) return 'never'; const d=new Date(); d.setDate(d.getDate()-n); return dsFmt(n)+' ('+d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+')'; }
 function fmtHour(h){ const ap=h>=12?'pm':'am'; let hh=h%12; if(hh===0) hh=12; return hh+ap; }
@@ -1847,13 +1855,15 @@ function lawnStatus(){
   const recentWet = havewx && (num(P[ti-1])>=0.1 || num(P[ti])>=0.1 || num(PP[ti])>=50);
   const dsWater=daysSinceLawn('watered'), dsMow=daysSinceLawn('mowed');
   const log=(DB.lawnLog||{})[today]||{};
-  // ── WATERING ──
+  // ── WATERING ── (+ St. Louis Park ordinance: odd/even address days, no sprinkling noon–6pm)
   const waterEvery=Math.ceil(7/rules.waterPerWeek);
+  const dom=now.getDate(), todayParity=dateParity(dom), sprinkleDayOK=(todayParity===LAWN_ADDR_PARITY);
   const water={ recommend:false, hard:false, override:!!log.overrideWater, text:'' };
   if(water.override){ water.text='Watering anyway (override)'; water.recommend=true; }
   else if(dsWater < waterEvery){ water.text=`Watered ${dsFmt(dsWater)} — hold off`; }
   else if(havewx && rain3 >= rules.rainSkip){ water.text=`Rained recently (~${rain3.toFixed(2)}") — hold off`; water.hard=true; }
-  else { water.text = dsWater===Infinity ? 'Time to water' : `Time to water (last ${dsFmt(dsWater)})`; water.recommend=true; }
+  else if(!sprinkleDayOK){ const nx=nextSprinkleDate(); water.text=`City rule — ${LAWN_ADDR_PARITY} address sprinkles on ${LAWN_ADDR_PARITY} days only (today is the ${todayParity} ${ordinal(dom)})${nx?`; next ${nx}`:''}`; water.hard=true; }
+  else { water.text = `Time to water — ${LAWN_HOURS_NOTE}${dsWater===Infinity?'':` (last ${dsFmt(dsWater)})`}`; water.recommend=true; }
   // ── MOWING ──
   const growthSpike = havewx && rain3 >= 0.5;
   const mowDue = dsMow>7 || (dsMow>=5 && growthSpike);
@@ -1896,6 +1906,7 @@ function cLawnCard(){
       <button class="btn ${log.watered?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('watered')">${log.watered?'✓ Watered':'Mark watered'}</button>
       <button class="btn ${log.mowed?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('mowed')">${log.mowed?'✓ Mowed':'Mark mowed'}</button>
     </div>
+    <div class="muted" style="font-size:11px;margin-top:10px">SLP ordinance: ${LAWN_ADDR_PARITY} address → sprinkle on ${LAWN_ADDR_PARITY} calendar days, never noon–6pm.</div>
   </div>`;
 }
 function lawnHistory(){
