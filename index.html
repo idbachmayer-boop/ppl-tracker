@@ -362,8 +362,54 @@ const PROGRAM = {
     ex("Biceps","Peak curl",3,12,15,["Concentration curl","Preacher curl"]),
     ex("Rear delts","Rear delt",5,15,20,["Rear delt fly","Reverse pec deck","Face pull"]),
   ]},
+  /* 4-Day PPL's chosen 4th day — one of these 5, picked fresh each cycle (not fixed). Every
+     example string below already exists above for the identical movement; this is pure
+     recombination, no new exercise vocabulary. */
+  "SPECIALIZED — CHEST & TRICEPS": { group:"push", slots:[
+    ex("Chest","Horizontal push",3,5,8,["Barbell bench press","DB bench press","Weighted push-up"]),
+    ex("Chest","Incline push",3,8,12,["Barbell incline press","DB incline press","Weighted decline push-up"]),
+    ex("Chest","Isolation",3,12,20,["DB fly","Cable fly"]),
+    ex("Triceps","Lateral head isolation",3,12,15,["Triceps pushdown","Diamond push-ups","Dips"]),
+    ex("Triceps","Overhead extension",3,12,15,["Skull crusher","Overhead triceps extension"]),
+  ]},
+  "SPECIALIZED — BACK": { group:"pull", slots:[
+    ex("Back","Vertical pull",3,8,12,["Pull-up","Chin-up","Lat pulldown","DB pullover"]),
+    ex("Back","Horizontal pull",3,8,12,["Barbell row","Dumbbell row"]),
+    ex("Back","Vertical pull",3,12,15,["Straight-arm pulldown","DB pullover"]),
+    ex("Back","Horizontal pull",3,12,15,["Meadows row","Seated cable row","One-arm DB row"]),
+  ]},
+  "SPECIALIZED — SHOULDERS": { group:"push", slots:[
+    ex("Shoulders","Overhead press",5,5,8,["Standing OHP","Seated OHP","DB shoulder press"]),
+    ex("Shoulders","Lateral raise",5,15,20,["DB lateral raise","Cable lateral raise"]),
+    ex("Rear delts","Rear delt",5,15,20,["Rear delt fly","Reverse pec deck","Face pull"]),
+  ]},
+  "SPECIALIZED — BICEPS": { group:"pull", slots:[
+    ex("Biceps","Normal curl",4,5,8,["Barbell curl","EZ-bar curl","DB curl"]),
+    ex("Biceps","Brachialis curl",3,12,15,["Hammer curl","Overhand grip curl"]),
+    ex("Biceps","Peak curl",3,12,15,["Concentration curl","Preacher curl"]),
+  ]},
+  "SPECIALIZED — LEGS": { group:"legs", slots:[
+    ex("Quads","Squat",3,5,8,["Back squat","Front squat","Goblet squat"],"DB-only: goblet squat 12–15",{"Goblet squat":[12,15]}),
+    ex("Hamstrings","Hip hinge",3,8,12,["Romanian deadlift","Stiff-leg deadlift","Good mornings"]),
+    ex("Quads","Isolation",3,12,15,["Leg extensions","Leg press","Hack squat","Bulgarian split squat"]),
+    ex("Hamstrings","Hamstring curl",3,12,15,["Machine hamstring curl","Nordic hamstring curl"]),
+    ex("Calves","Calf raise",3,15,30,["Calf raise machine","Plate/stair raise"]),
+  ]},
 };
 const SEQUENCE = ["PUSH 1","LEGS 1","PULL 1","PUSH 2","LEGS 2","PULL 2"];
+/* 4-Day PPL rotation: same 6 fixed days plus a specialized 4th day each week. 'SPECIALIZED' here
+   is an internal sentinel (not a real PROGRAM key) — nextWorkout() below disambiguates its two
+   occurrences via the session before it, since it always follows a Pull day. */
+const SEQUENCE_4DAY = ["PUSH 1","LEGS 1","PULL 1","SPECIALIZED","PUSH 2","LEGS 2","PULL 2","SPECIALIZED"];
+const SPECIALIZED_OPTIONS = [
+  {name:"SPECIALIZED — CHEST & TRICEPS", label:"Chest & Triceps"},
+  {name:"SPECIALIZED — BACK",            label:"Back"},
+  {name:"SPECIALIZED — SHOULDERS",       label:"Shoulders"},
+  {name:"SPECIALIZED — BICEPS",          label:"Biceps"},
+  {name:"SPECIALIZED — LEGS",            label:"Legs"},
+];
+const isSpecializedWorkout = name => typeof name==='string' && name.indexOf('SPECIALIZED')===0;
+const activeSequence = () => DB.routineMode==='4day' ? SEQUENCE_4DAY : SEQUENCE;
 
 /* ───────────────────────── Skincare & shaving (reference) ───────────────────────── */
 const SKIN_AM = ["Lumin charcoal wash","Rosewater toner","Vitamin C serum","Neutrogena gel cream","Supergoop SPF"];
@@ -414,7 +460,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 10;
+const SCHEMA = 11;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -438,7 +484,8 @@ const MIGRATIONS = {
   7:d=>{ if(!d.cardio) d.cardio=[]; return d; }, // cardio / Strava log
   8:d=>{ if(!d.ideas) d.ideas=[]; return d; }, // in-app dev-idea capture
   9:d=>{ (d.sessions||[]).forEach((s,i)=>{ if(!s.id) s.id='s'+i+'_'+(s.date||'')+'_'+(s.endedAt||'h'); }); return d; }, // stable session ids (enables edit-in-place)
-  10:d=>{ if(!d.lawnLog) d.lawnLog={}; return d; } // adaptive lawn watering/mowing log
+  10:d=>{ if(!d.lawnLog) d.lawnLog={}; return d; }, // adaptive lawn watering/mowing log
+  11:d=>{ if(typeof d.routineMode!=='string') d.routineMode='4day'; return d; } // 4-Day PPL toggle
 };
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
 function normalize(raw){
@@ -452,7 +499,7 @@ function normalize(raw){
 }
 let DB = load();
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
-function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
+function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
 function save(){ DB.updatedAt = Date.now(); localStorage.setItem(KEY, JSON.stringify(DB)); if(typeof schedulePush==='function') schedulePush(); }
 /* Backup durability — localStorage is the only copy, so nag if it's been a while. */
 function daysSince(ts){ return ts ? (Date.now()-ts)/86400000 : Infinity; }
@@ -488,10 +535,17 @@ function restTargetForSlot(i){
 let restCtx = null; // the rest window shown on the bar — points at the most recently logged set's exercise
 
 function nextWorkout(){
-  if(!DB.sessions.length) return "PUSH 1";
+  const seq = activeSequence();
+  if(!DB.sessions.length) return seq[0];
   const last = DB.sessions[DB.sessions.length-1].workout;
-  const i = SEQUENCE.indexOf(last);
-  return SEQUENCE[(i+1) % SEQUENCE.length];
+  if(!isSpecializedWorkout(last)){
+    const i = seq.indexOf(last);
+    return seq[(i+1+seq.length) % seq.length]; // i===-1 (unrecognized) -> seq[0]
+  }
+  // Last was a specialized day — 'SPECIALIZED' appears twice in seq (idx 3 and 7), so indexOf()
+  // can't tell which. Disambiguate via the session before it (specialized always follows Pull).
+  const prev = DB.sessions.length>=2 ? DB.sessions[DB.sessions.length-2].workout : null;
+  return prev==='PULL 2' ? seq[0] : seq[4]; // wrap to PUSH 1, else continue to PUSH 2
 }
 function lastSessionOf(workout){
   for(let i=DB.sessions.length-1;i>=0;i--) if(DB.sessions[i].workout===workout && !DB.sessions[i].skipped) return DB.sessions[i];
@@ -766,7 +820,9 @@ function weekTally(){
 }
 const kicker = t => `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${t}</div>`;
 function viewToday(){
-  const nxt = nextWorkout(), g = PROGRAM[nxt].group;
+  const nxt = nextWorkout();
+  const nxtIsSpecialized = nxt === 'SPECIALIZED';
+  const g = nxtIsSpecialized ? null : PROGRAM[nxt].group;
   const last = DB.sessions[DB.sessions.length-1];
   const w = DB.weights[DB.weights.length-1];
   const loggedToday = w && w.date===todayISO();
@@ -782,6 +838,11 @@ function viewToday(){
   const cWorkout = DB.draft ? `<div class="card">
       <div class="row" style="margin-bottom:12px"><div>${kicker('Workout in progress')}<span class="pill ${accClass(PROGRAM[DB.draft.workout]?PROGRAM[DB.draft.workout].group:'push')}" style="margin-top:5px">${DB.draft.workout}</span></div><span class="muted">▶ active</span></div>
       <button class="btn btn-block" onclick="goSub('train','log')">Resume ${DB.draft.workout} →</button>
+    </div>` : nxtIsSpecialized ? `<div class="card">
+      <div class="row" style="margin-bottom:12px"><div>${kicker(part==='evening'?'Next workout':'Today’s workout')}<div style="font-weight:700;margin-top:5px">Specialized — choose your focus</div></div><span class="muted">${last?'Last '+fmtDate(last.date):'—'}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${SPECIALIZED_OPTIONS.map(o=>`<button class="btn btn-ghost btn-sm" onclick="startWorkout('${o.name}')">${o.label}</button>`).join('')}</div>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="skipDay('SPECIALIZED')">Skip this day</button>
+      <p class="muted" style="font-size:11px;margin-top:8px">Tip: avoid Back the week it lands right after a Pull day — little recovery.</p>
     </div>` : `<div class="card">
       <div class="row" style="margin-bottom:12px"><div>${kicker(part==='evening'?'Next workout':'Today’s workout')}<span class="pill ${accClass(g)}" style="margin-top:5px">${nxt}</span></div><span class="muted">${last?'Last '+fmtDate(last.date):'—'}</span></div>
       <button class="btn btn-block" onclick="startWorkout('${nxt}')">Start ${nxt} →</button>
@@ -901,10 +962,29 @@ function viewPicker(){
       </div>
     </div>`;
   }).join('');
-  return `<h1>Pick a workout</h1><p class="subtitle">Suggested next: <strong>${nxt}</strong></p>
+  const is4Day = DB.routineMode==='4day';
+  const specializedSection = is4Day ? `<h2 style="margin-top:22px">Specialized — choose one${nxt==='SPECIALIZED'?' <span class="flag">suggested next</span>':''}</h2>
+    ${SPECIALIZED_OPTIONS.map(o=>{ const ls=lastSessionOf(o.name);
+      return `<div class="card" style="padding:14px">
+        <div class="row">
+          <div>
+            <span class="pill ${accClass(PROGRAM[o.name].group)}">${o.label}</span>
+            <div class="muted" style="margin-top:6px">${PROGRAM[o.name].slots.length} exercises${ls?' · last '+fmtDate(ls.date):''}</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm btn-ghost" onclick="skipDay('SPECIALIZED')">Skip</button>
+            <button class="btn btn-sm btn-ghost" onclick="startWorkout('${o.name}')">Start</button>
+          </div>
+        </div>
+      </div>`; }).join('')}
+    <p class="muted" style="font-size:12px">Tip: avoid Back the week it lands right after a Pull day — little recovery.</p>` : '';
+  const nxtLabel = nxt==='SPECIALIZED' ? 'Specialized (choose your focus)' : nxt;
+  const guideDisplay = GUIDE.map((s,i)=> i===0 && is4Day ? {t:s.t, b:`<p><strong>Push / Pull / Legs</strong>, 4 days a week — 3 fixed days plus a <strong>4th specialized day</strong> you pick fresh each time (Chest & Triceps, Back, Shoulders, Biceps, or Legs) based on what's lagging. Recommended order: <strong>Push → Legs → Pull → Specialized</strong> (gives the upper body more recovery — avoid picking Back the week it lands right after Pull).</p><p>The 3 fixed days still run on a <strong>2-week cycle</strong> — week 1 uses version 1, week 2 uses version 2. The app rotates you through this automatically and suggests your next session.</p>`} : s);
+  return `<h1>Pick a workout</h1><p class="subtitle">Suggested next: <strong>${nxtLabel}</strong></p>
     <div style="margin-top:16px">${cards}</div>
+    ${specializedSection}
     <h2 style="margin-top:22px">📖 How this program works</h2>
-    ${GUIDE.map((s,i)=>{ const o=guideOpen.has(i); return `<div class="phase-card">
+    ${guideDisplay.map((s,i)=>{ const o=guideOpen.has(i); return `<div class="phase-card">
       <button class="phase-header" onclick="toggleGuide(${i})"><span class="phase-title" style="font-size:14px">${s.t}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${o?180:0}deg);transition:.2s">⌄</span></button>
       ${o?`<div class="phase-body">${s.b}</div>`:''}
     </div>`; }).join('')}`;
@@ -1302,7 +1382,7 @@ function viewHistory(){
     <button class="btn btn-ghost btn-block" onclick="toggleBackdate()">＋ Add a past workout</button>
     ${showBackdate? `<div class="card" style="margin-top:10px">
       <div class="muted" style="font-weight:700;margin-bottom:10px">Which workout?</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${SEQUENCE.map(n=>`<button class="btn btn-ghost btn-sm" onclick="startBackdate('${n}')">${n}</button>`).join('')}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${SEQUENCE.map(n=>`<button class="btn btn-ghost btn-sm" onclick="startBackdate('${n}')">${n}</button>`).join('')}${DB.routineMode==='4day'?SPECIALIZED_OPTIONS.map(o=>`<button class="btn btn-ghost btn-sm" onclick="startBackdate('${o.name}')">${o.label}</button>`).join(''):''}</div>
       <p class="muted" style="margin-top:10px">Tip: enter your 5 oldest-first so each session sees the one before it as "last time".</p>
     </div>`:''}`;
   if(!DB.sessions.length) return `<h2>Week in review</h2>${renderWeekReview()}<div style="margin:14px 0">${back}</div><div class="empty">No workouts logged yet.<br>Start one from the Workout tab, or add a past workout above.</div>`;
@@ -1980,6 +2060,13 @@ function viewData(){
       <button class="${DB.unit==='lb'?'active':''}" onclick="setUnit('lb')">lb</button>
       <button class="${DB.unit==='kg'?'active':''}" onclick="setUnit('kg')">kg</button>
     </div></div>
+    <h2>Routine</h2>
+    <div class="card"><div class="seg" style="margin:0 0 10px">
+      <button class="${(DB.routineMode||'4day')==='3day'?'active':''}" onclick="setRoutineMode('3day')">3-Day PPL</button>
+      <button class="${(DB.routineMode||'4day')==='4day'?'active':''}" onclick="setRoutineMode('4day')">4-Day PPL</button>
+    </div>
+      <p class="muted" style="font-size:12px">4-Day adds a specialized 4th day each week — pick Chest & Triceps, Back, Shoulders, Biceps, or Legs fresh each time it comes up.</p>
+    </div>
     <h2>Cloud Sync</h2>
     ${syncCardHTML()}
     <h2>Hobbies</h2>
@@ -2006,6 +2093,7 @@ function viewData(){
     <div class="card"><button class="btn btn-danger btn-block" onclick="wipe()">Erase all data</button></div>`;
 }
 function setUnit(u){ DB.unit=u; save(); render(); }
+function setRoutineMode(m){ DB.routineMode=m; save(); render(); }
 function exportData(){
   const blob = new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
