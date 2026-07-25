@@ -460,7 +460,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 11;
+const SCHEMA = 12;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -485,7 +485,10 @@ const MIGRATIONS = {
   8:d=>{ if(!d.ideas) d.ideas=[]; return d; }, // in-app dev-idea capture
   9:d=>{ (d.sessions||[]).forEach((s,i)=>{ if(!s.id) s.id='s'+i+'_'+(s.date||'')+'_'+(s.endedAt||'h'); }); return d; }, // stable session ids (enables edit-in-place)
   10:d=>{ if(!d.lawnLog) d.lawnLog={}; return d; }, // adaptive lawn watering/mowing log
-  11:d=>{ if(typeof d.routineMode!=='string') d.routineMode='4day'; return d; } // 4-Day PPL toggle
+  11:d=>{ if(typeof d.routineMode!=='string') d.routineMode='4day'; return d; }, // 4-Day PPL toggle
+  /* Skipped days were pushed with no id (skipDay predated ids), so they'd all collide on a single
+     undefined merge key. Backfill from content — never from array index, which differs per device. */
+  12:d=>{ (d.sessions||[]).forEach(s=>{ if(!s.id) s.id='s_'+(s.date||'')+'_'+(s.workout||'').replace(/\s+/g,'')+'_'+(s.endedAt||(s.skipped?'skip':'h')); }); return d; }
 };
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
 function normalize(raw){
@@ -494,17 +497,79 @@ function normalize(raw){
   d.weights  = Array.isArray(d.weights)  ? d.weights  : [];
   if(typeof d.unit!=='string') d.unit='lb';
   for(let v=(d._schema||0)+1; v<=SCHEMA; v++){ try{ d = MIGRATIONS[v](d) || d; }catch(e){} }
-  d._schema = SCHEMA;
+  /* Never DOWNGRADE: a device running a stale cached index.html would otherwise stamp an older
+     schema onto the shared blob and make the newer device re-run migrations (migration 4 is not
+     idempotent — it resets hobbies, resurrecting deleted ones). */
+  d._schema = Math.max(SCHEMA, +d._schema || 0);
   return d;
 }
 let DB = load();
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
 function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
-function save(){ DB.updatedAt = Date.now(); localStorage.setItem(KEY, JSON.stringify(DB)); if(typeof schedulePush==='function') schedulePush(); }
-/* Backup durability — localStorage is the only copy, so nag if it's been a while. */
+
+/* ── Local snapshot ring — the undo buffer that was missing when a bad sync wiped 4 days of data.
+   Kept in its OWN localStorage key (never inside DB) so it can't bloat the synced blob or recurse.
+   Budgeted by BYTES first: the origin's ~5MB quota is shared with every other app on the
+   github.io account, and the blob grows ~5.5KB/week. A snapshot failure must never fail a save. */
+const SNAP_KEY = "ppl_tracker_snaps_v1";
+const SNAP_MAX = 8, SNAP_MIN = 3, SNAP_BUDGET = 700000; // chars
+let snapRingDisabled = false;
+function snapSummary(d){
+  const ws=(d.weights||[]), ss=(d.sessions||[]);
+  const dates=ss.map(s=>s.date).concat(ws.map(w=>w.date)).filter(Boolean).sort();
+  return { sessions:ss.length, weights:ws.length, cardio:(d.cardio||[]).length, latest:dates[dates.length-1]||null };
+}
+function loadSnaps(){ try{ const a=JSON.parse(localStorage.getItem(SNAP_KEY)); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+/* Strip wx (7-9KB of weather cache, pure derived data) so snapshots stay small. */
+function snapPayload(d){ const c=Object.assign({},d); delete c.wx; return c; }
+function snapshotNow(label, dataOverride){
+  if(snapRingDisabled) return false;
+  try{
+    const d = dataOverride || DB;
+    const snap = { at:Date.now(), label:label||'auto', summary:snapSummary(d), blob:JSON.stringify(snapPayload(d)) };
+    let list = loadSnaps();
+    // don't stack near-identical consecutive snapshots
+    if(list.length && list[0].blob===snap.blob){ return false; }
+    list.unshift(snap);
+    while(list.length > SNAP_MAX) list.pop();
+    while(list.length > SNAP_MIN && list.reduce((a,s)=>a+s.blob.length,0) > SNAP_BUDGET) list.pop();
+    localStorage.setItem(SNAP_KEY, JSON.stringify(list));
+    return true;
+  }catch(e){ try{ localStorage.removeItem(SNAP_KEY); }catch(_){} snapRingDisabled=true; return false; }
+}
+function clearSnaps(){ try{ localStorage.removeItem(SNAP_KEY); }catch(e){} }
+/* Persist without touching updatedAt or triggering a cloud push — for derived/cache-only writes
+   (weather, nag bookkeeping). This is what kept a STALE device from becoming the newest-timestamp
+   winner: merely opening the app used to bump updatedAt and push the whole stale blob. */
+function saveLocal(){ try{ localStorage.setItem(KEY, JSON.stringify(DB)); return true; }catch(e){ return handleQuotaFailure(); } }
+let quotaBannerShown = false;
+function handleQuotaFailure(){
+  clearSnaps(); snapRingDisabled = true;                       // reclaim space from the ring first
+  try{ localStorage.setItem(KEY, JSON.stringify(DB)); return true; }catch(e){}
+  if(!quotaBannerShown){ quotaBannerShown = true; try{ render(); }catch(e){} }
+  if(typeof pushNow==='function' && typeof SYNC!=='undefined' && SYNC && SYNC.user) pushNow(true); // get it to the cloud at least
+  return false;
+}
+function save(){
+  DB.updatedAt = Date.now();
+  maybeDailySnapshot();
+  try{ localStorage.setItem(KEY, JSON.stringify(DB)); }
+  catch(e){ handleQuotaFailure(); }                            // never throw: callers push to DB *before* save()
+  if(typeof schedulePush==='function') schedulePush();
+}
+function maybeDailySnapshot(){
+  const t=todayISO(); const list=loadSnaps();
+  const hasToday = list.some(s=> s.label==='daily' && new Date(s.at).toLocaleDateString('en-CA')===t);
+  if(!hasToday && (DB.sessions||[]).length) snapshotNow('daily');
+}
+/* Backup durability — cloud sync PROVED fallible (it overwrote 4 days), so keep nagging for a
+   downloadable copy even when signed in, just less often. */
 function daysSince(ts){ return ts ? (Date.now()-ts)/86400000 : Infinity; }
-function backupStale(){ if(typeof SYNC!=='undefined' && SYNC && SYNC.user) return false; /* cloud sync is the backup */ return daysSince(DB.lastBackupAt) >= 14 && daysSince(DB.backupSnoozeAt) >= 3; }
-function snoozeBackup(){ DB.backupSnoozeAt=Date.now(); save(); render(); }
+function backupStale(){
+  const every = (typeof SYNC!=='undefined' && SYNC && SYNC.user) ? 30 : 14;
+  return daysSince(DB.lastBackupAt) >= every && daysSince(DB.backupSnoozeAt) >= 3;
+}
+function snoozeBackup(){ DB.backupSnoozeAt=Date.now(); saveLocal(); render(); }
 
 /* ───────────────────────── Helpers ───────────────────────── */
 const todayISO = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
@@ -920,10 +985,15 @@ function viewToday(){
       ${todos.length?'':'<p class="muted" style="margin-top:8px;font-size:12px">Nothing pending. Tasks roll over until you check them off — checking one logs it to your journal.</p>'}
     </div>`;
 
+  const cQuota = quotaBannerShown ? `<div class="card" style="border:1.5px solid var(--danger-bd);background:rgba(255,107,107,.08)">
+      <div style="font-weight:700;font-size:14px;color:var(--danger)">⚠️ This device is out of storage</div>
+      <p class="muted" style="line-height:1.5;margin-top:4px">Recent changes may not be saved locally. Export a backup now, and make sure Cloud Sync is on so nothing is lost.</p>
+      <div class="row" style="gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="exportData()">⬇ Export now</button><button class="btn btn-ghost" style="flex:1" onclick="go('settings')">Settings</button></div>
+    </div>` : '';
   const cBackup = backupStale() ? `<div class="card" style="border:1.5px solid var(--warm-bd);background:var(--warm-bg)">
       <div style="font-weight:700;font-size:14px">⚠️ Back up your data</div>
-      <p class="muted" style="line-height:1.5;margin-top:4px">Your data lives only on this device. Turn on <strong>Cloud Sync</strong> and it's backed up automatically — and available on your laptop too. A one-off export works as a fallback.</p>
-      <div class="row" style="gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="go('settings')">☁ Set up sync</button><button class="btn btn-ghost" style="flex:1" onclick="exportData()">⬇ Export</button></div>
+      <p class="muted" style="line-height:1.5;margin-top:4px">${SYNC && SYNC.user ? 'Cloud Sync is on, but keeping an occasional downloadable copy means even a bad sync can’t cost you anything.' : 'Your data lives only on this device. Turn on <strong>Cloud Sync</strong> and it\'s backed up automatically — and available on your laptop too. A one-off export works as a fallback.'}</p>
+      <div class="row" style="gap:8px;margin-top:10px">${SYNC && SYNC.user ? '' : `<button class="btn" style="flex:1" onclick="go('settings')">☁ Set up sync</button>`}<button class="btn ${SYNC&&SYNC.user?'':'btn-ghost'}" style="flex:1" onclick="exportData()">⬇ Export</button></div>
       <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="snoozeBackup()">Later</button>
     </div>` : '';
 
@@ -940,7 +1010,7 @@ function viewToday(){
 
   return `${cWedding}
     <div style="margin-bottom:16px"><h1>${greeting}</h1><p class="subtitle">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}${gl?` · ${gl.icon} ${gl.temp}°`:''}</p></div>
-    ${cBackup}
+    ${cQuota}${cBackup}
     ${order.filter(Boolean).join('\n    ')}`;
 }
 
@@ -1020,7 +1090,7 @@ function startWorkout(name){
 function skipDay(name){
   const reason = prompt(`Skip ${name} entirely? Add a reason (optional):`, '');
   if(reason===null) return;
-  DB.sessions.push({ workout:name, date:todayISO(), skipped:true, reason:reason.trim(), entries:[], stairs:null, durationMin:null });
+  DB.sessions.push({ id:'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), workout:name, date:todayISO(), skipped:true, reason:reason.trim(), entries:[], stairs:null, durationMin:null });
   sortSessions(); save(); toast(`${name} skipped`);
   go('today');
 }
@@ -1267,7 +1337,7 @@ function finishWorkout(){
   }
   DB.sessions.push(sess);
   sortSessions();
-  DB.draft = null; collapsedEx.clear(); save();
+  DB.draft = null; collapsedEx.clear(); save(); snapshotNow('after-workout'); cloudVersion('workout');
   if(prs.length){ confettiBurst(); toast(prs.length===1 ? `🏆 PR! ${prs[0].name} ${prs[0].prev||'—'}→${prs[0].v}` : `🏆 ${prs.length} PRs this session!`); }
   else toast(hist?'Past workout added':'Workout saved 💪');
   goSub('train','history');
@@ -1487,8 +1557,11 @@ function viewWeight(){
     ${sub}
     <div class="card">
       <div class="row">
-        <input type="number" inputmode="decimal" id="wt-input" placeholder="Today's weight (${DB.unit})" style="flex:1">
+        <input type="number" inputmode="decimal" id="wt-input" placeholder="Weight (${DB.unit})" style="flex:1">
         <button class="btn" onclick="logWeight()">Log</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label class="muted" style="font-size:12px;font-weight:600;flex:1">Date <input type="date" id="wt-date" value="${todayISO()}" max="${todayISO()}" style="width:auto;display:inline-block;margin-left:6px;padding:6px 8px"></label>
       </div>
       ${rangeSeg()}
     </div>
@@ -1596,11 +1669,12 @@ function setRange(r){ chartRange=r; render(); }
 function logWeight(){
   const inp = document.getElementById('wt-input'); const v = parseFloat(inp.value);
   if(isNaN(v)||v<=0){ alert('Enter a valid weight.'); return; }
-  const t = todayISO();
+  const dEl = document.getElementById('wt-date');
+  const t = (dEl && dEl.value) ? dEl.value : todayISO();   // backdatable — lets you fill in missed days
   const existing = DB.weights.find(w=>w.date===t);
-  if(existing){ existing.value=v; } else { DB.weights.push({date:t, value:v}); }
+  if(existing){ existing.value=v; } else { DB.weights.push({date:t, value:v, at:Date.now()}); }
   DB.weights.sort((a,b)=>a.date.localeCompare(b.date));
-  save(); toast('Weight logged'); render();
+  save(); cloudVersion('weigh-in'); toast(t===todayISO()?'Weight logged':'Logged for '+fmtDate(t)); render();
 }
 function rmWeight(i){ if(confirm('Delete this entry?')){ DB.weights.splice(i,1); save(); render(); } }
 /* trend (optional): a parallel series (same length as pts) drawn as the bold primary line, with
@@ -1725,9 +1799,12 @@ function exAddSet(which){ DB.draft.extras[which].sets.push({w:'',r:'',skipped:fa
 function exRmSet(which,k){ const s=DB.draft.extras[which].sets; if(s.length<=1) return; s.splice(k,1); save(); render(); }
 /* Mobility is a DAILY log (DB.mobilityLog[date]), not per-session — APT work is daily. */
 function mobToday(){ const t=todayISO(); return (DB.mobilityLog && DB.mobilityLog[t]) || {}; }
-function toggleMobility(i){ const t=todayISO(); if(!DB.mobilityLog) DB.mobilityLog={}; if(!DB.mobilityLog[t]) DB.mobilityLog[t]={}; const name=MOBILITY[i].n, m=DB.mobilityLog[t]; if(m[name]) delete m[name]; else m[name]=true; if(!Object.keys(m).length) delete DB.mobilityLog[t]; save(); render(); }
+/* Unchecking writes an explicit false rather than deleting the key: sync merges by date, and
+   "off = key absent" is indistinguishable from "the other device never knew about it", which made
+   unchecked boxes come back permanently. Read sites all test truthiness, so false reads as off. */
+function toggleMobility(i){ const t=todayISO(); if(!DB.mobilityLog) DB.mobilityLog={}; if(!DB.mobilityLog[t]) DB.mobilityLog[t]={}; const name=MOBILITY[i].n, m=DB.mobilityLog[t]; m[name] = !m[name]; save(); render(); }
 /* Log (or clear) a full yoga / mobility session for today — satisfies the day on its own. */
-function toggleMobSession(){ const t=todayISO(); if(!DB.mobilityLog) DB.mobilityLog={}; if(!DB.mobilityLog[t]) DB.mobilityLog[t]={}; const m=DB.mobilityLog[t]; if(m.__session) delete m.__session; else m.__session='yoga'; if(!Object.keys(m).length) delete DB.mobilityLog[t]; save(); render(); }
+function toggleMobSession(){ const t=todayISO(); if(!DB.mobilityLog) DB.mobilityLog={}; if(!DB.mobilityLog[t]) DB.mobilityLog[t]={}; const m=DB.mobilityLog[t]; m.__session = m.__session ? false : 'yoga'; save(); render(); }
 function mobEntry(iso){ return (DB.mobilityLog && DB.mobilityLog[iso]) || {}; }
 /* Count of checked EXERCISE items on a day (reserved __-keys like __session never count). */
 function mobDoneOn(iso){ const e=mobEntry(iso); return Object.keys(e).filter(k=>!isReservedMobKey(k) && e[k]).length; }
@@ -1848,7 +1925,9 @@ async function fetchWeather(){
     const {lat,lon}=DB.lawn;
     const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max&hourly=temperature_2m,precipitation&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=3&forecast_days=7`;
     const r=await fetch(url); if(!r.ok) throw 0;
-    DB.wx={ at:Date.now(), lat, lon, data:await r.json() }; save();
+    /* saveLocal, NOT save(): the weather cache is derived data. Bumping updatedAt here is what let a
+       4-day-stale device look "newest" merely by being opened, and then overwrite the cloud. */
+    DB.wx={ at:Date.now(), lat, lon, data:await r.json() }; saveLocal();
   }catch(e){ /* keep last cached result */ }
   weatherFetching=false; render();
 }
@@ -1963,11 +2042,10 @@ function lawnStatus(){
 }
 function toggleLawnLog(action){ const t=todayISO(); if(!DB.lawnLog) DB.lawnLog={}; const e=DB.lawnLog[t]||(DB.lawnLog[t]={});
   e[action]=!e[action]; if(action==='watered') e.overrideWater=false; if(action==='mowed') e.overrideMow=false;  // logging clears that override
-  if(!e.watered && !e.mowed && !e.overrideWater && !e.overrideMow) delete DB.lawnLog[t];
+  // keep the (possibly all-false) entry rather than deleting it — see toggleMobility on why absence is unsafe for sync
   save(); toast(e[action]?(action==='watered'?'Logged watering 💧':'Logged mowing 🚜'):'Unlogged'); render(); }
 function toggleLawnOverride(which){ const t=todayISO(); if(!DB.lawnLog) DB.lawnLog={}; const e=DB.lawnLog[t]||(DB.lawnLog[t]={});
   const key = which==='water'?'overrideWater':'overrideMow'; e[key]=!e[key];
-  if(!e.watered && !e.mowed && !e.overrideWater && !e.overrideMow) delete DB.lawnLog[t];
   save(); render(); }
 function cLawnCard(){
   const st=lawnStatus();
@@ -2069,6 +2147,8 @@ function viewData(){
     </div>
     <h2>Cloud Sync</h2>
     ${syncCardHTML()}
+    <h2>Backups &amp; history</h2>
+    ${versionsCardHTML()}
     <h2>Hobbies</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Fun things the Today tab rotates through.</p>
@@ -2103,11 +2183,20 @@ function exportData(){
 function importData(inp){
   const f=inp.files[0]; if(!f)return; const r=new FileReader();
   r.onload=()=>{ try{ const raw=JSON.parse(r.result); if(!raw || !Array.isArray(raw.sessions) || !Array.isArray(raw.weights)) throw 0;
-    if(confirm('Replace all current data with this backup?')){ DB=normalize(raw); DB.lastBackupAt=Date.now(); save(); toast('Backup restored'); render(); } }
+    const merge = confirm('Merge this backup with your current data?\n\nOK = MERGE (keeps both, nothing lost — recommended)\nCancel = choose replace instead');
+    if(merge){
+      snapshotNow('before-import');
+      const wx=DB.wx; DB=mergeDB(normalize(raw), DB, true); if(wx!==undefined) DB.wx=wx; DB.updatedAt=Date.now();
+      DB.lastBackupAt=Date.now(); save(); cloudVersion('import'); toast('Backup merged ✓'); render(); return;
+    }
+    if(confirm('Replace ALL current data with this backup?\n\nYour current data is snapshotted first (Settings → Version history), so this is undoable.')){
+      snapshotNow('before-import');
+      const wx=DB.wx; DB=normalize(raw); if(wx!==undefined) DB.wx=wx; DB.updatedAt=Date.now();
+      DB.lastBackupAt=Date.now(); save(); cloudVersion('import'); toast('Backup restored'); render(); } }
     catch(e){ alert('Not a valid backup file.'); } };
   r.readAsText(f);
 }
-function wipe(){ if(confirm('Erase ALL workouts and weights? This cannot be undone.')){ DB=blank(); save(); toast('Data erased'); go('today'); } }
+function wipe(){ if(confirm('Erase ALL workouts and weights?\n\nA snapshot is saved first, so you can restore it from Settings → Version history.')){ snapshotNow('before-erase'); DB=blank(); save(); toast('Data erased'); go('today'); } }
 
 /* ───────────────────────── Theme: sync status-bar color to system ───────────────────────── */
 (function(){
@@ -2333,11 +2422,85 @@ function viewCardio(){
     <div class="card">${rows}</div>`;
 }
 
+/* ───────────────────────── Merge (union) — the fix for the 2026-07-25 data loss ─────────────
+   The old sync was last-write-wins on a whole-DB blob, and `updatedAt` was wall-clock bumped on
+   EVERY save (even the weather cache). So a device 4 days STALE could hold the newer timestamp,
+   blind-`set()` over the cloud, and the other device would then adopt it — 4 days of weigh-ins and
+   a workout gone. Now both sides are UNIONED, so a stale device can never subtract data.
+   Per-field strategy is deliberate; see the comments — several obvious choices are wrong. */
+function mergeUnion(aArr, bArr, keyOf, newerFirst){
+  /* newerFirst decides who wins a key collision. Order of output follows newerFirst then the rest. */
+  const out=[], seen=new Set();
+  const push=(arr)=>{ (arr||[]).forEach(it=>{ if(!it||typeof it!=='object') return; const k=keyOf(it); if(seen.has(k)) return; seen.add(k); out.push(it); }); };
+  push(newerFirst? bArr : aArr); push(newerFirst? aArr : bArr);
+  return out;
+}
+/* Session key: prefer the stable id; fall back to content for pre-id rows (migration 12 backfills,
+   but MIGRATIONS is wrapped in a silent try/catch so never trust it alone). */
+const sessKey = s => s.id || ('c_'+(s.date||'')+'|'+(s.workout||'')+'|'+(s.endedAt||'')+'|'+(s.skipped?'1':'0'));
+const todoKey = t => (t.created||'')+'|'+(t.text||'');
+const hobbyKey = h => (h.date||'')+'|'+(h.item||h.hobby||'')+'|'+(h.cat||'');
+function mergeJournalEntry(x, y, yNewer){
+  /* Line-level union: logToJournal appends lines, so the usual conflict is one side being a
+     superset. "Longer string wins" would silently drop a whole day's note. */
+  const A=String(x||''), B=String(y||'');
+  if(A===B) return A;
+  if(!A.trim()) return B; if(!B.trim()) return A;
+  const first = yNewer? B : A, second = yNewer? A : B;
+  const lines=[], seen=new Set();
+  first.split('\n').concat(second.split('\n')).forEach(ln=>{ const k=ln.trim(); if(!k){ return; } if(seen.has(k)) return; seen.add(k); lines.push(ln); });
+  return lines.join('\n');
+}
+function mergeDateMap(a, b, bNewer, innerMerge){
+  const out={}, keys=new Set([...Object.keys(a||{}), ...Object.keys(b||{})]);
+  keys.forEach(k=>{
+    const av=(a||{})[k], bv=(b||{})[k];
+    if(av===undefined){ out[k]=bv; return; }
+    if(bv===undefined){ out[k]=av; return; }
+    out[k] = innerMerge ? innerMerge(av,bv,bNewer) : (bNewer? bv : av);
+  });
+  return out;
+}
+/* localWins: on a straight tie (same updatedAt) prefer `local`. Used after a round trip so
+   keystrokes typed while the transaction was in flight aren't discarded. */
+function mergeDB(remote, local, localWins){
+  const r = remote && typeof remote==='object' ? remote : {};
+  const l = local  && typeof local==='object'  ? local  : {};
+  const rU = +r.updatedAt || 0, lU = +l.updatedAt || 0;
+  const localNewer = localWins ? (lU >= rU) : (lU > rU);
+  const newer = localNewer ? l : r, older = localNewer ? r : l;
+  const out = Object.assign({}, blank(), older, newer); // start from newer's scalars, guarantee all blank() keys
+  // ── append-only logs: union, never subtract ──
+  out.sessions = mergeUnion(r.sessions, l.sessions, sessKey, localNewer);
+  out.weights  = mergeUnion(r.weights,  l.weights,  w=>w.date, localNewer);
+  out.cardio   = mergeUnion(r.cardio,   l.cardio,   c=>c.id || ((c.date||'')+'|'+(c.type||'')+'|'+(c.minutes||'')), localNewer);
+  out.ideas    = mergeUnion(r.ideas,    l.ideas,    i=>i.id || ((i.date||'')+'|'+(i.text||'')), localNewer);
+  out.todos    = mergeUnion(r.todos,    l.todos,    todoKey, localNewer);
+  out.hobbyLog = mergeUnion(r.hobbyLog, l.hobbyLog, hobbyKey, localNewer);
+  // ── date-keyed maps ──
+  out.journal = mergeDateMap(r.journal, l.journal, localNewer, (a,b,bN)=>mergeJournalEntry(a,b,bN));
+  /* mobilityLog / lawnLog: take the WHOLE inner object from the newer side. Do NOT union inner
+     keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
+  out.mobilityLog = mergeDateMap(r.mobilityLog, l.mobilityLog, localNewer, null);
+  out.lawnLog     = mergeDateMap(r.lawnLog,     l.lawnLog,     localNewer, null);
+  // ── draft: an in-progress workout is never overwritten by a remote one ──
+  const localDraft = l.draft && PROGRAM[l.draft.workout] ? l.draft : null;
+  const remoteDraft = r.draft && PROGRAM[r.draft.workout] ? r.draft : null; // validate: unknown workout white-screens viewActive
+  out.draft = localDraft || remoteDraft || null;
+  // ── invariants ──
+  out.weights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  out.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : String(a.date).localeCompare(String(b.date)));
+  out._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
+  out.updatedAt = Math.max(rU, lU);
+  delete out.wx; // weather is derived cache — excluded from sync entirely (see saveLocal)
+  return out;
+}
+
 /* ───────────────────────── Cloud sync (Firebase Auth + Firestore) ─────────────────────────
-   Whole DB is stored as one JSON blob at users/{uid}. Strategy: pull on sign-in, push on
-   every save (debounced), plus a live listener so the other device updates in near-real-time.
-   Conflicts resolve last-write-wins by `updatedAt`; the FIRST connect asks which copy to keep
-   if both sides already hold data, so nothing is silently overwritten. Signed-out = local only. */
+   Whole DB is stored as one JSON blob at users/{uid}. Every write is a TRANSACTION that reads the
+   remote copy and MERGES it with ours — there is no code path that blindly overwrites. Pull on
+   sign-in, debounced push on save, live listener merges the other device's changes in.
+   Signed-out = local only. */
 const firebaseConfig = {
   apiKey: "AIzaSyA7fxqZoTkHvhRJVSZKC4RVjotIujZMN_4",
   authDomain: "ppl-tracker-a1d87.firebaseapp.com",
@@ -2347,7 +2510,7 @@ const firebaseConfig = {
   appId: "1:771855906872:web:edabc4861e707571828ecd"
 };
 let fbAuth=null, fbDb=null;
-const SYNC = { user:null, ready:false, status:'', lastSyncAt:null, unsub:null, docRef:null };
+const SYNC = { user:null, ready:false, status:'', lastSyncAt:null, unsub:null, docRef:null, reconciled:false, pending:false };
 let pushTimer=null;
 
 function initSync(){
@@ -2358,7 +2521,7 @@ function initSync(){
     fbDb.enablePersistence({synchronizeTabs:true}).catch(()=>{}); // offline cache; ignore multi-tab errors
     fbAuth.onAuthStateChanged(u=>{
       SYNC.user=u;
-      if(u){ onSignedIn(u); } else { if(SYNC.unsub){SYNC.unsub();SYNC.unsub=null;} SYNC.docRef=null; SYNC.status=''; SYNC.lastSyncAt=null; }
+      if(u){ onSignedIn(u); } else { if(SYNC.unsub){SYNC.unsub();SYNC.unsub=null;} SYNC.docRef=null; SYNC.status=''; SYNC.lastSyncAt=null; SYNC.reconciled=false; SYNC.pending=false; }
       if(TAB==='settings') render();
     });
     SYNC.ready=true;
@@ -2386,52 +2549,218 @@ function syncSignIn(create){
 }
 function syncSignOut(){ if(!fbAuth) return; if(SYNC.unsub){SYNC.unsub();SYNC.unsub=null;} fbAuth.signOut(); }
 
-/* Adopt the remote copy into local WITHOUT re-pushing (write straight to localStorage, no save()). */
-function adoptRemote(remote){
-  try{ const raw=JSON.parse(remote.blob); DB=normalize(raw); DB.updatedAt=remote.updatedAt||Date.now();
-    localStorage.setItem(KEY, JSON.stringify(DB)); render(); return true; }catch(e){ return false; }
+/* Adopt a merged DB locally WITHOUT re-pushing. Snapshots the outgoing state first — this is the
+   line that silently destroyed 4 days of data when it was a blind overwrite with no backup. */
+function adoptMerged(merged, label){
+  try{
+    if(JSON.stringify(merged)===JSON.stringify(DB)) return false;   // nothing changed; don't churn the UI
+    snapshotNow(label||'before-sync');
+    const wx = DB.wx;                                               // keep this device's weather cache (not synced)
+    DB = normalize(merged); if(wx!==undefined) DB.wx = wx;
+    openHist = -1;                                                  // merge can insert rows mid-array; index-based handlers would target the wrong one
+    try{ localStorage.setItem(KEY, JSON.stringify(DB)); }catch(e){ handleQuotaFailure(); }
+    /* Don't yank the DOM out from under an in-progress set entry. */
+    const typing = DB.draft && document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+    if(!typing) render();
+    return true;
+  }catch(e){ return false; }
 }
 const SYNCED_UID_KEY='ppl_synced_uid'; // device-local: which account this device has already linked to
+function parseBlob(remote){ try{ return remote && remote.blob ? JSON.parse(remote.blob) : null; }catch(e){ return null; } }
 async function onSignedIn(user){
   SYNC.docRef = fbDb.collection('users').doc(user.uid);
-  SYNC.status='Syncing…'; updateSyncUI();
+  SYNC.status='Syncing…'; SYNC.reconciled=false; updateSyncUI();
   try{
-    const snap = await SYNC.docRef.get();
+    /* Must be a SERVER read: enablePersistence means a plain get() can hand back a stale cached
+       view, which is exactly the kind of bad input that caused the overwrite. */
+    let snap;
+    try{ snap = await SYNC.docRef.get({source:'server'}); }
+    catch(e){
+      SYNC.status='Offline — will sync when you’re back online'; SYNC.pending=true; updateSyncUI();
+      startLiveSync(); scheduleRetry(); return;                      // never push from an unreconciled state
+    }
     const remote = snap.exists ? snap.data() : null;
-    const localHasData = (DB.sessions&&DB.sessions.length)||(DB.weights&&DB.weights.length);
-    // Only the FIRST time this device links to this account do we risk a real conflict; after that
-    // it's routine catch-up and we resolve silently by timestamp (last-write-wins).
+    const remoteDB = parseBlob(remote);
     const firstLink = localStorage.getItem(SYNCED_UID_KEY)!==user.uid;
-    if(remote && remote.blob){
-      const rUpd=remote.updatedAt||0, lUpd=DB.updatedAt||0, differs = remote.blob!==JSON.stringify(DB);
-      if(differs && localHasData && lUpd>0 && firstLink){
-        const useCloud = confirm('This device and the cloud both have workout data.\n\nOK = use the CLOUD copy (replaces what\'s on this device).\nCancel = keep THIS device (replaces the cloud copy).');
-        if(useCloud) adoptRemote(remote); else await pushNow(true);
-      } else if(rUpd >= lUpd){ adoptRemote(remote); }
-      else { await pushNow(true); }
-    } else { await pushNow(true); } // cloud empty → seed it from this device
-    localStorage.setItem(SYNCED_UID_KEY, user.uid); // mark this device linked; no more first-link prompt
+    const localHasData = (DB.sessions&&DB.sessions.length)||(DB.weights&&DB.weights.length);
+    if(remoteDB && firstLink && localHasData && remote.blob!==JSON.stringify(DB)){
+      /* Merging two devices of the SAME person is always right, but signing into a DIFFERENT
+         account shouldn't silently fuse two people's histories. Ask once per device. */
+      snapshotNow('before-first-link');
+      const choice = prompt('This device and the cloud both have data.\n\nType:\n  M = merge both (recommended)\n  C = use the cloud copy only\n  D = use this device only', 'M');
+      const c = (choice||'M').trim().toUpperCase()[0];
+      if(c==='C'){ adoptMerged(Object.assign(normalize(remoteDB),{wx:DB.wx}), 'chose-cloud'); }
+      else if(c==='D'){ /* keep local as-is */ }
+      else { adoptMerged(mergeDB(remoteDB, DB), 'first-link-merge'); }
+    } else if(remoteDB){
+      adoptMerged(mergeDB(remoteDB, DB), 'sign-in-merge');
+    }
+    localStorage.setItem(SYNCED_UID_KEY, user.uid);
+    SYNC.reconciled = true;
     startLiveSync();
-    SYNC.lastSyncAt=Date.now(); SYNC.status='Synced'; updateSyncUI();
+    await pushNow(true);                                             // transactional: re-reads and merges again
+    SYNC.lastSyncAt=Date.now(); if(!SYNC.pending) SYNC.status='Synced'; updateSyncUI();
   }catch(e){ SYNC.status='Sync error: '+((e&&e.code)||(e&&e.message)||''); updateSyncUI(); }
 }
 function startLiveSync(){
   if(!SYNC.docRef) return; if(SYNC.unsub) SYNC.unsub();
   SYNC.unsub = SYNC.docRef.onSnapshot(snap=>{
-    if(!snap.exists || snap.metadata.hasPendingWrites) return; // skip the echo of our own writes
-    const remote=snap.data(); const rUpd=remote.updatedAt||0, lUpd=DB.updatedAt||0;
-    if(remote.blob && rUpd>lUpd && remote.blob!==JSON.stringify(DB)){ adoptRemote(remote); SYNC.lastSyncAt=Date.now(); updateSyncUI(); toast('Synced from another device'); }
+    if(!snap.exists) return;
+    const remoteDB = parseBlob(snap.data()); if(!remoteDB) return;
+    /* NOTE: transaction writes do NOT set hasPendingWrites, so we can't rely on that to skip our
+       own echo — adoptMerged's deep-equality check is what prevents render churn. */
+    const merged = mergeDB(remoteDB, DB);
+    if(adoptMerged(merged, 'before-remote-change')){ SYNC.lastSyncAt=Date.now(); updateSyncUI(); toast('Synced from another device'); }
   }, ()=>{ SYNC.status='Sync error'; updateSyncUI(); });
 }
+/* Every remote write goes through here. It is a transaction that READS the current cloud copy and
+   merges ours into it, so no path can subtract another device's data. */
 async function pushNow(silent){
   if(!SYNC.docRef){ if(!silent) toast('Sign in to sync'); return; }
+  if(!SYNC.reconciled){ SYNC.pending=true; if(!silent) toast('Still connecting — will sync shortly'); scheduleRetry(); return; }
+  if(!DB.updatedAt) DB.updatedAt=Date.now();
+  const localSnap = JSON.parse(JSON.stringify(DB));   // the txn callback may run MULTIPLE times; keep it pure
+  let merged = null, wrote = false;
   try{
-    if(!DB.updatedAt) DB.updatedAt=Date.now();
-    await SYNC.docRef.set({ blob: JSON.stringify(DB), updatedAt: DB.updatedAt, schema: SCHEMA, at: Date.now() });
-    SYNC.lastSyncAt=Date.now(); SYNC.status='Synced'; if(!silent) toast('Synced ✓'); updateSyncUI();
-  }catch(e){ SYNC.status='Sync error'; updateSyncUI(); if(!silent) toast('Sync failed'); }
+    await fbDb.runTransaction(async tx=>{
+      const snap = await tx.get(SYNC.docRef);
+      const remoteDB = snap.exists ? parseBlob(snap.data()) : null;
+      merged = remoteDB ? mergeDB(remoteDB, localSnap) : mergeDB({}, localSnap);
+      const blob = JSON.stringify(merged);
+      if(snap.exists && snap.data().blob===blob){ wrote=false; return; }   // already identical — skip the write
+      tx.set(SYNC.docRef, { blob, updatedAt: merged.updatedAt||Date.now(), schema: SCHEMA, at: Date.now() });
+      wrote = true;
+    });
+    SYNC.pending=false;
+    /* DB may have moved on while the round trip was in flight (setVal saves on every keystroke),
+       so fold the result back in with LOCAL winning ties, and re-push if that differs. */
+    if(merged){
+      const reconciled = mergeDB(merged, DB, true);
+      adoptMerged(reconciled, 'after-push-merge');
+      if(wrote && JSON.stringify(reconciled)!==JSON.stringify(merged)) schedulePush();
+    }
+    SYNC.lastSyncAt=Date.now(); SYNC.status='Synced'; if(!silent) toast(wrote?'Synced ✓':'Already up to date ✓'); updateSyncUI();
+    if(wrote) cloudVersion('push');
+  }catch(e){
+    const code=(e&&e.code)||'';
+    /* runTransaction FAILS offline (it does not queue like set() did). Retry — never fall back to a
+       plain set(), which is the blind overwrite we just removed. */
+    if(/unavailable|deadline-exceeded|failed-precondition|network/i.test(code+(e&&e.message||''))){
+      SYNC.pending=true; SYNC.status='Offline — will sync when you’re back online'; updateSyncUI();
+      if(!silent) toast('Offline — will sync later'); scheduleRetry();
+    } else {
+      SYNC.status='Sync error: '+(code||(e&&e.message)||''); updateSyncUI(); if(!silent) toast('Sync failed');
+    }
+  }
 }
+let retryTimer=null, retryDelay=5000;
+function scheduleRetry(){
+  if(retryTimer) return;
+  retryTimer=setTimeout(()=>{ retryTimer=null; retryDelay=Math.min(retryDelay*2, 300000); if(SYNC.user) pushNow(true); }, retryDelay);
+}
+function syncRetryNow(){ retryDelay=5000; if(retryTimer){ clearTimeout(retryTimer); retryTimer=null; } if(SYNC.user && SYNC.pending) pushNow(true); }
+window.addEventListener('online', syncRetryNow);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ syncRetryNow(); } else if(SYNC.user && SYNC.docRef){ pushNow(true); } });
 function schedulePush(){ if(!SYNC.user || !SYNC.docRef) return; clearTimeout(pushTimer); pushTimer=setTimeout(()=>pushNow(true), 1500); }
+
+/* ───────────────────────── Version history ─────────────────────────
+   Two tiers. LOCAL ring (snapshotNow) is instant and offline but device-bound — useless when the
+   good copy lives on the OTHER device, which is exactly what happened. So we also keep CLOUD
+   versions at users/{uid}/versions. Requires a Firestore rules update (rules do NOT cascade to
+   subcollections); until that's deployed the writes are permission-denied and we silently skip —
+   never let history bookkeeping break sync. */
+const CLOUD_VERSIONS_MAX = 20, VERSION_MIN_GAP = 15*60*1000;
+let lastVersionAt = 0;
+function cloudVersion(label){
+  if(!SYNC.docRef || !SYNC.reconciled) return;
+  const now = Date.now();
+  const checkpoint = label==='workout' || label==='weigh-in' || label==='import' || label==='before-restore';
+  if(!checkpoint && now-lastVersionAt < VERSION_MIN_GAP) return;   // setVal saves every keystroke — don't write 100 versions/session
+  lastVersionAt = now;
+  const payload = snapPayload(DB);
+  try{
+    SYNC.docRef.collection('versions').add({
+      blob: JSON.stringify(payload), label: label||'auto', at: now,
+      device: (navigator.userAgent||'').slice(0,120),
+      summary: snapSummary(payload)
+    }).then(()=>pruneCloudVersions()).catch(()=>{});   // permission-denied until rules are updated: ignore
+  }catch(e){}
+}
+function pruneCloudVersions(){
+  if(!SYNC.docRef) return;
+  SYNC.docRef.collection('versions').orderBy('at','desc').limit(100).get()
+    .then(qs=>{ const docs=qs.docs; for(let i=CLOUD_VERSIONS_MAX;i<docs.length;i++) docs[i].ref.delete().catch(()=>{}); })
+    .catch(()=>{});
+}
+let cloudVersionList = null, versionsOpen = false, versionsLoading = false;
+function toggleVersions(){
+  versionsOpen = !versionsOpen; render();
+  if(versionsOpen && cloudVersionList===null && SYNC.docRef) loadCloudVersions();
+}
+function loadCloudVersions(){
+  if(!SYNC.docRef) return;
+  versionsLoading = true;
+  /* Only the summary is needed to render the list — but compat SDK has no field mask here, so we
+     accept the read and simply don't listen. Capped at CLOUD_VERSIONS_MAX. */
+  SYNC.docRef.collection('versions').orderBy('at','desc').limit(CLOUD_VERSIONS_MAX).get()
+    .then(qs=>{ cloudVersionList = qs.docs.map(d=>Object.assign({_id:d.id}, d.data())); versionsLoading=false; render(); })
+    .catch(()=>{ cloudVersionList = []; versionsLoading=false; render(); });
+}
+function restoreSnapshot(idx){
+  const list = loadSnaps(), s = list[idx]; if(!s) return;
+  const sum = s.summary||{};
+  if(!confirm(`Restore this backup?\n\n${new Date(s.at).toLocaleString()}\n${sum.sessions||0} workouts · ${sum.weights||0} weigh-ins\n\nYour current data is snapshotted first, so this is undoable.`)) return;
+  snapshotNow('before-restore');
+  try{
+    const raw = JSON.parse(s.blob), wx = DB.wx;
+    DB = normalize(raw); if(wx!==undefined) DB.wx = wx;
+    DB.updatedAt = Date.now();                                  // this restore is the newest intent
+    save(); cloudVersion('before-restore'); toast('Restored ✓'); render();
+  }catch(e){ alert('That snapshot could not be read.'); }
+}
+function restoreCloudVersion(id){
+  const v = (cloudVersionList||[]).find(x=>x._id===id); if(!v) return;
+  const sum = v.summary||{};
+  if(!confirm(`Restore this cloud version?\n\n${new Date(v.at).toLocaleString()}\n${sum.sessions||0} workouts · ${sum.weights||0} weigh-ins\n\nYour current data is snapshotted first, so this is undoable.`)) return;
+  snapshotNow('before-restore');
+  try{
+    const raw = JSON.parse(v.blob), wx = DB.wx;
+    DB = normalize(raw); if(wx!==undefined) DB.wx = wx;
+    DB.updatedAt = Date.now();
+    save(); toast('Restored from cloud ✓'); render();
+  }catch(e){ alert('That version could not be read.'); }
+}
+function versionsCardHTML(){
+  const snaps = loadSnaps();
+  const row = (when, label, sum, action) => `<div class="hist-item" style="cursor:default">
+      <div><div style="font-weight:600;font-size:13px">${new Date(when).toLocaleString()}</div>
+        <div class="muted" style="font-size:11px">${esc(label||'auto')} · ${sum.sessions||0} workouts · ${sum.weights||0} weigh-ins${sum.latest?' · latest '+sum.latest:''}</div></div>
+      <button class="btn btn-sm btn-ghost" onclick="${action}">Restore</button>
+    </div>`;
+  if(!versionsOpen){
+    const n = snaps.length + ((cloudVersionList||[]).length);
+    return `<div class="card"><div class="row" style="cursor:pointer" onclick="toggleVersions()">
+      <div><div style="font-weight:700;font-size:14px">🕘 Version history</div>
+      <div class="muted" style="font-size:12px;margin-top:2px">${snaps.length} on this device${SYNC.user?' + cloud versions':''} — restore a previous state</div></div>
+      <span class="muted">▼</span></div></div>`;
+  }
+  const localRows = snaps.length ? snaps.map((s,i)=>row(s.at, s.label, s.summary||{}, `restoreSnapshot(${i})`)).join('')
+                                 : '<p class="muted" style="font-size:13px">No local snapshots yet.</p>';
+  let cloudRows;
+  if(!SYNC.user) cloudRows = '<p class="muted" style="font-size:13px">Sign in to see cloud versions.</p>';
+  else if(versionsLoading) cloudRows = '<p class="muted" style="font-size:13px">Loading…</p>';
+  else if(!cloudVersionList || !cloudVersionList.length) cloudRows = `<p class="muted" style="font-size:13px">No cloud versions yet. If this stays empty, the Firestore rules need the <code>versions</code> subcollection allowed (see the app notes).</p>`;
+  else cloudRows = cloudVersionList.map(v=>row(v.at, v.label, v.summary||{}, `restoreCloudVersion('${v._id}')`)).join('');
+  return `<div class="card">
+    <div class="row" style="cursor:pointer;margin-bottom:10px" onclick="toggleVersions()">
+      <div style="font-weight:700;font-size:14px">🕘 Version history</div><span class="muted">▲</span></div>
+    <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">This device</div>
+    ${localRows}
+    <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 4px">Cloud (all devices)</div>
+    ${cloudRows}
+    <p class="muted" style="font-size:11px;margin-top:10px">Restoring snapshots your current data first, so you can undo it.</p>
+  </div>`;
+}
 /* Patch the status/last-synced lines in place so we don't re-render (and clobber) the Settings form. */
 function updateSyncUI(){
   const s=document.getElementById('sync-status'); if(s) s.textContent=SYNC.status||'';
@@ -2441,10 +2770,11 @@ function syncCardHTML(){
   if(!window.firebase) return `<div class="card"><p class="muted">Cloud sync couldn't load (no connection to the sync library). Reopen the app while online.</p></div>`;
   if(SYNC.user){
     return `<div class="card">
-      <div class="row"><div><div style="font-weight:700">✓ Connected</div><div class="muted" style="font-size:12px">${esc(SYNC.user.email||'')}</div></div><span class="flag">Sync on</span></div>
+      <div class="row"><div><div style="font-weight:700">✓ Connected</div><div class="muted" style="font-size:12px">${esc(SYNC.user.email||'')}</div></div><span class="flag">${SYNC.pending?'Pending':'Sync on'}</span></div>
       <p class="muted" id="sync-last" style="margin:10px 0 4px">${SYNC.lastSyncAt?('Last synced: '+new Date(SYNC.lastSyncAt).toLocaleString()):'Not synced yet'}</p>
       <p class="muted" id="sync-status" style="margin:0 0 12px">${esc(SYNC.status||'')}</p>
-      <button class="btn btn-block" onclick="pushNow(false)">⟳ Sync now</button>
+      <button class="btn btn-block" onclick="pushNow(false)">⟳ Check for updates</button>
+      <p class="muted" style="font-size:11px;margin-top:8px">Safe to tap anytime — it merges both devices and never replaces newer data.</p>
       <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="syncSignOut()">Sign out</button>
     </div>`;
   }
