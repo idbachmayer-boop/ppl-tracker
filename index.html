@@ -460,7 +460,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 12;
+const SCHEMA = 13;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -488,7 +488,12 @@ const MIGRATIONS = {
   11:d=>{ if(typeof d.routineMode!=='string') d.routineMode='4day'; return d; }, // 4-Day PPL toggle
   /* Skipped days were pushed with no id (skipDay predated ids), so they'd all collide on a single
      undefined merge key. Backfill from content — never from array index, which differs per device. */
-  12:d=>{ (d.sessions||[]).forEach(s=>{ if(!s.id) s.id='s_'+(s.date||'')+'_'+(s.workout||'').replace(/\s+/g,'')+'_'+(s.endedAt||(s.skipped?'skip':'h')); }); return d; }
+  12:d=>{ (d.sessions||[]).forEach(s=>{ if(!s.id) s.id='s_'+(s.date||'')+'_'+(s.workout||'').replace(/\s+/g,'')+'_'+(s.endedAt||(s.skipped?'skip':'h')); }); return d; },
+  /* Generation counter for wholesale replace (Erase all data / Import→Replace). Keep this a PURE
+     literal: MIGRATIONS runs during `let DB = load()` far above the merge-key consts, and a TDZ
+     ReferenceError here would be swallowed by the silent catch below while _schema still advances,
+     permanently skipping the migration. */
+  13:d=>{ if(typeof d.gen!=='number') d.gen=0; return d; }
 };
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
 function normalize(raw){
@@ -496,6 +501,7 @@ function normalize(raw){
   d.sessions = Array.isArray(d.sessions) ? d.sessions : [];
   d.weights  = Array.isArray(d.weights)  ? d.weights  : [];
   if(typeof d.unit!=='string') d.unit='lb';
+  if(typeof d.gen!=='number') d.gen=0;   // defensive: migration 13 runs in a silent try/catch
   for(let v=(d._schema||0)+1; v<=SCHEMA; v++){ try{ d = MIGRATIONS[v](d) || d; }catch(e){} }
   /* Never DOWNGRADE: a device running a stale cached index.html would otherwise stamp an older
      schema onto the shared blob and make the newer device re-run migrations (migration 4 is not
@@ -505,7 +511,39 @@ function normalize(raw){
 }
 let DB = load();
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
-function blank(){ return { _schema:SCHEMA, sessions:[], weights:[], draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
+function blank(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[], draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
+
+/* ── Soft delete ─────────────────────────────────────────────────────────────────────────────
+   Deleting used to splice the row out, but sync UNIONS both devices — so the cloud copy came
+   straight back on the next merge and the row resurrected forever. Now a delete flags the row
+   (`deletedAt`) and stamps `mtime`; the merge resolves same-key collisions by `mtime`, so the
+   most recent real action wins whichever device it happened on. Rows stay in the blob (~40 bytes
+   once stripped) so an old device can never resurrect them.
+   A missed filter shows a harmless ghost row; it can never delete data. Keep it that way. */
+const DELETE_PAYLOAD_KEEP_MS = 30*86400000;  // full payload kept this long, so Restore is lossless
+const isLive = x => !!x && !x.deletedAt;
+function touch(x){ if(x && typeof x==='object') x.mtime = Date.now(); return x; }
+function liveSessions(){ return (DB.sessions||[]).filter(isLive); }
+function liveWeights(){ return (DB.weights||[]).filter(isLive); }
+function liveCardio(){ return (DB.cardio||[]).filter(isLive); }
+function liveIdeas(){ return (DB.ideas||[]).filter(isLive); }
+function liveTodos(){ return (DB.todos||[]).filter(isLive); }
+function liveHobbyLog(){ return (DB.hobbyLog||[]).filter(isLive); }
+/* Mark deleted in place. Returns false if it was already gone. */
+function softDelete(arr, pred){
+  const it = (arr||[]).find(x=> isLive(x) && pred(x)); if(!it) return false;
+  it.deletedAt = Date.now(); touch(it); return true;
+}
+function softRestore(arr, pred){
+  const it = (arr||[]).find(x=> x && x.deletedAt && pred(x)); if(!it) return false;
+  delete it.deletedAt; touch(it); return true;
+}
+/* Age out heavy payloads on long-dead rows but ALWAYS keep the stub (dropping it would let a stale
+   device resurrect the row). Called from save(); cheap, and bounded by the number of dead rows. */
+function pruneDeleted(){
+  const cutoff = Date.now() - DELETE_PAYLOAD_KEEP_MS;
+  (DB.sessions||[]).forEach(s=>{ if(s.deletedAt && s.deletedAt<cutoff && s.entries && s.entries.length){ s.entries=[]; s.stairs=null; s.extras={}; s.note=''; } });
+}
 
 /* ── Local snapshot ring — the undo buffer that was missing when a bad sync wiped 4 days of data.
    Kept in its OWN localStorage key (never inside DB) so it can't bloat the synced blob or recurse.
@@ -552,6 +590,7 @@ function handleQuotaFailure(){
 }
 function save(){
   DB.updatedAt = Date.now();
+  pruneDeleted();
   maybeDailySnapshot();
   try{ localStorage.setItem(KEY, JSON.stringify(DB)); }
   catch(e){ handleQuotaFailure(); }                            // never throw: callers push to DB *before* save()
@@ -600,27 +639,29 @@ function restTargetForSlot(i){
 let restCtx = null; // the rest window shown on the bar — points at the most recently logged set's exercise
 
 function nextWorkout(){
-  const seq = activeSequence();
-  if(!DB.sessions.length) return seq[0];
-  const last = DB.sessions[DB.sessions.length-1].workout;
+  const seq = activeSequence(), ls = liveSessions();
+  if(!ls.length) return seq[0];
+  const last = ls[ls.length-1].workout;
   if(!isSpecializedWorkout(last)){
     const i = seq.indexOf(last);
     return seq[(i+1+seq.length) % seq.length]; // i===-1 (unrecognized) -> seq[0]
   }
   // Last was a specialized day — 'SPECIALIZED' appears twice in seq (idx 3 and 7), so indexOf()
   // can't tell which. Disambiguate via the session before it (specialized always follows Pull).
-  const prev = DB.sessions.length>=2 ? DB.sessions[DB.sessions.length-2].workout : null;
+  const prev = ls.length>=2 ? ls[ls.length-2].workout : null;
   return prev==='PULL 2' ? seq[0] : seq[4]; // wrap to PUSH 1, else continue to PUSH 2
 }
 function lastSessionOf(workout){
-  for(let i=DB.sessions.length-1;i>=0;i--) if(DB.sessions[i].workout===workout && !DB.sessions[i].skipped) return DB.sessions[i];
+  const ls = liveSessions();
+  for(let i=ls.length-1;i>=0;i--) if(ls[i].workout===workout && !ls[i].skipped) return ls[i];
   return null;
 }
 /* Most recent REAL performance of a given slot (ignores skipped days and skipped sets).
    This is the number you have to beat — a skip never resets your baseline. */
 function lastRealEntry(workout, slotIndex){
-  for(let i=DB.sessions.length-1;i>=0;i--){
-    const s=DB.sessions[i];
+  const ls = liveSessions();
+  for(let i=ls.length-1;i>=0;i--){
+    const s=ls[i];
     if(s.workout!==workout || s.skipped || !s.entries) continue;
     const e=s.entries[slotIndex];
     if(e && !e.deload && e.sets && e.sets.some(x=>!x.skipped && x.r!=='')) return {entry:e, date:s.date}; // deloads never reset the baseline
@@ -628,9 +669,10 @@ function lastRealEntry(workout, slotIndex){
   return null;
 }
 function lastRealStairs(){
-  for(let i=DB.sessions.length-1;i>=0;i--){
-    const st=DB.sessions[i].stairs;
-    if(st && !st.skipped && st.seconds!=='' && st.seconds!=null) return {st, date:DB.sessions[i].date};
+  const ls = liveSessions();
+  for(let i=ls.length-1;i>=0;i--){
+    const st=ls[i].stairs;
+    if(st && !st.skipped && st.seconds!=='' && st.seconds!=null) return {st, date:ls[i].date};
   }
   return null;
 }
@@ -707,7 +749,7 @@ function updTargetBadge(i,k){
    genuine +1-rep session clears the stall and never triggers a deload. */
 function slotE1rmSeries(name, workout, slotIndex){
   const v=[];
-  DB.sessions.forEach(s=>{ if(s.skipped || s.workout!==workout || !s.entries) return;
+  liveSessions().forEach(s=>{ if(s.skipped || s.workout!==workout || !s.entries) return;
     const e=s.entries[slotIndex]; if(!e || e.deload || e.name!==name) return;
     let best=0; e.sets.forEach(x=>{ if(!x.skipped){ const val=e1rm(x.w,x.r); if(val>best) best=val; } });
     if(best>0) v.push(best); });
@@ -739,32 +781,32 @@ function sessionExercises(s){
 }
 function exercisesWithData(){
   const set=new Set();
-  DB.sessions.forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{ if(e.sets.some(x=>!x.skipped && e1rm(x.w,x.r)>0)) set.add(e.name); }); });
+  liveSessions().forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{ if(e.sets.some(x=>!x.skipped && e1rm(x.w,x.r)>0)) set.add(e.name); }); });
   return [...set].sort();
 }
 function exerciseSeries(name){
   const out=[];
-  DB.sessions.forEach(s=>{ if(s.skipped) return; let best=0;
+  liveSessions().forEach(s=>{ if(s.skipped) return; let best=0;
     sessionExercises(s).forEach(e=>{ if(e.name!==name) return; e.sets.forEach(x=>{ if(!x.skipped){ const v=e1rm(x.w,x.r); if(v>best) best=v; } }); });
     if(best>0) out.push({date:s.date, value:best}); });
   return out;
 }
 function exercisePRs(){
   const map={};
-  DB.sessions.forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{
+  liveSessions().forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{
     e.sets.forEach(x=>{ if(x.skipped) return; const v=e1rm(x.w,x.r); if(v>0 && (!map[e.name] || v>map[e.name].v)) map[e.name]={v, w:x.w, r:x.r, date:s.date}; }); }); });
   return Object.entries(map).map(([name,d])=>({name,...d})).sort((a,b)=>b.v-a.v);
 }
 /* Bodyweight exercises (weight-0 sets with reps) that aren't tracked as loaded lifts. */
 function bwExercisesWithData(){
   const loaded=new Set(exercisesWithData()), set=new Set();
-  DB.sessions.forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{ if(loaded.has(e.name)) return;
+  liveSessions().forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{ if(loaded.has(e.name)) return;
     if(e.sets.some(x=>!x.skipped && x.r!=='' && (x.w===''||+x.w===0))) set.add(e.name); }); });
   return [...set].sort();
 }
 function bwSeries(name){
   const out=[];
-  DB.sessions.forEach(s=>{ if(s.skipped) return; let total=0, has=false;
+  liveSessions().forEach(s=>{ if(s.skipped) return; let total=0, has=false;
     sessionExercises(s).forEach(e=>{ if(e.name!==name) return; e.sets.forEach(x=>{ if(!x.skipped && x.r!==''){ total+=+x.r; has=true; } }); });
     if(has) out.push({date:s.date, value:total}); });
   return out;
@@ -773,7 +815,7 @@ function bwSeries(name){
 function weeklySetsByMuscle(){
   const m=+monday(new Date()), counts={};
   const add=(mus,n)=>{ if(mus&&n) counts[mus]=(counts[mus]||0)+n; };
-  DB.sessions.forEach(s=>{ if(s.skipped || +monday(new Date(s.date+'T00:00'))!==m) return;
+  liveSessions().forEach(s=>{ if(s.skipped || +monday(new Date(s.date+'T00:00'))!==m) return;
     (s.entries||[]).forEach((e,idx)=>{ const sl=PROGRAM[s.workout]&&PROGRAM[s.workout].slots[idx]; add(sl&&sl.muscle, e.sets.filter(x=>!x.skipped && x.r!=='').length); });
     if(s.extras) Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e&&e.sets){ const mus=(ACCESSORIES[w]&&ACCESSORIES[w].muscle)||(w.charAt(0).toUpperCase()+w.slice(1)); add(mus, e.sets.filter(x=>!x.skipped && x.r!=='').length); } });
   });
@@ -790,8 +832,8 @@ function pickRandom(cat, exclude){ const l=listFor(cat); if(!l.length) return nu
 function setPickCat(c){ pickCat=c; if(!currentPick[c]) currentPick[c]=pickRandom(c); render(); }
 function shufflePick(){ currentPick[pickCat]=pickRandom(pickCat, currentPick[pickCat]); render(); }
 function selectPick(v){ currentPick[pickCat]=v; render(); }
-function didPick(){ const item=currentPick[pickCat]; if(!item) return; DB.hobbyLog.push({date:todayISO(), item, cat:pickCat}); save(); confettiBurst(); toast('Nice — that counts. 🎉'); currentPick[pickCat]=pickRandom(pickCat, item); render(); }
-function catWeekCount(cat){ const m=+monday(new Date()); return (DB.hobbyLog||[]).filter(h=> (h.cat||'hobby')===cat && +monday(new Date(h.date+'T00:00'))===m).length; }
+function didPick(){ const item=currentPick[pickCat]; if(!item) return; DB.hobbyLog.push(touch({date:todayISO(), item, cat:pickCat})); save(); confettiBurst(); toast('Nice — that counts. 🎉'); currentPick[pickCat]=pickRandom(pickCat, item); render(); }
+function catWeekCount(cat){ const m=+monday(new Date()); return liveHobbyLog().filter(h=> (h.cat||'hobby')===cat && +monday(new Date(h.date+'T00:00'))===m).length; }
 function addItem(cat){ const inp=document.getElementById(cat+'-input'); const v=(inp.value||'').trim(); if(!v) return; listFor(cat).push(v); save(); toast('Added'); render(); }
 function removeItem(cat,i){ listFor(cat).splice(i,1); if(currentPick[cat] && !listFor(cat).includes(currentPick[cat])) currentPick[cat]=pickRandom(cat); save(); render(); }
 
@@ -807,9 +849,11 @@ function journalWeekCount(){ const m=+monday(new Date()); let c=0; for(const d i
 function logToJournal(line){ const d=todayISO(); DB.journal[d] = DB.journal[d] ? (DB.journal[d].replace(/\s+$/,'')+'\n'+line) : line; }
 
 /* ───────────────────────── To-do list (rolls over until checked) ───────────────────────── */
-function addTodo(){ const inp=document.getElementById('todo-input'); const v=(inp.value||'').trim(); if(!v) return; DB.todos.push({text:v, created:todayISO()}); save(); render(); const n=document.getElementById('todo-input'); if(n) n.focus(); }
-function doneTodo(i){ const t=DB.todos[i]; if(!t) return; logToJournal('✓ '+fmtClock(Date.now())+' — '+t.text); DB.todos.splice(i,1); save(); toast('Logged to journal ✓'); render(); }
-function removeTodo(i){ DB.todos.splice(i,1); save(); render(); }
+function addTodo(){ const inp=document.getElementById('todo-input'); const v=(inp.value||'').trim(); if(!v) return; DB.todos.push(touch({text:v, created:todayISO()})); save(); render(); const n=document.getElementById('todo-input'); if(n) n.focus(); }
+/* i indexes the LIVE list (what the UI rendered), and liveTodos() returns the same object refs
+   held in DB.todos — so flagging the found object mutates DB in place. */
+function doneTodo(i){ const t=liveTodos()[i]; if(!t) return; logToJournal('✓ '+fmtClock(Date.now())+' — '+t.text); t.deletedAt=Date.now(); touch(t); save(); toast('Logged to journal ✓'); render(); }
+function removeTodo(i){ const t=liveTodos()[i]; if(!t) return; t.deletedAt=Date.now(); touch(t); save(); render(); }
 function todoAge(created){ return Math.floor((Date.now()-new Date(created+'T00:00'))/86400000); }
 
 /* ───────────────────────── Router — feature registry ─────────────────────────
@@ -879,8 +923,8 @@ function wxGlance(){
 }
 function weekTally(){
   const m=+monday(new Date());
-  const wk=DB.sessions.filter(s=>!s.skipped && +monday(new Date(s.date+'T00:00'))===m).length;
-  const hb=(DB.hobbyLog||[]).filter(h=>+monday(new Date(h.date+'T00:00'))===m).length;
+  const wk=liveSessions().filter(s=>!s.skipped && +monday(new Date(s.date+'T00:00'))===m).length;
+  const hb=liveHobbyLog().filter(h=>+monday(new Date(h.date+'T00:00'))===m).length;
   return `${wk} workout${wk!==1?'s':''} · ${hb} activit${hb!==1?'ies':'y'} · journaled ${journalWeekCount()}/7`;
 }
 const kicker = t => `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${t}</div>`;
@@ -888,8 +932,8 @@ function viewToday(){
   const nxt = nextWorkout();
   const nxtIsSpecialized = nxt === 'SPECIALIZED';
   const g = nxtIsSpecialized ? null : PROGRAM[nxt].group;
-  const last = DB.sessions[DB.sessions.length-1];
-  const w = DB.weights[DB.weights.length-1];
+  const lsAll = liveSessions(); const last = lsAll[lsAll.length-1];
+  const lwAll = liveWeights(); const w = lwAll[lwAll.length-1];
   const loggedToday = w && w.date===todayISO();
   if(currentPick[pickCat]===null) currentPick[pickCat]=pickRandom(pickCat);
   const catWeek = catWeekCount(pickCat), jWeek = journalWeekCount();
@@ -967,7 +1011,7 @@ function viewToday(){
       </div>`:`<p class="muted" style="margin-top:8px;font-size:12px">${complete?'Logged for today — nice.':'Stretch daily to fix the tilt — tap to check off.'}</p>`}
     </div>`;
 
-  const todos = DB.todos||[];
+  const todos = liveTodos();
   const TODO_CAP = 5, todosExpanded = accOpen.has('todos-all');
   const shownTodos = todosExpanded ? todos : todos.slice(0, TODO_CAP);
   const cTodo = `<div class="card">
@@ -1090,7 +1134,7 @@ function startWorkout(name){
 function skipDay(name){
   const reason = prompt(`Skip ${name} entirely? Add a reason (optional):`, '');
   if(reason===null) return;
-  DB.sessions.push({ id:'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), workout:name, date:todayISO(), skipped:true, reason:reason.trim(), entries:[], stairs:null, durationMin:null });
+  DB.sessions.push(touch({ id:'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), workout:name, date:todayISO(), skipped:true, reason:reason.trim(), entries:[], stairs:null, durationMin:null }));
   sortSessions(); save(); toast(`${name} skipped`);
   go('today');
 }
@@ -1335,7 +1379,7 @@ function finishWorkout(){
       if(best>0 && best>(prior[e.name]||0)) prs.push({name:e.name, v:Math.round(best), prev:Math.round(prior[e.name]||0)}); });
     if(prs.length) sess.prs = prs.map(p=>p.name);
   }
-  DB.sessions.push(sess);
+  DB.sessions.push(touch(sess));
   sortSessions();
   DB.draft = null; collapsedEx.clear(); save(); snapshotNow('after-workout'); cloudVersion('workout');
   if(prs.length){ confettiBurst(); toast(prs.length===1 ? `🏆 PR! ${prs[0].name} ${prs[0].prev||'—'}→${prs[0].v}` : `🏆 ${prs.length} PRs this session!`); }
@@ -1355,8 +1399,8 @@ let addActivityDate=null, actAddCat='hobby';
 function openActivityAdd(iso){ addActivityDate=iso; actAddCat='hobby'; editJournalDate=null; render(); }
 function setActAddCat(c){ actAddCat=c; render(); }
 function cancelActivityAdd(){ addActivityDate=null; render(); }
-function addActivityFor(iso){ const sel=document.getElementById('act-item'); const item=sel&&sel.value; if(!item){ toast('Pick an item'); return; } if(!DB.hobbyLog) DB.hobbyLog=[]; DB.hobbyLog.push({date:iso, item, cat:actAddCat}); save(); toast('Logged ✓'); render(); }
-function removeActivity(idx){ if(!DB.hobbyLog||!DB.hobbyLog[idx]) return; DB.hobbyLog.splice(idx,1); save(); render(); }
+function addActivityFor(iso){ const sel=document.getElementById('act-item'); const item=sel&&sel.value; if(!item){ toast('Pick an item'); return; } if(!DB.hobbyLog) DB.hobbyLog=[]; DB.hobbyLog.push(touch({date:iso, item, cat:actAddCat})); save(); toast('Logged ✓'); render(); }
+function removeActivity(idx){ const h=(DB.hobbyLog||[])[idx]; if(!h || !isLive(h)) return; h.deletedAt=Date.now(); touch(h); save(); render(); }
 /* Week in review — merges logged workouts/hobbies/weigh-ins with the daily journal note. */
 function renderWeekReview(){
   const base = monday(new Date()); base.setDate(base.getDate() + reviewWeekOffset*7);
@@ -1367,9 +1411,9 @@ function renderWeekReview(){
     const dt = new Date(base); dt.setDate(dt.getDate()+di);
     const iso = dt.toLocaleDateString('en-CA');
     const future = iso > today;
-    const sess = DB.sessions.filter(s=>s.date===iso);
-    const hb = (DB.hobbyLog||[]).filter(h=>h.date===iso).map(h=>h.item||h.hobby);
-    const wt = DB.weights.find(x=>x.date===iso);
+    const sess = liveSessions().filter(s=>s.date===iso);
+    const hb = liveHobbyLog().filter(h=>h.date===iso).map(h=>h.item||h.hobby);
+    const wt = liveWeights().find(x=>x.date===iso);
     const note = (DB.journal||{})[iso];
     nW += sess.filter(s=>!s.skipped).length; nH += hb.length; if(note && note.trim()) nJ++;
     const tags = [];
@@ -1396,7 +1440,7 @@ function renderWeekReview(){
     let activityPanel='';
     if(!future && addActivityDate===iso){
       const items=listFor(actAddCat);
-      const dayActs=(DB.hobbyLog||[]).map((h,idx)=>({h,idx})).filter(o=>o.h.date===iso);
+      const dayActs=(DB.hobbyLog||[]).map((h,idx)=>({h,idx})).filter(o=>isLive(o.h) && o.h.date===iso);
       activityPanel = `<div style="margin-top:8px;padding:10px;border:1px solid var(--border-2);border-radius:8px">
         <div class="seg" style="margin:0 0 8px"><button class="${actAddCat==='hobby'?'active':''}" onclick="setActAddCat('hobby')">Hobby</button><button class="${actAddCat==='productivity'?'active':''}" onclick="setActAddCat('productivity')">Productivity</button></div>
         <div class="row" style="gap:8px"><select id="act-item" style="flex:1">${items.map(x=>`<option>${esc(x)}</option>`).join('')}</select><button class="btn btn-sm" onclick="addActivityFor('${iso}')">Add</button><button class="btn btn-sm btn-ghost" onclick="cancelActivityAdd()">Done</button></div>
@@ -1426,7 +1470,7 @@ function toggleBackdate(){ showBackdate=!showBackdate; render(); }
 function fmtSeconds(t){ if(!t) return '0s'; const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60; if(h) return `${h}h ${m}m`; if(m) return `${m}m${s?' '+s+'s':''}`; return `${s}s`; }
 function monday(d){ const x=new Date(d); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x; }
 function renderSummary(){
-  const done = DB.sessions.filter(s=>!s.skipped);
+  const done = liveSessions().filter(s=>!s.skipped);
   if(!done.length) return '';
   const thisMon = monday(new Date());
   const weeks=[];
@@ -1455,9 +1499,9 @@ function viewHistory(){
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${SEQUENCE.map(n=>`<button class="btn btn-ghost btn-sm" onclick="startBackdate('${n}')">${n}</button>`).join('')}${DB.routineMode==='4day'?SPECIALIZED_OPTIONS.map(o=>`<button class="btn btn-ghost btn-sm" onclick="startBackdate('${o.name}')">${o.label}</button>`).join(''):''}</div>
       <p class="muted" style="margin-top:10px">Tip: enter your 5 oldest-first so each session sees the one before it as "last time".</p>
     </div>`:''}`;
-  if(!DB.sessions.length) return `<h2>Week in review</h2>${renderWeekReview()}<div style="margin:14px 0">${back}</div><div class="empty">No workouts logged yet.<br>Start one from the Workout tab, or add a past workout above.</div>`;
-  const items = DB.sessions.slice().reverse().map((s,ri)=>{
-    const idx = DB.sessions.length-1-ri; const g=PROGRAM[s.workout]?PROGRAM[s.workout].group:'push';
+  if(!liveSessions().length) return `<h2>Week in review</h2>${renderWeekReview()}<div style="margin:14px 0">${back}</div><div class="empty">No workouts logged yet.<br>Start one from the Workout tab, or add a past workout above.</div>`;
+  const items = DB.sessions.map((s,i)=>({s,i})).filter(o=>isLive(o.s)).reverse().map(({s,i})=>{
+    const idx = i; const g=PROGRAM[s.workout]?PROGRAM[s.workout].group:'push';
     const open = openHist===idx;
     let right, detail='';
     const editRow = `<div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap;border-top:1px solid var(--border-3);padding-top:10px">
@@ -1495,7 +1539,7 @@ function viewHistory(){
       </div>${detail}
     </div>`;
   }).join('');
-  return `<p class="subtitle">${DB.sessions.length} entries logged</p>
+  return `<p class="subtitle">${liveSessions().length} entries logged</p>
     ${summary}
     <h2>Week in review</h2>
     ${renderWeekReview()}
@@ -1504,8 +1548,10 @@ function viewHistory(){
 }
 function e_count(s){ return (s.entries||[]).reduce((a,e)=>a+e.sets.filter(x=>!x.skipped).length,0); }
 function toggleHist(i){ openHist = openHist===i?-1:i; render(); }
-function changeSessionDate(idx, v){ if(!v) return; const s=DB.sessions[idx]; s.date=v; sortSessions(); openHist=DB.sessions.indexOf(s); save(); toast('Date updated'); render(); }
-function deleteSession(idx){ if(!confirm('Delete this entry permanently?')) return; DB.sessions.splice(idx,1); openHist=-1; save(); toast('Entry deleted'); render(); }
+function changeSessionDate(idx, v){ if(!v) return; const s=DB.sessions[idx]; if(!s) return; s.date=v; touch(s); sortSessions(); openHist=DB.sessions.indexOf(s); save(); toast('Date updated'); render(); }
+/* Soft delete — flags the row instead of splicing, so the delete survives a sync merge instead of
+   the cloud copy resurrecting it. Restorable from Settings → Recently deleted. */
+function deleteSession(idx){ const s=DB.sessions[idx]; if(!s || !isLive(s)) return; if(!confirm('Delete this entry?\n\nYou can restore it from Settings → Recently deleted.')) return; s.deletedAt=Date.now(); touch(s); openHist=-1; save(); cloudVersion('delete'); toast('Entry deleted'); render(); }
 /* Re-open a past workout into the editor to fix exercises/sets (e.g. logged the wrong day).
    Re-saving replaces the original (matched by stable id); discarding leaves it untouched. */
 function editSession(idx){
@@ -1546,14 +1592,14 @@ function viewWeight(){
   if(progSub==='strength') return viewStrength(sub);
   if(progSub==='volume') return viewVolume(sub);
   if(progSub==='cardio') return viewCardioTrend(sub);
-  const w = DB.weights[DB.weights.length-1];
+  const lwv = liveWeights(); const w = lwv[lwv.length-1];
   const avg = currentAvg(), wd = avgWeekDelta();
-  const statCard = DB.weights.length ? `<div class="card">
+  const statCard = liveWeights().length ? `<div class="card">
       <div class="stat-big" style="font-size:28px">${avg!=null?avg.toFixed(1):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
       <div class="stat-sub">7-day average${wd!=null?` · <span class="muted">${wd>0?'▲':wd<0?'▼':'·'} ${Math.abs(wd).toFixed(1)} ${DB.unit} vs last week</span>`:''}${w?` · latest ${(+w.value).toFixed(1)}`:''}</div>
     </div>` : '';
   return `
-        <p class="subtitle">${DB.weights.length} weigh-ins · 7-day average trend</p>
+        <p class="subtitle">${liveWeights().length} weigh-ins · 7-day average trend</p>
     ${sub}
     <div class="card">
       <div class="row">
@@ -1567,7 +1613,7 @@ function viewWeight(){
     </div>
     ${statCard}
     <div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">7-day average</div><svg id="chart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg></div>
-    ${DB.weights.length? `<div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Daily entries</div>${weightList()}</div>` : '<div class="empty">Log your first weigh-in above.</div>'}`;
+    ${liveWeights().length? `<div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Daily entries</div>${weightList()}</div>` : '<div class="empty">Log your first weigh-in above.</div>'}`;
 }
 function viewStrength(sub){
   const loadEx = exercisesWithData(), bwEx = bwExercisesWithData(), all = loadEx.concat(bwEx);
@@ -1617,14 +1663,14 @@ function viewVolume(sub){
 function cardioWeeks(n){
   const base=monday(new Date()), out=[];
   for(let i=n-1;i>=0;i--){ const ws=new Date(base); ws.setDate(ws.getDate()-i*7); const wsTs=+ws; let min=0,km=0;
-    (DB.cardio||[]).forEach(c=>{ if(+monday(new Date(c.date+'T00:00'))===wsTs){ min+=(+c.minutes||0); km+=(+c.distanceKm||0); } });
-    (DB.sessions||[]).forEach(s=>{ const st=s.stairs; if(!s.skipped && st && !st.skipped && st.seconds!=='' && st.seconds!=null && +monday(new Date(s.date+'T00:00'))===wsTs) min+=(+st.seconds||0)/60; });
+    liveCardio().forEach(c=>{ if(+monday(new Date(c.date+'T00:00'))===wsTs){ min+=(+c.minutes||0); km+=(+c.distanceKm||0); } });
+    liveSessions().forEach(s=>{ const st=s.stairs; if(!s.skipped && st && !st.skipped && st.seconds!=='' && st.seconds!=null && +monday(new Date(s.date+'T00:00'))===wsTs) min+=(+st.seconds||0)/60; });
     out.push({ start:ws, min:Math.round(min), km }); }
   return out;
 }
 function viewCardioTrend(sub){
   const weeks=cardioWeeks(8);
-  if(!weeks.some(w=>w.min>0) && !(DB.cardio||[]).length)
+  if(!weeks.some(w=>w.min>0) && !liveCardio().length)
     return `<h1>Progress</h1><p class="subtitle">Cardio minutes per week</p>${sub}<div class="empty">Log cardio (or a stair-stepper finisher) and your weekly trend shows up here.</div>`;
   const maxV=Math.max(CARDIO_GOAL, ...weeks.map(w=>w.min));
   const bars=weeks.map(w=>{ const h=Math.max(2,Math.round(w.min/maxV*100)), hit=w.min>=CARDIO_GOAL;
@@ -1643,15 +1689,15 @@ function viewCardioTrend(sub){
     <p class="muted" style="text-align:center;font-size:12px">Longboard, walks, and your stair-stepper finishers all count toward ~${CARDIO_GOAL} min/week.</p>`;
 }
 function weightList(){
-  return DB.weights.slice().reverse().slice(0,12).map((w,ri)=>{
-    const idx = DB.weights.length-1-ri;
+  return DB.weights.map((w,i)=>({w,i})).filter(o=>isLive(o.w)).reverse().slice(0,12).map(({w,i})=>{
+    const idx = i;
     return `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" onclick="rmWeight(${idx})">×</button></span></div>`;
   }).join('');
 }
 /* 7-day rolling average — smooths daily water-weight noise into the real signal.
    For each weigh-in date, average every entry in the trailing 7 days. */
 function rollingAvgSeries(){
-  const ws = DB.weights.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  const ws = liveWeights().slice().sort((a,b)=>a.date.localeCompare(b.date));
   return ws.map(w=>{
     const end=new Date(w.date+'T00:00'), start=new Date(end); start.setDate(start.getDate()-6);
     const win=ws.filter(x=>{ const d=new Date(x.date+'T00:00'); return d>=start && d<=end; });
@@ -1672,11 +1718,13 @@ function logWeight(){
   const dEl = document.getElementById('wt-date');
   const t = (dEl && dEl.value) ? dEl.value : todayISO();   // backdatable — lets you fill in missed days
   const existing = DB.weights.find(w=>w.date===t);
-  if(existing){ existing.value=v; } else { DB.weights.push({date:t, value:v, at:Date.now()}); }
+  /* revive rather than duplicate: the merge keys weights by date, so a second row for the same
+     date would collide. Clearing deletedAt + stamping mtime makes the re-add win the next merge. */
+  if(existing){ existing.value=v; delete existing.deletedAt; touch(existing); } else { DB.weights.push(touch({date:t, value:v, at:Date.now()})); }
   DB.weights.sort((a,b)=>a.date.localeCompare(b.date));
   save(); cloudVersion('weigh-in'); toast(t===todayISO()?'Weight logged':'Logged for '+fmtDate(t)); render();
 }
-function rmWeight(i){ if(confirm('Delete this entry?')){ DB.weights.splice(i,1); save(); render(); } }
+function rmWeight(i){ const w=DB.weights[i]; if(!w || !isLive(w)) return; if(confirm('Delete this entry?')){ w.deletedAt=Date.now(); touch(w); save(); render(); } }
 /* trend (optional): a parallel series (same length as pts) drawn as the bold primary line, with
    pts shown as faint dots + a hairline. Used for the running-best strength trend. */
 function paintChart(svg, pts, emptyMsg, gradId, trend){
@@ -1780,7 +1828,7 @@ const ACCESSORIES = {
 };
 function accessoryIdsFor(workout){ return Object.keys(ACCESSORIES).filter(id=>ACCESSORIES[id].days.includes(workout)); }
 function emptyExtraSets(n){ return Array.from({length:n},()=>({w:'',r:'',skipped:false})); }
-function lastExtraName(which){ for(let i=DB.sessions.length-1;i>=0;i--){ const e=DB.sessions[i].extras; if(e && e[which] && e[which].name) return e[which].name; } return ''; }
+function lastExtraName(which){ const ls=liveSessions(); for(let i=ls.length-1;i>=0;i--){ const e=ls[i].extras; if(e && e[which] && e[which].name) return e[which].name; } return ''; }
 function blankExtras(workout){
   const out={};
   accessoryIdsFor(workout).forEach(id=>{ out[id]={ name:lastExtraName(id)||ACCESSORIES[id].examples[0], sets:emptyExtraSets(ACCESSORIES[id].sets) }; });
@@ -2148,6 +2196,7 @@ function viewData(){
     <h2>Cloud Sync</h2>
     ${syncCardHTML()}
     <h2>Backups &amp; history</h2>
+    ${trashCardHTML()}
     ${versionsCardHTML()}
     <h2>Hobbies</h2>
     <div class="card">
@@ -2169,7 +2218,7 @@ function viewData(){
       <input type="file" id="imp" accept="application/json" class="hidden" onchange="importData(this)">
     </div>
     <h2>Stats</h2>
-    <div class="card"><p class="muted">${DB.sessions.length} workouts · ${DB.weights.length} weigh-ins logged</p></div>
+    <div class="card"><p class="muted">${liveSessions().length} workouts · ${liveWeights().length} weigh-ins logged</p></div>
     <div class="card"><button class="btn btn-danger btn-block" onclick="wipe()">Erase all data</button></div>`;
 }
 function setUnit(u){ DB.unit=u; save(); render(); }
@@ -2191,12 +2240,15 @@ function importData(inp){
     }
     if(confirm('Replace ALL current data with this backup?\n\nYour current data is snapshotted first (Settings → Version history), so this is undoable.')){
       snapshotNow('before-import');
-      const wx=DB.wx; DB=normalize(raw); if(wx!==undefined) DB.wx=wx; DB.updatedAt=Date.now();
+      const g=(+DB.gen||0)+1;   // gen++ so the merge replaces wholesale instead of unioning the old rows back
+      const wx=DB.wx; DB=normalize(raw); if(wx!==undefined) DB.wx=wx; DB.gen=g; DB.updatedAt=Date.now();
       DB.lastBackupAt=Date.now(); save(); cloudVersion('import'); toast('Backup restored'); render(); } }
     catch(e){ alert('Not a valid backup file.'); } };
   r.readAsText(f);
 }
-function wipe(){ if(confirm('Erase ALL workouts and weights?\n\nA snapshot is saved first, so you can restore it from Settings → Version history.')){ snapshotNow('before-erase'); DB=blank(); save(); toast('Data erased'); go('today'); } }
+/* gen++ makes this a WHOLESALE replace at merge time. Without it, save()'s push would union every
+   erased row straight back from the cloud and the erase would silently undo itself. */
+function wipe(){ if(confirm('Erase ALL workouts and weights?\n\nA snapshot is saved first, so you can restore it from Settings → Version history.')){ snapshotNow('before-erase'); const g=(+DB.gen||0)+1; DB=blank(); DB.gen=g; save(); toast('Data erased'); go('today'); } }
 
 /* ───────────────────────── Theme: sync status-bar color to system ───────────────────────── */
 (function(){
@@ -2259,9 +2311,9 @@ function fmtDist(km){ if(km==null||km==='') return ''; return (Math.round(kmToDi
 function fmtMin(min){ min=Math.round(+min||0); if(min<60) return min+' min'; const h=Math.floor(min/60), m=min%60; return h+'h'+(m?' '+String(m).padStart(2,'0'):''); }
 function cardioUid(){ return 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function weeklyCardio(){ const m=+monday(new Date()); let min=0,km=0;
-  (DB.cardio||[]).forEach(c=>{ if(+monday(new Date(c.date+'T00:00'))===m){ min+=(+c.minutes||0); km+=(+c.distanceKm||0); } });
+  liveCardio().forEach(c=>{ if(+monday(new Date(c.date+'T00:00'))===m){ min+=(+c.minutes||0); km+=(+c.distanceKm||0); } });
   // stair-stepper finisher counts toward cardio (per the program guide) — read live from logged sessions
-  (DB.sessions||[]).forEach(s=>{ const st=s.stairs;
+  liveSessions().forEach(s=>{ const st=s.stairs;
     if(!s.skipped && st && !st.skipped && st.seconds!=='' && st.seconds!=null && +monday(new Date(s.date+'T00:00'))===m) min += (+st.seconds||0)/60; });
   return {min,km}; }
 function haversineKm(a,b){ const R=6371, toR=x=>x*Math.PI/180;
@@ -2286,10 +2338,10 @@ function addCardio(){
   const distV=parseFloat((document.getElementById('cardio-dist')||{}).value);
   const note=((document.getElementById('cardio-note')||{}).value||'').trim();
   if(!(min>0) && !(distV>0)){ toast('Enter minutes or distance'); return; }
-  DB.cardio.push({ id:cardioUid(), date, type, minutes:min, distanceKm:(distV>0?dispToKm(distV):0), note, source:'manual' });
+  DB.cardio.push(touch({ id:cardioUid(), date, type, minutes:min, distanceKm:(distV>0?dispToKm(distV):0), note, source:'manual' }));
   save(); toast('Cardio logged 🛹'); render();
 }
-function removeCardio(id){ DB.cardio=(DB.cardio||[]).filter(c=>c.id!==id); save(); render(); }
+function removeCardio(id){ if(!softDelete(DB.cardio, c=>c.id===id)) return; save(); render(); }
 
 function pickCardioFile(){ const el=document.getElementById('cardio-file'); if(el) el.click(); }
 function handleCardioFile(inp){
@@ -2364,8 +2416,8 @@ function parseStravaCSV(text){
 }
 function importCardioBatch(list){
   const key=c=>`${c.date}|${c.type}|${Math.round(c.minutes)}|${Math.round((c.distanceKm||0)*100)}`;
-  const seen=new Set((DB.cardio||[]).map(key)); let added=0, dup=0;
-  list.forEach(c=>{ const k=key(c); if(seen.has(k)){ dup++; return; } seen.add(k); DB.cardio.push(c); added++; });
+  const seen=new Set(liveCardio().map(key)); let added=0, dup=0;
+  list.forEach(c=>{ const k=key(c); if(seen.has(k)){ dup++; return; } seen.add(k); DB.cardio.push(touch(c)); added++; });
   save(); render(); toast(`Imported ${added}${dup?` · skipped ${dup} dup${dup!==1?'s':''}`:''}`);
 }
 function confirmCardioImport(){
@@ -2378,7 +2430,7 @@ function discardCardioImport(){ pendingCardio=null; render(); }
 
 function viewCardio(){
   const cw=weeklyCardio(), pct=Math.min(100,Math.round(cw.min/CARDIO_GOAL*100)), u=distUnit();
-  const list=(DB.cardio||[]).slice().sort((a,b)=> b.date.localeCompare(a.date) || (b.minutes-a.minutes));
+  const list=liveCardio().slice().sort((a,b)=> b.date.localeCompare(a.date) || (b.minutes-a.minutes));
   const pending = pendingCardio ? `<div class="card" style="border:1.5px solid var(--cardio-bd);background:var(--cardio-bg)">
       <div style="font-weight:700;margin-bottom:8px">📥 Import — confirm &amp; save</div>
       <div class="stair-grid">
@@ -2429,10 +2481,22 @@ function viewCardio(){
    a workout gone. Now both sides are UNIONED, so a stale device can never subtract data.
    Per-field strategy is deliberate; see the comments — several obvious choices are wrong. */
 function mergeUnion(aArr, bArr, keyOf, newerFirst){
-  /* newerFirst decides who wins a key collision. Order of output follows newerFirst then the rest. */
-  const out=[], seen=new Set();
-  const push=(arr)=>{ (arr||[]).forEach(it=>{ if(!it||typeof it!=='object') return; const k=keyOf(it); if(seen.has(k)) return; seen.add(k); out.push(it); }); };
-  push(newerFirst? bArr : aArr); push(newerFirst? aArr : bArr);
+  /* Union by key. A key collision is resolved by per-item `mtime` (stamped on every create/edit/
+     delete) so the most recent real ACTION wins — including a delete. Falling back to the
+     whole-DB newerFirst ordering when neither side has an mtime keeps legacy rows behaving as
+     before. This per-item resolution is what makes "delete on phone / re-add on an offline
+     laptop" come out right; a tombstone map would have silently dropped the re-add. */
+  const out=[], idx=new Map();
+  const consider=(it, fromNewerSide)=>{
+    if(!it || typeof it!=='object') return;
+    const k=keyOf(it), prev=idx.get(k);
+    if(prev===undefined){ idx.set(k, out.length); out.push(it); return; }
+    const cur=out[prev], curT=+cur.mtime||0, newT=+it.mtime||0;
+    if(newT>curT || (newT===curT && fromNewerSide)) out[prev]=it;   // strictly newer action wins; ties fall back to side
+  };
+  const first = newerFirst? bArr : aArr, second = newerFirst? aArr : bArr;
+  (first||[]).forEach(it=>consider(it, true));
+  (second||[]).forEach(it=>consider(it, false));
   return out;
 }
 /* Session key: prefer the stable id; fall back to content for pre-id rows (migration 12 backfills,
@@ -2466,6 +2530,18 @@ function mergeDateMap(a, b, bNewer, innerMerge){
 function mergeDB(remote, local, localWins){
   const r = remote && typeof remote==='object' ? remote : {};
   const l = local  && typeof local==='object'  ? local  : {};
+  /* Wholesale replace: "Erase all data" and Import→Replace bump `gen`. Without this the union
+     below would pull every erased row straight back from the cloud, so both of those actions
+     silently did nothing. A higher generation replaces everything, no key enumeration needed. */
+  const rG = +r.gen || 0, lG = +l.gen || 0;
+  if(rG !== lG){
+    const win = Object.assign({}, blank(), lG > rG ? l : r);
+    win.gen = Math.max(rG, lG);
+    win.updatedAt = Math.max(+r.updatedAt||0, +l.updatedAt||0);
+    win._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
+    delete win.wx;
+    return win;
+  }
   const rU = +r.updatedAt || 0, lU = +l.updatedAt || 0;
   const localNewer = localWins ? (lU >= rU) : (lU > rU);
   const newer = localNewer ? l : r, older = localNewer ? r : l;
@@ -2740,6 +2816,50 @@ function restoreCloudVersion(id){
     save(); toast('Restored from cloud ✓'); render();
   }catch(e){ alert('That version could not be read.'); }
 }
+/* ── Recently deleted ────────────────────────────────────────────────────────────────────────
+   Soft-deleted rows are still in the blob, so restoring is just clearing the flag. Only rows
+   inside the payload-retention window are listed — older stubs have had their sets stripped and
+   couldn't be restored intact. */
+let trashOpen = false;
+function toggleTrash(){ trashOpen = !trashOpen; render(); }
+function trashItems(){
+  const cutoff = Date.now() - DELETE_PAYLOAD_KEEP_MS, out = [];
+  const add = (kind, arr, label) => (arr||[]).forEach((x,i)=>{ if(x && x.deletedAt && x.deletedAt>=cutoff) out.push({kind, i, at:x.deletedAt, label:label(x)}); });
+  add('session', DB.sessions, s=> `${s.workout||'Workout'} · ${s.date||''}${s.skipped?' (skipped)':''}`);
+  add('weight',  DB.weights,  w=> `Weigh-in ${w.date} · ${(+w.value).toFixed(1)} ${DB.unit}`);
+  add('cardio',  DB.cardio,   c=> `${c.type||'Cardio'} · ${c.date||''}`);
+  add('todo',    DB.todos,    t=> `To-do · ${t.text||''}`);
+  add('activity',DB.hobbyLog, h=> `Activity · ${h.item||h.hobby||''}`);
+  add('idea',    DB.ideas,    x=> `Idea · ${x.text||''}`);
+  return out.sort((a,b)=>b.at-a.at);
+}
+function restoreDeleted(kind, i){
+  const arr = kind==='session'?DB.sessions : kind==='weight'?DB.weights : kind==='cardio'?DB.cardio
+            : kind==='todo'?DB.todos : kind==='activity'?DB.hobbyLog : DB.ideas;
+  const it = (arr||[])[i]; if(!it || !it.deletedAt) return;
+  delete it.deletedAt; touch(it);   // fresh mtime so the restore wins the next merge
+  save(); toast('Restored ✓'); render();
+}
+function trashCardHTML(){
+  const items = trashItems();
+  if(!trashOpen){
+    return `<div class="card"><div class="row" style="cursor:pointer" onclick="toggleTrash()">
+      <div><div style="font-weight:700;font-size:14px">🗑 Recently deleted</div>
+      <div class="muted" style="font-size:12px;margin-top:2px">${items.length? items.length+' item'+(items.length!==1?'s':'')+' — restorable for 30 days' : 'Nothing deleted recently'}</div></div>
+      <span class="muted">▼</span></div></div>`;
+  }
+  const rows = items.length ? items.map(o=>`<div class="hist-item" style="cursor:default">
+      <div style="min-width:0"><div style="font-weight:600;font-size:13px">${esc(o.label)}</div>
+        <div class="muted" style="font-size:11px">deleted ${new Date(o.at).toLocaleString()}</div></div>
+      <button class="btn btn-sm btn-ghost" onclick="restoreDeleted('${o.kind}',${o.i})">Restore</button>
+    </div>`).join('') : '<p class="muted" style="font-size:13px">Nothing deleted in the last 30 days.</p>';
+  return `<div class="card">
+    <div class="row" style="cursor:pointer;margin-bottom:10px" onclick="toggleTrash()">
+      <div style="font-weight:700;font-size:14px">🗑 Recently deleted</div><span class="muted">▲</span></div>
+    ${rows}
+    <p class="muted" style="font-size:11px;margin-top:10px">Deleted items stay hidden here for 30 days so a mis-tap is undoable, then their details are cleared.</p>
+  </div>`;
+}
 function versionsCardHTML(){
   const snaps = loadSnaps();
   const row = (when, label, sum, action) => `<div class="hist-item" style="cursor:default">
@@ -2805,11 +2925,11 @@ function syncCardHTML(){
 function ideaUid(){ return 'i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function openIdeas(){ const m=document.getElementById('ideas-modal'); if(!m) return; m.classList.add('show'); renderIdeasList(); const t=document.getElementById('idea-input'); if(t) t.focus(); }
 function closeIdeas(){ const m=document.getElementById('ideas-modal'); if(m) m.classList.remove('show'); }
-function addIdea(){ const el=document.getElementById('idea-input'); const v=((el&&el.value)||'').trim(); if(!v) return; if(!DB.ideas) DB.ideas=[]; DB.ideas.unshift({id:ideaUid(), text:v, date:todayISO(), done:false}); save(); if(el) el.value=''; renderIdeasList(); toast('Idea saved 💡'); }
-function removeIdea(id){ DB.ideas=(DB.ideas||[]).filter(x=>x.id!==id); save(); renderIdeasList(); }
-function toggleIdeaDone(id){ const it=(DB.ideas||[]).find(x=>x.id===id); if(!it) return; it.done=!it.done; save(); renderIdeasList(); }
+function addIdea(){ const el=document.getElementById('idea-input'); const v=((el&&el.value)||'').trim(); if(!v) return; if(!DB.ideas) DB.ideas=[]; DB.ideas.unshift(touch({id:ideaUid(), text:v, date:todayISO(), done:false})); save(); if(el) el.value=''; renderIdeasList(); toast('Idea saved 💡'); }
+function removeIdea(id){ if(!softDelete(DB.ideas, x=>x.id===id)) return; save(); renderIdeasList(); }
+function toggleIdeaDone(id){ const it=(DB.ideas||[]).find(x=>x.id===id); if(!it) return; it.done=!it.done; touch(it); save(); renderIdeasList(); }
 function renderIdeasList(){
-  const list=DB.ideas||[], box=document.getElementById('ideas-list'), cnt=document.getElementById('idea-count');
+  const list=liveIdeas(), box=document.getElementById('ideas-list'), cnt=document.getElementById('idea-count');
   if(cnt) cnt.textContent = list.length ? `${list.filter(i=>!i.done).length} open · ${list.length} total` : '';
   if(!box) return;
   box.innerHTML = list.length ? list.map(i=>`<div class="idea-item${i.done?' done':''}">
@@ -2819,7 +2939,7 @@ function renderIdeasList(){
   </div>`).join('') : '<p class="muted" style="font-size:13px;padding:8px 0">No ideas yet — add one above while you\'re using the app.</p>';
 }
 function copyIdeas(){
-  const list=DB.ideas||[]; if(!list.length){ toast('No ideas to copy'); return; }
+  const list=liveIdeas(); if(!list.length){ toast('No ideas to copy'); return; }
   const text = `PPL Tracker — ideas (${list.length})\n` + list.map(i=>`- [${i.done?'x':' '}] ${i.text} (${fmtDate(i.date)})`).join('\n');
   const done=()=>toast('Copied ✓ — paste it to me');
   if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
