@@ -2483,10 +2483,15 @@ function mergeDB(remote, local, localWins){
      keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
   out.mobilityLog = mergeDateMap(r.mobilityLog, l.mobilityLog, localNewer, null);
   out.lawnLog     = mergeDateMap(r.lawnLog,     l.lawnLog,     localNewer, null);
-  // ── draft: an in-progress workout is never overwritten by a remote one ──
-  const localDraft = l.draft && PROGRAM[l.draft.workout] ? l.draft : null;
-  const remoteDraft = r.draft && PROGRAM[r.draft.workout] ? r.draft : null; // validate: unknown workout white-screens viewActive
-  out.draft = localDraft || remoteDraft || null;
+  /* draft: already set correctly by Object.assign(newer) above — same recency rule as every other
+     field. BUG FIXED HERE (2026-07-25): this used to be `localDraft || remoteDraft || null`, which
+     picked whichever side had ANY non-null draft, ignoring which side was actually newer. Once a
+     stale non-null draft existed anywhere (a device's memory, or the cloud doc from before a
+     workout was finished), it won FOREVER — finishing/discarding sets draft:null, but null could
+     never beat a stale non-null value, so the old workout kept getting resurrected on every merge
+     and re-pushed via the live listener, looping endlessly across every device. Only guard against
+     a corrupt/unknown workout name here (would crash viewActive's PROGRAM[name] lookup). */
+  if(out.draft && !PROGRAM[out.draft.workout]) out.draft = null;
   // ── invariants ──
   out.weights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   out.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : String(a.date).localeCompare(String(b.date)));
@@ -2553,10 +2558,15 @@ function syncSignOut(){ if(!fbAuth) return; if(SYNC.unsub){SYNC.unsub();SYNC.uns
    line that silently destroyed 4 days of data when it was a blind overwrite with no backup. */
 function adoptMerged(merged, label){
   try{
-    if(JSON.stringify(merged)===JSON.stringify(DB)) return false;   // nothing changed; don't churn the UI
-    snapshotNow(label||'before-sync');
     const wx = DB.wx;                                               // keep this device's weather cache (not synced)
-    DB = normalize(merged); if(wx!==undefined) DB.wx = wx;
+    /* `merged` never carries wx (stripped from every synced blob) but DB almost always does, so
+       comparing them directly was ALWAYS unequal — the "nothing changed" guard below never fired
+       in practice, causing a render + "Synced from another device" toast on nearly every listener
+       tick even when no real content had changed. Compare apples-to-apples by reattaching wx first. */
+    const withWx = Object.assign({}, merged); if(wx!==undefined) withWx.wx = wx;
+    if(JSON.stringify(withWx)===JSON.stringify(DB)) return false;   // nothing changed; don't churn the UI
+    snapshotNow(label||'before-sync');
+    DB = normalize(withWx);
     openHist = -1;                                                  // merge can insert rows mid-array; index-based handlers would target the wrong one
     try{ localStorage.setItem(KEY, JSON.stringify(DB)); }catch(e){ handleQuotaFailure(); }
     /* Don't yank the DOM out from under an in-progress set entry. */
