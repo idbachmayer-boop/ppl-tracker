@@ -6,30 +6,33 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="PPL" />
-  <meta name="theme-color" content="#050506" />
+  <meta name="theme-color" content="#161826" />
   <link rel="manifest" href="#" id="manifest-placeholder" />
   <title>PPL Tracker</title>
   <style>
-    /* ── Theme tokens (light defaults) ── */
-    /* ── Linear / Modern: near-black bases (#050506) + a single indigo accent (#5E6AD2), ambient light ── */
+    /* ── Nocturne: blue-grey bases (#161826), flat opaque surfaces, blurple accent (#9184d9).
+       From Ian's Claude Design "PPL Tracker UI redesign". Deviations kept on purpose: filled
+       primary buttons (dark text — white fails AA on this accent), per-category workout colors,
+       multi-hue charts. Pull is hue-shifted to blue so it never reads as the accent. ── */
     :root {
-      --bg:#050506; --surface:rgba(255,255,255,0.05); --surface-solid:#0a0a0c; --surface-2:#0a0a0c; --surface-3:#15151b;
-      --text:#EDEDEF; --text-2:#c4c6cc; --muted:#8A8F98; --muted-2:#6d727b; --muted-3:#3a3d45;
-      --border:rgba(255,255,255,0.06); --border-2:rgba(255,255,255,0.10); --border-3:rgba(255,255,255,0.05);
-      --btn-bg:#5E6AD2; --btn-fg:#ffffff;
-      --accent:#5E6AD2; --accent-bright:#6872D9; --accent-muted:rgba(94,106,210,0.15);
-      --tabbar-bg:rgba(5,5,6,0.85); --shadow:rgba(0,0,0,.5);
+      --bg:#161826; --surface:#232532; --surface-solid:#232532; --surface-2:#1c1e2b; --surface-3:#2b2e3f;
+      --text:#e9e9ed; --text-2:#c6c8d4; --muted:#9295a6; --muted-2:#71747f; --muted-3:#4a4d5c;
+      --border:#3f424d; --border-2:#595d6c; --border-3:rgba(233,233,237,0.16);
+      --btn-bg:#9184d9; --btn-fg:#161826;
+      --accent:#9184d9; --accent-bright:#a29af0; --accent-muted:rgba(145,132,217,0.15);
+      --accent-300:#bdb4ea; --accent-100:#e5e1f7;
+      --tabbar-bg:rgba(35,37,50,0.92); --shadow:rgba(0,0,0,.55);
       --good:#5fd0a0; --bad:#ff6b6b; --danger:#ff6b6b; --danger-bd:rgba(255,107,107,.4);
-      --link:#8f97e8;
+      --link:#bdb4ea;
       --push-fg:#e2899e; --push-bg:rgba(226,137,158,.14); --push-bd:rgba(226,137,158,.36); --push-bar:#d97a92;
       --legs-fg:#6bd3a8; --legs-bg:rgba(68,168,132,.14); --legs-bd:rgba(68,168,132,.4); --legs-bar:#44a884;
-      --pull-fg:#8f9bec; --pull-bg:rgba(94,106,210,.16); --pull-bd:rgba(94,106,210,.4); --pull-bar:#5E6AD2;
-      --badge-bg:#15151b; --badge-fg:#c4c6cc;
+      --pull-fg:#7fa8e8; --pull-bg:rgba(77,127,214,.16); --pull-bd:rgba(77,127,214,.4); --pull-bar:#4d7fd6;
+      --badge-bg:#2b2e3f; --badge-fg:#c6c8d4;
       --flag-fg:#6bd3a8; --flag-bg:rgba(45,122,90,.2); --flag-bd:rgba(45,122,90,.42);
       --warm-fg:#e2b06a; --warm-bg:rgba(226,176,106,.1); --warm-bd:rgba(226,176,106,.26);
-      --cardio-fg:#b9a8f0; --cardio-bg:rgba(154,126,208,.16); --cardio-bd:rgba(154,126,208,.4); --cardio-bar:#9a7ed0;
-      --chart:#7c86e0; --chart-axis:#3a3d45;
-      --toast-bg:#15151b; --toast-fg:#EDEDEF;
+      --cardio-fg:#cba4f2; --cardio-bg:rgba(181,127,217,.16); --cardio-bd:rgba(181,127,217,.4); --cardio-bar:#b57fd9; /* orchid — nudged red-ward so it never reads as the blurple accent */
+      --chart:#9184d9; --chart-strength:#5fd0a0; --chart-axis:#4a4d5e;
+      --toast-bg:#2b2e3f; --toast-fg:#e9e9ed;
       --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
     }
 
@@ -80,7 +83,7 @@
     .lasttime { font-size: 12px; color: var(--text-2); background: var(--surface-2); border-radius: 8px; padding: 7px 9px; margin: 6px 0 10px; line-height: 1.5; }
     .last-note { font-size: 12px; color: var(--warm-fg); background: var(--warm-bg); border: 1px solid var(--warm-bd); border-radius: 8px; padding: 7px 9px; margin: -4px 0 10px; line-height: 1.5; }
     select, input, textarea { font-family: inherit; font-size: 14px; border: 1.5px solid var(--border-2); border-radius: 8px; padding: 9px 10px; background: var(--surface); color: var(--text); width: 100%; }
-    input[type=checkbox] { width: 20px; height: 20px; min-width: 20px; padding: 0; border: none; accent-color: #5a6fcc; }
+    input[type=checkbox] { width: 20px; height: 20px; min-width: 20px; padding: 0; border: none; accent-color: var(--accent); }
     select:focus, input:focus, textarea:focus { outline: none; border-color: var(--text); }
     .set-grid { display: grid; grid-template-columns: 20px 1fr 1fr 16px 24px 24px; gap: 5px; align-items: center; margin-bottom: 7px; }
     .tgt-badge { font-size: 13px; font-weight: 800; text-align: center; line-height: 1; }
@@ -201,55 +204,43 @@
     .idea-item .txt { flex: 1; font-size: 14px; line-height: 1.45; }
     .idea-item.done .txt { text-decoration: line-through; color: var(--muted); }
 
-    /* ─────────── Linear / Modern: layered ambient light, glass, indigo accent, mono labels ─────────── */
-    body {
-      background:
-        radial-gradient(58% 40% at 50% -6%, rgba(94,106,210,0.14), transparent 62%),
-        radial-gradient(50% 40% at 100% 18%, rgba(94,106,210,0.07), transparent 60%),
-        radial-gradient(45% 38% at 0% 32%, rgba(140,110,210,0.06), transparent 60%),
-        var(--bg);
-      background-repeat: no-repeat;
-    }
-    /* Layer: 64px technical grid */
-    body::before { content:''; position:fixed; inset:0; z-index:-2; pointer-events:none;
-      background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
-      background-size: 64px 64px; }
-    /* Layer: soft floating light pool (transform-only anim = GPU-cheap) */
-    body::after { content:''; position:fixed; z-index:-1; pointer-events:none; bottom:-12%; left:50%; width:120vw; max-width:900px; height:60vh; transform:translateX(-50%);
-      background: radial-gradient(circle, rgba(94,106,210,0.10), transparent 66%); }
-    @media (prefers-reduced-motion: no-preference) {
-      body::after { animation: floatPool 10s ease-in-out infinite; }
-      @keyframes floatPool { 0%,100% { transform:translateX(-50%) translateY(0); } 50% { transform:translateX(-50%) translateY(-24px); } }
-    }
+    /* ─────────── Nocturne effect layer: flat surfaces, hairline elevation, blurple accent ───────────
+       Elevation is "an edge plus ambient darkness" — cards get their hairline from the base
+       border (var(--border) is the #3f424d hairline), NOT translucency. backdrop-filter is
+       reserved for the tab bar alone; dropping it from every card is also a real scroll-perf win. */
+    body { background: var(--bg); }
 
-    /* Glass cards: translucent white, multi-layer shadow, backdrop blur */
-    .card, .ex-card, .phase-card { backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-    .card { background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)); box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 2px 20px rgba(0,0,0,0.4); }
-
-    /* Buttons: indigo primary w/ inner highlight + glow on hover; precise expo-out press */
+    /* Buttons: filled blurple w/ dark text (deliberate deviation from Nocturne's outlined
+       buttons — the pops stay); toned glow on hover; precise expo-out press */
     .btn { transition: all .2s cubic-bezier(0.16,1,0.3,1); }
     .btn:active { transform: scale(.98); opacity: 1; }
-    .btn:not(.btn-ghost):not(.btn-danger) { box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.18), 0 2px 8px rgba(0,0,0,0.35); }
-    .btn:not(.btn-ghost):not(.btn-danger):hover { background: var(--accent-bright); box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.18), 0 4px 14px rgba(94,106,210,0.4); }
+    .btn:not(.btn-ghost):not(.btn-danger) { box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
+    .btn:not(.btn-ghost):not(.btn-danger):hover { background: var(--accent-bright); box-shadow: 0 4px 14px rgba(145,132,217,0.35); }
     .btn-ghost { background: transparent; }
-    .btn-ghost:hover { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.18); }
-    .btn:focus-visible, .day-btn:focus-visible, .sw-btn:focus-visible, .tab:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px rgba(94,106,210,0.7); }
+    .btn-ghost:hover { background: rgba(233,233,237,.05); border-color: var(--border-2); }
 
-    /* Inputs: solid near-black, indigo focus ring */
-    select, input, textarea { background: #0f0f13; }
-    select:focus, input:focus, textarea:focus { border-color: rgba(94,106,210,.7); box-shadow: 0 0 0 3px rgba(94,106,210,.2); }
+    /* Global focus + selection in the accent (replaces the old per-class box-shadow rings) */
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    ::selection { background: rgba(145,132,217,.30); }
+
+    /* Inputs: one step darker than surface, accent focus ring */
+    select, input, textarea { background: var(--surface-2); }
+    select:focus, input:focus, textarea:focus { border-color: rgba(145,132,217,.7); box-shadow: 0 0 0 3px rgba(145,132,217,.2); outline: none; }
     input[type=checkbox] { accent-color: var(--accent); }
 
-    /* Tab bar + FAB */
+    /* Tab bar (the one sanctioned glass surface) + FAB */
     .tabbar { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
     .tab.active { color: var(--accent); }
-    .fab { box-shadow: 0 3px 14px var(--shadow), 0 0 22px rgba(94,106,210,.35); }
-    .fab:hover { box-shadow: 0 3px 14px var(--shadow), 0 0 30px rgba(94,106,210,.5); }
+    .fab { box-shadow: 0 3px 14px var(--shadow), 0 0 22px rgba(145,132,217,.35); }
+    .fab:hover { box-shadow: 0 3px 14px var(--shadow), 0 0 30px rgba(145,132,217,.5); }
 
-    /* Technical mono labels + gradient headline for dimensionality */
+    /* Fading-edge dividers — the Nocturne signature. .hist-item covers weight entries, workout
+       history, PRs, strength history, trash and version lists in one rule. */
+    .hist-item { border-bottom: 1px solid transparent; border-image: linear-gradient(to right, transparent, var(--border-3) 48px, var(--border-3) calc(100% - 48px), transparent) 1; }
+
+    /* Technical mono labels; headlines are plain text (weight/size hierarchy, no gradient fill) */
     .card-label, .stat-tile .k, .set-grid .colhead, .pill, .badge, .range-badge, .flag, .sw-label, .stair-grid label { font-family: var(--font-mono); }
     h1, h2 { letter-spacing: -0.02em; }
-    h1 { background: linear-gradient(180deg, #ffffff 0%, rgba(237,237,239,0.7) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
   </style>
   <!-- Firebase (Auth + Firestore) for cross-device sync. Deferred so they never block boot;
        the app is fully functional offline / signed-out without them. -->
@@ -288,8 +279,8 @@
 <script>
 /* ───────────────────────── PWA (inline manifest + SW) ───────────────────────── */
 (function(){
-  const icon = sz => `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${sz} ${sz}'%3E%3Crect width='${sz}' height='${sz}' rx='${sz*0.2}' fill='%23050506'/%3E%3Ctext x='50%25' y='68%25' font-size='${sz*0.55}' text-anchor='middle'%3E💪%3C/text%3E%3C/svg%3E`;
-  const manifest = { name:"PPL Tracker", short_name:"PPL", start_url:"./", display:"standalone", background_color:"#050506", theme_color:"#050506",
+  const icon = sz => `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${sz} ${sz}'%3E%3Crect width='${sz}' height='${sz}' rx='${sz*0.2}' fill='%23161826'/%3E%3Ctext x='50%25' y='68%25' font-size='${sz*0.55}' text-anchor='middle'%3E💪%3C/text%3E%3C/svg%3E`;
+  const manifest = { name:"PPL Tracker", short_name:"PPL", start_url:"./", display:"standalone", background_color:"#161826", theme_color:"#161826",
     icons:[{src:icon(192),sizes:"192x192",type:"image/svg+xml"},{src:icon(512),sizes:"512x512",type:"image/svg+xml"}] };
   document.getElementById('manifest-placeholder').href = URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/json'}));
   const sw = `
@@ -921,6 +912,22 @@ function wxGlance(){
     hi:Math.round(dy.temperature_2m_max[ti]), lo:Math.round(dy.temperature_2m_min[ti]),
     rainProb:Math.round(dy.precipitation_probability_max[ti]||0), loc:(DB.lawn&&DB.lawn.label)||'' };
 }
+/* When (not just whether) it'll rain today — answers "is it going to rain?" without opening a
+   weather app. Scans the hourly forecast already fetched for the lawn logic; first remaining hour
+   with ≥0.02" precip → "~3pm". Null when dry / no forecast / offline (never throws). */
+function rainTiming(){
+  try{
+    const h = DB.wx && DB.wx.data && DB.wx.data.hourly;
+    if(!h || !h.time || !h.precipitation) return null;
+    const today = todayISO(), nowHr = new Date().getHours();
+    for(let i=0;i<h.time.length;i++){
+      const t = h.time[i]; if(t.slice(0,10)!==today) continue;
+      const hr = +t.slice(11,13); if(hr < nowHr) continue;
+      if(+h.precipitation[i] >= 0.02) return '~'+fmtHour(hr);
+    }
+    return null;
+  }catch(e){ return null; }
+}
 function weekTally(){
   const m=+monday(new Date());
   const wk=liveSessions().filter(s=>!s.skipped && +monday(new Date(s.date+'T00:00'))===m).length;
@@ -979,9 +986,10 @@ function viewToday(){
       <div class="stat-sub">${avg!=null? '7-day average' : 'No weigh-ins yet'}${w?` · latest ${(+w.value).toFixed(1)}${loggedToday?' today':''}`:''}</div></div>
       <button class="btn btn-sm ${loggedToday?'btn-ghost':''}" onclick="progSub='body';goSub('train','progress')">${loggedToday?'View':'Weigh in'}</button>
     </div></div>`;
+  const rainAt = rainTiming();
   const cWeather = gl ? `<div class="card" style="cursor:pointer" onclick="goSub('care','lawn')"><div class="row">
       <div><div style="font-weight:700;font-size:16px">${gl.icon} ${gl.temp}° · ${gl.text}</div>
-      <div class="muted" style="font-size:12px;margin-top:2px">H ${gl.hi}° / L ${gl.lo}°${gl.rainProb>=40?` · ${gl.rainProb}% rain`:''}${gl.loc?' · '+esc(gl.loc):''}</div></div>
+      <div class="muted" style="font-size:12px;margin-top:2px">H ${gl.hi}° / L ${gl.lo}°${rainAt?` · <span style="color:var(--accent-300);font-weight:600">rain ${rainAt}</span>`:(gl.rainProb>=40?` · ${gl.rainProb}% rain`:'')}${gl.loc?' · '+esc(gl.loc):''}</div></div>
       <span class="muted">Lawn →</span></div></div>` : '';
   const cLawn = cLawnCard();
   const cWeek = `<div class="card" style="cursor:pointer" onclick="goSub('train','history')"><div class="row">
@@ -1042,7 +1050,7 @@ function viewToday(){
     </div>` : '';
 
   const wDays = daysUntil(WEDDING_DATE);
-  const cWedding = wDays===null ? '' : `<div class="card" style="text-align:center;background:var(--accent-muted);border:1px solid rgba(94,106,210,.35);box-shadow:0 0 0 1px rgba(94,106,210,.2),0 0 34px rgba(94,106,210,.14)">
+  const cWedding = wDays===null ? '' : `<div class="card" style="text-align:center;background:var(--accent-muted);border:1px solid rgba(145,132,217,.4);box-shadow:0 0 24px rgba(145,132,217,.14)">
       <div style="font-weight:800;font-size:19px;color:var(--accent);letter-spacing:-.3px">💍 ${wDays===0?'It’s the big day! 🎉':wDays===1?'1 day to go!':`${wDays} days to go`}</div>
       <div class="muted" style="font-size:12px;margin-top:2px;font-family:var(--font-mono)">WEDDING · AUGUST 21, 2026</div>
     </div>`;
@@ -1052,8 +1060,17 @@ function viewToday(){
   else if(part==='afternoon') order=[cWorkout, cTodo, cDo, cMobility, cLawn, cCardio, cWeather, cWeight, cJournal];
   else order=[cJournal, cTodo, cMobility, cWeek, cLawn, cDo, cCardio, cWorkout, cWeight];
 
+  /* Glance line — the day's answer at a glance: what routine, will it rain, what's still open. */
+  const glanceWorkout = DB.draft
+    ? `<span class="pill ${accClass(PROGRAM[DB.draft.workout]?PROGRAM[DB.draft.workout].group:'push')}" style="font-size:9px;padding:2px 7px">${DB.draft.workout}</span> in progress`
+    : nxtIsSpecialized ? `<span style="color:var(--accent-300);font-weight:600">Specialized</span> — pick a focus`
+    : `<span class="pill ${accClass(g)}" style="font-size:9px;padding:2px 7px">${nxt}</span> today`;
+  const glanceTodos = (n => n ? `<span style="color:var(--accent-300);font-weight:600">${n}</span> to-do${n!==1?'s':''} open` : `to-dos clear`)(liveTodos().length);
+  /* Rain segment only when a forecast actually exists — "no rain expected" with no data would lie. */
+  const glanceRain = gl ? `<span style="color:var(--muted-3)">·</span>${rainAt?`<span style="color:var(--accent-300);font-weight:600">rain ${rainAt}</span>`:'no rain expected'}` : '';
+  const glance = `<p class="muted" style="font-size:12px;font-family:var(--font-mono);margin-top:7px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${glanceWorkout}${glanceRain}<span style="color:var(--muted-3)">·</span>${glanceTodos}</p>`;
   return `${cWedding}
-    <div style="margin-bottom:16px"><h1>${greeting}</h1><p class="subtitle">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}${gl?` · ${gl.icon} ${gl.temp}°`:''}</p></div>
+    <div style="margin-bottom:16px"><h1>${greeting}</h1><p class="subtitle">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}${gl?` · ${gl.icon} ${gl.temp}°`:''}</p>${glance}</div>
     ${cQuota}${cBackup}
     ${order.filter(Boolean).join('\n    ')}`;
 }
@@ -1325,7 +1342,7 @@ function confettiBurst(){
   document.body.appendChild(canvas);
   const ctx=canvas.getContext('2d'), dpr=window.devicePixelRatio||1;
   canvas.width=innerWidth*dpr; canvas.height=innerHeight*dpr; ctx.scale(dpr,dpr);
-  const colors=['#e08a2e','#44a884','#5a6fcc','#9a7ed0','#e0c14e','#e0567a'];
+  const colors=['#e08a2e','#44a884','#9184d9','#9a7ed0','#e0c14e','#e0567a'];
   const parts=[];
   for(let i=0;i<100;i++) parts.push({ x:innerWidth/2, y:innerHeight*0.30, vx:(Math.random()-0.5)*11, vy:Math.random()*-10-3, g:0.28+Math.random()*0.12, rot:Math.random()*6.28, vr:(Math.random()-0.5)*0.4, size:5+Math.random()*6, color:colors[i%colors.length], life:1 });
   let t=0;
@@ -1615,6 +1632,21 @@ function viewWeight(){
     <div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">7-day average</div><svg id="chart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg></div>
     ${liveWeights().length? `<div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Daily entries</div>${weightList()}</div>` : '<div class="empty">Log your first weigh-in above.</div>'}`;
 }
+/* Every logged session of one exercise, newest first — the "past data" behind the chart.
+   LIVE sessions only (soft-deleted rows must never ghost back in here). */
+function exerciseHistory(name){
+  const out=[];
+  const ls=liveSessions();
+  for(let i=ls.length-1;i>=0;i--){ const s=ls[i]; if(s.skipped) continue;
+    sessionExercises(s).forEach(e=>{
+      if(e.name!==name) return;
+      const worked=e.sets.filter(x=>!x.skipped && x.r!==''); if(!worked.length) return;
+      let best=0, reps=0; worked.forEach(x=>{ const v=e1rm(x.w,x.r); if(v>best) best=v; reps+=+x.r; });
+      out.push({ date:s.date, setsStr:worked.map(x=>fmtSet(x.w,x.r)).join(', '), best:Math.round(best), reps, deload:!!e.deload, note:e.note||'' });
+    });
+  }
+  return out;
+}
 function viewStrength(sub){
   const loadEx = exercisesWithData(), bwEx = bwExercisesWithData(), all = loadEx.concat(bwEx);
   if(!all.length) return `<h1>Progress</h1><p class="subtitle">Strength over time</p>${sub}<div class="empty">Log a few workouts and your per-exercise trend shows up here.</div>`;
@@ -1627,6 +1659,12 @@ function viewStrength(sub){
   const opts = loadEx.map(m=>`<option ${m===selectedExercise?'selected':''}>${esc(m)}</option>`).join('')
     + bwEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(m)} (reps)</option>`).join('');
   const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.name===selectedExercise?'▸ ':''}${esc(p.name)}</span><span><strong>${Math.round(p.v)} ${DB.unit}</strong> <span class="muted">${fmtSet(p.w,p.r)}</span></span></div>`).join('');
+  const hist = exerciseHistory(selectedExercise).slice(0,15);
+  const histRows = hist.map(h=>`<div class="hist-item">
+      <div style="min-width:0"><div style="font-weight:600;font-size:13px">${fmtDate(h.date)}${h.deload?' <em class="muted" style="font-size:11px">(deload)</em>':''}</div>
+        <div class="muted" style="font-size:12px">${esc(h.setsStr)}${h.note?` · ${esc(h.note)}`:''}</div></div>
+      <span style="white-space:nowrap;font-weight:700;color:var(--accent-300)">${isReps? h.reps+' reps' : h.best+' '+DB.unit}</span>
+    </div>`).join('');
   return `<h1>Progress</h1><p class="subtitle">${isReps?'Total reps per session':'Estimated 1-rep max per exercise'}</p>${sub}
     <div class="card">
       <select onchange="selectExercise(this.value)">${opts}</select>
@@ -1638,6 +1676,7 @@ function viewStrength(sub){
       <svg id="schart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg>
       <p class="muted" style="font-size:11px;margin-top:6px;text-align:center">Bold line = <strong>best to date</strong> (only rises) · dots = each session</p>
     </div>
+    ${hist.length?`<div class="card"><div class="card-label" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">History — ${esc(selectedExercise)}</div>${histRows}</div>`:''}
     ${prs?`<div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Personal records (tap to chart)</div>${prs}</div>`:''}
     <p class="muted" style="text-align:center;font-size:12px">e1RM = estimated 1-rep max (weight × reps), so it normalizes heavy/low-rep and light/high-rep days into one number. The <strong>best-to-date</strong> line rises whenever you set a new estimated 1RM — even from a single extra rep. Bodyweight moves chart <strong>total reps</strong> instead.</p>`;
 }
@@ -1727,10 +1766,12 @@ function logWeight(){
 function rmWeight(i){ const w=DB.weights[i]; if(!w || !isLive(w)) return; if(confirm('Delete this entry?')){ w.deletedAt=Date.now(); touch(w); save(); render(); } }
 /* trend (optional): a parallel series (same length as pts) drawn as the bold primary line, with
    pts shown as faint dots + a hairline. Used for the running-best strength trend. */
-function paintChart(svg, pts, emptyMsg, gradId, trend){
+function paintChart(svg, pts, emptyMsg, gradId, trend, colorVar){
+  /* colorVar: optional CSS var name so each Progress metric gets its own hue
+     (weight = --chart blurple, strength = --chart-strength teal). */
   const cs = getComputedStyle(document.documentElement);
-  const C = cs.getPropertyValue('--chart').trim() || '#5a6fcc';
-  const AX = cs.getPropertyValue('--chart-axis').trim() || '#bbb';
+  const C = cs.getPropertyValue(colorVar || '--chart').trim() || '#9184d9';
+  const AX = cs.getPropertyValue('--chart-axis').trim() || '#4a4d5e';
   if(pts.length<2){ svg.innerHTML = `<text x="160" y="78" text-anchor="middle" fill="${AX}" font-size="11">${emptyMsg||'Need 2+ entries to draw a trend'}</text>`; return; }
   const vals = pts.map(p=>+p.value).concat(trend?trend.map(p=>+p.value):[]);
   const min=Math.min(...vals), max=Math.max(...vals);
@@ -1776,7 +1817,7 @@ function drawStrengthChart(){
   const rmax = runningMax(raw); // cumulative best across ALL time, so the trend at the window start reflects prior bests
   const inRange = p => chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff;
   const pts = raw.filter(inRange), trend = rmax.filter(inRange);
-  paintChart(svg, pts, 'Need 2+ sessions for this exercise in range', 'gStr', pts.length>=2 ? trend : null);
+  paintChart(svg, pts, 'Need 2+ sessions for this exercise in range', 'gStr', pts.length>=2 ? trend : null, '--chart-strength');
 }
 
 /* ───────────────────────── SKINCARE & SHAVING ───────────────────────── */
@@ -2254,7 +2295,7 @@ function wipe(){ if(confirm('Erase ALL workouts and weights?\n\nA snapshot is sa
 (function(){
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   const meta = document.querySelector('meta[name="theme-color"]');
-  const sync = () => { meta.setAttribute('content', '#050506'); drawActiveChart(); }; // always-dark (Linear / Modern)
+  const sync = () => { meta.setAttribute('content', '#161826'); drawActiveChart(); }; // always-dark (Nocturne)
   mq.addEventListener ? mq.addEventListener('change', sync) : mq.addListener(sync);
   sync();
 })();
