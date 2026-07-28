@@ -171,7 +171,20 @@
     body.sw-on { padding-bottom: 124px; }
     .tab { flex: 1; background: none; border: none; cursor: pointer; padding: 9px 0 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--muted-2); font-size: 10px; font-weight: 600; }
     .tab.active { color: var(--text); }
-    .tab .ic { font-size: 19px; line-height: 1; }
+    .tab .ic { font-size: 19px; line-height: 1; display: flex; }
+
+    /* Phosphor icons. Sized in em on purpose: several call sites already set the icon size with
+       an inline font-size on a wrapper span, and em keeps those working untouched. */
+    .ph { width: 1.15em; height: 1.15em; vertical-align: -.22em; flex: 0 0 auto; }
+    .card-label .ph, h2 .ph, h3 .ph { width: 1em; height: 1em; vertical-align: -.13em; margin-right: .38em; }
+    .tab .ic .ph { width: 22px; height: 22px; vertical-align: 0; }
+    .fab .ph { width: 24px; height: 24px; }
+    .btn .ph { vertical-align: -.18em; margin-right: .3em; }
+    .ph.lead { margin-right: .38em; }   /* icon sitting before text outside a button/heading */
+    .x-set .ph { width: 15px; height: 15px; }
+    .skip-set .ph { width: 15px; height: 15px; }
+    .sw-label .ph { margin-right: .3em; }
+    .fab .ph, .btn .ph:only-child { margin-right: 0; }
 
     /* History */
     .hist-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border-3); cursor: pointer; }
@@ -254,10 +267,10 @@
 
 <div class="tabbar">
   <div class="stopwatch" id="stopwatch" style="display:none">
-    <span class="sw-label">⏱ Rest</span>
+    <span class="sw-label" data-ph="timer">Rest</span>
     <span class="sw-time" id="sw-time">0:00</span>
     <span class="sw-target" id="sw-target"></span>
-    <button class="sw-btn" id="sw-toggle" onpointerdown="event.preventDefault()" onclick="swToggle()">▶</button>
+    <button class="sw-btn" id="sw-toggle" onpointerdown="event.preventDefault()" onclick="swToggle()" data-ph="play"></button>
     <button class="sw-btn sw-clear" onpointerdown="event.preventDefault()" onclick="swClear()">Clear</button>
   </div>
   <div class="tabbar-inner" id="tabbar"><!-- generated from TABS registry --></div>
@@ -265,13 +278,13 @@
 
 <div class="toast" id="toast"></div>
 
-<button class="fab" id="idea-fab" onclick="openIdeas()" aria-label="Add an idea or feedback">💡</button>
+<button class="fab" id="idea-fab" onclick="openIdeas()" aria-label="Add an idea or feedback" data-ph="lightbulb"></button>
 <div class="modal-overlay" id="ideas-modal" onclick="if(event.target===this)closeIdeas()">
   <div class="modal-card">
-    <div class="row" style="margin-bottom:12px"><h2 style="margin:0">💡 Ideas & feedback</h2><button class="sw-btn sw-clear" onclick="closeIdeas()">Close</button></div>
+    <div class="row" style="margin-bottom:12px"><h2 style="margin:0" data-ph="lightbulb">Ideas & feedback</h2><button class="sw-btn sw-clear" onclick="closeIdeas()">Close</button></div>
     <textarea id="idea-input" rows="3" placeholder="An idea, bug, or thing to tweak — jot it while it's fresh…" style="resize:vertical;line-height:1.5;min-height:64px"></textarea>
     <button class="btn btn-block" style="margin-top:10px" onclick="addIdea()">Add idea</button>
-    <div class="row" style="margin:16px 0 4px"><span class="muted" id="idea-count" style="font-size:12px"></span><button class="btn btn-sm btn-ghost" onclick="copyIdeas()">⧉ Copy all</button></div>
+    <div class="row" style="margin:16px 0 4px"><span class="muted" id="idea-count" style="font-size:12px"></span><button class="btn btn-sm btn-ghost" onclick="copyIdeas()" data-ph="copy">Copy all</button></div>
     <div id="ideas-list"></div>
   </div>
 </div>
@@ -668,6 +681,66 @@ function lastRealStairs(){
   return null;
 }
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+/* ── Phosphor icons (phosphoricons.com) — MIT, Regular weight, plus Fill for the active tab.
+   Inlined as raw path data so the app stays offline-first: no web font, no CDN, no extra request.
+   The 256×256 viewBox + fill=currentColor means each icon inherits whatever color already applies
+   at its call site (tab accent, category hue, --muted) without a line of per-icon CSS.
+   Emoji are kept on purpose wherever a glyph marks something logged, typed, or celebrated. ── */
+const PH = {
+  'arrow-square-out':'<path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/>',
+  'arrow-u-up-left':'<path d="M232,144a64.07,64.07,0,0,1-64,64H80a8,8,0,0,1,0-16h88a48,48,0,0,0,0-96H51.31l34.35,34.34a8,8,0,0,1-11.32,11.32l-48-48a8,8,0,0,1,0-11.32l48-48A8,8,0,0,1,85.66,45.66L51.31,80H168A64.07,64.07,0,0,1,232,144Z"/>',
+  'arrows-clockwise':'<path d="M224,48V96a8,8,0,0,1-8,8H168a8,8,0,0,1,0-16h28.69L182.06,73.37a79.56,79.56,0,0,0-56.13-23.43h-.45A79.52,79.52,0,0,0,69.59,72.71,8,8,0,0,1,58.41,61.27a96,96,0,0,1,135,.79L208,76.69V48a8,8,0,0,1,16,0ZM186.41,183.29a80,80,0,0,1-112.47-.66L59.31,168H88a8,8,0,0,0,0-16H40a8,8,0,0,0-8,8v48a8,8,0,0,0,16,0V179.31l14.63,14.63A95.43,95.43,0,0,0,130,222.06h.53a95.36,95.36,0,0,0,67.07-27.33,8,8,0,0,0-11.18-11.44Z"/>',
+  'barbell-fill':'<path d="M200,64V192a16,16,0,0,1-16,16H168a16,16,0,0,1-16-16V136H104v56a16,16,0,0,1-16,16H72a16,16,0,0,1-16-16V64A16,16,0,0,1,72,48H88a16,16,0,0,1,16,16v56h48V64a16,16,0,0,1,16-16h16A16,16,0,0,1,200,64ZM36,72H32A16,16,0,0,0,16,88v32H8.27A8.18,8.18,0,0,0,0,127.47,8,8,0,0,0,8,136h8v32a16,16,0,0,0,16,16h4a4,4,0,0,0,4-4V76A4,4,0,0,0,36,72Zm220,55.47a8.18,8.18,0,0,0-8.25-7.47H240V88a16,16,0,0,0-16-16h-4a4,4,0,0,0-4,4V180a4,4,0,0,0,4,4h4a16,16,0,0,0,16-16V136h8A8,8,0,0,0,256,127.47Z"/>',
+  'barbell':'<path d="M248,120h-8V88a16,16,0,0,0-16-16H208V64a16,16,0,0,0-16-16H168a16,16,0,0,0-16,16v56H104V64A16,16,0,0,0,88,48H64A16,16,0,0,0,48,64v8H32A16,16,0,0,0,16,88v32H8a8,8,0,0,0,0,16h8v32a16,16,0,0,0,16,16H48v8a16,16,0,0,0,16,16H88a16,16,0,0,0,16-16V136h48v56a16,16,0,0,0,16,16h24a16,16,0,0,0,16-16v-8h16a16,16,0,0,0,16-16V136h8a8,8,0,0,0,0-16ZM32,168V88H48v80Zm56,24H64V64H88V192Zm104,0H168V64h24V175.82c0,.06,0,.12,0,.18s0,.12,0,.18V192Zm32-24H208V88h16Z"/>',
+  'book-open':'<path d="M232,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H24a8,8,0,0,0-8,8V200a8,8,0,0,0,8,8H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h72a8,8,0,0,0,8-8V56A8,8,0,0,0,232,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z"/>',
+  'calendar-blank':'<path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM72,48v8a8,8,0,0,0,16,0V48h80v8a8,8,0,0,0,16,0V48h24V80H48V48ZM208,208H48V96H208V208Z"/>',
+  'caret-down':'<path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/>',
+  'caret-left':'<path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"/>',
+  'caret-right':'<path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/>',
+  'caret-up':'<path d="M213.66,165.66a8,8,0,0,1-11.32,0L128,91.31,53.66,165.66a8,8,0,0,1-11.32-11.32l80-80a8,8,0,0,1,11.32,0l80,80A8,8,0,0,1,213.66,165.66Z"/>',
+  'check-circle':'<path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/>',
+  'check':'<path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/>',
+  'clock-counter-clockwise':'<path d="M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z"/>',
+  'cloud-arrow-up':'<path d="M178.34,165.66,160,147.31V208a8,8,0,0,1-16,0V147.31l-18.34,18.35a8,8,0,0,1-11.32-11.32l32-32a8,8,0,0,1,11.32,0l32,32a8,8,0,0,1-11.32,11.32ZM160,40A88.08,88.08,0,0,0,81.29,88.68,64,64,0,1,0,72,216h40a8,8,0,0,0,0-16H72a48,48,0,0,1,0-96c1.1,0,2.2,0,3.29.12A88,88,0,0,0,72,128a8,8,0,0,0,16,0,72,72,0,1,1,100.8,66,8,8,0,0,0,3.2,15.34,7.9,7.9,0,0,0,3.2-.68A88,88,0,0,0,160,40Z"/>',
+  'copy':'<path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"/>',
+  'download-simple':'<path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z"/>',
+  'drop':'<path d="M174,47.75a254.19,254.19,0,0,0-41.45-38.3,8,8,0,0,0-9.18,0A254.19,254.19,0,0,0,82,47.75C54.51,79.32,40,112.6,40,144a88,88,0,0,0,176,0C216,112.6,201.49,79.32,174,47.75ZM128,216a72.08,72.08,0,0,1-72-72c0-57.23,55.47-105,72-118,16.53,13,72,60.75,72,118A72.08,72.08,0,0,1,128,216Zm55.89-62.66a57.6,57.6,0,0,1-46.56,46.55A8.75,8.75,0,0,1,136,200a8,8,0,0,1-1.32-15.89c16.57-2.79,30.63-16.85,33.44-33.45a8,8,0,0,1,15.78,2.68Z"/>',
+  'fire':'<path d="M183.89,153.34a57.6,57.6,0,0,1-46.56,46.55A8.75,8.75,0,0,1,136,200a8,8,0,0,1-1.32-15.89c16.57-2.79,30.63-16.85,33.44-33.45a8,8,0,0,1,15.78,2.68ZM216,144a88,88,0,0,1-176,0c0-27.92,11-56.47,32.66-84.85a8,8,0,0,1,11.93-.89l24.12,23.41,22-60.41a8,8,0,0,1,12.63-3.41C165.21,36,216,84.55,216,144Zm-16,0c0-46.09-35.79-85.92-58.21-106.33L119.52,98.74a8,8,0,0,1-13.09,3L80.06,76.16C64.09,99.21,56,122,56,144a72,72,0,0,0,144,0Z"/>',
+  'flower-lotus':'<path d="M245.83,121.63a15.53,15.53,0,0,0-9.52-7.33,73.51,73.51,0,0,0-22.17-2.22c4-19.85,1-35.55-2.06-44.86a16.15,16.15,0,0,0-18.79-10.88,85.53,85.53,0,0,0-28.55,12.12,94.58,94.58,0,0,0-27.11-33.25,16.05,16.05,0,0,0-19.26,0A94.48,94.48,0,0,0,91.26,68.46,85.53,85.53,0,0,0,62.71,56.34,16.15,16.15,0,0,0,43.92,67.22c-3,9.31-6,25-2.06,44.86a73.51,73.51,0,0,0-22.17,2.22,15.53,15.53,0,0,0-9.52,7.33,16,16,0,0,0-1.6,12.27c3.39,12.57,13.8,36.48,45.33,55.32S113.13,208,128.05,208s42.67,0,74-18.78c31.53-18.84,41.94-42.75,45.33-55.32A16,16,0,0,0,245.83,121.63ZM59.14,72.14a.2.2,0,0,1,.23-.15A70.43,70.43,0,0,1,85.18,83.66,118.65,118.65,0,0,0,80,119.17c0,18.74,3.77,34,9.11,46.28A123.59,123.59,0,0,1,69.57,140C51.55,108.62,55.3,84,59.14,72.14Zm3,103.35C35.47,159.57,26.82,140.05,24,129.7a59.82,59.82,0,0,1,22.5-1.17,129.08,129.08,0,0,0,9.15,19.41,142.28,142.28,0,0,0,34,39.56A114.92,114.92,0,0,1,62.1,175.49ZM128,190.4c-9.33-6.94-32-28.23-32-71.23C96,76.7,118.38,55.24,128,48c9.62,7.26,32,28.72,32,71.19C160,162.17,137.33,183.46,128,190.4ZM170.82,83.66A70.43,70.43,0,0,1,196.63,72a.2.2,0,0,1,.23.15C200.7,84,204.45,108.62,186.43,140a123.32,123.32,0,0,1-19.54,25.48c5.34-12.26,9.11-27.54,9.11-46.28A118.65,118.65,0,0,0,170.82,83.66ZM232,129.72c-2.77,10.25-11.4,29.81-38.09,45.77a114.92,114.92,0,0,1-27.55,12,142.28,142.28,0,0,0,34-39.56,129.08,129.08,0,0,0,9.15-19.41A59.69,59.69,0,0,1,232,129.71Z"/>',
+  'gear-six-fill':'<path d="M237.94,107.21a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A111.92,111.92,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.63a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21ZM128,168a40,40,0,1,1,40-40A40,40,0,0,1,128,168Z"/>',
+  'gear-six':'<path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z"/>',
+  'hand-fist':'<path d="M200,80H184V64a32,32,0,0,0-56-21.13A32,32,0,0,0,72.21,60.42,32,32,0,0,0,24,88v40a104,104,0,0,0,208,0V112A32,32,0,0,0,200,80ZM152,48a16,16,0,0,1,16,16V80H136V64A16,16,0,0,1,152,48ZM88,64a16,16,0,0,1,32,0v40a16,16,0,0,1-32,0ZM40,88a16,16,0,0,1,32,0v16a16,16,0,0,1-32,0Zm176,40a88,88,0,0,1-175.92,3.75A31.93,31.93,0,0,0,80,125.13a31.93,31.93,0,0,0,44.58,3.35,32.21,32.21,0,0,0,11.8,11.44A47.88,47.88,0,0,0,120,176a8,8,0,0,0,16,0,32,32,0,0,1,32-32,8,8,0,0,0,0-16H152a16,16,0,0,1-16-16V96h64a16,16,0,0,1,16,16Z"/>',
+  'hand-grabbing':'<path d="M188,80a27.79,27.79,0,0,0-13.36,3.4,28,28,0,0,0-46.64-11A28,28,0,0,0,80,92v20H68a28,28,0,0,0-28,28v12a88,88,0,0,0,176,0V108A28,28,0,0,0,188,80Zm12,72a72,72,0,0,1-144,0V140a12,12,0,0,1,12-12H80v24a8,8,0,0,0,16,0V92a12,12,0,0,1,24,0v28a8,8,0,0,0,16,0V92a12,12,0,0,1,24,0v28a8,8,0,0,0,16,0V108a12,12,0,0,1,24,0Z"/>',
+  'house-fill':'<path d="M224,120v96a8,8,0,0,1-8,8H160a8,8,0,0,1-8-8V164a4,4,0,0,0-4-4H108a4,4,0,0,0-4,4v52a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V120a16,16,0,0,1,4.69-11.31l80-80a16,16,0,0,1,22.62,0l80,80A16,16,0,0,1,224,120Z"/>',
+  'house':'<path d="M219.31,108.68l-80-80a16,16,0,0,0-22.62,0l-80,80A15.87,15.87,0,0,0,32,120v96a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V160h32v56a8,8,0,0,0,8,8h64a8,8,0,0,0,8-8V120A15.87,15.87,0,0,0,219.31,108.68ZM208,208H160V152a8,8,0,0,0-8-8H104a8,8,0,0,0-8,8v56H48V120l80-80,80,80Z"/>',
+  'lightbulb':'<path d="M176,232a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,232Zm40-128a87.55,87.55,0,0,1-33.64,69.21A16.24,16.24,0,0,0,176,186v6a16,16,0,0,1-16,16H96a16,16,0,0,1-16-16v-6a16,16,0,0,0-6.23-12.66A87.59,87.59,0,0,1,40,104.49C39.74,56.83,78.26,17.14,125.88,16A88,88,0,0,1,216,104Zm-16,0a72,72,0,0,0-73.74-72c-39,.92-70.47,33.39-70.26,72.39a71.65,71.65,0,0,0,27.64,56.3A32,32,0,0,1,96,186v6h64v-6a32.15,32.15,0,0,1,12.47-25.35A71.65,71.65,0,0,0,200,104Zm-16.11-9.34a57.6,57.6,0,0,0-46.56-46.55,8,8,0,0,0-2.66,15.78c16.57,2.79,30.63,16.85,33.44,33.45A8,8,0,0,0,176,104a9,9,0,0,0,1.35-.11A8,8,0,0,0,183.89,94.66Z"/>',
+  'lightning':'<path d="M215.79,118.17a8,8,0,0,0-5-5.66L153.18,90.9l14.66-73.33a8,8,0,0,0-13.69-7l-112,120a8,8,0,0,0,3,13l57.63,21.61L88.16,238.43a8,8,0,0,0,13.69,7l112-120A8,8,0,0,0,215.79,118.17ZM109.37,214l10.47-52.38a8,8,0,0,0-5-9.06L62,132.71l84.62-90.66L136.16,94.43a8,8,0,0,0,5,9.06l52.8,19.8Z"/>',
+  'map-pin':'<path d="M128,64a40,40,0,1,0,40,40A40,40,0,0,0,128,64Zm0,64a24,24,0,1,1,24-24A24,24,0,0,1,128,128Zm0-112a88.1,88.1,0,0,0-88,88c0,31.4,14.51,64.68,42,96.25a254.19,254.19,0,0,0,41.45,38.3,8,8,0,0,0,9.18,0A254.19,254.19,0,0,0,174,200.25c27.45-31.57,42-64.85,42-96.25A88.1,88.1,0,0,0,128,16Zm0,206c-16.53-13-72-60.75-72-118a72,72,0,0,1,144,0C200,161.23,144.53,209,128,222Z"/>',
+  'moon':'<path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z"/>',
+  'note-pencil':'<path d="M229.66,58.34l-32-32a8,8,0,0,0-11.32,0l-96,96A8,8,0,0,0,88,128v32a8,8,0,0,0,8,8h32a8,8,0,0,0,5.66-2.34l96-96A8,8,0,0,0,229.66,58.34ZM124.69,152H104V131.31l64-64L188.69,88ZM200,76.69,179.31,56,192,43.31,212.69,64ZM224,128v80a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32h80a8,8,0,0,1,0,16H48V208H208V128a8,8,0,0,1,16,0Z"/>',
+  'pause':'<path d="M200,32H160a16,16,0,0,0-16,16V208a16,16,0,0,0,16,16h40a16,16,0,0,0,16-16V48A16,16,0,0,0,200,32Zm0,176H160V48h40ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Zm0,176H56V48H96Z"/>',
+  'pencil-simple':'<path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"/>',
+  'plant':'<path d="M247.63,47.89a8,8,0,0,0-7.52-7.52c-51.76-3-93.32,12.74-111.18,42.22-11.8,19.49-11.78,43.16-.16,65.74a71.34,71.34,0,0,0-14.17,27L98.33,159c7.82-16.33,7.52-33.35-1-47.49-13.2-21.79-43.67-33.47-81.5-31.25a8,8,0,0,0-7.52,7.52c-2.23,37.83,9.46,68.3,31.25,81.5A45.82,45.82,0,0,0,63.44,176,54.58,54.58,0,0,0,87,170.33l25,25V224a8,8,0,0,0,16,0V194.51a55.61,55.61,0,0,1,12.27-35,73.91,73.91,0,0,0,33.31,8.4,60.9,60.9,0,0,0,31.83-8.86C234.89,141.21,250.67,99.65,247.63,47.89ZM47.81,155.6C32.47,146.31,23.79,124.32,24,96c28.32-.24,50.31,8.47,59.6,23.81,4.85,8,5.64,17.33,2.46,26.94L61.65,122.34a8,8,0,0,0-11.31,11.31l24.41,24.41C65.14,161.24,55.82,160.45,47.81,155.6Zm149.31-10.22c-13.4,8.11-29.15,8.73-45.15,2l53.69-53.7a8,8,0,0,0-11.31-11.31L140.65,136c-6.76-16-6.15-31.76,2-45.15,13.94-23,47-35.82,89.33-34.83C232.94,98.34,220.14,131.44,197.12,145.38Z"/>',
+  'play':'<path d="M232.4,114.49,88.32,26.35a16,16,0,0,0-16.2-.3A15.86,15.86,0,0,0,64,39.87V216.13A15.94,15.94,0,0,0,80,232a16.07,16.07,0,0,0,8.36-2.35L232.4,141.51a15.81,15.81,0,0,0,0-27ZM80,215.94V40l143.83,88Z"/>',
+  'scissors':'<path d="M157.73,113.13A8,8,0,0,1,159.82,102L227.48,55.7a8,8,0,0,1,9,13.21l-67.67,46.3a7.92,7.92,0,0,1-4.51,1.4A8,8,0,0,1,157.73,113.13Zm80.87,85.09a8,8,0,0,1-11.12,2.08L136,137.7,93.49,166.78a36,36,0,1,1-9-13.19L121.83,128,84.44,102.41a35.86,35.86,0,1,1,9-13.19l143,97.87A8,8,0,0,1,238.6,198.22ZM80,180a20,20,0,1,0-5.86,14.14A19.85,19.85,0,0,0,80,180ZM74.14,90.13a20,20,0,1,0-28.28,0A19.85,19.85,0,0,0,74.14,90.13Z"/>',
+  'shuffle':'<path d="M237.66,178.34a8,8,0,0,1,0,11.32l-24,24a8,8,0,0,1-11.32-11.32L212.69,192H200.94a72.12,72.12,0,0,1-58.59-30.15l-41.72-58.4A56.1,56.1,0,0,0,55.06,80H32a8,8,0,0,1,0-16H55.06a72.12,72.12,0,0,1,58.59,30.15l41.72,58.4A56.1,56.1,0,0,0,200.94,176h11.75l-10.35-10.34a8,8,0,0,1,11.32-11.32ZM143,107a8,8,0,0,0,11.16-1.86l1.2-1.67A56.1,56.1,0,0,1,200.94,80h11.75L202.34,90.34a8,8,0,0,0,11.32,11.32l24-24a8,8,0,0,0,0-11.32l-24-24a8,8,0,0,0-11.32,11.32L212.69,64H200.94a72.12,72.12,0,0,0-58.59,30.15l-1.2,1.67A8,8,0,0,0,143,107Zm-30,42a8,8,0,0,0-11.16,1.86l-1.2,1.67A56.1,56.1,0,0,1,55.06,176H32a8,8,0,0,0,0,16H55.06a72.12,72.12,0,0,0,58.59-30.15l1.2-1.67A8,8,0,0,0,113,149Z"/>',
+  'skip-forward':'<path d="M200,32a8,8,0,0,0-8,8v69.23L72.43,34.45A15.95,15.95,0,0,0,48,47.88V208.12a16,16,0,0,0,24.43,13.43L192,146.77V216a8,8,0,0,0,16,0V40A8,8,0,0,0,200,32ZM64,207.93V48.05l127.84,80Z"/>',
+  'snowflake':'<path d="M223.77,150.09a8,8,0,0,1-5.86,9.68l-24.64,6,6.46,24.11a8,8,0,0,1-5.66,9.8A8.25,8.25,0,0,1,192,200a8,8,0,0,1-7.72-5.93l-7.72-28.8L136,141.86v46.83l21.66,21.65a8,8,0,0,1-11.32,11.32L128,203.31l-18.34,18.35a8,8,0,0,1-11.32-11.32L120,188.69V141.86L79.45,165.27l-7.72,28.8A8,8,0,0,1,64,200a8.25,8.25,0,0,1-2.08-.27,8,8,0,0,1-5.66-9.8l6.46-24.11-24.64-6a8,8,0,0,1,3.82-15.54l29.45,7.23L112,128,71.36,104.54l-29.45,7.23A7.85,7.85,0,0,1,40,112a8,8,0,0,1-1.91-15.77l24.64-6L56.27,66.07a8,8,0,0,1,15.46-4.14l7.72,28.8L120,114.14V67.31L98.34,45.66a8,8,0,0,1,11.32-11.32L128,52.69l18.34-18.35a8,8,0,0,1,11.32,11.32L136,67.31v46.83l40.55-23.41,7.72-28.8a8,8,0,0,1,15.46,4.14l-6.46,24.11,24.64,6A8,8,0,0,1,216,112a7.85,7.85,0,0,1-1.91-.23l-29.45-7.23L144,128l40.64,23.46,29.45-7.23A8,8,0,0,1,223.77,150.09Z"/>',
+  'sparkle-fill':'<path d="M208,144a15.78,15.78,0,0,1-10.42,14.94L146,178l-19,51.62a15.92,15.92,0,0,1-29.88,0L78,178l-51.62-19a15.92,15.92,0,0,1,0-29.88L78,110l19-51.62a15.92,15.92,0,0,1,29.88,0L146,110l51.62,19A15.78,15.78,0,0,1,208,144ZM152,48h16V64a8,8,0,0,0,16,0V48h16a8,8,0,0,0,0-16H184V16a8,8,0,0,0-16,0V32H152a8,8,0,0,0,0,16Zm88,32h-8V72a8,8,0,0,0-16,0v8h-8a8,8,0,0,0,0,16h8v8a8,8,0,0,0,16,0V96h8a8,8,0,0,0,0-16Z"/>',
+  'sparkle':'<path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z"/>',
+  'stairs':'<path d="M200,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V40A16,16,0,0,0,200,24ZM152,144h48v24H112V144Zm8-16V104h40v24Zm40-88V88H152a8,8,0,0,0-8,8v32H104a8,8,0,0,0-8,8v32H56V40Zm0,176H56V184H200v32Z"/>',
+  'sun':'<path d="M120,40V16a8,8,0,0,1,16,0V40a8,8,0,0,1-16,0Zm72,88a64,64,0,1,1-64-64A64.07,64.07,0,0,1,192,128Zm-16,0a48,48,0,1,0-48,48A48.05,48.05,0,0,0,176,128ZM58.34,69.66A8,8,0,0,0,69.66,58.34l-16-16A8,8,0,0,0,42.34,53.66Zm0,116.68-16,16a8,8,0,0,0,11.32,11.32l16-16a8,8,0,0,0-11.32-11.32ZM192,72a8,8,0,0,0,5.66-2.34l16-16a8,8,0,0,0-11.32-11.32l-16,16A8,8,0,0,0,192,72Zm5.66,114.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32-11.32ZM48,128a8,8,0,0,0-8-8H16a8,8,0,0,0,0,16H40A8,8,0,0,0,48,128Zm80,80a8,8,0,0,0-8,8v24a8,8,0,0,0,16,0V216A8,8,0,0,0,128,208Zm112-88H216a8,8,0,0,0,0,16h24a8,8,0,0,0,0-16Z"/>',
+  'timer':'<path d="M128,40a96,96,0,1,0,96,96A96.11,96.11,0,0,0,128,40Zm0,176a80,80,0,1,1,80-80A80.09,80.09,0,0,1,128,216ZM173.66,90.34a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32-11.32l40-40A8,8,0,0,1,173.66,90.34ZM96,16a8,8,0,0,1,8-8h48a8,8,0,0,1,0,16H104A8,8,0,0,1,96,16Z"/>',
+  'tractor':'<path d="M240,165.41V134a15.89,15.89,0,0,0-11.4-15.32l-.21-.06L192,108.71V72a8,8,0,0,0-16,0v32.38l-24-6.5V56h8a8,8,0,0,0,0-16H40a8,8,0,0,0,0,16h8V88H40a8,8,0,0,0,0,16H68a68.07,68.07,0,0,1,68,68v12a8,8,0,0,0,8,8h32.23A36,36,0,1,0,240,165.41ZM68,88H64V56h72v66.77A83.92,83.92,0,0,0,68,88Zm84,26.45L224,134v20.1A36,36,0,0,0,178.06,176H152ZM212,208a20,20,0,1,1,20-20A20,20,0,0,1,212,208ZM68,120a52,52,0,1,0,52,52A52.06,52.06,0,0,0,68,120Zm0,88a36,36,0,1,1,36-36A36,36,0,0,1,68,208Zm12-36a12,12,0,1,1-12-12A12,12,0,0,1,80,172Z"/>',
+  'trash':'<path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z"/>',
+  'umbrella':'<path d="M240,126.63A112.44,112.44,0,0,0,51.75,53.75a111.56,111.56,0,0,0-35.7,72.88A16,16,0,0,0,32,144h88v56a32,32,0,0,0,64,0,8,8,0,0,0-16,0,16,16,0,0,1-32,0V144h88a16,16,0,0,0,16-17.37ZM32,128l0,0a96.15,96.15,0,0,1,76.2-85.89C96.48,58,81.85,86.11,80.17,128Zm64.15,0c1.39-30.77,10.53-52.81,18.3-66.24A106.44,106.44,0,0,1,128,43.16a106.31,106.31,0,0,1,13.52,18.6C154.8,84.7,159,109.28,159.82,128Zm79.65,0c-1.68-41.89-16.31-70-28-85.94A96.07,96.07,0,0,1,224,128Z"/>',
+  'upload-simple':'<path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0ZM93.66,77.66,120,51.31V144a8,8,0,0,0,16,0V51.31l26.34,26.35a8,8,0,0,0,11.32-11.32l-40-40a8,8,0,0,0-11.32,0l-40,40A8,8,0,0,0,93.66,77.66Z"/>',
+  'warning':'<path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/>',
+  'x':'<path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/>'
+};
+const ph = (name, cls) => PH[name]
+  ? `<svg class="ph${cls?' '+cls:''}" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true">${PH[name]}</svg>`
+  : '';
 function fmtDur(ms){ const t=Math.max(0,Math.floor(ms/1000)); const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60; const pad=n=>String(n).padStart(2,'0'); return h? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`; }
 function fmtClock(ms){ return new Date(ms).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
 /* Format one logged set. Weight of 0 (with reps) = bodyweight → "BW". Blank weight → reps only. */
@@ -852,14 +925,14 @@ function todoAge(created){ return Math.floor((Date.now()-new Date(created+'T00:0
    bar, the router, and the sub-nav all generate from this list — no more
    four-site edits, and tab ids live in one place (kills the stale-string bugs). */
 const TABS = [
-  { id:'today', label:'Today', icon:'🏠', view:()=>viewToday(), onRender:()=>{ if(DB.lawn && DB.lawn.lat!=null && lawnSeason(new Date())) maybeFetchWeather(); } },
-  { id:'train', label:'Train', icon:'🏋️', sub:[['log','Log'],['history','History'],['cardio','Cardio'],['progress','Progress']],
+  { id:'today', label:'Today', icon:'house', view:()=>viewToday(), onRender:()=>{ if(DB.lawn && DB.lawn.lat!=null && lawnSeason(new Date())) maybeFetchWeather(); } },
+  { id:'train', label:'Train', icon:'barbell', sub:[['log','Log'],['history','History'],['cardio','Cardio'],['progress','Progress']],
     view:sub => sub==='log' ? (DB.draft ? viewActive() : viewPicker()) : sub==='history' ? viewHistory() : sub==='cardio' ? viewCardio() : viewWeight(),
     onRender:sub => { if(sub==='progress') drawActiveChart(); } },
-  { id:'care', label:'Care', icon:'✨', sub:[['skin','Skin'],['lawn','Lawn']],
+  { id:'care', label:'Care', icon:'sparkle', sub:[['skin','Skin'],['lawn','Lawn']],
     view:sub => sub==='skin' ? viewSkincare() : viewLawn(),
     onRender:sub => { if(sub==='lawn') maybeFetchWeather(); } },
-  { id:'settings', label:'Settings', icon:'⚙️', view:()=>viewData() },
+  { id:'settings', label:'Settings', icon:'gear-six', view:()=>viewData() },
 ];
 const tabDef = id => TABS.find(t=>t.id===id);
 let TAB = TABS[0].id;
@@ -868,10 +941,18 @@ TABS.forEach(t=>{ if(t.sub) subState[t.id]=t.sub[0][0]; });
 
 function buildTabBar(){
   document.getElementById('tabbar').innerHTML = TABS.map(t=>
-    `<button class="tab${t.id===TAB?' active':''}" data-tab="${t.id}" onclick="go('${t.id}')"><span class="ic">${t.icon}</span>${t.label}</button>`
+    `<button class="tab${t.id===TAB?' active':''}" data-tab="${t.id}" onclick="go('${t.id}')"><span class="ic">${ph(t.id===TAB ? t.icon+'-fill' : t.icon)}</span>${t.label}</button>`
   ).join('');
 }
-function syncTabBar(){ document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active', b.dataset.tab===TAB)); }
+/* Icons are Phosphor Regular when inactive and Fill when active, so the glyph itself has to be
+   re-rendered on every navigation — toggling .active only changes the color. */
+function syncTabBar(){
+  document.querySelectorAll('.tab').forEach(b=>{
+    const on = b.dataset.tab===TAB, t = tabDef(b.dataset.tab), ic = b.querySelector('.ic');
+    b.classList.toggle('active', on);
+    if(t && ic) ic.innerHTML = ph(on ? t.icon+'-fill' : t.icon);
+  });
+}
 function go(id){ if(!tabDef(id)) return; TAB=id; syncTabBar(); render(); window.scrollTo(0,0); }
 /* Jump straight to a sub-view of a grouped tab, e.g. goSub('train','history'). */
 function goSub(id, sub){ const t=tabDef(id); if(!t) return; if(t.sub && sub) subState[id]=sub; go(id); }
@@ -895,7 +976,7 @@ function render(){
       <h2>Something broke on this screen</h2>
       <p class="muted" style="line-height:1.5;margin:8px 0">${esc(e && e.message || String(e))}</p>
       <p class="muted" style="margin-bottom:12px">Your data is safe — export a copy, then reload.</p>
-      <button class="btn btn-block" onclick="exportData()">⬇ Export my data</button>
+      <button class="btn btn-block" onclick="exportData()">${ph('download-simple')}Export my data</button>
       <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="location.reload()">Reload app</button>
     </div>`;
   }
@@ -971,7 +1052,7 @@ function viewToday(){
         <button class="${pickCat==='productivity'?'active':''}" onclick="setPickCat('productivity')">Productivity</button>
       </div>
       <div style="text-align:center;padding:4px 0 12px"><div style="font-size:22px;font-weight:800;letter-spacing:-.3px">${pick?esc(pick):'Add some in Settings →'}</div></div>
-      <div class="row" style="gap:8px"><button class="btn btn-ghost" style="flex:1" onclick="shufflePick()">🎲 Something else</button><button class="btn" style="flex:1" onclick="didPick()">✓ I did it</button></div>
+      <div class="row" style="gap:8px"><button class="btn btn-ghost" style="flex:1" onclick="shufflePick()">${ph('shuffle')}Something else</button><button class="btn" style="flex:1" onclick="didPick()">${ph('check')}I did it</button></div>
       <select onchange="selectPick(this.value)" style="margin-top:10px" aria-label="Pick a specific item">${listFor(pickCat).map(h=>`<option ${h===pick?'selected':''}>${esc(h)}</option>`).join('')}</select>
       <p class="muted" style="margin-top:12px;line-height:1.5">You'll always be tired, and there's always a reason not to. But you <strong>always feel better after</strong>. Start small — just begin.</p>
       ${catWeek?`<p class="muted" style="margin-top:6px;font-weight:600">✓ ${catWeek} ${pickCat==='hobby'?'hobbies':'chores'} this week</p>`:''}
@@ -979,7 +1060,7 @@ function viewToday(){
   const cJournal = `<div class="card">
       ${kicker('What did you do today?')}
       <textarea id="journal-input" rows="3" placeholder="A few words about your day — wins, workouts, anything…" oninput="saveJournal(this.value)" style="resize:vertical;line-height:1.5;min-height:72px;margin-top:8px">${esc(DB.journal[todayISO()]||'')}</textarea>
-      <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <a onclick="goSub('train','history')" style="color:var(--link);cursor:pointer;font-weight:600">${part==='evening'?'📅 Review your week →':'See your week →'}</a></p>
+      <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <a onclick="goSub('train','history')" style="color:var(--link);cursor:pointer;font-weight:600">${part==='evening'?`${ph('calendar-blank')}Review your week →`:'See your week →'}</a></p>
     </div>`;
   const cWeight = `<div class="card"><div class="row">
       <div><div class="stat-big" style="font-size:26px">${avg!=null? avg.toFixed(1) : '—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
@@ -1011,10 +1092,10 @@ function viewToday(){
           <div style="font-weight:700;margin-top:4px">${mobStatus}${streak?` · 🔥 ${streak}-day streak`:''}</div>
           <div class="muted" style="font-size:11px;margin-top:2px">Activation ${actWk}× this week — aim 3–4</div>
         </div>
-        <span class="muted">${mobOpen?'▲':'▼'}</span>
+        <span class="muted">${ph(mobOpen?'caret-up':'caret-down')}</span>
       </div>
       ${mobOpen?`<div style="margin-top:10px">
-        <button class="btn ${sess?'':'btn-ghost'} btn-block" onclick="toggleMobSession()">${sess?'✓ Yoga / full session logged — tap to undo':'✓ Did yoga or a full mobility session'}</button>
+        <button class="btn ${sess?'':'btn-ghost'} btn-block" onclick="toggleMobSession()">${sess?`${ph('check')}Yoga / full session logged — tap to undo`:`${ph('check')}Did yoga or a full mobility session`}</button>
         ${mobilityRows()}
       </div>`:`<p class="muted" style="margin-top:8px;font-size:12px">${complete?'Logged for today — nice.':'Stretch daily to fix the tilt — tap to check off.'}</p>`}
     </div>`;
@@ -1031,21 +1112,21 @@ function viewToday(){
       ${shownTodos.map((t,i)=>{ const age=todoAge(t.created); return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-3)">
         <input type="checkbox" onchange="doneTodo(${i})" style="margin-top:1px">
         <span style="flex:1;font-size:14px">${esc(t.text)}${age>0?` <span class="muted" style="font-size:11px">· ${age}d</span>`:''}</span>
-        <button class="x-set" onclick="removeTodo(${i})" title="remove">×</button>
+        <button class="x-set" onclick="removeTodo(${i})" title="remove">${ph('x')}</button>
       </div>`; }).join('')}
       ${todos.length>TODO_CAP?`<button class="addset" onclick="toggleAcc('todos-all')">${todosExpanded?'Show less':`+ ${todos.length-TODO_CAP} more`}</button>`:''}
       ${todos.length?'':'<p class="muted" style="margin-top:8px;font-size:12px">Nothing pending. Tasks roll over until you check them off — checking one logs it to your journal.</p>'}
     </div>`;
 
   const cQuota = quotaBannerShown ? `<div class="card" style="border:1.5px solid var(--danger-bd);background:rgba(255,107,107,.08)">
-      <div style="font-weight:700;font-size:14px;color:var(--danger)">⚠️ This device is out of storage</div>
+      <div style="font-weight:700;font-size:14px;color:var(--danger)">${ph('warning','lead')}This device is out of storage</div>
       <p class="muted" style="line-height:1.5;margin-top:4px">Recent changes may not be saved locally. Export a backup now, and make sure Cloud Sync is on so nothing is lost.</p>
-      <div class="row" style="gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="exportData()">⬇ Export now</button><button class="btn btn-ghost" style="flex:1" onclick="go('settings')">Settings</button></div>
+      <div class="row" style="gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="exportData()">${ph('download-simple')}Export now</button><button class="btn btn-ghost" style="flex:1" onclick="go('settings')">Settings</button></div>
     </div>` : '';
   const cBackup = backupStale() ? `<div class="card" style="border:1.5px solid var(--warm-bd);background:var(--warm-bg)">
-      <div style="font-weight:700;font-size:14px">⚠️ Back up your data</div>
+      <div style="font-weight:700;font-size:14px">${ph('warning','lead')}Back up your data</div>
       <p class="muted" style="line-height:1.5;margin-top:4px">${SYNC && SYNC.user ? 'Cloud Sync is on, but keeping an occasional downloadable copy means even a bad sync can’t cost you anything.' : 'Your data lives only on this device. Turn on <strong>Cloud Sync</strong> and it\'s backed up automatically — and available on your laptop too. A one-off export works as a fallback.'}</p>
-      <div class="row" style="gap:8px;margin-top:10px">${SYNC && SYNC.user ? '' : `<button class="btn" style="flex:1" onclick="go('settings')">☁ Set up sync</button>`}<button class="btn ${SYNC&&SYNC.user?'':'btn-ghost'}" style="flex:1" onclick="exportData()">⬇ Export</button></div>
+      <div class="row" style="gap:8px;margin-top:10px">${SYNC && SYNC.user ? '' : `<button class="btn" style="flex:1" onclick="go('settings')">${ph('cloud-arrow-up')}Set up sync</button>`}<button class="btn ${SYNC&&SYNC.user?'':'btn-ghost'}" style="flex:1" onclick="exportData()">${ph('download-simple')}Export</button></div>
       <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="snoozeBackup()">Later</button>
     </div>` : '';
 
@@ -1114,9 +1195,9 @@ function viewPicker(){
   return `<h1>Pick a workout</h1><p class="subtitle">Suggested next: <strong>${nxtLabel}</strong></p>
     <div style="margin-top:16px">${cards}</div>
     ${specializedSection}
-    <h2 style="margin-top:22px">📖 How this program works</h2>
+    <h2 style="margin-top:22px">${ph('book-open')}How this program works</h2>
     ${guideDisplay.map((s,i)=>{ const o=guideOpen.has(i); return `<div class="phase-card">
-      <button class="phase-header" onclick="toggleGuide(${i})"><span class="phase-title" style="font-size:14px">${s.t}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${o?180:0}deg);transition:.2s">⌄</span></button>
+      <button class="phase-header" onclick="toggleGuide(${i})"><span class="phase-title" style="font-size:14px">${s.t}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${o?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
       ${o?`<div class="phase-body">${s.b}</div>`:''}
     </div>`; }).join('')}`;
 }
@@ -1198,24 +1279,24 @@ function viewActive(){
                  (s.examples.includes(entry.name)?'':`<option selected>${esc(entry.name)}</option>`) +
                  `<option value="__custom">+ Custom…</option>`;
     const setRows = entry.sets.map((st,k)=>{
-      if(st.skipped) return `<div class="skip-note"><span>⤼ Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipSet(${i},${k})">Undo</button></div>`;
+      if(st.skipped) return `<div class="skip-note"><span>${ph('skip-forward','lead')}Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipSet(${i},${k})">Undo</button></div>`;
       const [bt,bc] = setStatus(i,k);
       return `<div class="set-grid">
         <span class="set-no">${k+1}</span>
         <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value);updTargetBadge(${i},${k});updPlates(${i})" onchange="rollWeight(${i},${k},this.value)">
         <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="${repHint(i,k)}" value="${st.r}" oninput="setVal(${i},${k},'r',this.value);updTargetBadge(${i},${k})" onchange="repCheck(${i},${k})">
         <span id="tgt-${i}-${k}" class="tgt-badge ${bc}">${bt}</span>
-        <button class="skip-set" onclick="skipSet(${i},${k})" title="skip this set">⤼</button>
-        <button class="x-set" onclick="rmSet(${i},${k})" title="remove set">×</button>
+        <button class="skip-set" onclick="skipSet(${i},${k})" title="skip this set">${ph('skip-forward')}</button>
+        <button class="x-set" onclick="rmSet(${i},${k})" title="remove set">${ph('x')}</button>
       </div>`;
     }).join('');
     return `<div class="ex-card">
       <div class="ex-accent ${barClass(g)}"></div>
       <div class="ex-body">
         <div class="ex-head">
-          <div><div class="ex-meta">${s.muscle} · ${s.movement}${s.note?' · '+s.note:''} · <a href="${gsearch(entry.name)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">how-to ↗</a></div></div>
+          <div><div class="ex-meta">${s.muscle} · ${s.movement}${s.note?' · '+s.note:''} · <a href="${gsearch(entry.name)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">how-to ${ph('arrow-square-out')}</a></div></div>
           <div style="text-align:right;white-space:nowrap">
-            <button class="skip-set" onclick="toggleExCollapse(${i})" title="collapse" style="font-size:16px;vertical-align:middle">⌃</button>
+            <button class="skip-set" onclick="toggleExCollapse(${i})" title="collapse" style="font-size:16px;vertical-align:middle">${ph('caret-up')}</button>
             <span class="range-badge">${rangeText(rng)} reps</span>${flag?'<br>'+flag:''}
           </div>
         </div>
@@ -1228,7 +1309,7 @@ function viewActive(){
         <button class="addset" onclick="addSet(${i})">+ Add set</button>
         ${isBarbell(entry.name)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'')}</div>`:''}
         ${i===0?`<div class="warm">
-          <button class="warm-toggle" onclick="toggleWarm(${i})">🔥 Warm-up ramp</button>
+          <button class="warm-toggle" onclick="toggleWarm(${i})">${ph('fire')}Warm-up ramp</button>
           <div class="warm-table hidden" id="warm-${i}"></div>
         </div>`:''}
         <input type="text" placeholder="Note — pain, tempo, how it felt…" value="${esc(entry.note||'')}" oninput="setNote(${i},this.value)" style="margin-top:10px;font-size:13px;padding:7px 9px">
@@ -1246,11 +1327,11 @@ function viewActive(){
     : `First time — set your starting point. You'll go up 15s each session.`;
   const stairsCard = st.skipped
     ? `<div class="ex-card"><div class="ex-accent acc-bar-cardio"></div><div class="ex-body">
-        <div class="skip-note" style="margin:0"><span>⤼ Stair stepper skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipStairs()">Undo</button></div>
+        <div class="skip-note" style="margin:0"><span>${ph('skip-forward','lead')}Stair stepper skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipStairs()">Undo</button></div>
       </div></div>`
     : `<div class="ex-card"><div class="ex-accent acc-bar-cardio"></div><div class="ex-body">
         <div class="ex-head">
-          <div><div class="ex-meta">Cardio · finisher</div><div class="ex-title">🪜 Stair Stepper</div></div>
+          <div><div class="ex-meta">Cardio · finisher</div><div class="ex-title">${ph('stairs','lead')}Stair Stepper</div></div>
           <span class="range-badge">+15s each time</span>
         </div>
         <div class="lasttime">${stairLast}</div>
@@ -1259,7 +1340,7 @@ function viewActive(){
           <div><label>Min</label><input type="number" inputmode="numeric" placeholder="min" value="${stMin}" oninput="stairTimeSet('m',this.value)"></div>
           <div><label>Sec</label><input type="number" inputmode="numeric" placeholder="sec" value="${stSec}" oninput="stairTimeSet('s',this.value)"></div>
         </div>
-        <button class="skip-set" style="font-size:12px;font-weight:600" onclick="skipStairs()">⤼ skip stair stepper</button>
+        <button class="skip-set" style="font-size:12px;font-weight:600" onclick="skipStairs()">${ph('skip-forward')}skip stair stepper</button>
       </div></div>`;
 
   const lblCss = 'font-size:10px;font-weight:700;color:var(--muted-2);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px';
@@ -1435,14 +1516,14 @@ function renderWeekReview(){
     nW += sess.filter(s=>!s.skipped).length; nH += hb.length; if(note && note.trim()) nJ++;
     const tags = [];
     sess.forEach(s=> s.skipped
-      ? tags.push(`<span class="muted" style="font-size:11px">⤼ skipped ${s.workout}</span>`)
+      ? tags.push(`<span class="muted" style="font-size:11px">${ph('skip-forward','lead')}skipped ${s.workout}</span>`)
       : tags.push(`<span class="pill ${accClass(PROGRAM[s.workout]?PROGRAM[s.workout].group:'push')}" style="font-size:9px;padding:2px 7px">${s.workout}</span>`));
     hb.forEach(h=> tags.push(`<span style="font-size:11px">🎲 ${esc(h)}</span>`));
     if(wt) tags.push(`<span style="font-size:11px">⚖️ ${(+wt.value).toFixed(1)}</span>`);
     if(dayComplete(iso)) tags.push(`<span style="font-size:11px">🧎 ${hasMobSession(iso)?'session':mobDoneOn(iso)}</span>`);
     if(sess.some(s=>s.prs&&s.prs.length)) tags.push(`<span style="font-size:11px">🏆 PR</span>`);
     const hasNote = note && note.trim();
-    const editLink = iso => `<a onclick="editJournal('${iso}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">✏️ ${hasNote?'Edit note':'Add note'}</a>`;
+    const editLink = iso => `<a onclick="editJournal('${iso}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${ph('note-pencil')}${hasNote?'Edit note':'Add note'}</a>`;
     let noteHTML;
     if(future){ noteHTML=''; }
     else if(editJournalDate===iso){
@@ -1475,9 +1556,9 @@ function renderWeekReview(){
   const title = reviewWeekOffset===0?'This week':reviewWeekOffset===-1?'Last week':`${-reviewWeekOffset} weeks ago`;
   return `<div class="card">
     <div class="row" style="margin-bottom:10px">
-      <button class="btn btn-ghost btn-sm" onclick="weekShift(-1)">◀</button>
+      <button class="btn btn-ghost btn-sm" onclick="weekShift(-1)">${ph('caret-left')}</button>
       <div style="text-align:center"><div style="font-weight:700">${title}</div><div class="muted" style="font-size:11px">${label}</div></div>
-      <button class="btn btn-ghost btn-sm" onclick="weekShift(1)" ${reviewWeekOffset>=0?'disabled style="opacity:.35"':''}>▶</button>
+      <button class="btn btn-ghost btn-sm" onclick="weekShift(1)" ${reviewWeekOffset>=0?'disabled style="opacity:.35"':''}>${ph('caret-right')}</button>
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:4px">${nW} workout${nW!==1?'s':''} · ${nH} activit${nH!==1?'ies':'y'} · journaled ${nJ}/7</div>
     ${rows}
@@ -1523,14 +1604,14 @@ function viewHistory(){
     let right, detail='';
     const editRow = `<div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap;border-top:1px solid var(--border-3);padding-top:10px">
         <label style="font-size:11px;font-weight:600;color:var(--muted)">Date <input type="date" value="${s.date}" max="${todayISO()}" onchange="changeSessionDate(${idx},this.value)" style="width:auto;display:inline-block;margin-left:4px;padding:6px 8px"></label>
-        ${s.skipped?'':`<button onclick="editSession(${idx})" style="background:none;border:none;color:var(--link);font-size:12px;font-weight:600;cursor:pointer;padding:0">✎ Edit workout</button>`}
+        ${s.skipped?'':`<button onclick="editSession(${idx})" style="background:none;border:none;color:var(--link);font-size:12px;font-weight:600;cursor:pointer;padding:0">${ph('pencil-simple')}Edit workout</button>`}
         <button onclick="deleteSession(${idx})" style="background:none;border:none;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer;padding:0">Delete entry</button>
       </div>`;
     if(s.skipped){
-      right = `<span class="muted">Skipped ${open?'▲':'▼'}</span>`;
-      if(open) detail = `<div class="hist-detail">⤼ Day skipped${s.reason?': <em>'+esc(s.reason)+'</em>':''}${editRow}</div>`;
+      right = `<span class="muted">Skipped ${ph(open?'caret-up':'caret-down')}</span>`;
+      if(open) detail = `<div class="hist-detail">${ph('skip-forward','lead')}Day skipped${s.reason?': <em>'+esc(s.reason)+'</em>':''}${editRow}</div>`;
     } else {
-      right = `<span class="muted">${s.durationMin?s.durationMin+' min · ':''}${e_count(s)} sets ${open?'▲':'▼'}</span>`;
+      right = `<span class="muted">${s.durationMin?s.durationMin+' min · ':''}${e_count(s)} sets ${ph(open?'caret-up':'caret-down')}</span>`;
       if(open){
         const lines = (s.entries||[]).map(e=>{
           const setStr = e.sets.map(x=> x.skipped? '<em>skip</em>' : fmtSet(x.w,x.r)).join(', ');
@@ -1541,7 +1622,7 @@ function viewHistory(){
         else if(s.stairs && s.stairs.skipped)
           lines.push(`<strong>🪜 Stair Stepper</strong> — <em>skipped${s.stairs.reason?': '+esc(s.stairs.reason):''}</em>`);
         if(s.extras){
-          Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.sets && e.sets.length){ const d2=ACCESSORIES[w]; const lbl=d2?`${d2.icon} ${d2.label}`:(w.charAt(0).toUpperCase()+w.slice(1)); lines.push(`<strong>${lbl}${e.name?' — '+esc(e.name):''}</strong> — ${e.sets.map(z=>fmtSet(z.w,z.r)).join(', ')}`); } });
+          Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.sets && e.sets.length){ const d2=ACCESSORIES[w]; const lbl=d2?`${ph(d2.icon)}${d2.label}`:(w.charAt(0).toUpperCase()+w.slice(1)); lines.push(`<strong>${lbl}${e.name?' — '+esc(e.name):''}</strong> — ${e.sets.map(z=>fmtSet(z.w,z.r)).join(', ')}`); } });
         }
         if(dayComplete(s.date)) lines.push(`<strong>🧎 Mobility</strong> — ${hasMobSession(s.date)?'yoga / full session':mobDoneOn(s.date)+' done that day'}`);
         const noteStr = s.note ? `<div style="margin-top:8px;font-size:13px;color:var(--text-2);line-height:1.5;white-space:pre-wrap">📝 ${esc(s.note)}</div>` : '';
@@ -1658,7 +1739,7 @@ function viewStrength(sub){
   if(series.length>=2){ const d=best-first.value; const cls=d>0?'trend-down':'trend-flat'; delta=`<span class="${cls}">▲ ${Math.abs(d).toFixed(0)} ${isReps?'reps':DB.unit}</span> since ${fmtDate(first.date)}`; }
   const opts = loadEx.map(m=>`<option ${m===selectedExercise?'selected':''}>${esc(m)}</option>`).join('')
     + bwEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(m)} (reps)</option>`).join('');
-  const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.name===selectedExercise?'▸ ':''}${esc(p.name)}</span><span><strong>${Math.round(p.v)} ${DB.unit}</strong> <span class="muted">${fmtSet(p.w,p.r)}</span></span></div>`).join('');
+  const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.name===selectedExercise?ph('caret-right','lead'):''}${esc(p.name)}</span><span><strong>${Math.round(p.v)} ${DB.unit}</strong> <span class="muted">${fmtSet(p.w,p.r)}</span></span></div>`).join('');
   const hist = exerciseHistory(selectedExercise).slice(0,15);
   const histRows = hist.map(h=>`<div class="hist-item">
       <div style="min-width:0"><div style="font-weight:600;font-size:13px">${fmtDate(h.date)}${h.deload?' <em class="muted" style="font-size:11px">(deload)</em>':''}</div>
@@ -1730,7 +1811,7 @@ function viewCardioTrend(sub){
 function weightList(){
   return DB.weights.map((w,i)=>({w,i})).filter(o=>isLive(o.w)).reverse().slice(0,12).map(({w,i})=>{
     const idx = i;
-    return `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" onclick="rmWeight(${idx})">×</button></span></div>`;
+    return `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" onclick="rmWeight(${idx})">${ph('x')}</button></span></div>`;
   }).join('');
 }
 /* 7-day rolling average — smooths daily water-weight noise into the real signal.
@@ -1832,7 +1913,7 @@ function toggleAcc(k){ accOpen.has(k)?accOpen.delete(k):accOpen.add(k); render()
 function accItem(key, title, bodyHTML){
   const open=accOpen.has(key);
   return `<div class="phase-card">
-    <button class="phase-header" onclick="toggleAcc('${key}')"><span class="phase-title" style="font-size:14px">${title}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">⌄</span></button>
+    <button class="phase-header" onclick="toggleAcc('${key}')"><span class="phase-title" style="font-size:14px">${title}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
     ${open?`<div class="phase-body">${bodyHTML}</div>`:''}
   </div>`;
 }
@@ -1863,9 +1944,9 @@ const isReservedMobKey = k => k.indexOf('__')===0; // e.g. __session — never a
 /* Scheduled accessories — appear on assigned workout days with a recommended rep range (was
    "optional on every day"). Dead hang is time-based (reps field = seconds held). */
 const ACCESSORIES = {
-  abs:      { label:'Abs',       icon:'💥', muscle:'Abs',      lo:8,  hi:15, sets:3, examples:['Machine crunch','Cable crunch','Weighted sit-up','Hanging leg raise','Dead bug','Plank'], days:['PUSH 1','PUSH 2','LEGS 1','LEGS 2'] },
-  forearms: { label:'Forearms',  icon:'🤜', muscle:'Forearms', lo:12, hi:20, sets:3, examples:['Wrist curls','Reverse wrist curls','Behind-the-back wrist curls','Farmer carry'], days:['PULL 1','PULL 2'] },
-  deadhang: { label:'Dead hang', icon:'🧗', muscle:'Grip',     lo:20, hi:40, sets:2, unit:'sec', examples:['Dead hang','Active hang','Towel dead hang'], days:['PULL 1','PULL 2'] },
+  abs:      { label:'Abs',       icon:'lightning', muscle:'Abs',      lo:8,  hi:15, sets:3, examples:['Machine crunch','Cable crunch','Weighted sit-up','Hanging leg raise','Dead bug','Plank'], days:['PUSH 1','PUSH 2','LEGS 1','LEGS 2'] },
+  forearms: { label:'Forearms',  icon:'hand-fist', muscle:'Forearms', lo:12, hi:20, sets:3, examples:['Wrist curls','Reverse wrist curls','Behind-the-back wrist curls','Farmer carry'], days:['PULL 1','PULL 2'] },
+  deadhang: { label:'Dead hang', icon:'hand-grabbing', muscle:'Grip',     lo:20, hi:40, sets:2, unit:'sec', examples:['Dead hang','Active hang','Towel dead hang'], days:['PULL 1','PULL 2'] },
 };
 function accessoryIdsFor(workout){ return Object.keys(ACCESSORIES).filter(id=>ACCESSORIES[id].days.includes(workout)); }
 function emptyExtraSets(n){ return Array.from({length:n},()=>({w:'',r:'',skipped:false})); }
@@ -1909,7 +1990,7 @@ function weeklyActivationDays(){ const m=+monday(new Date()); let c=0;
 function mobilityRows(){ const m=mobToday();
   const row=(x,i)=>`<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-3);cursor:pointer">
     <input type="checkbox" ${m[x.n]?'checked':''} onchange="toggleMobility(${i})">
-    <span style="flex:1"><span style="font-weight:600;font-size:14px">${x.n}</span> · <a href="${gsearch(x.n)}" target="_blank" rel="noopener" style="color:var(--link);font-size:12px">how-to ↗</a><div class="muted" style="font-size:12px">${x.t}</div></span>
+    <span style="flex:1"><span style="font-weight:600;font-size:14px">${x.n}</span> · <a href="${gsearch(x.n)}" target="_blank" rel="noopener" style="color:var(--link);font-size:12px">how-to ${ph('arrow-square-out')}</a><div class="muted" style="font-size:12px">${x.t}</div></span>
   </label>`;
   const section=(title,group)=>`<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 2px">${title}</div>`
     + MOBILITY.map((x,i)=> x.g===group ? row(x,i) : '').join('');
@@ -1927,10 +2008,10 @@ function extraCard(id){
       <span class="set-no">${k+1}</span>
       <input type="number" inputmode="decimal" id="ex-${id}-w-${k}" placeholder="0=BW" value="${st.w}" oninput="exSet('${id}',${k},'w',this.value)" onchange="exRoll('${id}',${k},this.value)">
       <input type="number" inputmode="numeric" placeholder="${isSec?'sec':rangeTxt}" value="${st.r}" oninput="exSet('${id}',${k},'r',this.value)">
-      <button class="x-set" onclick="exRmSet('${id}',${k})">×</button>
+      <button class="x-set" onclick="exRmSet('${id}',${k})">${ph('x')}</button>
     </div>`).join('');
   return `<div class="phase-card">
-    <button class="phase-header" onclick="toggleAcc('${id}')"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${def.icon} ${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">⌄</span></button>
+    <button class="phase-header" onclick="toggleAcc('${id}')"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${ph(def.icon)}${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
     ${open?`<div class="phase-body">
       <select onchange="exPick('${id}',this)" style="margin-bottom:8px">${opts}</select>
       <div class="set-grid" style="grid-template-columns:22px 1fr 1fr 26px;margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">${isSec?'Sec':'Reps'}</span><span></span></div>
@@ -1940,10 +2021,10 @@ function extraCard(id){
   </div>`;
 }
 function accessoryBlocks(group, workout){
-  const warm = accItem('warmup','🔥 Warm-up', `<p><strong>General:</strong> loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles) until they feel warm. Optional 5–10 min easy treadmill or elliptical.</p><p><strong>First exercise:</strong> ramp up — empty bar → ~50% → ~75% → working sets (use the 🔥 ramp on exercise 1 below).</p>`);
+  const warm = accItem('warmup',`${ph('fire')}Warm-up`, `<p><strong>General:</strong> loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles) until they feel warm. Optional 5–10 min easy treadmill or elliptical.</p><p><strong>First exercise:</strong> ramp up — empty bar → ~50% → ~75% → working sets (use the 🔥 ramp on exercise 1 below).</p>`);
   const lifts = accessoryIdsFor(workout).map(id=>extraCard(id)).join('');
   const list = (STRETCHES[group]||STRETCHES.push).map(n=>`<li style="margin-bottom:5px"><a href="${gsearch(n)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">${n}</a></li>`).join('');
-  const cooldown = accItem('stretch','🧘 Cool-down stretches', `<p>Hold each ~20–30s. Tap one to see how:</p><ul style="margin:0 0 4px 18px">${list}</ul>`);
+  const cooldown = accItem('stretch',`${ph('flower-lotus')}Cool-down stretches`, `<p>Hold each ~20–30s. Tap one to see how:</p><ul style="margin:0 0 4px 18px">${list}</ul>`);
   return { warm, lifts, cooldown };
 }
 function skinSubTab(t){ skinSub=t; render(); }
@@ -1960,7 +2041,7 @@ function viewSkincare(){
       return `<div class="phase-card">
         <button class="phase-header" onclick="skinTogglePhase(${pi})">
           <span style="display:flex;align-items:center;gap:10px"><span class="phase-num">${pi+1}</span><span class="phase-title">${p.phase}</span><span class="phase-count">${p.steps.length} steps</span></span>
-          <span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">⌄</span>
+          <span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span>
         </button>
         ${open?`<div class="phase-body">${p.steps.map(st=>`<div class="shave-step"><div class="shave-step-title">${st.step}</div><div class="shave-step-note">${st.note}</div></div>`).join('')}</div>`:''}
       </div>`;
@@ -1979,10 +2060,10 @@ function viewSkincare(){
   return `<h1>Skincare</h1><p class="subtitle">Combination skin · weekly schedule</p>${sub}
     <div class="day-row" style="margin-top:14px">${dayBtns}</div>
     ${badges?`<div class="badge-row">${badges}</div>`:''}
-    <div class="card"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span>☀️</span><span class="card-label label-am">Morning</span></div>${steps(data.am)}</div>
-    <div class="card"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span>🌙</span><span class="card-label label-pm">Evening</span></div>${steps(data.pm)}</div>
+    <div class="card"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span style="display:flex;font-size:17px">${ph('sun')}</span><span class="card-label label-am">Morning</span></div>${steps(data.am)}</div>
+    <div class="card"><div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span style="display:flex;font-size:17px">${ph('moon')}</span><span class="card-label label-pm">Evening</span></div>${steps(data.pm)}</div>
     <div class="card" style="background:var(--legs-bg);border:1px solid var(--legs-bd)">
-      <div class="card-label" style="color:var(--legs-fg);margin-bottom:6px">🪒 Neck care · shave days</div>
+      <div class="card-label" style="color:var(--legs-fg);margin-bottom:6px">${ph('scissors')}Neck care · shave days</div>
       <p class="muted" style="font-size:13px;line-height:1.5">After shaving — post-aftershave, before moisturizer — sweep <strong>Thayers Alcohol-Free Rose Petal Witch Hazel</strong> over the neck with a cotton pad to calm redness and head off ingrown breakouts. Neck only; keep rosewater toner for the full face daily. Keep a <strong>Clubman styptic pencil</strong> handy for nicks. Full steps in the <strong>Shaving</strong> tab.</p>
     </div>
     <div class="card"><div class="muted" style="font-weight:700;margin-bottom:8px">Key</div>
@@ -2047,7 +2128,7 @@ function changeLawnLoc(){ DB.lawn=null; DB.wx=null; save(); render(); }
 function lawnSetup(){
   return `<h1>Lawn & Weather</h1><p class="subtitle">Set your location once for a local forecast and lawn-care timing.</p>
     <div class="card">
-      <button class="btn btn-block" onclick="useMyLocation()">📍 Use my current location</button>
+      <button class="btn btn-block" onclick="useMyLocation()">${ph('map-pin')}Use my current location</button>
       <p class="muted" style="text-align:center;margin:12px 0 8px">— or —</p>
       <div class="row"><input id="loc-input" placeholder="City name, e.g. Madison" style="flex:1" onkeydown="if(event.key==='Enter')searchLocation()"><button class="btn" onclick="searchLocation()">Find</button></div>
       <p class="muted" id="loc-msg" style="margin-top:10px"></p>
@@ -2141,17 +2222,17 @@ function cLawnCard(){
   if(!st.season || !DB.lawn || DB.lawn.lat==null) return '';   // hidden Nov–Mar or before location is set
   const t=todayISO(), log=(DB.lawnLog||{})[t]||{};
   const line=(label,icon,r,which)=>`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-3)">
-      <div style="font-size:13px;line-height:1.5">${r.override?'⚠':(r.recommend?'✅':'⏸')} <strong>${label}:</strong> ${esc(r.text)}</div>
-      <a onclick="toggleLawnOverride('${which}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${r.override?'↩ Undo override':'Override if needed'}</a>
+      <div style="font-size:13px;line-height:1.5">${ph(r.override?'warning':(r.recommend?'check-circle':'pause'),'lead')}<strong>${label}:</strong> ${esc(r.text)}</div>
+      <a onclick="toggleLawnOverride('${which}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${r.override?`${ph('arrow-u-up-left')}Undo override`:'Override if needed'}</a>
     </div>`;
   return `<div class="card">
     ${kicker('Lawn · '+st.season)}
     <div class="muted" style="font-size:12px;margin-top:5px">💧 Watered ${dsWithDate(st.dsWater)}<br>🚜 Mowed ${dsWithDate(st.dsMow)}</div>
-    ${line('Watering','💧',st.water,'water')}
-    ${line('Mowing','🚜',st.mow,'mow')}
+    ${line('Watering','drop',st.water,'water')}
+    ${line('Mowing','tractor',st.mow,'mow')}
     <div class="row" style="gap:8px;margin-top:12px">
-      <button class="btn ${log.watered?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('watered')">${log.watered?'✓ Watered':'Mark watered'}</button>
-      <button class="btn ${log.mowed?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('mowed')">${log.mowed?'✓ Mowed':'Mark mowed'}</button>
+      <button class="btn ${log.watered?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('watered')">${log.watered?`${ph('check')}Watered`:'Mark watered'}</button>
+      <button class="btn ${log.mowed?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('mowed')">${log.mowed?`${ph('check')}Mowed`:'Mark mowed'}</button>
     </div>
     <div class="muted" style="font-size:11px;margin-top:10px">SLP ordinance: ${LAWN_ADDR_PARITY} address → sprinkle on ${LAWN_ADDR_PARITY} calendar days, never noon–6pm.</div>
   </div>`;
@@ -2168,7 +2249,7 @@ function lawnHistory(){
 }
 function viewLawn(){
   if(!DB.lawn || DB.lawn.lat==null) return lawnSetup();
-  const locBar=`<div class="row" style="margin-bottom:14px"><span class="muted">📍 ${esc(DB.lawn.label||'My location')}</span><button class="btn btn-sm btn-ghost" onclick="changeLawnLoc()">Change</button></div>`;
+  const locBar=`<div class="row" style="margin-bottom:14px"><span class="muted">${ph('map-pin','lead')}${esc(DB.lawn.label||'My location')}</span><button class="btn btn-sm btn-ghost" onclick="changeLawnLoc()">Change</button></div>`;
   const wx=DB.wx;
   if(!wx || !wx.data) return `<h1>Lawn & Weather</h1>${locBar}<div class="empty">${weatherFetching?'Loading weather…':'<button class="btn btn-sm" onclick="fetchWeather()">Load weather</button>'}</div>`;
   const d=wx.data, dy=d.daily, cur=d.current_weather, num=v=>(v==null?0:+v);
@@ -2199,21 +2280,21 @@ function viewLawn(){
   if(lightK>0) fert=`Good window — light rain ${lightK===1?'tomorrow':'in '+lightK+' days'} will water it in.`;
   else if(heavy) fert=`Hold off — heavy rain in the next few days could wash it away before it absorbs.`;
   else fert=`Fine to apply — just water it in yourself afterward.`;
-  const card=(icon,title,body)=>`<div class="card"><div style="display:flex;gap:11px;align-items:flex-start"><span style="font-size:22px">${icon}</span><div><div style="font-weight:700;font-size:14px">${title}</div><div class="muted" style="font-size:13px;line-height:1.5;margin-top:2px">${body}</div></div></div></div>`;
+  const card=(icon,title,body)=>`<div class="card"><div style="display:flex;gap:11px;align-items:flex-start"><span style="display:flex;font-size:22px">${ph(icon)}</span><div><div style="font-weight:700;font-size:14px">${title}</div><div class="muted" style="font-size:13px;line-height:1.5;margin-top:2px">${body}</div></div></div></div>`;
   return `<h1>Lawn & Weather</h1>${locBar}
     <div class="card">
       <div class="row"><div>
         <div class="stat-big" style="font-size:30px">${Math.round(num(cur?cur.temperature:HI[ti]))}°<span style="font-size:14px;color:var(--muted-2)">F</span></div>
         <div class="stat-sub">${cw.icon} ${cw.text} · H ${Math.round(num(HI[ti]))}° / L ${Math.round(num(LO[ti]))}°</div>
-      </div><button class="btn btn-sm btn-ghost" onclick="fetchWeather()">↻</button></div>
+      </div><button class="btn btn-sm btn-ghost" onclick="fetchWeather()">${ph('arrows-clockwise')}</button></div>
       <div style="display:flex;gap:3px;margin-top:14px;overflow-x:auto">${strip}</div>
     </div>
-    ${lawnSeason(new Date()) ? cLawnCard() : `<div class="card"><div class="muted" style="font-size:13px">🌙 Off-season (Nov–Mar) — smart watering & mowing scheduling resumes in April. Forecast still available above.</div></div>`}
+    ${lawnSeason(new Date()) ? cLawnCard() : `<div class="card"><div class="muted" style="font-size:13px">${ph('snowflake','lead')}Off-season (Nov–Mar) — smart watering & mowing scheduling resumes in April. Forecast still available above.</div></div>`}
     <h2 style="margin-top:20px">Forecast guidance</h2>
-    ${card('☔','Rain', rainTxt)}
-    ${card('💧','Watering', water)}
-    ${card('🚜','Mowing', mow)}
-    ${card('🌱','Fertilizer', fert)}
+    ${card('umbrella','Rain', rainTxt)}
+    ${card('drop','Watering', water)}
+    ${card('tractor','Mowing', mow)}
+    ${card('plant','Fertilizer', fert)}
     ${lawnSeason(new Date()) ? lawnHistory() : ''}
     <p class="muted" style="text-align:center;font-size:11px">Guidance blends hardcoded cool-season rules with the live forecast — use your judgment. Updated ${new Date(wx.at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}.</p>`;
 }
@@ -2242,20 +2323,20 @@ function viewData(){
     <h2>Hobbies</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Fun things the Today tab rotates through.</p>
-      ${(DB.hobbies||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeItem('hobby',${i})">×</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
+      ${(DB.hobbies||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeItem('hobby',${i})">${ph('x')}</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
       <div class="row" style="margin-top:12px"><input id="hobby-input" placeholder="Add a hobby…" style="flex:1"><button class="btn" onclick="addItem('hobby')">Add</button></div>
     </div>
     <h2>Productivity</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Chores and house-keeping the Today tab rotates through.</p>
-      ${(DB.productivity||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeItem('productivity',${i})">×</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
+      ${(DB.productivity||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeItem('productivity',${i})">${ph('x')}</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
       <div class="row" style="margin-top:12px"><input id="productivity-input" placeholder="Add a chore…" style="flex:1"><button class="btn" onclick="addItem('productivity')">Add</button></div>
     </div>
     <h2>Backup</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:12px">A downloadable copy of your data — handy as an extra safety net even with Cloud Sync on.</p>
-      <button class="btn btn-block" onclick="exportData()">⬇ Export backup (.json)</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="document.getElementById('imp').click()">⬆ Import backup</button>
+      <button class="btn btn-block" onclick="exportData()">${ph('download-simple')}Export backup (.json)</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="document.getElementById('imp').click()">${ph('upload-simple')}Import backup</button>
       <input type="file" id="imp" accept="application/json" class="hidden" onchange="importData(this)">
     </div>
     <h2>Stats</h2>
@@ -2312,7 +2393,7 @@ function updateStopwatch(){
   document.body.classList.toggle('sw-on', show);
   if(!show){ restCtx=null; return; }           // no draft → drop any stale rest context
   const t=document.getElementById('sw-time'); if(t) t.textContent=fmtDur(swElapsed());
-  const b=document.getElementById('sw-toggle'); if(b) b.textContent = sw.running?'❚❚':'▶';
+  const b=document.getElementById('sw-toggle'); if(b) b.innerHTML = ph(sw.running?'pause':'play');
   const tgt=document.getElementById('sw-target'), el=Math.floor(swElapsed()/1000);
   const inWin = restCtx && el>=restCtx.lo && el<=restCtx.hi, overWin = restCtx && el>restCtx.hi;
   if(tgt){ tgt.textContent = restCtx ? ('Target '+restCtx.label) : ''; tgt.classList.toggle('in', !!inWin); }
@@ -2473,7 +2554,7 @@ function viewCardio(){
   const cw=weeklyCardio(), pct=Math.min(100,Math.round(cw.min/CARDIO_GOAL*100)), u=distUnit();
   const list=liveCardio().slice().sort((a,b)=> b.date.localeCompare(a.date) || (b.minutes-a.minutes));
   const pending = pendingCardio ? `<div class="card" style="border:1.5px solid var(--cardio-bd);background:var(--cardio-bg)">
-      <div style="font-weight:700;margin-bottom:8px">📥 Import — confirm &amp; save</div>
+      <div style="font-weight:700;margin-bottom:8px">${ph('upload-simple','lead')}Import — confirm &amp; save</div>
       <div class="stair-grid">
         <div><label>Date</label><input type="date" id="imp-date" value="${esc(pendingCardio.date)}"></div>
         <div><label>Type</label><select id="imp-type">${CARDIO_TYPES.map(t=>`<option ${t===pendingCardio.type?'selected':''}>${t}</option>`).join('')}</select></div>
@@ -2484,7 +2565,7 @@ function viewCardio(){
   const rows = list.length ? list.map(c=>`<div class="hist-item" style="cursor:default">
       <div><div style="font-weight:600">${esc(c.type)}${c.source==='strava'?' <span class="range-badge" style="font-size:10px">Strava</span>':''}</div>
         <div class="muted" style="font-size:12px">${fmtDate(c.date)} · ${fmtMin(c.minutes)}${c.distanceKm>0?` · ${fmtDist(c.distanceKm)}`:''}${c.note?' · '+esc(c.note):''}</div></div>
-      <button class="x-set" onclick="removeCardio('${c.id}')" title="delete">×</button>
+      <button class="x-set" onclick="removeCardio('${c.id}')" title="delete">${ph('x')}</button>
     </div>`).join('') : '<p class="empty">No cardio logged yet. Add one below or import a Strava file.</p>';
   return `<h1>Cardio</h1>
     <div class="card">
@@ -2508,7 +2589,7 @@ function viewCardio(){
     <h2>Import from Strava</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:12px;line-height:1.5">Upload a <strong>.gpx</strong> or <strong>.tcx</strong> from a Strava activity (activity page → <strong>⋯</strong> → Export), or the <strong>activities.csv</strong> from Strava's bulk “Export your data.” Distance &amp; time are read automatically — confirm the activity type before saving.</p>
-      <button class="btn btn-ghost btn-block" onclick="pickCardioFile()">📥 Choose Strava file</button>
+      <button class="btn btn-ghost btn-block" onclick="pickCardioFile()">${ph('upload-simple')}Choose Strava file</button>
       <input type="file" id="cardio-file" accept=".gpx,.tcx,.csv" class="hidden" onchange="handleCardioFile(this)">
     </div>
     <h2>History</h2>
@@ -2885,9 +2966,9 @@ function trashCardHTML(){
   const items = trashItems();
   if(!trashOpen){
     return `<div class="card"><div class="row" style="cursor:pointer" onclick="toggleTrash()">
-      <div><div style="font-weight:700;font-size:14px">🗑 Recently deleted</div>
+      <div><div style="font-weight:700;font-size:14px">${ph('trash','lead')}Recently deleted</div>
       <div class="muted" style="font-size:12px;margin-top:2px">${items.length? items.length+' item'+(items.length!==1?'s':'')+' — restorable for 30 days' : 'Nothing deleted recently'}</div></div>
-      <span class="muted">▼</span></div></div>`;
+      <span class="muted">${ph('caret-down')}</span></div></div>`;
   }
   const rows = items.length ? items.map(o=>`<div class="hist-item" style="cursor:default">
       <div style="min-width:0"><div style="font-weight:600;font-size:13px">${esc(o.label)}</div>
@@ -2896,7 +2977,7 @@ function trashCardHTML(){
     </div>`).join('') : '<p class="muted" style="font-size:13px">Nothing deleted in the last 30 days.</p>';
   return `<div class="card">
     <div class="row" style="cursor:pointer;margin-bottom:10px" onclick="toggleTrash()">
-      <div style="font-weight:700;font-size:14px">🗑 Recently deleted</div><span class="muted">▲</span></div>
+      <div style="font-weight:700;font-size:14px">${ph('trash','lead')}Recently deleted</div><span class="muted">${ph('caret-up')}</span></div>
     ${rows}
     <p class="muted" style="font-size:11px;margin-top:10px">Deleted items stay hidden here for 30 days so a mis-tap is undoable, then their details are cleared.</p>
   </div>`;
@@ -2911,9 +2992,9 @@ function versionsCardHTML(){
   if(!versionsOpen){
     const n = snaps.length + ((cloudVersionList||[]).length);
     return `<div class="card"><div class="row" style="cursor:pointer" onclick="toggleVersions()">
-      <div><div style="font-weight:700;font-size:14px">🕘 Version history</div>
+      <div><div style="font-weight:700;font-size:14px">${ph('clock-counter-clockwise','lead')}Version history</div>
       <div class="muted" style="font-size:12px;margin-top:2px">${snaps.length} on this device${SYNC.user?' + cloud versions':''} — restore a previous state</div></div>
-      <span class="muted">▼</span></div></div>`;
+      <span class="muted">${ph('caret-down')}</span></div></div>`;
   }
   const localRows = snaps.length ? snaps.map((s,i)=>row(s.at, s.label, s.summary||{}, `restoreSnapshot(${i})`)).join('')
                                  : '<p class="muted" style="font-size:13px">No local snapshots yet.</p>';
@@ -2924,7 +3005,7 @@ function versionsCardHTML(){
   else cloudRows = cloudVersionList.map(v=>row(v.at, v.label, v.summary||{}, `restoreCloudVersion('${v._id}')`)).join('');
   return `<div class="card">
     <div class="row" style="cursor:pointer;margin-bottom:10px" onclick="toggleVersions()">
-      <div style="font-weight:700;font-size:14px">🕘 Version history</div><span class="muted">▲</span></div>
+      <div style="font-weight:700;font-size:14px">${ph('clock-counter-clockwise','lead')}Version history</div><span class="muted">${ph('caret-up')}</span></div>
     <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">This device</div>
     ${localRows}
     <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 4px">Cloud (all devices)</div>
@@ -2941,7 +3022,7 @@ function syncCardHTML(){
   if(!window.firebase) return `<div class="card"><p class="muted">Cloud sync couldn't load (no connection to the sync library). Reopen the app while online.</p></div>`;
   if(SYNC.user){
     return `<div class="card">
-      <div class="row"><div><div style="font-weight:700">✓ Connected</div><div class="muted" style="font-size:12px">${esc(SYNC.user.email||'')}</div></div><span class="flag">${SYNC.pending?'Pending':'Sync on'}</span></div>
+      <div class="row"><div><div style="font-weight:700">${ph('check-circle','lead')}Connected</div><div class="muted" style="font-size:12px">${esc(SYNC.user.email||'')}</div></div><span class="flag">${SYNC.pending?'Pending':'Sync on'}</span></div>
       <p class="muted" id="sync-last" style="margin:10px 0 4px">${SYNC.lastSyncAt?('Last synced: '+new Date(SYNC.lastSyncAt).toLocaleString()):'Not synced yet'}</p>
       <p class="muted" id="sync-status" style="margin:0 0 12px">${esc(SYNC.status||'')}</p>
       <button class="btn btn-block" onclick="pushNow(false)">⟳ Check for updates</button>
@@ -2976,7 +3057,7 @@ function renderIdeasList(){
   box.innerHTML = list.length ? list.map(i=>`<div class="idea-item${i.done?' done':''}">
     <input type="checkbox" ${i.done?'checked':''} onchange="toggleIdeaDone('${i.id}')" style="margin-top:2px">
     <span class="txt">${esc(i.text)}<span class="muted" style="font-size:11px"> · ${fmtDate(i.date)}</span></span>
-    <button class="x-set" onclick="removeIdea('${i.id}')" title="delete">×</button>
+    <button class="x-set" onclick="removeIdea('${i.id}')" title="delete">${ph('x')}</button>
   </div>`).join('') : '<p class="muted" style="font-size:13px;padding:8px 0">No ideas yet — add one above while you\'re using the app.</p>';
 }
 function copyIdeas(){
@@ -2989,6 +3070,10 @@ function copyIdeas(){
 function fallbackCopy(text, cb){ try{ const ta=document.createElement('textarea'); ta.value=text; ta.style.cssText='position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); cb(); }catch(e){ toast('Copy failed'); } }
 
 /* ───────────────────────── Boot ───────────────────────── */
+/* The stopwatch bar, the idea FAB and its sheet live as static markup in <body>, so they can't
+   call ph() inside a template literal like every view does — they declare data-ph instead and
+   get their icon prepended once here. Re-rendered views don't need this; they call ph() directly. */
+document.querySelectorAll('[data-ph]').forEach(el => { el.innerHTML = ph(el.dataset.ph) + el.innerHTML; });
 buildTabBar();
 render();
 updateStopwatch();
