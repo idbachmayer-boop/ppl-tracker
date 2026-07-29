@@ -154,7 +154,10 @@
     .warm { margin-top: 8px; }
     .warm-toggle { font-size: 12px; font-weight: 600; color: var(--warm-fg); background: none; border: none; cursor: pointer; padding: 2px 0; }
     .warm-table { margin-top: 6px; font-size: 12px; color: var(--text-2); background: var(--warm-bg); border: 1px solid var(--warm-bd); border-radius: 8px; padding: 8px 10px; }
-    .warm-table div { display: flex; justify-content: space-between; padding: 2px 0; }
+    .warm-table div { display: flex; justify-content: space-between; padding: 2px 0; align-items: flex-start; gap: 12px; }
+    /* Per-rung plate breakdown stacks under its label — override the row's flex, which would
+       otherwise catch this nested div via the descendant selector above. */
+    .warm-table .warm-plates { display: block; font-size: 11px; color: var(--muted); padding: 1px 0 0; }
 
     /* Tab bar */
     .tabbar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--tabbar-bg); backdrop-filter: blur(8px); border-top: 1px solid var(--border); display: flex; flex-direction: column; z-index: 50; }
@@ -270,8 +273,8 @@
     <span class="sw-label" data-ph="timer">Rest</span>
     <span class="sw-time" id="sw-time">0:00</span>
     <span class="sw-target" id="sw-target"></span>
-    <button class="sw-btn" id="sw-toggle" onpointerdown="event.preventDefault()" onclick="swToggle()" data-ph="play"></button>
-    <button class="sw-btn sw-clear" onpointerdown="event.preventDefault()" onclick="swClear()">Clear</button>
+    <button class="sw-btn" id="sw-toggle" onpointerdown="swGuard(event)" onclick="swToggle()" data-ph="play"></button>
+    <button class="sw-btn sw-clear" onpointerdown="swGuard(event)" onclick="swClear()">Clear</button>
   </div>
   <div class="tabbar-inner" id="tabbar"><!-- generated from TABS registry --></div>
 </div>
@@ -401,6 +404,10 @@ const PROGRAM = {
   ]},
 };
 const SEQUENCE = ["PUSH 1","LEGS 1","PULL 1","PUSH 2","LEGS 2","PULL 2"];
+/* Which weekdays the Today tab offers a workout (getDay(): Sun=0). Purely a display filter — the
+   rotation still runs off your last logged session, so a rest day never consumes a slot, and the
+   Train tab can start any workout on any day. */
+const WORKOUT_DAYS = [1,3,5,6];   // Mon, Wed, Fri, Sat
 /* 4-Day PPL rotation: same 6 fixed days plus a specialized 4th day each week. 'SPECIALIZED' here
    is an internal sentinel (not a real PROGRAM key) — nextWorkout() below disambiguates its two
    occurrences via the session before it, since it always follows a Pull day. */
@@ -661,16 +668,45 @@ function lastSessionOf(workout){
   return null;
 }
 /* Most recent REAL performance of a given slot (ignores skipped days and skipped sets).
-   This is the number you have to beat — a skip never resets your baseline. */
-function lastRealEntry(workout, slotIndex){
+   This is the number you have to beat — a skip never resets your baseline.
+   Pass exName to additionally require the same exercise: everything that compares you against
+   "last time" (the ✓/= badges, the ⬆ Add weight flag, the rep hints) must not hold you to a
+   number you set on a different lift. Callers that use this to *choose* the exercise — the two
+   draft builders — deliberately omit it. */
+function lastRealEntry(workout, slotIndex, exName){
   const ls = liveSessions();
   for(let i=ls.length-1;i>=0;i--){
     const s=ls[i];
     if(s.workout!==workout || s.skipped || !s.entries) continue;
     const e=s.entries[slotIndex];
+    if(exName!=null && (!e || e.name!==exName)) continue;
     if(e && !e.deload && e.sets && e.sets.some(x=>!x.skipped && x.r!=='')) return {entry:e, date:s.date}; // deloads never reset the baseline
   }
   return null;
+}
+/* Fallback for a swapped-in exercise with no history in this slot: the most recent time you did
+   it anywhere — any workout, any position, including accessory slots. Carries the workout it came
+   from so the UI can say so rather than passing it off as this slot's own history. */
+function lastAnywhere(exName){
+  if(!exName) return null;
+  const ls = liveSessions();
+  for(let i=ls.length-1;i>=0;i--){
+    const s=ls[i];
+    if(s.skipped) continue;
+    const hits = sessionExercises(s).filter(e=> e.name===exName && !e.deload && e.sets && e.sets.some(x=>!x.skipped && x.r!==''));
+    if(hits.length) return {entry:hits[hits.length-1], date:s.date, workout:s.workout};
+  }
+  return null;
+}
+/* Estimate the load that carries a past set over to a different rep range: hold the estimated 1RM
+   constant and solve Epley for the bottom of the new range (the rep you'd restart a range on).
+   Rounded down to a loadable increment so the suggestion errs light. */
+function translateLoad(w, r, targetReps){
+  const one = e1rm(w, r);
+  if(!one || !targetReps) return null;
+  const raw = one / (1 + targetReps/30);
+  const inc = INCREMENT[DB.unit] || 5;
+  return Math.max(inc, Math.floor(raw/inc)*inc);
 }
 function lastRealStairs(){
   const ls = liveSessions();
@@ -748,23 +784,38 @@ function fmtSet(w,r){ if(w===''||w==null) return `${r}`; return `${(+w===0?'BW':
 function fmtMS(total){ total=+total||0; const m=Math.floor(total/60), s=total%60; return `${m}:${String(s).padStart(2,'0')}`; }
 /* Estimated 1-rep max (Epley). BW(0) or blank → 0 (excluded from strength charts). */
 function e1rm(w,r){ w=+w; r=+r; if(!w||!r) return 0; return w*(1+r/30); }
-/* Plate calculator (lb): 45 lb bar, plates 45/25/10/5/2.5 per side. */
+/* Plate calculator (lb): plates 45/25/10/5/2.5 per side, on a bar whose weight depends on the lift.
+   Which exercises take a bar is an explicit table rather than a name match — "Standing OHP",
+   "Back squat" and both deadlifts are barbell lifts that contain no "barbell" in their name, and
+   a name match silently skipped every one of them. Custom names you type in aren't in the table,
+   so they keep falling back to the old regex. Deliberately absent: Seated OHP (often a machine)
+   and Meadows row (landmine — loaded on one sleeve, so per-side math doesn't describe it). */
 const BARBELL_LB = 45, PLATES_LB = [45,25,10,5,2.5];
-const isBarbell = name => /barbell/i.test(name||'');
-function plateBreakdown(total){ let perSide=(+total-BARBELL_LB)/2; const out=[]; if(perSide<0) return null;
+const BAR_LB = { straight:45, ez:25 };
+const BAR_FOR = {
+  "Barbell bench press":'straight', "Barbell incline press":'straight', "Standing OHP":'straight',
+  "Back squat":'straight',          "Front squat":'straight',          "Romanian deadlift":'straight',
+  "Stiff-leg deadlift":'straight',  "Good mornings":'straight',        "Barbell row":'straight',
+  "Barbell curl":'straight',        "EZ-bar curl":'ez',                "Skull crusher":'ez',
+};
+const barWeight = name => BAR_LB[BAR_FOR[name]] || (/barbell/i.test(name||'') ? BAR_LB.straight : null);
+const isBarbell = name => barWeight(name) != null;
+function plateBreakdown(total, bar){ bar=bar||BARBELL_LB; let perSide=(+total-bar)/2; const out=[]; if(perSide<0) return null;
   PLATES_LB.forEach(p=>{ while(perSide >= p-1e-9){ out.push(p); perSide=+(perSide-p).toFixed(2); } }); return { plates:out, leftover:perSide }; }
-function platesText(total){
+function platesText(total, bar){
+  bar = bar || BARBELL_LB;
   if(total===''||total==null||DB.unit!=='lb') return '';
-  const t=+total; if(t===BARBELL_LB) return `🏋️ Just the ${BARBELL_LB} lb bar`;
-  const b=plateBreakdown(t); if(!b) return `🏋️ Under bar weight (${BARBELL_LB} lb)`;
+  const t=+total; if(t===bar) return `🏋️ Just the ${bar} lb bar`;
+  const b=plateBreakdown(t, bar); if(!b) return `🏋️ Under bar weight (${bar} lb)`;
   const grp={}; b.plates.forEach(p=>grp[p]=(grp[p]||0)+1);
   const str=Object.keys(grp).sort((a,c)=>c-a).map(p=>`${grp[p]}×${p}`).join(' + ');
   return `🏋️ Per side: ${str}${b.leftover>0.01?` <span style="color:var(--warm-fg)">(+${b.leftover} can't load)</span>`:''}`;
 }
 /* Live plate readout for a barbell exercise → the heaviest weight entered across its sets. */
 function updPlates(i){ const el=document.getElementById(`plates-${i}`); if(!el) return;
+  const bar=barWeight(DB.draft.entries[i].name); if(bar==null){ el.innerHTML=''; return; }
   const ws=DB.draft.entries[i].sets.filter(s=>!s.skipped && s.w!=='' && +s.w>0).map(s=>+s.w);
-  el.innerHTML = ws.length ? platesText(Math.max(...ws)) : ''; }
+  el.innerHTML = ws.length ? platesText(Math.max(...ws), bar) : ''; }
 const INCREMENT = { lb:5, kg:2.5 };
 /* Should we bump the load, and to what? Uses the last real entry's worked sets. */
 function addWeightInfo(slot, ref, name){
@@ -782,7 +833,9 @@ function badgeState(st, t){
   if(cw===tw && cr===tr) return ['=','tie'];
   return ['',''];
 }
-function targetSet(i,k){ const ref=lastRealEntry(DB.draft.workout,i); if(!ref) return null; return ref.entry.sets.filter(x=>!x.skipped && x.r!=='')[k]||null; }
+/* The set you're chasing — same slot AND same exercise. After a swap there's nothing to chase, so
+   the ✓/= badge and rep hint go quiet rather than comparing you against a different lift. */
+function targetSet(i,k){ const ref=lastRealEntry(DB.draft.workout,i,DB.draft.entries[i].name); if(!ref) return null; return ref.entry.sets.filter(x=>!x.skipped && x.r!=='')[k]||null; }
 /* Rep aim shown as the input placeholder: fresh weight (moved up) → range bottom; last set was at the
    top → match with "=" (don't blow past the cap); otherwise beat last with "≥". */
 function repHint(i,k){
@@ -828,7 +881,7 @@ function isStalledSlot(name, workout, slotIndex){
 /* Deload: drop this exercise's working weight ~10% for the session and flag it,
    so lastRealEntry skips it and the baseline-to-beat stays your pre-deload best. */
 function deloadExercise(i){
-  const ref=lastRealEntry(DB.draft.workout, i), e=DB.draft.entries[i];
+  const e=DB.draft.entries[i], ref=lastRealEntry(DB.draft.workout, i, e.name) || lastAnywhere(e.name);
   let lastW=0; if(ref){ const real=ref.entry.sets.filter(x=>!x.skipped && x.r!==''); lastW=Math.max(0, ...real.map(x=> x.w===''?0:+x.w)); }
   const dw = lastW>0 ? String(round5(lastW*0.9)) : '';
   e.deload=true; e.sets.forEach(st=>{ if(!st.skipped) st.w=dw; });
@@ -855,11 +908,42 @@ function exerciseSeries(name){
     if(best>0) out.push({date:s.date, value:best}); });
   return out;
 }
+/* A PR is moving up in WEIGHT: the heaviest load ever put on an exercise, reps irrelevant. Beating
+   an old set on reps alone is progress the ✓ badge already marks — it isn't a trophy. Bodyweight
+   sets (blank or 0) can't PR by definition, since there's no load to raise. */
+const setLoad = x => (x.w===''||x.w==null) ? 0 : +x.w;
 function exercisePRs(){
   const map={};
   liveSessions().forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{
-    e.sets.forEach(x=>{ if(x.skipped) return; const v=e1rm(x.w,x.r); if(v>0 && (!map[e.name] || v>map[e.name].v)) map[e.name]={v, w:x.w, r:x.r, date:s.date}; }); }); });
+    e.sets.forEach(x=>{ if(x.skipped || x.r==='') return; const v=setLoad(x); if(v>0 && (!map[e.name] || v>map[e.name].v)) map[e.name]={v, w:x.w, r:x.r, date:s.date}; }); }); });
   return Object.entries(map).map(([name,d])=>({name,...d})).sort((a,b)=>b.v-a.v);
+}
+/* Which individual sets were PRs, resolved live by replaying every session in date order against a
+   running heaviest-per-exercise. Deriving it beats trusting the `prs` array stamped at save time:
+   editing or deleting a session re-settles every trophy instead of stranding a stale one.
+   At most one trophy per exercise per session — the heaviest set that cleared the old best, not
+   every set on the way up. Keyed by the session object, so sessions predating `id` still work. */
+function prSetIndex(){
+  const best={}, bySession=new Map();
+  liveSessions().forEach(s=>{ if(s.skipped) return;
+    const marks=new Set();
+    sessionExercises(s).forEach(e=>{
+      let topV=0, topK=-1;
+      e.sets.forEach((x,k)=>{
+        if(x.skipped || x.r==='') return;
+        const v=setLoad(x); if(v>topV){ topV=v; topK=k; }
+      });
+      if(topV>0 && (best[e.name]==null || topV>best[e.name])){
+        best[e.name]=topV;
+        marks.add(`${e.name}|${topK}`);
+      }
+    });
+    if(marks.size) bySession.set(s, marks);
+  });
+  return {
+    isPR:(s,name,k)=> !!(bySession.get(s)||{has:()=>false}).has(`${name}|${k}`),
+    sessionHasPR:s=> bySession.has(s),
+  };
 }
 /* Bodyweight exercises (weight-0 sets with reps) that aren't tracked as loaded lifts. */
 function bwExercisesWithData(){
@@ -1032,10 +1116,13 @@ function viewToday(){
   const gl = wxGlance();
   const avg = currentAvg();
 
+  /* Workout only surfaces on lifting days — but an active draft always shows its Resume card,
+     whatever the day, so a session running past midnight can't vanish mid-workout. */
+  const isWorkoutDay = WORKOUT_DAYS.includes(now.getDay());
   const cWorkout = DB.draft ? `<div class="card">
       <div class="row" style="margin-bottom:12px"><div>${kicker('Workout in progress')}<span class="pill ${accClass(PROGRAM[DB.draft.workout]?PROGRAM[DB.draft.workout].group:'push')}" style="margin-top:5px">${DB.draft.workout}</span></div><span class="muted">▶ active</span></div>
       <button class="btn btn-block" onclick="goSub('train','log')">Resume ${DB.draft.workout} →</button>
-    </div>` : nxtIsSpecialized ? `<div class="card">
+    </div>` : !isWorkoutDay ? '' : nxtIsSpecialized ? `<div class="card">
       <div class="row" style="margin-bottom:12px"><div>${kicker(part==='evening'?'Next workout':'Today’s workout')}<div style="font-weight:700;margin-top:5px">Specialized — choose your focus</div></div><span class="muted">${last?'Last '+fmtDate(last.date):'—'}</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${SPECIALIZED_OPTIONS.map(o=>`<button class="btn btn-ghost btn-sm" onclick="startWorkout('${o.name}')">${o.label}</button>`).join('')}</div>
       <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="skipDay('SPECIALIZED')">Skip this day</button>
@@ -1137,13 +1224,20 @@ function viewToday(){
     </div>`;
 
   let order;
-  if(part==='morning') order=[cWeather, cLawn, cWorkout, cTodo, cMobility, cDo, cCardio, cWeight, cJournal];
+  /* Weighing in is the first thing that happens in the morning, so until it's logged the card sits
+     directly under the weather. Once logged it drops to the bottom — done, out of the way. */
+  if(part==='morning') order = loggedToday
+    ? [cWeather, cLawn, cWorkout, cTodo, cMobility, cDo, cCardio, cJournal, cWeight]
+    : [cWeather, cWeight, cLawn, cWorkout, cTodo, cMobility, cDo, cCardio, cJournal];
   else if(part==='afternoon') order=[cWorkout, cTodo, cDo, cMobility, cLawn, cCardio, cWeather, cWeight, cJournal];
   else order=[cJournal, cTodo, cMobility, cWeek, cLawn, cDo, cCardio, cWorkout, cWeight];
 
-  /* Glance line — the day's answer at a glance: what routine, will it rain, what's still open. */
+  /* Glance line — the day's answer at a glance: what routine, will it rain, what's still open.
+     The workout segment follows the card: silent on a rest day rather than announcing a session
+     the screen isn't offering. */
   const glanceWorkout = DB.draft
     ? `<span class="pill ${accClass(PROGRAM[DB.draft.workout]?PROGRAM[DB.draft.workout].group:'push')}" style="font-size:9px;padding:2px 7px">${DB.draft.workout}</span> in progress`
+    : !isWorkoutDay ? `rest day`
     : nxtIsSpecialized ? `<span style="color:var(--accent-300);font-weight:600">Specialized</span> — pick a focus`
     : `<span class="pill ${accClass(g)}" style="font-size:9px;padding:2px 7px">${nxt}</span> today`;
   const glanceTodos = (n => n ? `<span style="color:var(--accent-300);font-weight:600">${n}</span> to-do${n!==1?'s':''} open` : `to-dos clear`)(liveTodos().length);
@@ -1157,38 +1251,56 @@ function viewToday(){
 }
 
 /* ───────────────────────── WORKOUT — picker ───────────────────────── */
-function viewPicker(){
-  const nxt = nextWorkout();
-  const cards = SEQUENCE.map(name=>{
-    const g = PROGRAM[name].group; const ls = lastSessionOf(name);
-    return `<div class="card" style="padding:14px">
-      <div class="row">
-        <div>
-          <span class="pill ${accClass(g)}">${name}</span>
-          <div class="muted" style="margin-top:6px">${PROGRAM[name].slots.length} exercises${ls?' · last '+fmtDate(ls.date):''}</div>
+let previewOpen = null;  // workout name expanded on the picker (ephemeral UI)
+function togglePreview(name){ previewOpen = previewOpen===name ? null : name; render(); }
+/* What a day holds, without committing to it — starting a workout stamps startedAt immediately,
+   so previewing had meant starting and cancelling. Shows the exercise you'd land on (the same
+   last-time-or-first-example rule startWorkout uses), its rep range, and how it last went. */
+function previewRows(name){
+  return PROGRAM[name].slots.map((s,i)=>{
+    const ref = lastRealEntry(name,i);
+    const exName = ref ? ref.entry.name : s.examples[0];
+    const rng = effRange(s, exName);
+    const real = ref ? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
+    const lastStr = real.length ? real.map(x=>fmtSet(x.w,x.r)).join(', ') : '';
+    return `<div style="padding:8px 0;border-top:1px solid var(--border-3)">
+      <div class="row" style="gap:10px;align-items:flex-start">
+        <div style="min-width:0">
+          <div style="font-weight:600;font-size:13px">${esc(exName)}</div>
+          <div class="muted" style="font-size:11px;margin-top:2px">${esc(s.muscle)} · ${esc(s.movement)}${s.note?' · '+esc(s.note):''}</div>
         </div>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-sm btn-ghost" onclick="skipDay('${name}')">Skip</button>
-          <button class="btn btn-sm ${name===nxt?'':'btn-ghost'}" onclick="startWorkout('${name}')">${name===nxt?'Start ▶':'Start'}</button>
-        </div>
+        <span class="muted" style="white-space:nowrap;font-size:12px">${s.sets}×${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>
       </div>
+      ${lastStr?`<div class="muted" style="font-size:11px;margin-top:3px">Last: ${lastStr}${ref?' · '+fmtDate(ref.date):''}</div>`:''}
     </div>`;
   }).join('');
+}
+function viewPicker(){
+  const nxt = nextWorkout();
+  const card = (name, label, startBtn, skipName) => {
+    const open = previewOpen===name; const ls = lastSessionOf(name);
+    return `<div class="card" style="padding:14px">
+      <div class="row">
+        <div style="cursor:pointer;min-width:0" onclick="togglePreview('${name}')">
+          <span class="pill ${accClass(PROGRAM[name].group)}">${label}</span>
+          <div class="muted" style="margin-top:6px">${PROGRAM[name].slots.length} exercises${ls?' · last '+fmtDate(ls.date):''} ${ph(open?'caret-up':'caret-down')}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm btn-ghost" onclick="skipDay('${skipName}')">Skip</button>
+          ${startBtn}
+        </div>
+      </div>
+      ${open?`<div style="margin-top:10px">${previewRows(name)}</div>`:''}
+    </div>`;
+  };
+  const cards = SEQUENCE.map(name=>
+    card(name, name, `<button class="btn btn-sm ${name===nxt?'':'btn-ghost'}" onclick="startWorkout('${name}')">${name===nxt?'Start ▶':'Start'}</button>`, name)
+  ).join('');
   const is4Day = DB.routineMode==='4day';
   const specializedSection = is4Day ? `<h2 style="margin-top:22px">Specialized — choose one${nxt==='SPECIALIZED'?' <span class="flag">suggested next</span>':''}</h2>
-    ${SPECIALIZED_OPTIONS.map(o=>{ const ls=lastSessionOf(o.name);
-      return `<div class="card" style="padding:14px">
-        <div class="row">
-          <div>
-            <span class="pill ${accClass(PROGRAM[o.name].group)}">${o.label}</span>
-            <div class="muted" style="margin-top:6px">${PROGRAM[o.name].slots.length} exercises${ls?' · last '+fmtDate(ls.date):''}</div>
-          </div>
-          <div style="display:flex;gap:6px">
-            <button class="btn btn-sm btn-ghost" onclick="skipDay('SPECIALIZED')">Skip</button>
-            <button class="btn btn-sm btn-ghost" onclick="startWorkout('${o.name}')">Start</button>
-          </div>
-        </div>
-      </div>`; }).join('')}
+    ${SPECIALIZED_OPTIONS.map(o=>
+      card(o.name, o.label, `<button class="btn btn-sm btn-ghost" onclick="startWorkout('${o.name}')">Start</button>`, 'SPECIALIZED')
+    ).join('')}
     <p class="muted" style="font-size:12px">Tip: avoid Back the week it lands right after a Pull day — little recovery.</p>` : '';
   const nxtLabel = nxt==='SPECIALIZED' ? 'Specialized (choose your focus)' : nxt;
   const guideDisplay = GUIDE.map((s,i)=> i===0 && is4Day ? {t:s.t, b:`<p><strong>Push / Pull / Legs</strong>, 4 days a week — 3 fixed days plus a <strong>4th specialized day</strong> you pick fresh each time (Chest & Triceps, Back, Shoulders, Biceps, or Legs) based on what's lagging. Recommended order: <strong>Push → Legs → Pull → Specialized</strong> (gives the upper body more recovery — avoid picking Back the week it lands right after Pull).</p><p>The 3 fixed days still run on a <strong>2-week cycle</strong> — week 1 uses version 1, week 2 uses version 2. The app rotates you through this automatically and suggests your next session.</p>`} : s);
@@ -1261,16 +1373,31 @@ function viewActive(){
           <div class="row"><div style="min-width:0"><span style="font-weight:700;font-size:14px">${esc(entry.name)}</span> <span class="muted" style="font-size:12px">${done.length?'✓ ':''}${summary}</span></div><span class="muted" style="white-space:nowrap">▾ expand</span></div>
         </div></div>`;
     }
-    const ref = lastRealEntry(name,i);
+    /* "Last time" tracks the exercise actually selected, not just this slot's position — swap
+       Barbell bench → DB bench and the barbell numbers must not follow you. Exact match in this
+       slot first; failing that, the last time you did this exercise anywhere, clearly labelled as
+       coming from elsewhere. Only an exact match earns the ⬆ Add weight flag and the ✓/= badges. */
+    const ref = lastRealEntry(name, i, entry.name);
+    const alt = ref ? null : lastAnywhere(entry.name);
     const rng = effRange(s, entry.name);
     const real = ref ? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
-    // last-time string + add-weight suggestion, from the last REAL (non-skipped) session
     let lastLine = `<span class="muted">No previous data — set your baseline.</span>`, flag='', noteHint='';
     if(ref){
       lastLine = `Last time (${fmtDate(ref.date)}): <strong>${real.map(x=> fmtSet(x.w,x.r)).join(',  ')||'—'}</strong>`;
       const aw = addWeightInfo(s, ref, entry.name);
       flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${aw.newW} ${DB.unit}`:''}</span>` : '';
       if(ref.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(ref.entry.note)}</div>`;
+    } else if(alt){
+      const altReal = alt.entry.sets.filter(x=>!x.skipped && x.r!=='');
+      lastLine = `Last time (${fmtDate(alt.date)} · ${esc(alt.workout)}): <strong>${altReal.map(x=> fmtSet(x.w,x.r)).join(',  ')||'—'}</strong>`;
+      /* Only translate when those reps sit outside this slot's range — that's the case where the
+         old load doesn't transfer. Same-range history speaks for itself. Display only, never
+         pre-filled: a suggestion shouldn't quietly become a logged number. */
+      const best = altReal.reduce((a,x)=> e1rm(x.w,x.r) > e1rm(a.w,a.r) ? x : a, altReal[0]);
+      const offRange = best && (+best.r < rng.lo || +best.r > rng.hi);
+      const sug = offRange ? translateLoad(best.w, best.r, rng.lo) : null;
+      if(sug) lastLine += ` <span class="muted">→ suggest <strong>${sug} ${DB.unit}</strong> for ${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>`;
+      if(alt.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(alt.entry.note)}</div>`;
     }
     let coachHint='';
     if(entry.deload) coachHint = `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" onclick="undeloadExercise(${i})">undo</button></div>`;
@@ -1307,7 +1434,7 @@ function viewActive(){
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
         ${setRows}
         <button class="addset" onclick="addSet(${i})">+ Add set</button>
-        ${isBarbell(entry.name)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'')}</div>`:''}
+        ${isBarbell(entry.name)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'', barWeight(entry.name))}</div>`:''}
         ${i===0?`<div class="warm">
           <button class="warm-toggle" onclick="toggleWarm(${i})">${ph('fire')}Warm-up ramp</button>
           <div class="warm-table hidden" id="warm-${i}"></div>
@@ -1438,14 +1565,20 @@ function unskipStairs(){ DB.draft.stairs.skipped=false; DB.draft.stairs.reason='
 function toggleWarm(i){
   const box = document.getElementById('warm-'+i); box.classList.toggle('hidden');
   if(box.classList.contains('hidden')) return;
-  const sets = DB.draft.entries[i].sets;
+  const entry = DB.draft.entries[i], sets = entry.sets;
   const w = Math.max(...sets.map(s=> +s.w || 0), 0);
   if(!w){ box.innerHTML = `<div><span>Enter a working weight first</span></div>`; return; }
+  /* Loading the bar is exactly when you want the plate breakdown, so each rung carries its own.
+     Non-barbell lifts (and kg) fall through to the plain percentages. */
+  const bar = barWeight(entry.name);
+  const plates = t => { const s = bar==null ? '' : platesText(t, bar); return s ? `<div class="warm-plates">${s}</div>` : ''; };
+  const rung = (label, target, reps) => `<div><span>${label}${plates(target)}</span><span>${reps}</span></div>`;
+  const w50 = round5(w*0.5), w75 = round5(w*0.75);
   box.innerHTML = `
-    <div><span>Empty bar / light</span><span>a few reps</span></div>
-    <div><span>~50% — ${round5(w*0.5)} ${DB.unit}</span><span>3–4 reps</span></div>
-    <div><span>~75% — ${round5(w*0.75)} ${DB.unit}</span><span>2–3 reps</span></div>
-    <div><span><strong>Working — ${w} ${DB.unit}</strong></span><span>per plan</span></div>`;
+    <div><span>${bar!=null ? `Empty bar — ${bar} ${DB.unit}` : 'Empty bar / light'}</span><span>a few reps</span></div>
+    ${rung(`~50% — ${w50} ${DB.unit}`, w50, '3–4 reps')}
+    ${rung(`~75% — ${w75} ${DB.unit}`, w75, '2–3 reps')}
+    ${rung(`<strong>Working — ${w} ${DB.unit}</strong>`, w, 'per plan')}`;
 }
 function finishWorkout(){
   const d = DB.draft;
@@ -1470,17 +1603,18 @@ function finishWorkout(){
     entries:d.entries, stairs:d.stairs, extras:x, note:(d.sessionNote||'').trim()
   };
   if(d.editRef) DB.sessions = DB.sessions.filter(z=> z.id!==d.editRef); // editing → drop the original before re-inserting
-  // PR detection: an exercise whose best e1RM this session beats its prior all-time best
+  // PR detection: an exercise whose heaviest set this session beats its prior all-time heaviest.
+  // Only drives the save-time toast — everything on screen re-derives PRs from prSetIndex().
   let prs=[];
   if(!hist){
-    sessionExercises(sess).forEach(e=>{ let best=0; e.sets.forEach(z=>{ if(!z.skipped){ const v=e1rm(z.w,z.r); if(v>best) best=v; } });
-      if(best>0 && best>(prior[e.name]||0)) prs.push({name:e.name, v:Math.round(best), prev:Math.round(prior[e.name]||0)}); });
+    sessionExercises(sess).forEach(e=>{ let best=0; e.sets.forEach(z=>{ if(!z.skipped && z.r!==''){ const v=setLoad(z); if(v>best) best=v; } });
+      if(best>0 && best>(prior[e.name]||0)) prs.push({name:e.name, v:best, prev:prior[e.name]||0}); });
     if(prs.length) sess.prs = prs.map(p=>p.name);
   }
   DB.sessions.push(touch(sess));
   sortSessions();
   DB.draft = null; collapsedEx.clear(); save(); snapshotNow('after-workout'); cloudVersion('workout');
-  if(prs.length){ confettiBurst(); toast(prs.length===1 ? `🏆 PR! ${prs[0].name} ${prs[0].prev||'—'}→${prs[0].v}` : `🏆 ${prs.length} PRs this session!`); }
+  if(prs.length){ confettiBurst(); toast(prs.length===1 ? `🏆 PR! ${prs[0].name} ${prs[0].prev||'—'}→${prs[0].v} ${DB.unit}` : `🏆 ${prs.length} PRs this session!`); }
   else toast(hist?'Past workout added':'Workout saved 💪');
   goSub('train','history');
 }
@@ -1504,6 +1638,7 @@ function renderWeekReview(){
   const base = monday(new Date()); base.setDate(base.getDate() + reviewWeekOffset*7);
   const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const today = todayISO();
+  const prIdx = prSetIndex();
   let nW=0, nH=0, nJ=0;
   const rows = days.map((dn,di)=>{
     const dt = new Date(base); dt.setDate(dt.getDate()+di);
@@ -1521,7 +1656,7 @@ function renderWeekReview(){
     hb.forEach(h=> tags.push(`<span style="font-size:11px">🎲 ${esc(h)}</span>`));
     if(wt) tags.push(`<span style="font-size:11px">⚖️ ${(+wt.value).toFixed(1)}</span>`);
     if(dayComplete(iso)) tags.push(`<span style="font-size:11px">🧎 ${hasMobSession(iso)?'session':mobDoneOn(iso)}</span>`);
-    if(sess.some(s=>s.prs&&s.prs.length)) tags.push(`<span style="font-size:11px">🏆 PR</span>`);
+    if(sess.some(s=>prIdx.sessionHasPR(s))) tags.push(`<span style="font-size:11px">🏆 PR</span>`);
     const hasNote = note && note.trim();
     const editLink = iso => `<a onclick="editJournal('${iso}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${ph('note-pencil')}${hasNote?'Edit note':'Add note'}</a>`;
     let noteHTML;
@@ -1598,6 +1733,7 @@ function viewHistory(){
       <p class="muted" style="margin-top:10px">Tip: enter your 5 oldest-first so each session sees the one before it as "last time".</p>
     </div>`:''}`;
   if(!liveSessions().length) return `<h2>Week in review</h2>${renderWeekReview()}<div style="margin:14px 0">${back}</div><div class="empty">No workouts logged yet.<br>Start one from the Workout tab, or add a past workout above.</div>`;
+  const prIdx = prSetIndex();
   const items = DB.sessions.map((s,i)=>({s,i})).filter(o=>isLive(o.s)).reverse().map(({s,i})=>{
     const idx = i; const g=PROGRAM[s.workout]?PROGRAM[s.workout].group:'push';
     const open = openHist===idx;
@@ -1613,8 +1749,10 @@ function viewHistory(){
     } else {
       right = `<span class="muted">${s.durationMin?s.durationMin+' min · ':''}${e_count(s)} sets ${ph(open?'caret-up':'caret-down')}</span>`;
       if(open){
+        /* 🏆 sits on the set that actually set the record, so you can see which one it was. */
+        const setsOf = e => e.sets.map((x,k)=> x.skipped ? '<em>skip</em>' : fmtSet(x.w,x.r) + (prIdx.isPR(s, e.name, k) ? ' 🏆' : '')).join(', ');
         const lines = (s.entries||[]).map(e=>{
-          const setStr = e.sets.map(x=> x.skipped? '<em>skip</em>' : fmtSet(x.w,x.r)).join(', ');
+          const setStr = setsOf(e);
           return `<strong>${esc(e.name)}</strong> — ${setStr||'—'}${e.deload?' <em>(deload)</em>':''}${e.note?` <span class="muted">· ${esc(e.note)}</span>`:''}`;
         });
         if(s.stairs && !s.stairs.skipped && s.stairs.seconds!=='' && s.stairs.seconds!=null)
@@ -1622,7 +1760,7 @@ function viewHistory(){
         else if(s.stairs && s.stairs.skipped)
           lines.push(`<strong>🪜 Stair Stepper</strong> — <em>skipped${s.stairs.reason?': '+esc(s.stairs.reason):''}</em>`);
         if(s.extras){
-          Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.sets && e.sets.length){ const d2=ACCESSORIES[w]; const lbl=d2?`${ph(d2.icon)}${d2.label}`:(w.charAt(0).toUpperCase()+w.slice(1)); lines.push(`<strong>${lbl}${e.name?' — '+esc(e.name):''}</strong> — ${e.sets.map(z=>fmtSet(z.w,z.r)).join(', ')}`); } });
+          Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.sets && e.sets.length){ const d2=ACCESSORIES[w]; const lbl=d2?`${ph(d2.icon)}${d2.label}`:(w.charAt(0).toUpperCase()+w.slice(1)); lines.push(`<strong>${lbl}${e.name?' — '+esc(e.name):''}</strong> — ${setsOf(e)}`); } });
         }
         if(dayComplete(s.date)) lines.push(`<strong>🧎 Mobility</strong> — ${hasMobSession(s.date)?'yoga / full session':mobDoneOn(s.date)+' done that day'}`);
         const noteStr = s.note ? `<div style="margin-top:8px;font-size:13px;color:var(--text-2);line-height:1.5;white-space:pre-wrap">📝 ${esc(s.note)}</div>` : '';
@@ -1632,7 +1770,7 @@ function viewHistory(){
     }
     return `<div>
       <div class="hist-item" onclick="toggleHist(${idx})">
-        <div><span class="pill ${accClass(g)}">${s.workout}</span> <span class="muted" style="margin-left:6px">${fmtDate(s.date)}</span>${s.prs&&s.prs.length?' 🏆':''}</div>
+        <div><span class="pill ${accClass(g)}">${s.workout}</span> <span class="muted" style="margin-left:6px">${fmtDate(s.date)}</span>${prIdx.sessionHasPR(s)?' 🏆':''}</div>
         ${right}
       </div>${detail}
     </div>`;
@@ -1739,7 +1877,8 @@ function viewStrength(sub){
   if(series.length>=2){ const d=best-first.value; const cls=d>0?'trend-down':'trend-flat'; delta=`<span class="${cls}">▲ ${Math.abs(d).toFixed(0)} ${isReps?'reps':DB.unit}</span> since ${fmtDate(first.date)}`; }
   const opts = loadEx.map(m=>`<option ${m===selectedExercise?'selected':''}>${esc(m)}</option>`).join('')
     + bwEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(m)} (reps)</option>`).join('');
-  const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.name===selectedExercise?ph('caret-right','lead'):''}${esc(p.name)}</span><span><strong>${Math.round(p.v)} ${DB.unit}</strong> <span class="muted">${fmtSet(p.w,p.r)}</span></span></div>`).join('');
+  /* PRs are heaviest-load-ever now, so show the bar weight and what you hit it for, not an e1RM. */
+  const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.name===selectedExercise?ph('caret-right','lead'):''}${esc(p.name)}</span><span><strong>${p.v} ${DB.unit}</strong> <span class="muted">× ${esc(String(p.r))} · ${fmtDate(p.date)}</span></span></div>`).join('');
   const hist = exerciseHistory(selectedExercise).slice(0,15);
   const histRows = hist.map(h=>`<div class="hist-item">
       <div style="min-width:0"><div style="font-weight:600;font-size:13px">${fmtDate(h.date)}${h.deload?' <em class="muted" style="font-size:11px">(deload)</em>':''}</div>
@@ -1758,8 +1897,8 @@ function viewStrength(sub){
       <p class="muted" style="font-size:11px;margin-top:6px;text-align:center">Bold line = <strong>best to date</strong> (only rises) · dots = each session</p>
     </div>
     ${hist.length?`<div class="card"><div class="card-label" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">History — ${esc(selectedExercise)}</div>${histRows}</div>`:''}
-    ${prs?`<div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Personal records (tap to chart)</div>${prs}</div>`:''}
-    <p class="muted" style="text-align:center;font-size:12px">e1RM = estimated 1-rep max (weight × reps), so it normalizes heavy/low-rep and light/high-rep days into one number. The <strong>best-to-date</strong> line rises whenever you set a new estimated 1RM — even from a single extra rep. Bodyweight moves chart <strong>total reps</strong> instead.</p>`;
+    ${prs?`<div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Personal records — heaviest ever (tap to chart)</div>${prs}</div>`:''}
+    <p class="muted" style="text-align:center;font-size:12px">e1RM = estimated 1-rep max (weight × reps), so it normalizes heavy/low-rep and light/high-rep days into one number. The <strong>best-to-date</strong> line rises whenever you set a new estimated 1RM — even from a single extra rep. A <strong>personal record</strong> is stricter: it only counts when you move up in weight, which is why the 🏆 and the chart don't always move together. Bodyweight moves chart <strong>total reps</strong> instead.</p>`;
 }
 function viewVolume(sub){
   const counts = weeklySetsByMuscle();
@@ -2160,30 +2299,38 @@ function fmtHour(h){ const ap=h>=12?'pm':'am'; let hh=h%12; if(hh===0) hh=12; re
 function daysSinceLawn(key){ const log=DB.lawnLog||{}; const base=new Date(); base.setHours(0,0,0,0);
   for(let n=0;n<400;n++){ const d=new Date(base); d.setDate(d.getDate()-n); const iso=d.toLocaleDateString('en-CA'); if(log[iso] && log[iso][key]) return n; }
   return Infinity; }
-/* Scan today's 8am–8pm hourly temps for the heat limit. */
-function lawnHeatWindow(limit){
+/* Scan a day's 8am–8pm hourly temps for the heat limit. Defaults to today; the home card also asks
+   about tomorrow, and the forecast already runs 7 days out. */
+function lawnHeatWindow(limit, iso){
   if(limit==null) return {status:'none'};
   const h=DB.wx && DB.wx.data && DB.wx.data.hourly;
   if(!h || !h.time || !h.temperature_2m) return {status:'nowx'};
-  const today=todayISO(); let firstHot=null, any=false;
+  const today=iso||todayISO(); let firstHot=null, any=false;
   for(let i=0;i<h.time.length;i++){ const t=h.time[i]; if(t.slice(0,10)!==today) continue; const hr=+t.slice(11,13); if(hr<8||hr>20) continue; any=true; if(+h.temperature_2m[i]>=limit && firstHot==null) firstHot=hr; }
   if(!any) return {status:'nowx'};
   if(firstHot==null) return {status:'none'};        // never reaches the limit in the window
   if(firstHot<=8) return {status:'allhot'};          // already hot when the window opens
   return {status:'before', hour:firstHot};
 }
-/* The full recommendation object, computed fresh each render (this is what makes it adaptive). */
-function lawnStatus(){
-  const now=new Date(), season=lawnSeason(now);
+/* The full recommendation object, computed fresh each render (this is what makes it adaptive).
+   dayOffset shifts the whole calculation forward a day so the home card can answer "will I need to
+   do this tomorrow?" — the forecast already carries 7 days, nothing new is fetched. Everything
+   moves together: the rain window, the odd/even sprinkling day, the heat scan, and days-since
+   (which simply grows by the offset, since you can't log a future day). Overrides are a decision
+   you made about today, so they don't project forward. */
+function lawnStatus(dayOffset){
+  const off = dayOffset || 0;
+  const now=new Date(); now.setDate(now.getDate()+off);
+  const season=lawnSeason(now);
   if(!season) return { season:null };
-  const rules=SEASON_RULES[season], today=todayISO(), num=v=>(v==null?0:+v);
+  const rules=SEASON_RULES[season], today=now.toLocaleDateString('en-CA'), num=v=>(v==null?0:+v);
   const dy=DB.wx && DB.wx.data && DB.wx.data.daily;
   let ti=-1, P=[], PP=[]; if(dy){ ti=dy.time.indexOf(today); P=dy.precipitation_sum||[]; PP=dy.precipitation_probability_max||[]; }
   const havewx = ti>=0;
-  const rain3 = havewx ? (num(P[ti])+num(P[ti-1])+num(P[ti-2])) : 0;   // today + 2 prior days
+  const rain3 = havewx ? (num(P[ti])+num(P[ti-1])+num(P[ti-2])) : 0;   // that day + 2 prior days
   const recentWet = havewx && (num(P[ti-1])>=0.1 || num(P[ti])>=0.1 || num(PP[ti])>=50);
-  const dsWater=daysSinceLawn('watered'), dsMow=daysSinceLawn('mowed');
-  const log=(DB.lawnLog||{})[today]||{};
+  const dsWater=daysSinceLawn('watered')+off, dsMow=daysSinceLawn('mowed')+off;
+  const log = off===0 ? ((DB.lawnLog||{})[today]||{}) : {};
   // ── WATERING ── (+ St. Louis Park ordinance: odd/even address days, no sprinkling noon–6pm)
   const waterEvery=Math.ceil(7/rules.waterPerWeek);
   const dom=now.getDate(), todayParity=dateParity(dom), sprinkleDayOK=(todayParity===LAWN_ADDR_PARITY);
@@ -2196,17 +2343,18 @@ function lawnStatus(){
   // ── MOWING ──
   const growthSpike = havewx && rain3 >= 0.5;
   const mowDue = dsMow>7 || (dsMow>=5 && growthSpike);
-  const heat = lawnHeatWindow(rules.heatLimit);
+  const heat = lawnHeatWindow(rules.heatLimit, today);
+  const when = off===0 ? 'today' : 'tomorrow';
   const mow={ recommend:false, hard:false, override:!!log.overrideMow, text:'' };
   if(mow.override){ mow.text='Mowing anyway (override)'; mow.recommend=true; }
   else if(dsMow < 5){ mow.text=`Last mowed ${dsFmt(dsMow)} — too soon`; }
   else if(recentWet){ mow.text='Wet conditions — don’t mow'; mow.hard=true; }
-  else if(heat.status==='allhot'){ mow.text='Too hot today — don’t mow'; mow.hard=true; }
+  else if(heat.status==='allhot'){ mow.text=`Too hot ${when} — don’t mow`; mow.hard=true; }
   else if(!mowDue){ mow.text=`Last mowed ${dsFmt(dsMow)} — wait a day or two`; }
   else { mow.recommend=true;
     if(heat.status==='before') mow.text=`Mow before ${fmtHour(heat.hour)} (before heat)`;
-    else if(dsMow>7) mow.text='Overdue — mow today (8am–9pm)';
-    else mow.text='Mow today (8am–9pm)';
+    else if(dsMow>7) mow.text=`Overdue — mow ${when} (8am–9pm)`;
+    else mow.text=`Mow ${when} (8am–9pm)`;
   }
   return { season, dsWater, dsMow, water, mow, rain3, havewx, growthSpike };
 }
@@ -2217,9 +2365,24 @@ function toggleLawnLog(action){ const t=todayISO(); if(!DB.lawnLog) DB.lawnLog={
 function toggleLawnOverride(which){ const t=todayISO(); if(!DB.lawnLog) DB.lawnLog={}; const e=DB.lawnLog[t]||(DB.lawnLog[t]={});
   const key = which==='water'?'overrideWater':'overrideMow'; e[key]=!e[key];
   save(); render(); }
+/* Home card. Silent unless the lawn actually wants something: nothing to do today collapses to a
+   one-line heads-up when tomorrow needs attention, and to nothing at all when it doesn't. The full
+   status, the log buttons and the overrides always remain on Care → Lawn. */
 function cLawnCard(){
   const st=lawnStatus();
   if(!st.season || !DB.lawn || DB.lawn.lat==null) return '';   // hidden Nov–Mar or before location is set
+  if(!st.water.recommend && !st.mow.recommend){
+    const tm=lawnStatus(1);
+    const due=[];
+    if(tm.season && tm.water.recommend) due.push(`${ph('drop','lead')}Watering tomorrow — ${LAWN_HOURS_NOTE}`);
+    if(tm.season && tm.mow.recommend)   due.push(`${ph('tractor','lead')}${esc(tm.mow.text)}`);
+    if(!due.length) return '';
+    return `<div class="card" style="cursor:pointer" onclick="goSub('care','lawn')">
+      <div class="row"><div>${kicker('Lawn · heads up')}
+        ${due.map(d=>`<div style="font-size:13px;line-height:1.5;margin-top:4px">${d}</div>`).join('')}
+      </div><span class="muted">Lawn →</span></div>
+    </div>`;
+  }
   const t=todayISO(), log=(DB.lawnLog||{})[t]||{};
   const line=(label,icon,r,which)=>`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-3)">
       <div style="font-size:13px;line-height:1.5">${ph(r.override?'warning':(r.recommend?'check-circle':'pause'),'lead')}<strong>${label}:</strong> ${esc(r.text)}</div>
@@ -2382,6 +2545,23 @@ function wipe(){ if(confirm('Erase ALL workouts and weights?\n\nA snapshot is sa
 })();
 
 /* ───────────────────────── Rest stopwatch (manual, separate from gym timer) ───────────────────────── */
+/* How much of the layout viewport the on-screen keyboard is currently covering. Single source of
+   truth for "is the keyboard up" — used both to lift the tab bar clear of it and to decide whether
+   a stopwatch tap should hold focus. */
+function kbInset(){
+  const vv = window.visualViewport; if(!vv) return 0;
+  return Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+}
+const keyboardUp = () => kbInset() > 4;
+/* Tapping start/stop mid-set shouldn't dismiss the keyboard, hence the preventDefault that keeps
+   focus on the input you're typing in. But that same held focus means that once you've dropped the
+   keyboard with the chevron, the next tap invites iOS to bring it straight back. So only hold focus
+   while the keyboard is actually up; otherwise blur, and it stays down. */
+function swGuard(e){
+  if(keyboardUp()){ e.preventDefault(); return; }
+  const a = document.activeElement;
+  if(a && a.blur) a.blur();
+}
 let sw = { running:false, start:0, acc:0 };
 function swElapsed(){ return sw.acc + (sw.running ? Date.now()-sw.start : 0); }
 function swToggle(){ if(sw.running){ sw.acc+=Date.now()-sw.start; sw.running=false; } else { sw.start=Date.now(); sw.running=true; } updateStopwatch(); }
@@ -2405,7 +2585,7 @@ function updateStopwatch(){
   const vv = window.visualViewport; if(!vv) return;
   const bar = document.querySelector('.tabbar'); if(!bar) return;
   const apply = () => {
-    const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    const inset = kbInset();
     bar.style.transform = (inset>4 && document.body.classList.contains('sw-on')) ? `translateY(-${inset}px)` : '';
   };
   vv.addEventListener('resize', apply); vv.addEventListener('scroll', apply);
@@ -3045,18 +3225,41 @@ function syncCardHTML(){
    (syncs via the Firebase blob) and lives OUTSIDE render() — the sheet is static markup,
    so it survives tab switches. "Copy all" hands you a markdown list to paste into a dev chat. */
 function ideaUid(){ return 'i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
-function openIdeas(){ const m=document.getElementById('ideas-modal'); if(!m) return; m.classList.add('show'); renderIdeasList(); const t=document.getElementById('idea-input'); if(t) t.focus(); }
+function openIdeas(){ const m=document.getElementById('ideas-modal'); if(!m) return; m.classList.add('show'); editingIdeaId=null; renderIdeasList(); const t=document.getElementById('idea-input'); if(t) t.focus(); }
 function closeIdeas(){ const m=document.getElementById('ideas-modal'); if(m) m.classList.remove('show'); }
 function addIdea(){ const el=document.getElementById('idea-input'); const v=((el&&el.value)||'').trim(); if(!v) return; if(!DB.ideas) DB.ideas=[]; DB.ideas.unshift(touch({id:ideaUid(), text:v, date:todayISO(), done:false})); save(); if(el) el.value=''; renderIdeasList(); toast('Idea saved 💡'); }
-function removeIdea(id){ if(!softDelete(DB.ideas, x=>x.id===id)) return; save(); renderIdeasList(); }
+function removeIdea(id){ if(!softDelete(DB.ideas, x=>x.id===id)) return; if(editingIdeaId===id) editingIdeaId=null; save(); renderIdeasList(); }
 function toggleIdeaDone(id){ const it=(DB.ideas||[]).find(x=>x.id===id); if(!it) return; it.done=!it.done; touch(it); save(); renderIdeasList(); }
+/* Reword an idea in place. Half-remembered notes get sharper once you've slept on them, and
+   delete-and-retype loses the original date. */
+let editingIdeaId = null;
+function startEditIdea(id){ editingIdeaId=id; renderIdeasList();
+  const t=document.getElementById('idea-edit-'+id); if(t){ t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }
+function cancelEditIdea(){ editingIdeaId=null; renderIdeasList(); }
+function saveEditIdea(id){
+  const el=document.getElementById('idea-edit-'+id), v=((el&&el.value)||'').trim();
+  const it=(DB.ideas||[]).find(x=>x.id===id);
+  editingIdeaId=null;
+  if(!it || !v || v===it.text){ renderIdeasList(); return; }   // blank or unchanged → just close
+  it.text=v; touch(it);   // touch() so the sync merge sees the edit as newer, or another device reverts it
+  save(); renderIdeasList(); toast('Idea updated');
+}
 function renderIdeasList(){
   const list=liveIdeas(), box=document.getElementById('ideas-list'), cnt=document.getElementById('idea-count');
   if(cnt) cnt.textContent = list.length ? `${list.filter(i=>!i.done).length} open · ${list.length} total` : '';
   if(!box) return;
-  box.innerHTML = list.length ? list.map(i=>`<div class="idea-item${i.done?' done':''}">
+  box.innerHTML = list.length ? list.map(i=> i.id===editingIdeaId ? `<div class="idea-item">
+    <div style="flex:1">
+      <textarea id="idea-edit-${i.id}" rows="3" style="resize:vertical;line-height:1.5;min-height:64px">${esc(i.text)}</textarea>
+      <div class="row" style="gap:8px;margin-top:8px">
+        <button class="btn btn-sm" style="flex:1" onclick="saveEditIdea('${i.id}')">Save</button>
+        <button class="btn btn-sm btn-ghost" style="flex:1" onclick="cancelEditIdea()">Cancel</button>
+      </div>
+    </div>
+  </div>` : `<div class="idea-item${i.done?' done':''}">
     <input type="checkbox" ${i.done?'checked':''} onchange="toggleIdeaDone('${i.id}')" style="margin-top:2px">
     <span class="txt">${esc(i.text)}<span class="muted" style="font-size:11px"> · ${fmtDate(i.date)}</span></span>
+    <button class="x-set" onclick="startEditIdea('${i.id}')" title="edit">${ph('pencil-simple')}</button>
     <button class="x-set" onclick="removeIdea('${i.id}')" title="delete">${ph('x')}</button>
   </div>`).join('') : '<p class="muted" style="font-size:13px;padding:8px 0">No ideas yet — add one above while you\'re using the app.</p>';
 }
