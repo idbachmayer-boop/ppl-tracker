@@ -2383,21 +2383,22 @@ function cLawnCard(){
       </div><span class="muted">Lawn →</span></div>
     </div>`;
   }
+  /* Only the task that's actually due gets a block. A "hold off, mowed 5 days ago" line is noise on
+     a day you only need to water — the full both-tasks status stays one tap away on Care → Lawn. */
   const t=todayISO(), log=(DB.lawnLog||{})[t]||{};
-  const line=(label,icon,r,which)=>`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-3)">
-      <div style="font-size:13px;line-height:1.5">${ph(r.override?'warning':(r.recommend?'check-circle':'pause'),'lead')}<strong>${label}:</strong> ${esc(r.text)}</div>
-      <a onclick="toggleLawnOverride('${which}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${r.override?`${ph('arrow-u-up-left')}Undo override`:'Override if needed'}</a>
+  const block=(label,r,which,since,doneLabel,btnLabel)=> !r.recommend ? '' : `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-3)">
+      <div style="font-size:13px;line-height:1.5">${ph(r.override?'warning':'check-circle','lead')}<strong>${label}:</strong> ${esc(r.text)}</div>
+      <div class="muted" style="font-size:11px;margin-top:3px">Last ${since}</div>
+      <div class="row" style="gap:8px;margin-top:10px">
+        <button class="btn ${log[which.log]?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('${which.log}')">${log[which.log]?`${ph('check')}${doneLabel}`:btnLabel}</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleLawnOverride('${which.ov}')">${r.override?`${ph('arrow-u-up-left')}Undo override`:'Override'}</button>
+      </div>
     </div>`;
   return `<div class="card">
-    ${kicker('Lawn · '+st.season)}
-    <div class="muted" style="font-size:12px;margin-top:5px">💧 Watered ${dsWithDate(st.dsWater)}<br>🚜 Mowed ${dsWithDate(st.dsMow)}</div>
-    ${line('Watering','drop',st.water,'water')}
-    ${line('Mowing','tractor',st.mow,'mow')}
-    <div class="row" style="gap:8px;margin-top:12px">
-      <button class="btn ${log.watered?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('watered')">${log.watered?`${ph('check')}Watered`:'Mark watered'}</button>
-      <button class="btn ${log.mowed?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('mowed')">${log.mowed?`${ph('check')}Mowed`:'Mark mowed'}</button>
-    </div>
-    <div class="muted" style="font-size:11px;margin-top:10px">SLP ordinance: ${LAWN_ADDR_PARITY} address → sprinkle on ${LAWN_ADDR_PARITY} calendar days, never noon–6pm.</div>
+    <div class="row" style="cursor:pointer" onclick="goSub('care','lawn')">${kicker('Lawn · '+st.season)}<span class="muted">Lawn →</span></div>
+    ${block('Watering', st.water, {log:'watered', ov:'water'}, dsWithDate(st.dsWater), 'Watered', 'Mark watered')}
+    ${block('Mowing',   st.mow,   {log:'mowed',   ov:'mow'},   dsWithDate(st.dsMow),   'Mowed',   'Mark mowed')}
+    ${st.water.recommend?`<div class="muted" style="font-size:11px;margin-top:10px">SLP ordinance: ${LAWN_ADDR_PARITY} address → sprinkle on ${LAWN_ADDR_PARITY} calendar days, never noon–6pm.</div>`:''}
   </div>`;
 }
 function lawnHistory(){
