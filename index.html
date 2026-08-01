@@ -31,7 +31,7 @@
       --flag-fg:#6bd3a8; --flag-bg:rgba(45,122,90,.2); --flag-bd:rgba(45,122,90,.42);
       --warm-fg:#e2b06a; --warm-bg:rgba(226,176,106,.1); --warm-bd:rgba(226,176,106,.26);
       --cardio-fg:#cba4f2; --cardio-bg:rgba(181,127,217,.16); --cardio-bd:rgba(181,127,217,.4); --cardio-bar:#b57fd9; /* orchid — nudged red-ward so it never reads as the blurple accent */
-      --chart:#9184d9; --chart-strength:#5fd0a0; --chart-axis:#4a4d5e;
+      --chart:#9184d9; --chart-strength:#5fd0a0; --chart-pet:#e2b06a; --chart-axis:#4a4d5e;
       --toast-bg:#2b2e3f; --toast-fg:#e9e9ed;
       --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
     }
@@ -471,7 +471,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 13;
+const SCHEMA = 14;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -504,14 +504,17 @@ const MIGRATIONS = {
      literal: MIGRATIONS runs during `let DB = load()` far above the merge-key consts, and a TDZ
      ReferenceError here would be swallowed by the silent catch below while _schema still advances,
      permanently skipping the migration. */
-  13:d=>{ if(typeof d.gen!=='number') d.gen=0; return d; }
+  13:d=>{ if(typeof d.gen!=='number') d.gen=0; return d; },
+  14:d=>{ if(!Array.isArray(d.petWeights)) d.petWeights=[]; if(typeof d.petName!=='string') d.petName='Freddie'; return d; } // daily cat weigh-in
 };
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
 function normalize(raw){
   let d = (raw && typeof raw==='object') ? raw : blank();
   d.sessions = Array.isArray(d.sessions) ? d.sessions : [];
   d.weights  = Array.isArray(d.weights)  ? d.weights  : [];
+  d.petWeights = Array.isArray(d.petWeights) ? d.petWeights : [];
   if(typeof d.unit!=='string') d.unit='lb';
+  if(typeof d.petName!=='string') d.petName='Freddie';
   if(typeof d.gen!=='number') d.gen=0;   // defensive: migration 13 runs in a silent try/catch
   for(let v=(d._schema||0)+1; v<=SCHEMA; v++){ try{ d = MIGRATIONS[v](d) || d; }catch(e){} }
   /* Never DOWNGRADE: a device running a stale cached index.html would otherwise stamp an older
@@ -522,7 +525,7 @@ function normalize(raw){
 }
 let DB = load();
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
-function blank(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[], draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
+function blank(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[], petWeights:[], petName:"Freddie", draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
 
 /* ── Soft delete ─────────────────────────────────────────────────────────────────────────────
    Deleting used to splice the row out, but sync UNIONS both devices — so the cloud copy came
@@ -536,6 +539,7 @@ const isLive = x => !!x && !x.deletedAt;
 function touch(x){ if(x && typeof x==='object') x.mtime = Date.now(); return x; }
 function liveSessions(){ return (DB.sessions||[]).filter(isLive); }
 function liveWeights(){ return (DB.weights||[]).filter(isLive); }
+function livePetWeights(){ return (DB.petWeights||[]).filter(isLive); }
 function liveCardio(){ return (DB.cardio||[]).filter(isLive); }
 function liveIdeas(){ return (DB.ideas||[]).filter(isLive); }
 function liveTodos(){ return (DB.todos||[]).filter(isLive); }
@@ -1046,7 +1050,7 @@ function segNav(items, active){
   return `<div class="seg" style="margin-bottom:16px">${items.map(([k,label])=>`<button class="${k===active?'active':''}" onclick="setSub('${k}')">${label}</button>`).join('')}</div>`;
 }
 /* Whichever Progress chart is active — shared by render() and the theme-change redraw. */
-function drawActiveChart(){ if(TAB==='train' && subState.train==='progress'){ if(progSub==='strength') drawStrengthChart(); else if(progSub==='body') drawChart(); } }
+function drawActiveChart(){ if(TAB==='train' && subState.train==='progress'){ if(progSub==='strength') drawStrengthChart(); else if(progSub==='pet') drawPetChart(); else if(progSub==='body') drawChart(); } }
 
 function render(){
   const el = document.getElementById('app');
@@ -1149,11 +1153,40 @@ function viewToday(){
       <textarea id="journal-input" rows="3" placeholder="A few words about your day — wins, workouts, anything…" oninput="saveJournal(this.value)" style="resize:vertical;line-height:1.5;min-height:72px;margin-top:8px">${esc(DB.journal[todayISO()]||'')}</textarea>
       <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <a onclick="goSub('train','history')" style="color:var(--link);cursor:pointer;font-weight:600">${part==='evening'?`${ph('calendar-blank')}Review your week →`:'See your week →'}</a></p>
     </div>`;
-  const cWeight = `<div class="card"><div class="row">
-      <div><div class="stat-big" style="font-size:26px">${avg!=null? avg.toFixed(1) : '—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
-      <div class="stat-sub">${avg!=null? '7-day average' : 'No weigh-ins yet'}${w?` · latest ${(+w.value).toFixed(1)}${loggedToday?' today':''}`:''}</div></div>
-      <button class="btn btn-sm ${loggedToday?'btn-ghost':''}" onclick="progSub='body';goSub('train','progress')">${loggedToday?'View':'Weigh in'}</button>
-    </div></div>`;
+  /* Morning weigh-in — Ian and the cat in one card, because they happen at the same moment on the
+     same scale. Inputs are inline (no trip to Progress) and open by default in the morning; later
+     in the day the card collapses to the numbers with a ＋ Log toggle. The input ids match the
+     Progress page's on purpose — the two views are never in the DOM at once, so logWeight() /
+     logPetWeight() work unchanged, falling back to today's date when there's no date field. */
+  const pw = latestPetWeight(), petToday = pw && pw.date===todayISO();
+  const weighedIn = loggedToday && petToday;   // both of them — the card's job isn't done until it is
+  const weighOpen = (part==='morning' && !weighedIn) || accOpen.has('weighin');
+  const logRow = (id, fn, hint) => `<div class="row" style="gap:8px;margin-top:8px">
+        <input type="number" inputmode="decimal" step="0.1" id="${id}" placeholder="${hint}" style="flex:1" onkeydown="if(event.key==='Enter')${fn}">
+        <button class="btn btn-sm" onclick="${fn}">Log</button>
+      </div>`;
+  const cWeighIn = `<div class="card">
+      <div class="row" style="cursor:pointer" onclick="toggleAcc('weighin')">
+        ${kicker(part==='morning'?'Morning weigh-in':'Weigh-in')}
+        <span class="muted">${ph(weighOpen?'caret-up':'caret-down')}</span>
+      </div>
+      <div style="margin-top:8px">
+        <div class="row">
+          <div><div class="stat-big" style="font-size:26px">${avg!=null? avg.toFixed(1) : '—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
+          <div class="stat-sub">${avg!=null? '7-day average' : 'No weigh-ins yet'}${w?` · latest ${(+w.value).toFixed(1)}${loggedToday?' today':''}`:''}</div></div>
+          <button class="btn btn-sm btn-ghost" onclick="progSub='body';goSub('train','progress')">Chart</button>
+        </div>
+        ${weighOpen && !loggedToday ? logRow('wt-input',"logWeight()",`Your weight (${DB.unit})`) : ''}
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-3)">
+        <div class="row">
+          <div><div style="font-weight:700;font-size:15px">🐈 ${esc(petName())} — ${pw? `${(+pw.value).toFixed(1)} <span class="muted" style="font-size:12px;font-weight:600">${DB.unit}</span>` : '<span class="muted">no weigh-ins yet</span>'}</div>
+          <div class="stat-sub">${pw? (petToday?'logged today':'last '+fmtDate(pw.date)) : 'weigh him on the same scale'}</div></div>
+          <button class="btn btn-sm btn-ghost" onclick="progSub='pet';goSub('train','progress')">Chart</button>
+        </div>
+        ${weighOpen && !petToday ? logRow('pet-input',"logPetWeight('pet-input')",`${esc(petName())}&#39;s weight (${DB.unit})`) : ''}
+      </div>
+    </div>`;
   const rainAt = rainTiming();
   const cWeather = gl ? `<div class="card" style="cursor:pointer" onclick="goSub('care','lawn')"><div class="row">
       <div><div style="font-weight:700;font-size:16px">${gl.icon} ${gl.temp}° · ${gl.text}</div>
@@ -1224,13 +1257,14 @@ function viewToday(){
     </div>`;
 
   let order;
-  /* Weighing in is the first thing that happens in the morning, so until it's logged the card sits
-     directly under the weather. Once logged it drops to the bottom — done, out of the way. */
-  if(part==='morning') order = loggedToday
-    ? [cWeather, cLawn, cWorkout, cTodo, cMobility, cDo, cCardio, cJournal, cWeight]
-    : [cWeather, cWeight, cLawn, cWorkout, cTodo, cMobility, cDo, cCardio, cJournal];
-  else if(part==='afternoon') order=[cWorkout, cTodo, cDo, cMobility, cLawn, cCardio, cWeather, cWeight, cJournal];
-  else order=[cJournal, cTodo, cMobility, cWeek, cLawn, cDo, cCardio, cWorkout, cWeight];
+  /* Weighing in is the first thing that happens in the morning — both of them, on the same scale —
+     so until it's logged the card leads the page. Once both are in it drops to the bottom: done,
+     out of the way. */
+  if(part==='morning') order = weighedIn
+    ? [cWeather, cLawn, cWorkout, cTodo, cMobility, cDo, cCardio, cJournal, cWeighIn]
+    : [cWeighIn, cWeather, cLawn, cWorkout, cTodo, cMobility, cDo, cCardio, cJournal];
+  else if(part==='afternoon') order=[cWorkout, cTodo, cDo, cMobility, cLawn, cCardio, cWeather, cWeighIn, cJournal];
+  else order=[cJournal, cTodo, cMobility, cWeek, cLawn, cDo, cCardio, cWorkout, cWeighIn];
 
   /* Glance line — the day's answer at a glance: what routine, will it rain, what's still open.
      The workout segment follows the card: silent on a rest day rather than announcing a session
@@ -1824,10 +1858,12 @@ function viewWeight(){
     <button class="${progSub==='body'?'active':''}" onclick="progSubTab('body')">Weight</button>
     <button class="${progSub==='strength'?'active':''}" onclick="progSubTab('strength')">Strength</button>
     <button class="${progSub==='volume'?'active':''}" onclick="progSubTab('volume')">Volume</button>
-    <button class="${progSub==='cardio'?'active':''}" onclick="progSubTab('cardio')">Cardio</button></div>`;
+    <button class="${progSub==='cardio'?'active':''}" onclick="progSubTab('cardio')">Cardio</button>
+    <button class="${progSub==='pet'?'active':''}" onclick="progSubTab('pet')">${esc(petName())}</button></div>`;
   if(progSub==='strength') return viewStrength(sub);
   if(progSub==='volume') return viewVolume(sub);
   if(progSub==='cardio') return viewCardioTrend(sub);
+  if(progSub==='pet') return viewPetWeight(sub);
   const lwv = liveWeights(); const w = lwv[lwv.length-1];
   const avg = currentAvg(), wd = avgWeekDelta();
   const statCard = liveWeights().length ? `<div class="card">
@@ -1850,6 +1886,34 @@ function viewWeight(){
     ${statCard}
     <div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">7-day average</div><svg id="chart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg></div>
     ${liveWeights().length? `<div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Daily entries</div>${weightList()}</div>` : '<div class="empty">Log your first weigh-in above.</div>'}`;
+}
+/* The cat's weigh-in page. Raw daily dots with the 7-day average as the bold line — the same
+   smoothing as Ian's own chart, because a pet scale has the same day-to-day noise; but the raw
+   number stays visible since a single reading is what the vet asks for. */
+function viewPetWeight(sub){
+  const ws = livePetWeights(), latest = latestPetWeight(), md = petMonthDelta();
+  const statCard = latest ? `<div class="card">
+      <div class="stat-big" style="font-size:28px">${(+latest.value).toFixed(1)} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
+      <div class="stat-sub">latest · ${fmtDate(latest.date)}${md?` · <span class="muted">${md.d>0?'▲':md.d<0?'▼':'·'} ${Math.abs(md.d).toFixed(1)} ${DB.unit} vs ${fmtDate(md.from)}</span>`:''}</div>
+    </div>` : '';
+  return `
+        <p class="subtitle">${esc(petName())} · ${ws.length} weigh-in${ws.length!==1?'s':''}</p>
+    ${sub}
+    <div class="card">
+      <div class="row">
+        <input type="number" inputmode="decimal" step="0.1" id="pet-input" placeholder="${esc(petName())}'s weight (${DB.unit})" style="flex:1">
+        <button class="btn" onclick="logPetWeight('pet-input','pet-date')">Log</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label class="muted" style="font-size:12px;font-weight:600;flex:1">Date <input type="date" id="pet-date" value="${todayISO()}" max="${todayISO()}" style="width:auto;display:inline-block;margin-left:6px;padding:6px 8px"></label>
+      </div>
+      ${rangeSeg()}
+    </div>
+    ${statCard}
+    <div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Daily · 7-day average line</div><svg id="pchart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg></div>
+    ${ws.length? `<div class="card"><div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Daily entries</div>${petWeightList()}</div>`
+               : `<div class="empty">Log ${esc(petName())}'s first weigh-in above — or from the morning card on Today.</div>`}
+    <p class="muted" style="text-align:center;font-size:11px">A steady drift up or down is the thing to watch; a pound either way is a lot on a cat. Worth mentioning at the next vet visit.</p>`;
 }
 /* Every logged session of one exercise, newest first — the "past data" behind the chart.
    LIVE sessions only (soft-deleted rows must never ghost back in here). */
@@ -1954,9 +2018,10 @@ function weightList(){
   }).join('');
 }
 /* 7-day rolling average — smooths daily water-weight noise into the real signal.
-   For each weigh-in date, average every entry in the trailing 7 days. */
-function rollingAvgSeries(){
-  const ws = liveWeights().slice().sort((a,b)=>a.date.localeCompare(b.date));
+   For each weigh-in date, average every entry in the trailing 7 days.
+   `rows` defaults to Ian's weigh-ins; the pet chart passes livePetWeights() through the same math. */
+function rollingAvgSeries(rows){
+  const ws = (rows || liveWeights()).slice().sort((a,b)=>a.date.localeCompare(b.date));
   return ws.map(w=>{
     const end=new Date(w.date+'T00:00'), start=new Date(end); start.setDate(start.getDate()-6);
     const win=ws.filter(x=>{ const d=new Date(x.date+'T00:00'); return d>=start && d<=end; });
@@ -1984,6 +2049,40 @@ function logWeight(){
   save(); cloudVersion('weigh-in'); toast(t===todayISO()?'Weight logged':'Logged for '+fmtDate(t)); render();
 }
 function rmWeight(i){ const w=DB.weights[i]; if(!w || !isLive(w)) return; if(confirm('Delete this entry?')){ w.deletedAt=Date.now(); touch(w); save(); render(); } }
+
+/* ── Pet weigh-ins (the cat) ────────────────────────────────────────────────────────────────
+   Same shape and same merge rules as DB.weights — one row per date, revived rather than
+   duplicated on a re-log, soft-deleted so a delete survives a sync merge. `elId` lets the Today
+   card and the Progress sub-tab each own their input without a duplicate id in the DOM. */
+function petName(){ return DB.petName || 'Freddie'; }
+function logPetWeight(elId, dateElId){
+  const inp = document.getElementById(elId||'pet-input'); if(!inp) return;
+  const v = parseFloat(inp.value);
+  if(isNaN(v)||v<=0){ alert(`Enter a valid weight for ${petName()}.`); return; }
+  const dEl = document.getElementById(dateElId||'pet-date');
+  const t = (dEl && dEl.value) ? dEl.value : todayISO();
+  const existing = (DB.petWeights||[]).find(w=>w.date===t);
+  if(existing){ existing.value=v; delete existing.deletedAt; touch(existing); }
+  else { (DB.petWeights = DB.petWeights||[]).push(touch({date:t, value:v, at:Date.now()})); }
+  DB.petWeights.sort((a,b)=>a.date.localeCompare(b.date));
+  save(); toast(`${petName()}: ${v.toFixed(1)} ${DB.unit} logged`); render();
+}
+function rmPetWeight(i){ const w=(DB.petWeights||[])[i]; if(!w || !isLive(w)) return; if(confirm('Delete this entry?')){ w.deletedAt=Date.now(); touch(w); save(); render(); } }
+function latestPetWeight(){ const ws=livePetWeights(); return ws.length? ws[ws.length-1] : null; }
+/* Change vs the closest entry ~30 days back — cats drift slowly, so a week-over-week number is
+   mostly scale noise. Null until there's an entry old enough to compare against. */
+function petMonthDelta(){
+  const ws=livePetWeights(); if(ws.length<2) return null;
+  const cur=ws[ws.length-1], target=new Date(cur.date+'T00:00'); target.setDate(target.getDate()-30);
+  let prev=null; for(let i=ws.length-2;i>=0;i--){ if(new Date(ws[i].date+'T00:00')<=target){ prev=ws[i]; break; } }
+  return prev ? { d:+cur.value - +prev.value, from:prev.date } : null;
+}
+function petWeightList(){
+  return (DB.petWeights||[]).map((w,i)=>({w,i})).filter(o=>isLive(o.w)).reverse().slice(0,12).map(({w,i})=>
+    `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" onclick="rmPetWeight(${i})">${ph('x')}</button></span></div>`
+  ).join('');
+}
+function setPetName(v){ DB.petName = (v||'').trim() || 'Freddie'; save(); }
 /* trend (optional): a parallel series (same length as pts) drawn as the bold primary line, with
    pts shown as faint dots + a hairline. Used for the running-best strength trend. */
 function paintChart(svg, pts, emptyMsg, gradId, trend, colorVar){
@@ -2028,6 +2127,16 @@ function drawChart(){
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-chartRange);
   const pts = rollingAvgSeries().filter(p=> chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff).map(p=>({value:p.value}));
   paintChart(svg, pts, 'Log a few days and your 7-day average appears', 'gWeight');
+}
+function drawPetChart(){
+  const svg = document.getElementById('pchart'); if(!svg) return;
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-chartRange);
+  const rows = livePetWeights().slice().sort((a,b)=>a.date.localeCompare(b.date));
+  const avg = rollingAvgSeries(rows);   // same index/length as rows — paintChart needs them aligned
+  const inRange = p => chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff;
+  const pts = rows.filter(inRange).map(p=>({date:p.date, value:+p.value}));
+  const trend = avg.filter(inRange);
+  paintChart(svg, pts, `Log a few days and ${petName()}'s trend appears`, 'gPet', pts.length>=2 ? trend : null, '--chart-pet');
 }
 function drawStrengthChart(){
   const svg = document.getElementById('schart'); if(!svg) return;
@@ -2300,7 +2409,7 @@ function daysSinceLawn(key){ const log=DB.lawnLog||{}; const base=new Date(); ba
   for(let n=0;n<400;n++){ const d=new Date(base); d.setDate(d.getDate()-n); const iso=d.toLocaleDateString('en-CA'); if(log[iso] && log[iso][key]) return n; }
   return Infinity; }
 /* Scan a day's 8am–8pm hourly temps for the heat limit. Defaults to today; the home card also asks
-   about tomorrow, and the forecast already runs 7 days out. */
+   about tomorrow and the mow forecast asks about all 7 — the hourly array spans the whole forecast. */
 function lawnHeatWindow(limit, iso){
   if(limit==null) return {status:'none'};
   const h=DB.wx && DB.wx.data && DB.wx.data.hourly;
@@ -2311,6 +2420,23 @@ function lawnHeatWindow(limit, iso){
   if(firstHot==null) return {status:'none'};        // never reaches the limit in the window
   if(firstHot<=8) return {status:'allhot'};          // already hot when the window opens
   return {status:'before', hour:firstHot};
+}
+/* ── The mow decision, in ONE place ──────────────────────────────────────────────────────────
+   Today's card, tomorrow's heads-up and the 7-day "expect to mow" forecast all call this, so they
+   can never drift apart (the forecast promising a day the card then refuses is the obvious failure
+   mode). Precedence is deliberate: too-soon beats wet beats heat beats not-yet-due. `nowx` heat
+   means we couldn't check the temperature — assume safe, as everywhere else offline. */
+function mowVerdict(o){
+  const heat = o.heat || {status:'none'};
+  const growthSpike = !!o.havewx && o.rain3 >= 0.5;      // ≥0.5" in 3 days → grass jumps, tighten to day 5
+  const due = o.dsMow > 7 || (o.dsMow >= 5 && growthSpike);
+  let blocked = null;
+  if(o.dsMow < 5) blocked = 'soon';
+  else if(o.recentWet) blocked = 'wet';
+  else if(heat.status === 'allhot') blocked = 'hot';
+  else if(!due) blocked = 'wait';
+  return { due, blocked, ok: blocked===null, growthSpike, overdue: o.dsMow > 7,
+           before: heat.status==='before' ? heat.hour : null };
 }
 /* The full recommendation object, computed fresh each render (this is what makes it adaptive).
    dayOffset shifts the whole calculation forward a day so the home card can answer "will I need to
@@ -2340,23 +2466,81 @@ function lawnStatus(dayOffset){
   else if(havewx && rain3 >= rules.rainSkip){ water.text=`Rained recently (~${rain3.toFixed(2)}") — hold off`; water.hard=true; }
   else if(!sprinkleDayOK){ const nx=nextSprinkleDate(); water.text=`City rule — ${LAWN_ADDR_PARITY} address sprinkles on ${LAWN_ADDR_PARITY} days only (today is the ${todayParity} ${ordinal(dom)})${nx?`; next ${nx}`:''}`; water.hard=true; }
   else { water.text = `Time to water — ${LAWN_HOURS_NOTE}${dsWater===Infinity?'':` (last ${dsFmt(dsWater)})`}`; water.recommend=true; }
-  // ── MOWING ──
-  const growthSpike = havewx && rain3 >= 0.5;
-  const mowDue = dsMow>7 || (dsMow>=5 && growthSpike);
+  // ── MOWING ── (rules live in mowVerdict so tomorrow's heads-up and the 7-day forecast match)
   const heat = lawnHeatWindow(rules.heatLimit, today);
   const when = off===0 ? 'today' : 'tomorrow';
+  const v = mowVerdict({ dsMow, recentWet, rain3, heat, havewx });
   const mow={ recommend:false, hard:false, override:!!log.overrideMow, text:'' };
   if(mow.override){ mow.text='Mowing anyway (override)'; mow.recommend=true; }
-  else if(dsMow < 5){ mow.text=`Last mowed ${dsFmt(dsMow)} — too soon`; }
-  else if(recentWet){ mow.text='Wet conditions — don’t mow'; mow.hard=true; }
-  else if(heat.status==='allhot'){ mow.text=`Too hot ${when} — don’t mow`; mow.hard=true; }
-  else if(!mowDue){ mow.text=`Last mowed ${dsFmt(dsMow)} — wait a day or two`; }
+  else if(v.blocked==='soon'){ mow.text=`Last mowed ${dsFmt(dsMow)} — too soon`; }
+  else if(v.blocked==='wet'){ mow.text='Wet conditions — don’t mow'; mow.hard=true; }
+  else if(v.blocked==='hot'){ mow.text=`Too hot ${when} — don’t mow`; mow.hard=true; }
+  else if(v.blocked==='wait'){ mow.text=`Last mowed ${dsFmt(dsMow)} — wait a day or two`; }
   else { mow.recommend=true;
-    if(heat.status==='before') mow.text=`Mow before ${fmtHour(heat.hour)} (before heat)`;
-    else if(dsMow>7) mow.text=`Overdue — mow ${when} (8am–9pm)`;
+    if(v.before!=null) mow.text=`Mow before ${fmtHour(v.before)} (before heat)`;
+    else if(v.overdue) mow.text=`Overdue — mow ${when} (8am–9pm)`;
     else mow.text=`Mow ${when} (8am–9pm)`;
   }
-  return { season, dsWater, dsMow, water, mow, rain3, havewx, growthSpike };
+  return { season, dsWater, dsMow, water, mow, rain3, havewx, growthSpike:v.growthSpike };
+}
+/* ── "Expect to mow" — the same rules projected across the 7-day forecast ────────────────────
+   Answers "which day am I mowing?" so there's lead time to gas up, sharpen and clear the yard.
+   Derived only — no stored state. Null when off-season, before the location is set, or offline
+   (each of those already hides the surrounding UI). */
+function mowForecast(){
+  if(!lawnSeason(new Date())) return null;
+  if(!DB.lawn || DB.lawn.lat==null) return null;
+  const dy = DB.wx && DB.wx.data && DB.wx.data.daily;
+  if(!dy || !dy.time) return null;
+  const ti = dy.time.indexOf(todayISO()); if(ti < 0) return null;
+  const rules = SEASON_RULES[lawnSeason(new Date())], num = v=>(v==null?0:+v);
+  const P = dy.precipitation_sum||[], PP = dy.precipitation_probability_max||[];
+  const ds0 = daysSinceLawn('mowed');
+  const days = [];
+  for(let k=0;k<7;k++){
+    const idx = ti+k, iso = dy.time[idx]; if(!iso) break;
+    /* days-since just advances: the question is when the NEXT mow happens, so no mow is assumed
+       in between. Infinity stays Infinity (never mowed → always due). */
+    const dsMow = ds0===Infinity ? Infinity : ds0 + k;
+    const rain3 = num(P[idx]) + num(P[idx-1]) + num(P[idx-2]);
+    const recentWet = num(P[idx-1])>=0.1 || num(P[idx])>=0.1 || num(PP[idx])>=50;
+    const v = mowVerdict({ dsMow, recentWet, rain3, heat:lawnHeatWindow(rules.heatLimit, iso), havewx:true });
+    days.push(Object.assign({ iso, k, dsMow }, v));
+  }
+  return { days, next: days.find(d=>d.ok) || null };
+}
+function mowDayLabel(iso, k){ return k===0?'today':k===1?'tomorrow':new Date(iso+'T00:00').toLocaleDateString('en-US',{weekday:'long'}); }
+function mowExpectText(f){
+  if(!f) return '';
+  if(!f.next) return 'No clear window in the next 7 days — rain or heat blocks every day. Check back as the forecast moves.';
+  const d = f.next, when = mowDayLabel(d.iso, d.k);
+  const date = d.k>1 ? ` (${new Date(d.iso+'T00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})})` : '';
+  const qual = d.before!=null ? ` — before ${fmtHour(d.before)}, ahead of the heat` : '';
+  return `<strong>${when}</strong>${date}${qual}`;
+}
+/* Per-day marker for the outlook strip. */
+function mowMark(d){
+  if(d.ok) return { icon:'🚜', label:'mow', color:'var(--flag-fg)' };
+  if(d.blocked==='wet') return { icon:'💧', label:'wet', color:'var(--chart)' };
+  if(d.blocked==='hot') return { icon:'🔥', label:'hot', color:'var(--warm-fg)' };
+  return { icon:'–', label:d.blocked==='soon'?'too soon':'not due', color:'var(--muted-2)' };
+}
+function mowOutlookHTML(){
+  const f = mowForecast(); if(!f) return '';
+  const strip = f.days.map(d=>{
+    const m = mowMark(d), target = f.next && d.iso===f.next.iso;
+    return `<div style="text-align:center;flex:1;min-width:42px;padding:6px 2px;border-radius:8px;${target?'background:var(--accent-muted);box-shadow:inset 0 0 0 1px rgba(145,132,217,.4)':''}">
+      <div class="muted" style="font-size:10px;font-weight:700">${d.k===0?'Today':new Date(d.iso+'T00:00').toLocaleDateString('en-US',{weekday:'short'})}</div>
+      <div style="font-size:16px;margin:3px 0">${m.icon}</div>
+      <div style="font-size:9px;font-weight:700;color:${m.color}">${m.label}</div>
+    </div>`;
+  }).join('');
+  return `<div class="card">
+    ${kicker('Mowing outlook')}
+    <div style="font-size:13px;line-height:1.5;margin-top:6px">${ph('tractor','lead')}Expect to mow ${mowExpectText(f)}</div>
+    <div style="display:flex;gap:3px;margin-top:12px;overflow-x:auto">${strip}</div>
+    <p class="muted" style="font-size:11px;margin-top:10px">Projects the same rules forward — 5–7 day interval (day 5 after a growth spike), no mowing on wet grass, and the ${SEASON_RULES[lawnSeason(new Date())].heatLimit?`${SEASON_RULES[lawnSeason(new Date())].heatLimit}°F`:'heat'} window. Rain in the forecast moves it, so check the day before.</p>
+  </div>`;
 }
 function toggleLawnLog(action){ const t=todayISO(); if(!DB.lawnLog) DB.lawnLog={}; const e=DB.lawnLog[t]||(DB.lawnLog[t]={});
   e[action]=!e[action]; if(action==='watered') e.overrideWater=false; if(action==='mowed') e.overrideMow=false;  // logging clears that override
@@ -2376,6 +2560,12 @@ function cLawnCard(){
     const due=[];
     if(tm.season && tm.water.recommend) due.push(`${ph('drop','lead')}Watering tomorrow — ${LAWN_HOURS_NOTE}`);
     if(tm.season && tm.mow.recommend)   due.push(`${ph('tractor','lead')}${esc(tm.mow.text)}`);
+    /* Mowing further out still earns a line — that's the prep lead time — but only inside a 3-day
+       window, so a quiet week stays quiet. Skipped when tomorrow's line already said it. */
+    if(!(tm.season && tm.mow.recommend)){
+      const f = mowForecast();
+      if(f && f.next && f.next.k>0 && f.next.k<=3) due.push(`${ph('calendar-blank','lead')}Expect to mow ${mowExpectText(f)}`);
+    }
     if(!due.length) return '';
     return `<div class="card" style="cursor:pointer" onclick="goSub('care','lawn')">
       <div class="row"><div>${kicker('Lawn · heads up')}
@@ -2386,6 +2576,13 @@ function cLawnCard(){
   /* Only the task that's actually due gets a block. A "hold off, mowed 5 days ago" line is noise on
      a day you only need to water — the full both-tasks status stays one tap away on Care → Lawn. */
   const t=todayISO(), log=(DB.lawnLog||{})[t]||{};
+  /* Lead time to prep the mower. Skipped when mowing is already today's job (or already done) —
+     the block above says it better. */
+  const f = (st.mow.recommend || log.mowed) ? null : mowForecast();
+  const expect = !f ? '' : `<div style="font-size:12px;line-height:1.5;margin-top:12px;color:var(--muted)">
+      ${ph('calendar-blank','lead')}Expect to mow ${mowExpectText(f)}
+      ${f.next && f.next.k===1 ? '<br><span style="color:var(--warm-fg);font-weight:600">Get the mower ready tonight — gas, blade, yard clear.</span>' : ''}
+    </div>`;
   const block=(label,r,which,since,doneLabel,btnLabel)=> !r.recommend ? '' : `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-3)">
       <div style="font-size:13px;line-height:1.5">${ph(r.override?'warning':'check-circle','lead')}<strong>${label}:</strong> ${esc(r.text)}</div>
       <div class="muted" style="font-size:11px;margin-top:3px">Last ${since}</div>
@@ -2398,6 +2595,7 @@ function cLawnCard(){
     <div class="row" style="cursor:pointer" onclick="goSub('care','lawn')">${kicker('Lawn · '+st.season)}<span class="muted">Lawn →</span></div>
     ${block('Watering', st.water, {log:'watered', ov:'water'}, dsWithDate(st.dsWater), 'Watered', 'Mark watered')}
     ${block('Mowing',   st.mow,   {log:'mowed',   ov:'mow'},   dsWithDate(st.dsMow),   'Mowed',   'Mark mowed')}
+    ${expect}
     ${st.water.recommend?`<div class="muted" style="font-size:11px;margin-top:10px">SLP ordinance: ${LAWN_ADDR_PARITY} address → sprinkle on ${LAWN_ADDR_PARITY} calendar days, never noon–6pm.</div>`:''}
   </div>`;
 }
@@ -2438,7 +2636,6 @@ function viewLawn(){
   if(recent+next2>=0.5) water=`Skip it — about ${(recent+next2).toFixed(1)}" of rain around now should cover the lawn.`;
   else if(num(HI[ti])>=85) water=`Water early morning — hot and dry, with little rain coming.`;
   else water=`Light watering if the soil's dry — only ~${(recent+next2).toFixed(2)}" of rain expected.`;
-  const mow=(num(P[ti])<0.1 && num(P[ti-1])<0.3) ? `Good day to mow — grass should be dry.` : `Hold off — grass is likely wet from recent rain. Mow once it dries out.`;
   let fert, lightK=-1, heavy=false;
   for(let k=1;k<=3;k++){ const s=num(P[ti+k]); if(s>0.8) heavy=true; if(lightK<0 && s>=0.1 && s<=0.6) lightK=k; }
   if(lightK>0) fert=`Good window — light rain ${lightK===1?'tomorrow':'in '+lightK+' days'} will water it in.`;
@@ -2454,10 +2651,10 @@ function viewLawn(){
       <div style="display:flex;gap:3px;margin-top:14px;overflow-x:auto">${strip}</div>
     </div>
     ${lawnSeason(new Date()) ? cLawnCard() : `<div class="card"><div class="muted" style="font-size:13px">${ph('snowflake','lead')}Off-season (Nov–Mar) — smart watering & mowing scheduling resumes in April. Forecast still available above.</div></div>`}
+    ${mowOutlookHTML()}
     <h2 style="margin-top:20px">Forecast guidance</h2>
     ${card('umbrella','Rain', rainTxt)}
     ${card('drop','Watering', water)}
-    ${card('tractor','Mowing', mow)}
     ${card('plant','Fertilizer', fert)}
     ${lawnSeason(new Date()) ? lawnHistory() : ''}
     <p class="muted" style="text-align:center;font-size:11px">Guidance blends hardcoded cool-season rules with the live forecast — use your judgment. Updated ${new Date(wx.at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}.</p>`;
@@ -2478,6 +2675,11 @@ function viewData(){
       <button class="${(DB.routineMode||'4day')==='4day'?'active':''}" onclick="setRoutineMode('4day')">4-Day PPL</button>
     </div>
       <p class="muted" style="font-size:12px">4-Day adds a specialized 4th day each week — pick Chest & Triceps, Back, Shoulders, Biceps, or Legs fresh each time it comes up.</p>
+    </div>
+    <h2>Pet</h2>
+    <div class="card">
+      <p class="muted" style="margin-bottom:10px">Name on the daily pet weigh-in — shown on the Today card and the Progress sub-tab.</p>
+      <input id="petname-input" value="${esc(petName())}" placeholder="Freddie" onchange="setPetName(this.value);render()">
     </div>
     <h2>Cloud Sync</h2>
     ${syncCardHTML()}
@@ -2852,6 +3054,7 @@ function mergeDB(remote, local, localWins){
   // ── append-only logs: union, never subtract ──
   out.sessions = mergeUnion(r.sessions, l.sessions, sessKey, localNewer);
   out.weights  = mergeUnion(r.weights,  l.weights,  w=>w.date, localNewer);
+  out.petWeights = mergeUnion(r.petWeights, l.petWeights, w=>w.date, localNewer);  // one cat weigh-in per date, same key rule as weights
   out.cardio   = mergeUnion(r.cardio,   l.cardio,   c=>c.id || ((c.date||'')+'|'+(c.type||'')+'|'+(c.minutes||'')), localNewer);
   out.ideas    = mergeUnion(r.ideas,    l.ideas,    i=>i.id || ((i.date||'')+'|'+(i.text||'')), localNewer);
   out.todos    = mergeUnion(r.todos,    l.todos,    todoKey, localNewer);
@@ -2873,6 +3076,7 @@ function mergeDB(remote, local, localWins){
   if(out.draft && !PROGRAM[out.draft.workout]) out.draft = null;
   // ── invariants ──
   out.weights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  out.petWeights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   out.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : String(a.date).localeCompare(String(b.date)));
   out._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
   out.updatedAt = Math.max(rU, lU);
@@ -3130,6 +3334,7 @@ function trashItems(){
   const add = (kind, arr, label) => (arr||[]).forEach((x,i)=>{ if(x && x.deletedAt && x.deletedAt>=cutoff) out.push({kind, i, at:x.deletedAt, label:label(x)}); });
   add('session', DB.sessions, s=> `${s.workout||'Workout'} · ${s.date||''}${s.skipped?' (skipped)':''}`);
   add('weight',  DB.weights,  w=> `Weigh-in ${w.date} · ${(+w.value).toFixed(1)} ${DB.unit}`);
+  add('petweight', DB.petWeights, w=> `${DB.petName||'Pet'} weigh-in ${w.date} · ${(+w.value).toFixed(1)} ${DB.unit}`);
   add('cardio',  DB.cardio,   c=> `${c.type||'Cardio'} · ${c.date||''}`);
   add('todo',    DB.todos,    t=> `To-do · ${t.text||''}`);
   add('activity',DB.hobbyLog, h=> `Activity · ${h.item||h.hobby||''}`);
@@ -3137,7 +3342,7 @@ function trashItems(){
   return out.sort((a,b)=>b.at-a.at);
 }
 function restoreDeleted(kind, i){
-  const arr = kind==='session'?DB.sessions : kind==='weight'?DB.weights : kind==='cardio'?DB.cardio
+  const arr = kind==='session'?DB.sessions : kind==='weight'?DB.weights : kind==='petweight'?DB.petWeights : kind==='cardio'?DB.cardio
             : kind==='todo'?DB.todos : kind==='activity'?DB.hobbyLog : DB.ideas;
   const it = (arr||[])[i]; if(!it || !it.deletedAt) return;
   delete it.deletedAt; touch(it);   // fresh mtime so the restore wins the next merge
