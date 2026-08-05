@@ -2388,10 +2388,12 @@ function lawnSetup(){
    weather-adaptive (Open-Meteo daily precip + hourly temps) with hard rules the user can
    override per day. Logging watered/mowed drives the "days since" recency checks. */
 const SEASON_RULES = {
-  spring: { months:[4,5],  waterPerWeek:2,   rainSkip:0.5, heatLimit:null },
-  summer: { months:[6,7,8],waterPerWeek:3.5, rainSkip:0.3, heatLimit:85 }, // 3–4×/week
-  fall:   { months:[9,10], waterPerWeek:2,   rainSkip:0.5, heatLimit:null },
+  spring: { months:[4,5],  waterPerWeek:2,   rainSkip:0.5, heatLimit:null, heatWater:null },
+  summer: { months:[6,7,8],waterPerWeek:3.5, rainSkip:0.3, heatLimit:85,   heatWater:90 }, // 3–4×/week
+  fall:   { months:[9,10], waterPerWeek:2,   rainSkip:0.5, heatLimit:null, heatWater:null },
 };
+/* heatLimit = don't MOW above this (hourly scan). heatWater = a forecast high at or above this
+   tightens WATERING to every allowed day — cool-season grass is what's at risk in a 95°F stretch. */
 function lawnSeason(date){ const m=date.getMonth()+1; for(const s in SEASON_RULES) if(SEASON_RULES[s].months.includes(m)) return s; return null; }
 /* St. Louis Park sprinkling ordinance: odd-numbered addresses may sprinkle only on odd calendar
    days (even → even), and no sprinkling noon–6pm. Ian's address ends odd. Exemptions (new sod/seed,
@@ -2454,37 +2456,47 @@ function lawnStatus(dayOffset){
   if(!season) return { season:null };
   const rules=SEASON_RULES[season], today=now.toLocaleDateString('en-CA'), num=v=>(v==null?0:+v);
   const dy=DB.wx && DB.wx.data && DB.wx.data.daily;
-  let ti=-1, P=[], PP=[]; if(dy){ ti=dy.time.indexOf(today); P=dy.precipitation_sum||[]; PP=dy.precipitation_probability_max||[]; }
+  let ti=-1, P=[], PP=[], HI=[]; if(dy){ ti=dy.time.indexOf(today); P=dy.precipitation_sum||[]; PP=dy.precipitation_probability_max||[]; HI=dy.temperature_2m_max||[]; }
   const havewx = ti>=0;
   const rain3 = havewx ? (num(P[ti])+num(P[ti-1])+num(P[ti-2])) : 0;   // that day + 2 prior days
+  const rainTomorrow = havewx ? num(P[ti+1]) : 0;                      // only the next 24h counts as "imminent"
   const recentWet = havewx && (num(P[ti-1])>=0.1 || num(P[ti])>=0.1 || num(PP[ti])>=50);
   const dsWater=daysSinceLawn('watered')+off, dsMow=daysSinceLawn('mowed')+off;
   const log = off===0 ? ((DB.lawnLog||{})[today]||{}) : {};
   // ── WATERING ── (+ St. Louis Park ordinance: odd/even address days, no sprinkling noon–6pm)
-  const waterEvery=Math.ceil(7/rules.waterPerWeek);
+  /* Heat tightens the interval to every allowed day: a 95°F stretch is exactly when cool-season
+     grass gives up, and the odd/even ordinance already caps the real cadence at every other day. */
+  const hotHi = havewx && rules.heatWater!=null ? Math.max(num(HI[ti]), num(HI[ti+1])) : 0;
+  const heatOn = rules.heatWater!=null && hotHi >= rules.heatWater;
+  const waterEvery = heatOn ? 1 : Math.ceil(7/rules.waterPerWeek);
+  const heatNote = heatOn ? ` (${Math.round(hotHi)}°F ${num(HI[ti])>=num(HI[ti+1])?'today':'tomorrow'})` : '';
   const dom=now.getDate(), todayParity=dateParity(dom), sprinkleDayOK=(todayParity===LAWN_ADDR_PARITY);
-  const water={ recommend:false, hard:false, unknown:false, override:!!log.overrideWater, text:'' };
+  const water={ recommend:false, hard:false, unknown:false, override:!!log.overrideWater, text:'', every:waterEvery, heat:heatOn };
+  /* Nothing logged yet is NOT a reason to stay silent — assume it's due and flag the guess. (This
+     was the July regression: the ask-for-a-date state suppressed the recommendation entirely, so a
+     lawn that genuinely needed water heard nothing at all.) */
+  water.unknown = (dsWater === Infinity);
   if(water.override){ water.text='Watering anyway (override)'; water.recommend=true; }
-  /* Nothing ever logged → the interval has no anchor, so every rule downstream reads "due" forever.
-     Ask for the last date instead of nagging daily; the schedule starts the moment one is set. */
-  else if(dsWater===Infinity){ water.unknown=true; water.text='No watering logged yet — when did you last water?'; }
   else if(dsWater < waterEvery){ water.text=`Watered ${dsFmt(dsWater)} — hold off`; }
   else if(havewx && rain3 >= rules.rainSkip){ water.text=`Rained recently (~${rain3.toFixed(2)}") — hold off`; water.hard=true; }
+  /* Forecast rain suppresses only when it's imminent AND real. A maybe-shower three days out must
+     never cost the lawn three dry days — that was the thing that felt wrong. */
+  else if(havewx && rainTomorrow >= rules.rainSkip){ water.text=`Holding off — ~${rainTomorrow.toFixed(2)}" of rain expected tomorrow`; water.hard=true; }
   else if(!sprinkleDayOK){ const nx=nextSprinkleDate(); water.text=`City rule — ${LAWN_ADDR_PARITY} address sprinkles on ${LAWN_ADDR_PARITY} days only (today is the ${todayParity} ${ordinal(dom)})${nx?`; next ${nx}`:''}`; water.hard=true; }
-  else { water.text = `Time to water — ${LAWN_HOURS_NOTE}${dsWater===Infinity?'':` (last ${dsFmt(dsWater)})`}`; water.recommend=true; }
+  else { water.text = `Time to water${heatNote} — ${LAWN_HOURS_NOTE}${water.unknown?' · nothing logged yet, so this is a guess':` (last ${dsFmt(dsWater)})`}`; water.recommend=true; }
   // ── MOWING ── (rules live in mowVerdict so tomorrow's heads-up and the 7-day forecast match)
   const heat = lawnHeatWindow(rules.heatLimit, today);
   const when = off===0 ? 'today' : 'tomorrow';
   const v = mowVerdict({ dsMow, recentWet, rain3, heat, havewx });
-  const mow={ recommend:false, hard:false, unknown:false, override:!!log.overrideMow, text:'' };
+  const mow={ recommend:false, hard:false, unknown:(dsMow===Infinity), override:!!log.overrideMow, text:'' };
   if(mow.override){ mow.text='Mowing anyway (override)'; mow.recommend=true; }
-  else if(dsMow===Infinity){ mow.unknown=true; mow.text='No mow logged yet — when did you last mow?'; }   // see the watering note above
   else if(v.blocked==='soon'){ mow.text=`Last mowed ${dsFmt(dsMow)} — too soon`; }
   else if(v.blocked==='wet'){ mow.text='Wet conditions — don’t mow'; mow.hard=true; }
   else if(v.blocked==='hot'){ mow.text=`Too hot ${when} — don’t mow`; mow.hard=true; }
   else if(v.blocked==='wait'){ mow.text=`Last mowed ${dsFmt(dsMow)} — wait a day or two`; }
   else { mow.recommend=true;
     if(v.before!=null) mow.text=`Mow before ${fmtHour(v.before)} (before heat)`;
+    else if(mow.unknown) mow.text=`Mow ${when} — nothing logged yet, so this is a guess`;
     else if(v.overdue) mow.text=`Overdue — mow ${when} (8am–9pm)`;
     else mow.text=`Mow ${when} (8am–9pm)`;
   }
@@ -2503,9 +2515,9 @@ function mowForecast(){
   const rules = SEASON_RULES[lawnSeason(new Date())], num = v=>(v==null?0:+v);
   const P = dy.precipitation_sum||[], PP = dy.precipitation_probability_max||[];
   const ds0 = daysSinceLawn('mowed');
-  /* With no mow ever logged the interval has no anchor — every day would read "due", which is
-     exactly the daily nag this is meant to prevent. Say so instead of drawing a week of green. */
-  if(ds0===Infinity) return { days: [], next: null, unknown: true };
+  /* No mow ever logged → treat it as due (the strip's second pass keeps the days after it as a
+     cooldown, so this no longer paints a week of green) and flag the guess for the copy. */
+  const unknown = ds0===Infinity;
   /* Verdict for one forecast day. dsMow is passed in because the second pass below re-asks the
      question assuming the mow already happened. */
   const dayAt = (k, dsMow) => {
@@ -2522,19 +2534,19 @@ function mowForecast(){
      days. Re-ask each later day with the clock reset to that mow. (Without this the strip showed
      a solid week of 🚜 — the same "every day is due" bug the unknown guard above fixes.) */
   if(next) for(let k=next.k+1;k<days.length;k++){ const d = dayAt(k, k - next.k); if(d) days[k] = d; }
-  return { days, next };
+  return { days, next, unknown };
 }
 function mowDayLabel(iso, k){ return k===0?'today':k===1?'tomorrow':new Date(iso+'T00:00').toLocaleDateString('en-US',{weekday:'long'}); }
 /* The whole sentence, so the "nothing to say" cases read as sentences too — the callers used to
    prefix "Expect to mow " themselves, which produced "Expect to mow No clear window in…". */
 function mowExpectText(f){
   if(!f) return '';
-  if(f.unknown) return 'Log your last mow and the schedule starts from it.';
   if(!f.next) return 'No clear mowing window in the next 7 days — rain or heat blocks every day. Check back as the forecast moves.';
   const d = f.next, when = mowDayLabel(d.iso, d.k);
   const date = d.k>1 ? ` (${new Date(d.iso+'T00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})})` : '';
   const qual = d.before!=null ? ` — before ${fmtHour(d.before)}, ahead of the heat` : '';
-  return `Expect to mow <strong>${when}</strong>${date}${qual}`;
+  const guess = f.unknown ? ' — log your last mow to pin this down' : '';
+  return `Expect to mow <strong>${when}</strong>${date}${qual}${guess}`;
 }
 /* Per-day marker for the outlook strip. */
 function mowMark(d){
@@ -2557,7 +2569,7 @@ function mowOutlookHTML(){
     ${kicker('Mowing outlook')}
     <div style="font-size:13px;line-height:1.5;margin-top:6px">${ph('tractor','lead')}${mowExpectText(f)}</div>
     ${f.unknown ? '' : `<div style="display:flex;gap:3px;margin-top:12px;overflow-x:auto">${strip}</div>`}
-    <p class="muted" style="font-size:11px;margin-top:10px">${f.unknown?'Log your last mow (the card above, or the tappable history below) to start the schedule. Then this projects the same rules forward':'Projects the same rules forward'} — about a week between mows (day 5 when rain has pushed growth), no mowing on wet grass, and the ${SEASON_RULES[lawnSeason(new Date())].heatLimit?`${SEASON_RULES[lawnSeason(new Date())].heatLimit}°F`:'heat'} window. Rain in the forecast moves it, so check the day before.</p>
+    <p class="muted" style="font-size:11px;margin-top:10px">Projects the same rules forward — about a week between mows (day 5 when rain has pushed growth), no mowing on wet grass, and the ${SEASON_RULES[lawnSeason(new Date())].heatLimit?`${SEASON_RULES[lawnSeason(new Date())].heatLimit}°F`:'heat'} window. Rain in the forecast moves it, so check the day before.</p>
   </div>`;
 }
 /* Write one day's lawn log. `iso` is any past date — forgetting to tap the button on the day is the
@@ -2638,22 +2650,23 @@ function cLawnCard(full){
   /* Lead time to prep the mower. Skipped when mowing is already today's job (or already done) —
      the block above says it better. */
   const sep = 'margin-top:12px;padding-top:12px;border-top:1px solid var(--border-3)';
+  /* The anchor row — offered whenever nothing has ever been logged. It rides ALONG with the
+     recommendation now; the earlier version showed this INSTEAD of the recommendation, which is how
+     a lawn that hadn't been watered in a week ended up hearing nothing at all. */
+  const anchor=(action)=>`<div class="muted" style="font-size:11px;margin-top:10px">Last done:
+      <span class="row" style="display:inline-flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        ${[['Today',0],['Yesterday',1],['2 days ago',2],['3 days ago',3]].map(([l,n])=>
+          `<button class="btn btn-ghost btn-sm" style="min-width:70px" onclick="setLawnDaysAgo('${action}',${n})">${l}</button>`).join('')}
+      </span></div>`;
   /* Full block — the task is due (or the Lawn tab asked for everything). */
-  const block=(label,r,which,since,doneLabel,btnLabel)=> `<div style="${sep}">
+  const block=(label,r,which,since,doneLabel,btnLabel,action,cadence)=> `<div style="${sep}">
       <div style="font-size:13px;line-height:1.5">${ph(r.override?'warning':(r.recommend?'check-circle':'pause'),'lead')}<strong>${label}:</strong> ${esc(r.text)}</div>
-      <div class="muted" style="font-size:11px;margin-top:3px">Last ${since}</div>
+      <div class="muted" style="font-size:11px;margin-top:3px">${r.unknown?'No history yet':'Last '+since}${cadence?' · '+cadence:''}</div>
       <div class="row" style="gap:8px;margin-top:10px">
         <button class="btn ${log[which.log]?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('${which.log}')">${log[which.log]?`${ph('check')}${doneLabel}`:btnLabel}</button>
         <button class="btn btn-ghost btn-sm" onclick="toggleLawnOverride('${which.ov}')">${r.override?`${ph('arrow-u-up-left')}Undo override`:'Override'}</button>
       </div>
-    </div>`;
-  /* Ask block — nothing ever logged, so the schedule has no anchor. One tap sets it. */
-  const ask=(label,r,action)=>`<div style="${sep}">
-      <div style="font-size:13px;line-height:1.5">${ph('clock-counter-clockwise','lead')}<strong>${label}:</strong> ${esc(r.text)}</div>
-      <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap">
-        ${[['Today',0],['Yesterday',1],['2 days ago',2],['3 days ago',3]].map(([l,n])=>
-          `<button class="btn btn-ghost btn-sm" style="flex:1;min-width:74px" onclick="setLawnDaysAgo('${action}',${n})">${l}</button>`).join('')}
-      </div>
+      ${r.unknown?anchor(action):''}
     </div>`;
   /* Muted line — not due. Says why, and when it next will be, without taking over the card. This is
      the whole answer to "it stopped telling me about watering": the task is still on screen, just
@@ -2663,15 +2676,15 @@ function cLawnCard(full){
       ${next && next.k===1 ? '<div style="font-size:12px;margin-top:4px;color:var(--warm-fg);font-weight:600">Get it ready tonight — gas, blade, yard clear.</div>' : ''}
     </div>`;
   const mowNext = (()=>{ const g=mowForecast(); return g && g.next && g.next.k>0 ? { k:g.next.k, label: mowDayLabel(g.next.iso, g.next.k) } : null; })();
-  const row=(label,icon,r,which,since,doneLabel,btnLabel,next,action)=>
-    r.unknown ? ask(label, r, action)
-    : (full || r.recommend) ? block(label, r, which, since, doneLabel, btnLabel)
+  const waterCadence = st.water.heat ? 'every allowed day while it’s 90°F+' : `every ~${st.water.every} days in ${st.season}`;
+  const row=(label,icon,r,which,since,doneLabel,btnLabel,next,action,cadence)=>
+    (full || r.recommend || r.unknown) ? block(label, r, which, since, doneLabel, btnLabel, action, cadence)
     : quiet(label, icon, r, next);
   return `<div class="card">
     ${full ? kicker('Lawn · '+st.season)
            : `<div class="row" style="cursor:pointer" onclick="goSub('care','lawn')">${kicker('Lawn · '+st.season)}<span class="muted">Lawn →</span></div>`}
-    ${row('Watering','💧', st.water, {log:'watered', ov:'water'}, dsWithDate(st.dsWater), 'Watered', 'Mark watered', nextDueDay('water'), 'watered')}
-    ${row('Mowing',  '🚜', st.mow,   {log:'mowed',   ov:'mow'},   dsWithDate(st.dsMow),   'Mowed',   'Mark mowed',   mowNext,               'mowed')}
+    ${row('Watering','💧', st.water, {log:'watered', ov:'water'}, dsWithDate(st.dsWater), 'Watered', 'Mark watered', nextDueDay('water'), 'watered', waterCadence)}
+    ${row('Mowing',  '🚜', st.mow,   {log:'mowed',   ov:'mow'},   dsWithDate(st.dsMow),   'Mowed',   'Mark mowed',   mowNext,               'mowed',   'about a week between mows')}
     ${asks?`<div class="muted" style="font-size:11px;margin-top:10px">Further back than 3 days? ${full?'Use the date picker with the history below.':'Care → Lawn has a date picker and a tappable 2-week history.'}</div>`:''}
     ${st.water.recommend||full?`<div class="muted" style="font-size:11px;margin-top:10px">SLP ordinance: ${LAWN_ADDR_PARITY} address → sprinkle on ${LAWN_ADDR_PARITY} calendar days, never noon–6pm.</div>`:''}
   </div>`;
@@ -2724,13 +2737,12 @@ function viewLawn(){
       <div style="font-size:10px;color:var(--chart);min-height:13px">${num(PP[idx])>=20?num(PP[idx])+'%':''}</div>
     </div>`;
   }).join('');
-  const recent=num(P[ti-1])+num(P[ti]), next2=num(P[ti+1])+num(P[ti+2]);
   let rainTxt='No significant rain in the 7-day forecast.';
   for(let k=0;k<7;k++){ const idx=ti+k; if(num(PP[idx])>=50 || num(P[idx])>=0.1){ rainTxt=`Rain likely <strong>${dayLabel(k,idx)}</strong>${num(PP[idx])?` (${num(PP[idx])}% chance, ~${num(P[idx]).toFixed(2)}")`:''}.`; break; } }
-  let water;
-  if(recent+next2>=0.5) water=`Skip it — about ${(recent+next2).toFixed(1)}" of rain around now should cover the lawn.`;
-  else if(num(HI[ti])>=85) water=`Water early morning — hot and dry, with little rain coming.`;
-  else water=`Light watering if the soil's dry — only ~${(recent+next2).toFixed(2)}" of rain expected.`;
+  /* The static "Watering" guidance card that used to live here reasoned off FORECAST rain
+     ("Skip it — 0.5" of rain around now") while the scheduler above reasons off rain that has
+     actually fallen. Two contradictory watering answers on one screen; the scheduler is the one
+     with the interval, the ordinance and the heat rule, so this one is gone. */
   let fert, lightK=-1, heavy=false;
   for(let k=1;k<=3;k++){ const s=num(P[ti+k]); if(s>0.8) heavy=true; if(lightK<0 && s>=0.1 && s<=0.6) lightK=k; }
   if(lightK>0) fert=`Good window — light rain ${lightK===1?'tomorrow':'in '+lightK+' days'} will water it in.`;
@@ -2749,7 +2761,6 @@ function viewLawn(){
     ${mowOutlookHTML()}
     <h2 style="margin-top:20px">Forecast guidance</h2>
     ${card('umbrella','Rain', rainTxt)}
-    ${card('drop','Watering', water)}
     ${card('plant','Fertilizer', fert)}
     ${lawnSeason(new Date()) ? lawnHistory() : ''}
     <p class="muted" style="text-align:center;font-size:11px">Guidance blends hardcoded cool-season rules with the live forecast — use your judgment. Updated ${new Date(wx.at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}.</p>`;
