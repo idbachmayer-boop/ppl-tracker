@@ -795,21 +795,33 @@ function e1rm(w,r){ w=+w; r=+r; if(!w||!r) return 0; return w*(1+r/30); }
    so they keep falling back to the old regex. Deliberately absent: Seated OHP (often a machine)
    and Meadows row (landmine — loaded on one sleeve, so per-side math doesn't describe it). */
 const BARBELL_LB = 45, PLATES_LB = [45,25,10,5,2.5];
-const BAR_LB = { straight:45, ez:25 };
+/* `sled` = plate-loaded machine (leg press): plates go on per side with no bar, and the carriage's
+   own weight varies by machine, so it isn't counted. Bar weight 0 is meaningful, not missing —
+   every lookup below tests `!= null` rather than truthiness, or a sled would fall through. */
+const BAR_LB = { straight:45, ez:25, sled:0 };
 const BAR_FOR = {
   "Barbell bench press":'straight', "Barbell incline press":'straight', "Standing OHP":'straight',
   "Back squat":'straight',          "Front squat":'straight',          "Romanian deadlift":'straight',
   "Stiff-leg deadlift":'straight',  "Good mornings":'straight',        "Barbell row":'straight',
   "Barbell curl":'straight',        "EZ-bar curl":'ez',                "Skull crusher":'ez',
+  "Leg press":'sled',               "Hack squat":'sled',
 };
-const barWeight = name => BAR_LB[BAR_FOR[name]] || (/barbell/i.test(name||'') ? BAR_LB.straight : null);
+const barWeight = name => { const b=BAR_LB[BAR_FOR[name]]; return b!=null ? b : (/barbell/i.test(name||'') ? BAR_LB.straight : null); };
 const isBarbell = name => barWeight(name) != null;
-function plateBreakdown(total, bar){ bar=bar||BARBELL_LB; let perSide=(+total-bar)/2; const out=[]; if(perSide<0) return null;
+function plateBreakdown(total, bar){ bar = bar!=null ? bar : BARBELL_LB; let perSide=(+total-bar)/2; const out=[]; if(perSide<0) return null;
   PLATES_LB.forEach(p=>{ while(perSide >= p-1e-9){ out.push(p); perSide=+(perSide-p).toFixed(2); } }); return { plates:out, leftover:perSide }; }
 function platesText(total, bar){
-  bar = bar || BARBELL_LB;
+  bar = bar!=null ? bar : BARBELL_LB;
   if(total===''||total==null||DB.unit!=='lb') return '';
-  const t=+total; if(t===bar) return `🏋️ Just the ${bar} lb bar`;
+  const t=+total;
+  if(bar===0){
+    const b=plateBreakdown(t, 0); if(!b || !b.plates.length) return '';
+    const g={}; b.plates.forEach(p=>g[p]=(g[p]||0)+1);
+    return `🏋️ Per side: ${Object.keys(g).sort((a,c)=>c-a).map(p=>`${g[p]}×${p}`).join(' + ')}` +
+           `${b.leftover>0.01?` <span style="color:var(--warm-fg)">(+${b.leftover} can't load)</span>`:''}` +
+           ` <span class="muted">— plates only, sled not counted</span>`;
+  }
+  if(t===bar) return `🏋️ Just the ${bar} lb bar`;
   const b=plateBreakdown(t, bar); if(!b) return `🏋️ Under bar weight (${bar} lb)`;
   const grp={}; b.plates.forEach(p=>grp[p]=(grp[p]||0)+1);
   const str=Object.keys(grp).sort((a,c)=>c-a).map(p=>`${grp[p]}×${p}`).join(' + ');
@@ -851,17 +863,31 @@ function repHint(i,k){
   if(last>=rng.hi) return '='+rng.hi;               // last set was at the top → match it, don't exceed the cap
   return '≥'+last;
 }
-/* Badge cell status: out-of-range (↑ over / ↓ under) takes priority, else the "beat last" mark (✓/=). */
+/* Badge cell status. Two independent signals were fighting and the range one always won: a set
+   below the range returned ↓ BEFORE the beat-last-time check ever ran. On a 15-rep lunge slot done
+   at bodyweight, 7 reps and then 8 reps both read ↓ — so real progress looked like a regression.
+   Now progress wins the GLYPH (✓ beat / = tied) and the range only sets the COLOR, so an
+   improvement still under target reads "✓" in the under-range tone. A bare ↑/↓ shows only when
+   there's no progress to report. Returns [glyph, class, title]. */
 function setStatus(i,k){
-  const st=DB.draft.entries[i].sets[k]; if(st.r==='') return ['',''];
+  const st=DB.draft.entries[i].sets[k]; if(st.r==='') return ['','',''];
   const rng=effRange(PROGRAM[DB.draft.workout].slots[i], DB.draft.entries[i].name), r=+st.r;
-  if(r>rng.hi) return ['↑','over'];
-  if(r<rng.lo) return ['↓','under'];
-  return badgeState(st, targetSet(i,k));
+  const range = r>rng.hi ? 'over' : r<rng.lo ? 'under' : '';
+  const rangeNote = range==='over' ? ` (over the ${rng.lo}–${rng.hi} target)`
+                  : range==='under' ? ` (still under the ${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''} target)` : '';
+  const tgt=targetSet(i,k), [glyph,cls]=badgeState(st, tgt);
+  if(glyph){
+    const was = tgt ? fmtSet(tgt.w, tgt.r) : '';
+    return [glyph, range || cls, (cls==='beat'?'Beat last time':'Matched last time') + (was?` (${was})`:'') + rangeNote];
+  }
+  if(range==='over') return ['↑','over','Over the target rep range'];
+  if(range==='under') return ['↓','under','Under the target rep range'+(tgt?` — last time ${fmtSet(tgt.w,tgt.r)}`:'')];
+  return ['','',''];
 }
 function updTargetBadge(i,k){
   const rEl=document.getElementById(`r-${i}-${k}`); if(rEl) rEl.placeholder=repHint(i,k);
-  const el=document.getElementById(`tgt-${i}-${k}`); if(!el) return; const [t,c]=setStatus(i,k); el.textContent=t; el.className='tgt-badge '+c;
+  const el=document.getElementById(`tgt-${i}-${k}`); if(!el) return;
+  const [t,c,title]=setStatus(i,k); el.textContent=t; el.className='tgt-badge '+c; el.title=title||'';
 }
 /* Stall = no new best e1RM in the last 3 real (non-deload) sessions of THIS exercise in THIS
    workout+slot. Scoping to the slot is critical: the same exercise is trained at different rep
@@ -916,10 +942,27 @@ function exerciseSeries(name){
    an old set on reps alone is progress the ✓ badge already marks — it isn't a trophy. Bodyweight
    sets (blank or 0) can't PR by definition, since there's no load to raise. */
 const setLoad = x => (x.w===''||x.w==null) ? 0 : +x.w;
+/* The rep range each logged exercise was performed under, keyed by the entry object: main entries
+   take their slot's range (including the per-exercise override, e.g. Goblet squat 12–15),
+   accessories take their ACCESSORIES range. NULL when the workout or slot can't be resolved
+   (legacy rows, a renamed program) — callers must read null as "no constraint" so a lookup miss
+   never silently revokes an old trophy. */
+function sessionRanges(s){
+  const out = new Map();
+  const slots = (PROGRAM[s.workout] && PROGRAM[s.workout].slots) || null;
+  (s.entries||[]).forEach((e,i)=>{ const slot = slots && slots[i]; out.set(e, slot ? effRange(slot, e.name) : null); });
+  if(s.extras) Object.keys(s.extras).forEach(id=>{ const e=s.extras[id]; if(!e || !e.name || !e.sets || !e.sets.length) return;
+    const a=ACCESSORIES[id]; out.set(e, a ? {lo:a.lo, hi:a.hi} : null); });
+  return out;
+}
+/* A PR has to be real work, not a heavy single: the trophy set must land inside the prescribed rep
+   range. Other sets that session are irrelevant — a backoff set never costs you the PR. */
+const prEligible = (rng, x) => !rng || (+x.r >= rng.lo && +x.r <= rng.hi);
 function exercisePRs(){
   const map={};
-  liveSessions().forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{
-    e.sets.forEach(x=>{ if(x.skipped || x.r==='') return; const v=setLoad(x); if(v>0 && (!map[e.name] || v>map[e.name].v)) map[e.name]={v, w:x.w, r:x.r, date:s.date}; }); }); });
+  liveSessions().forEach(s=>{ if(s.skipped) return; const rngs=sessionRanges(s); sessionExercises(s).forEach(e=>{
+    const rng=rngs.get(e);
+    e.sets.forEach(x=>{ if(x.skipped || x.r==='' || !prEligible(rng,x)) return; const v=setLoad(x); if(v>0 && (!map[e.name] || v>map[e.name].v)) map[e.name]={v, w:x.w, r:x.r, date:s.date}; }); }); });
   return Object.entries(map).map(([name,d])=>({name,...d})).sort((a,b)=>b.v-a.v);
 }
 /* Which individual sets were PRs, resolved live by replaying every session in date order against a
@@ -930,11 +973,11 @@ function exercisePRs(){
 function prSetIndex(){
   const best={}, bySession=new Map();
   liveSessions().forEach(s=>{ if(s.skipped) return;
-    const marks=new Set();
+    const marks=new Set(), rngs=sessionRanges(s);
     sessionExercises(s).forEach(e=>{
-      let topV=0, topK=-1;
+      let topV=0, topK=-1; const rng=rngs.get(e);
       e.sets.forEach((x,k)=>{
-        if(x.skipped || x.r==='') return;
+        if(x.skipped || x.r==='' || !prEligible(rng,x)) return;   // same gate as exercisePRs — these two must never disagree
         const v=setLoad(x); if(v>topV){ topV=v; topK=k; }
       });
       if(topV>0 && (best[e.name]==null || topV>best[e.name])){
@@ -1441,12 +1484,12 @@ function viewActive(){
                  `<option value="__custom">+ Custom…</option>`;
     const setRows = entry.sets.map((st,k)=>{
       if(st.skipped) return `<div class="skip-note"><span>${ph('skip-forward','lead')}Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipSet(${i},${k})">Undo</button></div>`;
-      const [bt,bc] = setStatus(i,k);
+      const [bt,bc,btitle] = setStatus(i,k);
       return `<div class="set-grid">
         <span class="set-no">${k+1}</span>
         <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value);updTargetBadge(${i},${k});updPlates(${i})" onchange="rollWeight(${i},${k},this.value)">
         <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="${repHint(i,k)}" value="${st.r}" oninput="setVal(${i},${k},'r',this.value);updTargetBadge(${i},${k})" onchange="repCheck(${i},${k})">
-        <span id="tgt-${i}-${k}" class="tgt-badge ${bc}">${bt}</span>
+        <span id="tgt-${i}-${k}" class="tgt-badge ${bc}" title="${esc(btitle||'')}">${bt}</span>
         <button class="skip-set" onclick="skipSet(${i},${k})" title="skip this set">${ph('skip-forward')}</button>
         <button class="x-set" onclick="rmSet(${i},${k})" title="remove set">${ph('x')}</button>
       </div>`;
@@ -1608,11 +1651,17 @@ function toggleWarm(i){
   const plates = t => { const s = bar==null ? '' : platesText(t, bar); return s ? `<div class="warm-plates">${s}</div>` : ''; };
   const rung = (label, target, reps) => `<div><span>${label}${plates(target)}</span><span>${reps}</span></div>`;
   const w50 = round5(w*0.5), w75 = round5(w*0.75);
+  /* There is no bar on a dumbbell or kettlebell lift — a goblet squat's first rung is your own
+     bodyweight, and the loads round to the nearest 5 lb (bells jump further; take the nearest). */
+  const first = bar > 0 ? `<div><span>Empty bar — ${bar} ${DB.unit}</span><span>a few reps</span></div>`
+              : bar === 0 ? `<div><span>Empty sled — no plates</span><span>a few reps</span></div>`
+              : `<div><span>Bodyweight — no load</span><span>5–10 reps</span></div>`;
   box.innerHTML = `
-    <div><span>${bar!=null ? `Empty bar — ${bar} ${DB.unit}` : 'Empty bar / light'}</span><span>a few reps</span></div>
+    ${first}
     ${rung(`~50% — ${w50} ${DB.unit}`, w50, '3–4 reps')}
     ${rung(`~75% — ${w75} ${DB.unit}`, w75, '2–3 reps')}
-    ${rung(`<strong>Working — ${w} ${DB.unit}</strong>`, w, 'per plan')}`;
+    ${rung(`<strong>Working — ${w} ${DB.unit}</strong>`, w, 'per plan')}
+    ${bar==null ? '<div class="muted" style="font-size:11px;padding-top:4px">Rounded to 5 lb — with kettlebells, take the nearest bell.</div>' : ''}`;
 }
 function finishWorkout(){
   const d = DB.draft;
@@ -1641,7 +1690,9 @@ function finishWorkout(){
   // Only drives the save-time toast — everything on screen re-derives PRs from prSetIndex().
   let prs=[];
   if(!hist){
-    sessionExercises(sess).forEach(e=>{ let best=0; e.sets.forEach(z=>{ if(!z.skipped && z.r!==''){ const v=setLoad(z); if(v>best) best=v; } });
+    const rngs=sessionRanges(sess);
+    sessionExercises(sess).forEach(e=>{ let best=0; const rng=rngs.get(e);
+      e.sets.forEach(z=>{ if(!z.skipped && z.r!=='' && prEligible(rng,z)){ const v=setLoad(z); if(v>best) best=v; } });
       if(best>0 && best>(prior[e.name]||0)) prs.push({name:e.name, v:best, prev:prior[e.name]||0}); });
     if(prs.length) sess.prs = prs.map(p=>p.name);
   }
@@ -2394,6 +2445,15 @@ const SEASON_RULES = {
 };
 /* heatLimit = don't MOW above this (hourly scan). heatWater = a forecast high at or above this
    tightens WATERING to every allowed day — cool-season grass is what's at risk in a 95°F stretch. */
+/* Cool-season grass wants ~1" of water a week, so each session targets 1" ÷ sessions-per-week —
+   and when heat tightens the interval, each session gets proportionally shorter, not longer.
+   0.5"/hr is a typical oscillating sprinkler; the tuna-can tip in the UI is how you check yours. */
+const LAWN_WEEK_INCHES = 1, SPRINKLER_IN_PER_HR = 0.5;
+function waterSession(everyDays){
+  const perWeek = 7 / Math.max(1, everyDays);
+  const inches = LAWN_WEEK_INCHES / perWeek;
+  return { inches, minutes: Math.max(5, Math.round(inches / SPRINKLER_IN_PER_HR * 60 / 5) * 5) };
+}
 function lawnSeason(date){ const m=date.getMonth()+1; for(const s in SEASON_RULES) if(SEASON_RULES[s].months.includes(m)) return s; return null; }
 /* St. Louis Park sprinkling ordinance: odd-numbered addresses may sprinkle only on odd calendar
    days (even → even), and no sprinkling noon–6pm. Ian's address ends odd. Exemptions (new sod/seed,
@@ -2423,25 +2483,48 @@ function lawnHeatWindow(limit, iso){
   if(firstHot<=8) return {status:'allhot'};          // already hot when the window opens
   return {status:'before', hour:firstHot};
 }
+/* Rain across a day's 8am–9pm mow window, read from the HOURLY forecast — the same field the
+   weather card's "rain ~1pm" line uses. The mow rule used to test only the daily roll-up (≥0.1" or
+   ≥50% chance), so a day with 0.09" falling over two afternoon hours at 45% showed "rain ~1pm" on
+   one card and "mow today" on the next. Same data, one answer now.
+   `allwet` = rain before the window opens or a soaking day; `before` = dry morning, rain later. */
+const MOW_RAIN_HOUR = 0.02, MOW_RAIN_DAY = 0.1, MOW_DRY_UNTIL = 10;
+function lawnRainWindow(iso){
+  const h=DB.wx && DB.wx.data && DB.wx.data.hourly;
+  if(!h || !h.time || !h.precipitation) return {status:'nowx'};
+  const day=iso||todayISO(); let firstWet=null, total=0, any=false;
+  for(let i=0;i<h.time.length;i++){ const t=h.time[i]; if(t.slice(0,10)!==day) continue;
+    const hr=+t.slice(11,13); if(hr<8||hr>21) continue; any=true;
+    const p=+h.precipitation[i]||0; total+=p;
+    if(p>=MOW_RAIN_HOUR && firstWet==null) firstWet=hr; }
+  if(!any) return {status:'nowx'};
+  if(firstWet==null) return {status:'none'};
+  /* A soaking day is a write-off whenever it lands; a morning shower leaves the grass wet all day. */
+  if(total>=MOW_RAIN_DAY || firstWet<MOW_DRY_UNTIL) return {status:'allwet', total};
+  return {status:'before', hour:firstWet, total};
+}
 /* ── The mow decision, in ONE place ──────────────────────────────────────────────────────────
    Today's card, tomorrow's heads-up and the 7-day "expect to mow" forecast all call this, so they
    can never drift apart (the forecast promising a day the card then refuses is the obvious failure
    mode). Precedence is deliberate: too-soon beats wet beats heat beats not-yet-due. `nowx` heat
    means we couldn't check the temperature — assume safe, as everywhere else offline. */
 function mowVerdict(o){
-  const heat = o.heat || {status:'none'};
+  const heat = o.heat || {status:'none'}, rain = o.rain || {status:'none'};
   const growthSpike = !!o.havewx && o.rain3 >= 0.5;      // ≥0.5" in 3 days → grass jumps, tighten to day 5
   const due = o.dsMow > 7 || (o.dsMow >= 5 && growthSpike);
   let blocked = null;
   if(o.dsMow < 5) blocked = 'soon';
-  else if(o.recentWet) blocked = 'wet';
+  else if(o.recentWet || rain.status==='allwet') blocked = 'wet';
   else if(heat.status === 'allhot') blocked = 'hot';
   else if(!due) blocked = 'wait';
+  /* Whichever cutoff comes first wins the day: beat the rain, or beat the heat. */
+  const cutoffs = [heat.status==='before' ? heat.hour : null, rain.status==='before' ? rain.hour : null].filter(h=>h!=null);
+  const before = cutoffs.length ? Math.min(...cutoffs) : null;
   /* "Overdue" needs a grace window. It used to be the same test as `due`, so the very first day
      mowing was recommended already shouted OVERDUE — which is most of what "it nags me every day"
      felt like. Two days past the trigger is genuinely late; before that it's just due. */
-  return { due, blocked, ok: blocked===null, growthSpike, overdue: o.dsMow > 9,
-           before: heat.status==='before' ? heat.hour : null };
+  return { due, blocked, ok: blocked===null, growthSpike, overdue: o.dsMow > 9, before,
+           beforeWhy: before==null ? null : (rain.status==='before' && rain.hour===before ? 'rain' : 'heat') };
 }
 /* The full recommendation object, computed fresh each render (this is what makes it adaptive).
    dayOffset shifts the whole calculation forward a day so the home card can answer "will I need to
@@ -2487,7 +2570,7 @@ function lawnStatus(dayOffset){
   // ── MOWING ── (rules live in mowVerdict so tomorrow's heads-up and the 7-day forecast match)
   const heat = lawnHeatWindow(rules.heatLimit, today);
   const when = off===0 ? 'today' : 'tomorrow';
-  const v = mowVerdict({ dsMow, recentWet, rain3, heat, havewx });
+  const v = mowVerdict({ dsMow, recentWet, rain3, heat, rain:lawnRainWindow(today), havewx });
   const mow={ recommend:false, hard:false, unknown:(dsMow===Infinity), override:!!log.overrideMow, text:'' };
   if(mow.override){ mow.text='Mowing anyway (override)'; mow.recommend=true; }
   else if(v.blocked==='soon'){ mow.text=`Last mowed ${dsFmt(dsMow)} — too soon`; }
@@ -2495,7 +2578,7 @@ function lawnStatus(dayOffset){
   else if(v.blocked==='hot'){ mow.text=`Too hot ${when} — don’t mow`; mow.hard=true; }
   else if(v.blocked==='wait'){ mow.text=`Last mowed ${dsFmt(dsMow)} — wait a day or two`; }
   else { mow.recommend=true;
-    if(v.before!=null) mow.text=`Mow before ${fmtHour(v.before)} (before heat)`;
+    if(v.before!=null) mow.text=`Mow before ${fmtHour(v.before)} (before the ${v.beforeWhy})`;
     else if(mow.unknown) mow.text=`Mow ${when} — nothing logged yet, so this is a guess`;
     else if(v.overdue) mow.text=`Overdue — mow ${when} (8am–9pm)`;
     else mow.text=`Mow ${when} (8am–9pm)`;
@@ -2524,7 +2607,7 @@ function mowForecast(){
     const idx = ti+k, iso = dy.time[idx]; if(!iso) return null;
     const rain3 = num(P[idx]) + num(P[idx-1]) + num(P[idx-2]);
     const recentWet = num(P[idx-1])>=0.1 || num(P[idx])>=0.1 || num(PP[idx])>=50;
-    const v = mowVerdict({ dsMow, recentWet, rain3, heat:lawnHeatWindow(rules.heatLimit, iso), havewx:true });
+    const v = mowVerdict({ dsMow, recentWet, rain3, heat:lawnHeatWindow(rules.heatLimit, iso), rain:lawnRainWindow(iso), havewx:true });
     return Object.assign({ iso, k, dsMow }, v);
   };
   const days = [];
@@ -2544,7 +2627,7 @@ function mowExpectText(f){
   if(!f.next) return 'No clear mowing window in the next 7 days — rain or heat blocks every day. Check back as the forecast moves.';
   const d = f.next, when = mowDayLabel(d.iso, d.k);
   const date = d.k>1 ? ` (${new Date(d.iso+'T00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})})` : '';
-  const qual = d.before!=null ? ` — before ${fmtHour(d.before)}, ahead of the heat` : '';
+  const qual = d.before!=null ? ` — before ${fmtHour(d.before)}, ahead of the ${d.beforeWhy}` : '';
   const guess = f.unknown ? ' — log your last mow to pin this down' : '';
   return `Expect to mow <strong>${when}</strong>${date}${qual}${guess}`;
 }
@@ -2676,7 +2759,8 @@ function cLawnCard(full){
       ${next && next.k===1 ? '<div style="font-size:12px;margin-top:4px;color:var(--warm-fg);font-weight:600">Get it ready tonight — gas, blade, yard clear.</div>' : ''}
     </div>`;
   const mowNext = (()=>{ const g=mowForecast(); return g && g.next && g.next.k>0 ? { k:g.next.k, label: mowDayLabel(g.next.iso, g.next.k) } : null; })();
-  const waterCadence = st.water.heat ? 'every allowed day while it’s 90°F+' : `every ~${st.water.every} days in ${st.season}`;
+  const ws = waterSession(st.water.every);
+  const waterCadence = `${st.water.heat ? 'every allowed day while it’s 90°F+' : `every ~${st.water.every} days in ${st.season}`} · ~${ws.minutes} min (~${ws.inches.toFixed(2)}")`;
   const row=(label,icon,r,which,since,doneLabel,btnLabel,next,action,cadence)=>
     (full || r.recommend || r.unknown) ? block(label, r, which, since, doneLabel, btnLabel, action, cadence)
     : quiet(label, icon, r, next);
@@ -2686,6 +2770,7 @@ function cLawnCard(full){
     ${row('Watering','💧', st.water, {log:'watered', ov:'water'}, dsWithDate(st.dsWater), 'Watered', 'Mark watered', nextDueDay('water'), 'watered', waterCadence)}
     ${row('Mowing',  '🚜', st.mow,   {log:'mowed',   ov:'mow'},   dsWithDate(st.dsMow),   'Mowed',   'Mark mowed',   mowNext,               'mowed',   'about a week between mows')}
     ${asks?`<div class="muted" style="font-size:11px;margin-top:10px">Further back than 3 days? ${full?'Use the date picker with the history below.':'Care → Lawn has a date picker and a tappable 2-week history.'}</div>`:''}
+    ${st.water.recommend||full?`<div class="muted" style="font-size:11px;margin-top:10px">Timing assumes a ~${SPRINKLER_IN_PER_HR}"/hr sprinkler — set a tuna can on the lawn once and time how long it takes to fill ½" to check yours.</div>`:''}
     ${st.water.recommend||full?`<div class="muted" style="font-size:11px;margin-top:10px">SLP ordinance: ${LAWN_ADDR_PARITY} address → sprinkle on ${LAWN_ADDR_PARITY} calendar days, never noon–6pm.</div>`:''}
   </div>`;
 }
