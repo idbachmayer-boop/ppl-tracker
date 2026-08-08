@@ -338,7 +338,7 @@ const PROGRAM = {
     ex("Triceps","Overhead extension",3,12,15,["Skull crusher","Overhead triceps extension"]),
   ]},
   "LEGS 1": { group:"legs", slots:[
-    ex("Quads","Squat",3,5,8,["Back squat","Front squat","Goblet squat"],"DB-only: goblet squat 12–15",{"Goblet squat":[12,15]}),
+    ex("Quads","Squat",3,5,8,["Back squat","Front squat","Deficit sumo squat"],"DB-only: deficit sumo squat 12–15",{"Deficit sumo squat":[12,15]}),
     ex("Quads","Isolation",3,8,12,["Leg extensions","Leg press","Hack squat","Bulgarian split squat"]),
     ex("Hamstrings","Hip hinge",3,8,12,["Romanian deadlift","Stiff-leg deadlift","Good mornings"]),
     ex("Glutes","Lunges",3,15,15,["Lunges","Glute kickbacks"],"each leg"),
@@ -348,7 +348,7 @@ const PROGRAM = {
   "LEGS 2": { group:"legs", slots:[
     ex("Hamstrings","Hip hinge",3,8,12,["Romanian deadlift","Stiff-leg deadlift","Good mornings"]),
     ex("Hamstrings","Hamstring curl",3,12,15,["Machine hamstring curl","Nordic hamstring curl"]),
-    ex("Quads","Squat",3,8,12,["Back squat","Front squat","Goblet squat"],"DB-only: goblet squat 12–15",{"Goblet squat":[12,15]}),
+    ex("Quads","Squat",3,8,12,["Back squat","Front squat","Deficit sumo squat"],"DB-only: deficit sumo squat 12–15",{"Deficit sumo squat":[12,15]}),
     ex("Quads","Isolation",3,12,15,["Leg extensions","Leg press","Hack squat","Bulgarian split squat"]),
     ex("Glutes","Lunges",3,15,15,["Lunges","Glute kickbacks"],"each leg"),
     ex("Calves","Calf raise",3,15,30,["Calf raise machine","Plate/stair raise"]),
@@ -364,7 +364,7 @@ const PROGRAM = {
   "PULL 2": { group:"pull", slots:[
     ex("Biceps","Normal curl",3,8,12,["Barbell curl","EZ-bar curl","DB curl"]),
     ex("Back","Horizontal pull",3,5,8,["Barbell row","Dumbbell row"]),
-    ex("Back","Horizontal pull",3,8,12,["Meadows row","Seated cable row","One-arm DB row"]),
+    ex("Back","Horizontal pull",3,8,12,["Meadows row","T-bar row","Seated cable row","One-arm DB row"]),
     ex("Back","Vertical pull",3,8,12,["Pull-up","Chin-up","Lat pulldown","DB pullover"]),
     ex("Biceps","Peak curl",3,12,15,["Concentration curl","Preacher curl"]),
     ex("Rear delts","Rear delt",5,15,20,["Rear delt fly","Reverse pec deck","Face pull"]),
@@ -383,7 +383,7 @@ const PROGRAM = {
     ex("Back","Vertical pull",3,8,12,["Pull-up","Chin-up","Lat pulldown","DB pullover"]),
     ex("Back","Horizontal pull",3,8,12,["Barbell row","Dumbbell row"]),
     ex("Back","Vertical pull",3,12,15,["Straight-arm pulldown","DB pullover"]),
-    ex("Back","Horizontal pull",3,12,15,["Meadows row","Seated cable row","One-arm DB row"]),
+    ex("Back","Horizontal pull",3,12,15,["Meadows row","T-bar row","Seated cable row","One-arm DB row"]),
   ]},
   "SPECIALIZED — SHOULDERS": { group:"push", slots:[
     ex("Shoulders","Overhead press",5,5,8,["Standing OHP","Seated OHP","DB shoulder press"]),
@@ -396,7 +396,7 @@ const PROGRAM = {
     ex("Biceps","Peak curl",3,12,15,["Concentration curl","Preacher curl"]),
   ]},
   "SPECIALIZED — LEGS": { group:"legs", slots:[
-    ex("Quads","Squat",3,5,8,["Back squat","Front squat","Goblet squat"],"DB-only: goblet squat 12–15",{"Goblet squat":[12,15]}),
+    ex("Quads","Squat",3,5,8,["Back squat","Front squat","Deficit sumo squat"],"DB-only: deficit sumo squat 12–15",{"Deficit sumo squat":[12,15]}),
     ex("Hamstrings","Hip hinge",3,8,12,["Romanian deadlift","Stiff-leg deadlift","Good mornings"]),
     ex("Quads","Isolation",3,12,15,["Leg extensions","Leg press","Hack squat","Bulgarian split squat"]),
     ex("Hamstrings","Hamstring curl",3,12,15,["Machine hamstring curl","Nordic hamstring curl"]),
@@ -471,7 +471,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 14;
+const SCHEMA = 15;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -505,7 +505,16 @@ const MIGRATIONS = {
      ReferenceError here would be swallowed by the silent catch below while _schema still advances,
      permanently skipping the migration. */
   13:d=>{ if(typeof d.gen!=='number') d.gen=0; return d; },
-  14:d=>{ if(!Array.isArray(d.petWeights)) d.petWeights=[]; if(typeof d.petName!=='string') d.petName='Freddie'; return d; } // daily cat weigh-in
+  14:d=>{ if(!Array.isArray(d.petWeights)) d.petWeights=[]; if(typeof d.petName!=='string') d.petName='Freddie'; return d; }, // daily cat weigh-in
+  /* Goblet squat → Deficit sumo squat: the same slot and the same 12–15 target, renamed. Rewriting
+     the logged name (and nothing else) keeps one continuous strength line and one PR history
+     instead of splitting the movement in two. Name-only and idempotent. */
+  15:d=>{
+    const ren = e => { if(e && e.name==='Goblet squat') e.name='Deficit sumo squat'; };
+    (d.sessions||[]).forEach(s=>{ (s.entries||[]).forEach(ren); if(s.extras) Object.keys(s.extras).forEach(k=>ren(s.extras[k])); });
+    if(d.draft){ (d.draft.entries||[]).forEach(ren); if(d.draft.extras) Object.keys(d.draft.extras).forEach(k=>ren(d.draft.extras[k])); }
+    return d;
+  }
 };
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
 function normalize(raw){
@@ -635,7 +644,7 @@ const round5 = n => Math.max(0, Math.round(n/5)*5);
 const accClass = g => g==='push'?'acc-push':g==='legs'?'acc-legs':'acc-pull';
 const barClass = g => g==='push'?'acc-bar-push':g==='legs'?'acc-bar-legs':'acc-bar-pull';
 const rangeText = s => s.lo===s.hi ? `${s.lo}${s.note==='each leg'?'/leg':''}` : `${s.lo}–${s.hi}`;
-/* Per-exercise rep-range override (e.g. Goblet squat → 12–15). Falls back to the slot's range. */
+/* Per-exercise rep-range override (e.g. Deficit sumo squat → 12–15). Falls back to the slot's range. */
 function effRange(slot, name){ const o = slot.overrides && slot.overrides[name]; return o ? {lo:o[0],hi:o[1],note:slot.note} : {lo:slot.lo,hi:slot.hi,note:slot.note}; }
 /* Rest-time guidance keyed off the TOP of the effective rep range (heavier/low-rep = rest longer).
    These are sensible defaults (NOT from the Bodybuilding Simplified source, which doesn't prescribe
@@ -792,46 +801,69 @@ function e1rm(w,r){ w=+w; r=+r; if(!w||!r) return 0; return w*(1+r/30); }
    Which exercises take a bar is an explicit table rather than a name match — "Standing OHP",
    "Back squat" and both deadlifts are barbell lifts that contain no "barbell" in their name, and
    a name match silently skipped every one of them. Custom names you type in aren't in the table,
-   so they keep falling back to the old regex. Deliberately absent: Seated OHP (often a machine)
-   and Meadows row (landmine — loaded on one sleeve, so per-side math doesn't describe it). */
+   so they keep falling back to the old regex. Deliberately absent: Seated OHP (often a machine). */
 const BARBELL_LB = 45, PLATES_LB = [45,25,10,5,2.5];
-/* `sled` = plate-loaded machine (leg press): plates go on per side with no bar, and the carriage's
-   own weight varies by machine, so it isn't counted. Bar weight 0 is meaningful, not missing —
-   every lookup below tests `!= null` rather than truthiness, or a sled would fall through. */
-const BAR_LB = { straight:45, ez:25, sled:0 };
+/* Three loading styles, because "per side" is not universal:
+   - straight / ez  → a bar with two sleeves; plates split evenly, so (total − bar) / 2.
+   - sled           → plate-loaded machine (leg press): two sides, no bar, and the carriage's own
+                      weight varies by machine so it isn't counted. Bar weight 0 is MEANINGFUL, not
+                      missing — every lookup tests `!= null`, or a sled falls through to the regex.
+   - landmine       → T-bar / Meadows row: one sleeve. Plates are NOT halved (90 lb = 45 bar +
+                      one 45). Meadows row used to be excluded from the calculator entirely for
+                      exactly this reason; now it's described properly instead. */
+const BAR_LB = { straight:45, ez:25, sled:0, landmine:45 };
 const BAR_FOR = {
   "Barbell bench press":'straight', "Barbell incline press":'straight', "Standing OHP":'straight',
   "Back squat":'straight',          "Front squat":'straight',          "Romanian deadlift":'straight',
   "Stiff-leg deadlift":'straight',  "Good mornings":'straight',        "Barbell row":'straight',
   "Barbell curl":'straight',        "EZ-bar curl":'ez',                "Skull crusher":'ez',
   "Leg press":'sled',               "Hack squat":'sled',
+  "T-bar row":'landmine',           "Meadows row":'landmine',
 };
-const barWeight = name => { const b=BAR_LB[BAR_FOR[name]]; return b!=null ? b : (/barbell/i.test(name||'') ? BAR_LB.straight : null); };
+/* Name test for the landmine variants people type by hand ("T bar row", "Tbar row", "T-Bar Row"). */
+const LANDMINE_RE = /t-?\s?bar|meadows|landmine/i;
+function barStyle(name){
+  const s = BAR_FOR[name]; if(s) return s;
+  if(LANDMINE_RE.test(name||'')) return 'landmine';
+  if(/barbell/i.test(name||'')) return 'straight';
+  return null;
+}
+const barWeight = name => { const s=barStyle(name); return s ? BAR_LB[s] : null; };
 const isBarbell = name => barWeight(name) != null;
-function plateBreakdown(total, bar){ bar = bar!=null ? bar : BARBELL_LB; let perSide=(+total-bar)/2; const out=[]; if(perSide<0) return null;
-  PLATES_LB.forEach(p=>{ while(perSide >= p-1e-9){ out.push(p); perSide=+(perSide-p).toFixed(2); } }); return { plates:out, leftover:perSide }; }
-function platesText(total, bar){
+function plateBreakdown(total, bar, style){
+  bar = bar!=null ? bar : BARBELL_LB;
+  const sides = style==='landmine' ? 1 : 2;      // one sleeve → the plates are not halved
+  let side=(+total-bar)/sides; const out=[]; if(side<0) return null;
+  PLATES_LB.forEach(p=>{ while(side >= p-1e-9){ out.push(p); side=+(side-p).toFixed(2); } });
+  return { plates:out, leftover:side };
+}
+const plateGroups = plates => { const g={}; plates.forEach(p=>g[p]=(g[p]||0)+1);
+  return Object.keys(g).sort((a,c)=>c-a).map(p=>`${g[p]}×${p}`).join(' + '); };
+function platesText(total, bar, style){
   bar = bar!=null ? bar : BARBELL_LB;
   if(total===''||total==null||DB.unit!=='lb') return '';
   const t=+total;
+  const short = b => b.leftover>0.01 ? ` <span style="color:var(--warm-fg)">(+${b.leftover} can't load)</span>` : '';
+  if(style==='landmine'){
+    if(t===bar) return `🏋️ Just the ${bar} lb bar`;
+    const b=plateBreakdown(t, bar, style); if(!b) return `🏋️ Under bar weight (${bar} lb)`;
+    /* Wording deliberately differs from "Per side" — loading a landmine as if it were a barbell is
+       the mistake this is here to prevent. */
+    return `🏋️ On the sleeve: ${plateGroups(b.plates)}${short(b)} <span class="muted">+ ${bar} lb bar</span>`;
+  }
   if(bar===0){
-    const b=plateBreakdown(t, 0); if(!b || !b.plates.length) return '';
-    const g={}; b.plates.forEach(p=>g[p]=(g[p]||0)+1);
-    return `🏋️ Per side: ${Object.keys(g).sort((a,c)=>c-a).map(p=>`${g[p]}×${p}`).join(' + ')}` +
-           `${b.leftover>0.01?` <span style="color:var(--warm-fg)">(+${b.leftover} can't load)</span>`:''}` +
-           ` <span class="muted">— plates only, sled not counted</span>`;
+    const b=plateBreakdown(t, 0, style); if(!b || !b.plates.length) return '';
+    return `🏋️ Per side: ${plateGroups(b.plates)}${short(b)} <span class="muted">— plates only, sled not counted</span>`;
   }
   if(t===bar) return `🏋️ Just the ${bar} lb bar`;
-  const b=plateBreakdown(t, bar); if(!b) return `🏋️ Under bar weight (${bar} lb)`;
-  const grp={}; b.plates.forEach(p=>grp[p]=(grp[p]||0)+1);
-  const str=Object.keys(grp).sort((a,c)=>c-a).map(p=>`${grp[p]}×${p}`).join(' + ');
-  return `🏋️ Per side: ${str}${b.leftover>0.01?` <span style="color:var(--warm-fg)">(+${b.leftover} can't load)</span>`:''}`;
+  const b=plateBreakdown(t, bar, style); if(!b) return `🏋️ Under bar weight (${bar} lb)`;
+  return `🏋️ Per side: ${plateGroups(b.plates)}${short(b)}`;
 }
 /* Live plate readout for a barbell exercise → the heaviest weight entered across its sets. */
 function updPlates(i){ const el=document.getElementById(`plates-${i}`); if(!el) return;
-  const bar=barWeight(DB.draft.entries[i].name); if(bar==null){ el.innerHTML=''; return; }
+  const name=DB.draft.entries[i].name, bar=barWeight(name); if(bar==null){ el.innerHTML=''; return; }
   const ws=DB.draft.entries[i].sets.filter(s=>!s.skipped && s.w!=='' && +s.w>0).map(s=>+s.w);
-  el.innerHTML = ws.length ? platesText(Math.max(...ws), bar) : ''; }
+  el.innerHTML = ws.length ? platesText(Math.max(...ws), bar, barStyle(name)) : ''; }
 const INCREMENT = { lb:5, kg:2.5 };
 /* Should we bump the load, and to what? Uses the last real entry's worked sets. */
 function addWeightInfo(slot, ref, name){
@@ -943,7 +975,7 @@ function exerciseSeries(name){
    sets (blank or 0) can't PR by definition, since there's no load to raise. */
 const setLoad = x => (x.w===''||x.w==null) ? 0 : +x.w;
 /* The rep range each logged exercise was performed under, keyed by the entry object: main entries
-   take their slot's range (including the per-exercise override, e.g. Goblet squat 12–15),
+   take their slot's range (including the per-exercise override, e.g. Deficit sumo squat 12–15),
    accessories take their ACCESSORIES range. NULL when the workout or slot can't be resolved
    (legacy rows, a renamed program) — callers must read null as "no constraint" so a lookup miss
    never silently revokes an old trophy. */
@@ -1511,7 +1543,7 @@ function viewActive(){
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
         ${setRows}
         <button class="addset" onclick="addSet(${i})">+ Add set</button>
-        ${isBarbell(entry.name)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'', barWeight(entry.name))}</div>`:''}
+        ${isBarbell(entry.name)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'', barWeight(entry.name), barStyle(entry.name))}</div>`:''}
         ${i===0?`<div class="warm">
           <button class="warm-toggle" onclick="toggleWarm(${i})">${ph('fire')}Warm-up ramp</button>
           <div class="warm-table hidden" id="warm-${i}"></div>
@@ -1648,7 +1680,8 @@ function toggleWarm(i){
   /* Loading the bar is exactly when you want the plate breakdown, so each rung carries its own.
      Non-barbell lifts (and kg) fall through to the plain percentages. */
   const bar = barWeight(entry.name);
-  const plates = t => { const s = bar==null ? '' : platesText(t, bar); return s ? `<div class="warm-plates">${s}</div>` : ''; };
+  const style = barStyle(entry.name);
+  const plates = t => { const s = bar==null ? '' : platesText(t, bar, style); return s ? `<div class="warm-plates">${s}</div>` : ''; };
   const rung = (label, target, reps) => `<div><span>${label}${plates(target)}</span><span>${reps}</span></div>`;
   const w50 = round5(w*0.5), w75 = round5(w*0.75);
   /* There is no bar on a dumbbell or kettlebell lift — a goblet squat's first rung is your own
@@ -1917,9 +1950,18 @@ function viewWeight(){
   if(progSub==='pet') return viewPetWeight(sub);
   const lwv = liveWeights(); const w = lwv[lwv.length-1];
   const avg = currentAvg(), wd = avgWeekDelta();
+  /* Change over the selected range, with something to picture it as — the range buttons re-render,
+     so this follows 30d / 90d / 1y / All. Under a pound it stays quiet: that's scale noise. */
+  const rd = rangeDelta(), eq = rd ? weightEquivalent(rd.lbs, DB.unit) : null;
+  const rangeLbl = chartRange>=9999 ? 'all time' : chartRange===365 ? 'the last year' : `the last ${chartRange} days`;
+  const deltaLine = (rd && Math.abs(rd.lbs) >= (DB.unit==='kg'?0.5:1)) ? `<div style="margin-top:8px;font-size:13px;line-height:1.5">
+      <span style="font-weight:700;color:${rd.lbs<0?'var(--good)':'var(--muted)'}">${rd.lbs<0?'▼':'▲'} ${Math.abs(rd.lbs).toFixed(1)} ${DB.unit}</span>
+      <span class="muted">${rd.lbs<0?'down':'up'} over ${rangeLbl}${eq?` — ${eq}`:''}</span>
+    </div>` : '';
   const statCard = liveWeights().length ? `<div class="card">
       <div class="stat-big" style="font-size:28px">${avg!=null?avg.toFixed(1):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
       <div class="stat-sub">7-day average${wd!=null?` · <span class="muted">${wd>0?'▲':wd<0?'▼':'·'} ${Math.abs(wd).toFixed(1)} ${DB.unit} vs last week</span>`:''}${w?` · latest ${(+w.value).toFixed(1)}`:''}</div>
+      ${deltaLine}
     </div>` : '';
   return `
         <p class="subtitle">${liveWeights().length} weigh-ins · 7-day average trend</p>
@@ -2085,6 +2127,39 @@ function avgWeekDelta(){
   const cur=s[s.length-1], target=new Date(cur.date+'T00:00'); target.setDate(target.getDate()-7);
   let prev=null; for(let i=s.length-2;i>=0;i--){ if(new Date(s[i].date+'T00:00')<=target){ prev=s[i]; break; } }
   return prev ? cur.value-prev.value : null; // only once there's ~a week of history
+}
+/* Change across whatever range the chart is showing (30d / 90d / 1y / All), measured on the
+   smoothed 7-day line so it's real movement rather than two noisy weigh-ins. */
+function rangeDelta(){
+  const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-chartRange);
+  const pts = rollingAvgSeries().filter(p=> chartRange>=9999 || new Date(p.date+'T00:00')>=cutoff);
+  if(pts.length<2) return null;
+  const first=pts[0], last=pts[pts.length-1];
+  return { lbs:(last.value-first.value), from:first.date, days:pts.length };
+}
+/* Something to picture, because "6.4 lb" is an abstraction. Pounds; kg converts before the lookup. */
+const EQUIVALENTS = [
+  { lb:1,   name:'a loaf of bread' },      { lb:4,  name:'a bag of sugar' },
+  { lb:5,   name:'a bag of flour' },       { lb:8.6,name:'a gallon of milk' },
+  { lb:10,  name:'a bowling ball' },       { lb:20, name:'a watermelon' },
+  { lb:25,  name:'a car tire' },           { lb:42, name:'a five-gallon water jug' },
+  { lb:60,  name:'a bag of concrete' },
+];
+/* Prefer a whole 1–3× multiple that lands within ~20%; otherwise the nearest single item, hedged. */
+function weightEquivalent(delta, unit){
+  const lb = Math.abs(unit==='kg' ? delta*2.20462 : delta);
+  if(lb < 1) return null;
+  let exact=null, near=null, nearErr=Infinity;
+  EQUIVALENTS.forEach(it=>{
+    for(let m=1;m<=3;m++){
+      const err=Math.abs(lb-it.lb*m)/(it.lb*m);
+      if(err<=0.2 && (!exact || err<exact.err)) exact={it,m,err};
+      if(m===1 && err<nearErr){ nearErr=err; near=it; }
+    }
+  });
+  if(exact) return `${exact.m>1?exact.m+'× ':''}${exact.it.name}`;
+  /* Below a couple of pounds a hedged comparison says less than the number already does. */
+  return (near && lb >= 2) ? `about ${near.name}` : null;
 }
 function setRange(r){ chartRange=r; render(); }
 function logWeight(){
@@ -2303,9 +2378,13 @@ function extraCard(id){
   const opts=def.examples.map(x=>`<option ${x===e.name?'selected':''}>${esc(x)}</option>`).join('')
     + ((!e.name||def.examples.includes(e.name))?'':`<option selected>${esc(e.name)}</option>`)
     + `<option value="__custom">+ Custom…</option>`;
-  const rows=e.sets.map((st,k)=>`<div class="set-grid" style="grid-template-columns:22px 1fr 1fr 26px">
+  /* A time-based accessory (dead hang) is bodyweight by definition — asking for a load every set is
+     a field you'd only ever leave blank. Sets keep w:'' , which every downstream path already reads
+     as bodyweight (history prints the bare number, PRs skip a zero load, volume counts on reps). */
+  const cols = isSec ? '22px 1fr 26px' : '22px 1fr 1fr 26px';
+  const rows=e.sets.map((st,k)=>`<div class="set-grid" style="grid-template-columns:${cols}">
       <span class="set-no">${k+1}</span>
-      <input type="number" inputmode="decimal" id="ex-${id}-w-${k}" placeholder="0=BW" value="${st.w}" oninput="exSet('${id}',${k},'w',this.value)" onchange="exRoll('${id}',${k},this.value)">
+      ${isSec?'':`<input type="number" inputmode="decimal" id="ex-${id}-w-${k}" placeholder="0=BW" value="${st.w}" oninput="exSet('${id}',${k},'w',this.value)" onchange="exRoll('${id}',${k},this.value)">`}
       <input type="number" inputmode="numeric" placeholder="${isSec?'sec':rangeTxt}" value="${st.r}" oninput="exSet('${id}',${k},'r',this.value)">
       <button class="x-set" onclick="exRmSet('${id}',${k})">${ph('x')}</button>
     </div>`).join('');
@@ -2313,7 +2392,7 @@ function extraCard(id){
     <button class="phase-header" onclick="toggleAcc('${id}')"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${ph(def.icon)}${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
     ${open?`<div class="phase-body">
       <select onchange="exPick('${id}',this)" style="margin-bottom:8px">${opts}</select>
-      <div class="set-grid" style="grid-template-columns:22px 1fr 1fr 26px;margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">${isSec?'Sec':'Reps'}</span><span></span></div>
+      <div class="set-grid" style="grid-template-columns:${cols};margin-bottom:4px"><span></span>${isSec?'':'<span class="colhead">Weight</span>'}<span class="colhead">${isSec?'Sec':'Reps'}</span><span></span></div>
       ${rows}
       <button class="addset" onclick="exAddSet('${id}')">+ Add set</button>
     </div>`:''}
