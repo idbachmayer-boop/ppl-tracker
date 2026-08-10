@@ -471,7 +471,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 15;
+const SCHEMA = 16;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -509,13 +509,34 @@ const MIGRATIONS = {
   /* Goblet squat → Deficit sumo squat: the same slot and the same 12–15 target, renamed. Rewriting
      the logged name (and nothing else) keeps one continuous strength line and one PR history
      instead of splitting the movement in two. Name-only and idempotent. */
-  15:d=>{
-    const ren = e => { if(e && e.name==='Goblet squat') e.name='Deficit sumo squat'; };
-    (d.sessions||[]).forEach(s=>{ (s.entries||[]).forEach(ren); if(s.extras) Object.keys(s.extras).forEach(k=>ren(s.extras[k])); });
-    if(d.draft){ (d.draft.entries||[]).forEach(ren); if(d.draft.extras) Object.keys(d.draft.extras).forEach(k=>ren(d.draft.extras[k])); }
-    return d;
-  }
+  15:d=>renameLoggedExercise(d, {'Goblet squat':'Deficit sumo squat'}),
+  /* Migration 15 SHIPPED BROKEN and this is the repair. It renamed rows in memory, nothing persisted
+     them, and the rows carried no `mtime` — so the sync merge preferred the other device's stale
+     copies and handed the old names straight back, while `_schema` was stamped 15 anyway. The
+     rename could then never run again: six sessions in Ian's Aug 10 export still said "Goblet squat"
+     at schema 15. Re-applying it under a new version is the only way to reach data already stamped.
+     Also folds in the capitalised variant he typed by hand on Aug 8. */
+  16:d=>renameLoggedExercise(d, {'Goblet squat':'Deficit sumo squat', 'Deficit Sumo Squat':'Deficit sumo squat'}),
 };
+/* Rewriting rows that ALREADY EXIST is the dangerous kind of migration. `mergeUnion` resolves a
+   collision by per-item `mtime`, so a rewritten row that isn't touched loses to the untouched copy
+   on the other device — silently, and permanently once `_schema` moves past the migration. Every
+   migration that edits existing rows must go through a helper like this one: rewrite, then `touch()`
+   so the migrated row wins, and let the boot save (see `load()`) push it before anything can pull. */
+function renameLoggedExercise(d, map){
+  const hit = e => { if(e && map[e.name]){ e.name = map[e.name]; return true; } return false; };
+  (d.sessions||[]).forEach(s=>{
+    let changed = false;
+    (s.entries||[]).forEach(e=>{ if(hit(e)) changed = true; });
+    if(s.extras) Object.keys(s.extras).forEach(k=>{ if(hit(s.extras[k])) changed = true; });
+    if(changed) touch(s);
+  });
+  if(d.draft){
+    (d.draft.entries||[]).forEach(hit);
+    if(d.draft.extras) Object.keys(d.draft.extras).forEach(k=>hit(d.draft.extras[k]));
+  }
+  return d;
+}
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
 function normalize(raw){
   let d = (raw && typeof raw==='object') ? raw : blank();
@@ -525,14 +546,22 @@ function normalize(raw){
   if(typeof d.unit!=='string') d.unit='lb';
   if(typeof d.petName!=='string') d.petName='Freddie';
   if(typeof d.gen!=='number') d.gen=0;   // defensive: migration 13 runs in a silent try/catch
-  for(let v=(d._schema||0)+1; v<=SCHEMA; v++){ try{ d = MIGRATIONS[v](d) || d; }catch(e){} }
+  const from = +d._schema || 0;
+  for(let v=from+1; v<=SCHEMA; v++){ try{ d = MIGRATIONS[v](d) || d; }catch(e){} }
+  if(SCHEMA > from) migrationRan = true;   // consumed at boot: an unsaved migration is a revertible one
   /* Never DOWNGRADE: a device running a stale cached index.html would otherwise stamp an older
      schema onto the shared blob and make the newer device re-run migrations (migration 4 is not
      idempotent — it resets hobbies, resurrecting deleted ones). */
   d._schema = Math.max(SCHEMA, +d._schema || 0);
   return d;
 }
+let migrationRan = false;
 let DB = load();
+/* Persist a migration the moment it happens. Until this line existed, `normalize()` upgraded the
+   data in memory and the first thing to touch the network could pull the pre-migration rows back
+   over it — which is exactly how migration 15's rename was lost in production. Saving here stamps
+   `updatedAt` and queues the push, so the migrated copy is the one the other device merges against. */
+if(migrationRan) save();
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
 function blank(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[], petWeights:[], petName:"Freddie", draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
 
@@ -3442,6 +3471,16 @@ function adoptMerged(merged, label){
 }
 const SYNCED_UID_KEY='ppl_synced_uid'; // device-local: which account this device has already linked to
 function parseBlob(remote){ try{ return remote && remote.blob ? JSON.parse(remote.blob) : null; }catch(e){ return null; } }
+/* A device running an OLDER build must not merge with, or write over, a doc a newer build has
+   already migrated. Its own rows never went through that migration, so the union would hand the
+   pre-migration copies straight back — the second half of how migration 15 was reverted. Refusing
+   costs nothing: the local copy stays intact and syncs the moment this device updates. */
+function remoteTooNew(remoteDB){ return (+(remoteDB && remoteDB._schema) || 0) > SCHEMA; }
+function flagNeedsUpdate(){
+  if(SYNC.needsUpdate) return;
+  SYNC.needsUpdate = true; SYNC.status = 'Update this device to sync';
+  updateSyncUI(); toast('Another device is on a newer version — reopen this one to update');
+}
 async function onSignedIn(user){
   SYNC.docRef = fbDb.collection('users').doc(user.uid);
   SYNC.status='Syncing…'; SYNC.reconciled=false; updateSyncUI();
@@ -3456,6 +3495,7 @@ async function onSignedIn(user){
     }
     const remote = snap.exists ? snap.data() : null;
     const remoteDB = parseBlob(remote);
+    if(remoteTooNew(remoteDB)){ flagNeedsUpdate(); startLiveSync(); return; }   // never push from an older build
     const firstLink = localStorage.getItem(SYNCED_UID_KEY)!==user.uid;
     const localHasData = (DB.sessions&&DB.sessions.length)||(DB.weights&&DB.weights.length);
     if(remoteDB && firstLink && localHasData && remote.blob!==JSON.stringify(DB)){
@@ -3482,6 +3522,7 @@ function startLiveSync(){
   SYNC.unsub = SYNC.docRef.onSnapshot(snap=>{
     if(!snap.exists) return;
     const remoteDB = parseBlob(snap.data()); if(!remoteDB) return;
+    if(remoteTooNew(remoteDB)){ flagNeedsUpdate(); return; }
     /* NOTE: transaction writes do NOT set hasPendingWrites, so we can't rely on that to skip our
        own echo — adoptMerged's deep-equality check is what prevents render churn. */
     const merged = mergeDB(remoteDB, DB);
@@ -3492,20 +3533,25 @@ function startLiveSync(){
    merges ours into it, so no path can subtract another device's data. */
 async function pushNow(silent){
   if(!SYNC.docRef){ if(!silent) toast('Sign in to sync'); return; }
+  if(SYNC.needsUpdate){ if(!silent) toast('Reopen the app to update, then sync'); return; }   // an older build must not write
   if(!SYNC.reconciled){ SYNC.pending=true; if(!silent) toast('Still connecting — will sync shortly'); scheduleRetry(); return; }
   if(!DB.updatedAt) DB.updatedAt=Date.now();
   const localSnap = JSON.parse(JSON.stringify(DB));   // the txn callback may run MULTIPLE times; keep it pure
-  let merged = null, wrote = false;
+  let merged = null, wrote = false, tooNew = false;
   try{
     await fbDb.runTransaction(async tx=>{
       const snap = await tx.get(SYNC.docRef);
       const remoteDB = snap.exists ? parseBlob(snap.data()) : null;
+      /* Re-checked INSIDE the transaction: the other device may have upgraded between sign-in and
+         now, and this is the last point before a write. */
+      if(remoteTooNew(remoteDB)){ tooNew = true; merged = null; return; }
       merged = remoteDB ? mergeDB(remoteDB, localSnap) : mergeDB({}, localSnap);
       const blob = JSON.stringify(merged);
       if(snap.exists && snap.data().blob===blob){ wrote=false; return; }   // already identical — skip the write
       tx.set(SYNC.docRef, { blob, updatedAt: merged.updatedAt||Date.now(), schema: SCHEMA, at: Date.now() });
       wrote = true;
     });
+    if(tooNew){ flagNeedsUpdate(); return; }
     SYNC.pending=false;
     /* DB may have moved on while the round trip was in flight (setVal saves on every keystroke),
        so fold the result back in with LOCAL winning ties, and re-push if that differs. */
@@ -3689,8 +3735,15 @@ function updateSyncUI(){
 function syncCardHTML(){
   if(!window.firebase) return `<div class="card"><p class="muted">Cloud sync couldn't load (no connection to the sync library). Reopen the app while online.</p></div>`;
   if(SYNC.user){
-    return `<div class="card">
-      <div class="row"><div><div style="font-weight:700">${ph('check-circle','lead')}Connected</div><div class="muted" style="font-size:12px">${esc(SYNC.user.email||'')}</div></div><span class="flag">${SYNC.pending?'Pending':'Sync on'}</span></div>
+    /* Paused, not broken: another device is on a newer version, so this one holds its data rather
+       than handing back rows that predate a migration. Nothing is lost — it resumes after an update. */
+    const stale = SYNC.needsUpdate ? `<div class="card" style="border:1.5px solid var(--warm-bd);background:var(--warm-bg)">
+      <div style="font-weight:700;font-size:14px">${ph('warning','lead')}Sync paused — this device is out of date</div>
+      <p class="muted" style="line-height:1.5;margin-top:4px">Another device is running a newer version of the app. Fully close and reopen this one to update, and syncing resumes on its own. Your data here is safe in the meantime.</p>
+      <button class="btn btn-block" style="margin-top:10px" onclick="location.reload()">${ph('arrows-clockwise')}Reload now</button>
+    </div>` : '';
+    return `${stale}<div class="card">
+      <div class="row"><div><div style="font-weight:700">${ph('check-circle','lead')}Connected</div><div class="muted" style="font-size:12px">${esc(SYNC.user.email||'')}</div></div><span class="flag">${SYNC.needsUpdate?'Paused':(SYNC.pending?'Pending':'Sync on')}</span></div>
       <p class="muted" id="sync-last" style="margin:10px 0 4px">${SYNC.lastSyncAt?('Last synced: '+new Date(SYNC.lastSyncAt).toLocaleString()):'Not synced yet'}</p>
       <p class="muted" id="sync-status" style="margin:0 0 12px">${esc(SYNC.status||'')}</p>
       <button class="btn btn-block" onclick="pushNow(false)">⟳ Check for updates</button>

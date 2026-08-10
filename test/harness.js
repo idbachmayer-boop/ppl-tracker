@@ -99,7 +99,7 @@ function loadApp(htmlPath){
     'petMonthDelta','rangeDelta','spanLabel','weightEquivalent','setRange','viewWeight','viewPetWeight',
     'setStatus','badgeState','exercisePRs','prSetIndex','sessionRanges','sessionExercises',
     'platesText','plateBreakdown','barWeight','barStyle','isBarbell','extraCard','ACCESSORIES',
-    'accOpen','toggleAcc','viewToday',
+    'accOpen','toggleAcc','viewToday','remoteTooNew','renameLoggedExercise',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

@@ -335,7 +335,7 @@ const legacy = app.normalize({ _schema: 13, weights:[{date:'2026-01-01', value:1
 ok('an old backup gains the newer fields', Array.isArray(legacy.petWeights) && legacy.petName === 'Freddie');
 ok('  …without touching the data already there', legacy.weights.length===1 && legacy.weights[0].value===190);
 ok('  …and is stamped at the current schema', legacy._schema === app.SCHEMA, legacy._schema);
-const gobletV14 = () => ({ _schema:14, gen:0, unit:'lb', weights:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], hobbyLog:[], lawnLog:{}, lawn:null, wx:null,
+var gobletV14 = () => ({ _schema:14, gen:0, unit:'lb', weights:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], hobbyLog:[], lawnLog:{}, lawn:null, wx:null,
   sessions:[{ id:'g1', workout:'LEGS 1', date:'2026-07-15', endedAt:1,
     entries:[{name:'Goblet squat', sets:[{w:'50',r:'12',skipped:false},{w:'50',r:'13',skipped:false}]},{name:'Leg press', sets:[]}], extras:{} }],
   draft:{ workout:'LEGS 1', date:'2026-08-08', entries:[{name:'Goblet squat', sets:[{w:'55',r:'',skipped:false}]}], extras:{}, stairs:{seconds:'',skipped:false} } });
@@ -348,6 +348,48 @@ ok('migrations are idempotent', JSON.stringify(app.normalize(JSON.parse(JSON.str
 ok('the strength history stays one line', (()=>{ app.DB = mig; app.DB.draft = null;
   return app.exercisePRs().some(p=>p.name==='Deficit sumo squat') && !app.exercisePRs().some(p=>p.name==='Goblet squat'); })(), app.exercisePRs().map(p=>p.name));
 ok('the program no longer offers the old name', !JSON.stringify(app.PROGRAM).includes('Goblet squat'));
+
+/* The failure this whole workstream exists to prevent, replayed end to end.
+   Migration 15 renamed rows in memory, nothing persisted them, the rows carried no `mtime`, and the
+   next merge handed the stale names back — while `_schema` was stamped 15 anyway, so the migration
+   could never run again. Six sessions in Ian's 2026-08-10 export still said "Goblet squat" at
+   schema 15. If any of these five go red, that bug is back. */
+console.log('\n── a migration must survive the next sync ──');
+const migratedRows = () => {
+  const d = app.normalize(gobletV14());
+  return d.sessions[0];
+};
+ok('a rewritten row is stamped with a fresh mtime', typeof migratedRows().mtime === 'number', migratedRows().mtime);
+ok('  …so the merge prefers it over the untouched copy', (()=>{
+  const local = app.normalize(gobletV14());                      // this device: migrated, touched
+  const stale = JSON.parse(JSON.stringify(gobletV14()));         // the other device: pre-migration, no mtime
+  stale._schema = 15; stale.updatedAt = Date.now() + 60000;      // and it LOOKS newer, which is what used to decide it
+  local.updatedAt = Date.now();
+  const out = app.mergeDB(stale, local);
+  return out.sessions[0].entries[0].name === 'Deficit sumo squat';
+})(), 'the stale name won the merge');
+ok('data already stamped at 15 with old names is still repaired', (()=>{
+  const reverted = JSON.parse(JSON.stringify(gobletV14()));
+  reverted._schema = 15;                                          // exactly the state of Ian's export
+  return app.normalize(reverted).sessions[0].entries[0].name === 'Deficit sumo squat';
+})());
+ok('the hand-typed capitalisation is folded in too', (()=>{
+  const typed = JSON.parse(JSON.stringify(gobletV14()));
+  typed._schema = 15; typed.sessions[0].entries[0].name = 'Deficit Sumo Squat';
+  return app.normalize(typed).sessions[0].entries[0].name === 'Deficit sumo squat';
+})());
+ok('untouched sessions keep their original mtime (no false "newest")', (()=>{
+  const d = JSON.parse(JSON.stringify(gobletV14()));
+  d.sessions.push({ id:'other', workout:'PUSH 1', date:'2026-07-16', endedAt:1, mtime:42,
+    entries:[{name:'Barbell bench press', sets:[{w:'135',r:'8',skipped:false}]}], extras:{} });
+  return app.normalize(d).sessions[1].mtime === 42;
+})());
+
+console.log('\n── an older build must not write over a migrated one ──');
+ok('a remote from a newer schema is refused', app.remoteTooNew({ _schema: app.SCHEMA + 1 }) === true);
+ok('the same schema is fine', app.remoteTooNew({ _schema: app.SCHEMA }) === false);
+ok('an older remote is fine (that is what migrations are for)', app.remoteTooNew({ _schema: app.SCHEMA - 1 }) === false);
+ok('a remote with no schema at all is fine', app.remoteTooNew({}) === false && app.remoteTooNew(null) === false);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
