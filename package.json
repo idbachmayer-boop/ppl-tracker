@@ -1,0 +1,8 @@
+{
+  "name": "ppl-tracker",
+  "private": true,
+  "description": "Single-file workout + daily-life PWA. No dependencies, no build step — index.html is the app.",
+  "scripts": {
+    "test": "node test/app.test.js"
+  }
+}

@@ -6,6 +6,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  pull_request: # run the checks on branches too, so a bad change is caught before it reaches main
   workflow_dispatch: # lets you re-run a deploy by hand from the Actions tab
 
 permissions:
@@ -19,7 +20,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Gate. The app is the only copy of two months of training data, and the sync rules below it have
+  # already destroyed data once (2026-07-25). A red check must never reach the phone.
+  test:
+    runs-on: ubuntu-latest
+    env:
+      TZ: America/Chicago # the suite freezes the clock; the rules are hour- and date-sensitive
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run checks
+        run: node test/app.test.js
+
   deploy:
+    needs: test # no green, no deploy
+    if: github.event_name != 'pull_request' # PRs run the checks only; main publishes
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
