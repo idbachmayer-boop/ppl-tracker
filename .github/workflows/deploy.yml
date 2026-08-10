@@ -4,9 +4,8 @@ name: Deploy to GitHub Pages
 # which intermittently stalled (build OK, deploy stuck/queued).
 
 on:
-  push:
-    branches: [main]
-  pull_request: # run the checks on branches too, so a bad change is caught before it reaches main
+  push: # every branch runs the checks; only main goes on to deploy (see the job's `if`)
+  pull_request:
   workflow_dispatch: # lets you re-run a deploy by hand from the Actions tab
 
 permissions:
@@ -38,7 +37,7 @@ jobs:
 
   deploy:
     needs: test # no green, no deploy
-    if: github.event_name != 'pull_request' # PRs run the checks only; main publishes
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
