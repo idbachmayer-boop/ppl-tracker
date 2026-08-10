@@ -25,6 +25,15 @@ ok('index.html holds exactly one inline script', inline.length === 1, inline.len
 ok('it compiles', (()=>{ try { new Function(inline[inline.length-1][1]); return true; } catch(e){ return 'SyntaxError: '+e.message; } })() === true,
    (()=>{ try { new Function(inline[inline.length-1][1]); return 'ok'; } catch(e){ return e.message; } })());
 
+/* The worker is a real file now, and a typo in it should fail here rather than on the phone. It
+   used to be a blob: URL that browsers silently refused to register. */
+const swPath = APP_PATH.replace(/index\.html$/, 'sw.js');
+ok('sw.js exists', fs.existsSync(swPath));
+ok('  …and compiles', (()=>{ try{ new Function(fs.readFileSync(swPath,'utf8')); return true; }catch(e){ return e.message; } })() === true);
+ok('  …with a versioned cache that drops old shells', /CACHE_VERSION/.test(fs.readFileSync(swPath,'utf8')) && /caches\.delete/.test(fs.readFileSync(swPath,'utf8')));
+ok('index.html registers it as a real URL, not a blob', /register\('\.\/sw\.js'/.test(rawHtml) && !/register\(URL\.createObjectURL/.test(rawHtml));
+ok('  …and does not swallow the failure', !/register\([^)]*\)\.catch\(\(\)=>\{\}\)/.test(rawHtml));
+
 const app = loadApp(APP_PATH);
 const today = app.todayISO();
 const dayOff = n => { const d = new Date(today+'T00:00'); d.setDate(d.getDate()+n); return d.toLocaleDateString('en-CA'); };

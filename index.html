@@ -299,19 +299,19 @@
   const manifest = { name:"PPL Tracker", short_name:"PPL", start_url:"./", display:"standalone", background_color:"#161826", theme_color:"#161826",
     icons:[{src:icon(192),sizes:"192x192",type:"image/svg+xml"},{src:icon(512),sizes:"512x512",type:"image/svg+xml"}] };
   document.getElementById('manifest-placeholder').href = URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/json'}));
-  const sw = `
-    const C='ppl-shell-v1';
-    self.addEventListener('install',e=>{ e.waitUntil(caches.open(C).then(c=>c.addAll(['./','./index.html']).catch(()=>{}))); self.skipWaiting(); });
-    self.addEventListener('activate',e=>{ e.waitUntil(self.clients.claim()); });
-    self.addEventListener('fetch',e=>{
-      const req=e.request; if(req.method!=='GET') return;
-      if(new URL(req.url).origin!==self.location.origin) return; // Firebase/gstatic bypass the SW entirely
-      e.respondWith(
-        fetch(req).then(res=>{ const copy=res.clone(); caches.open(C).then(c=>c.put(req,copy)).catch(()=>{}); return res; })
-        .catch(()=> caches.match(req).then(r=> r || (req.mode==='navigate' ? caches.match('./index.html') : undefined)))
-      );
-    });`;
-  if('serviceWorker' in navigator) navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:'application/javascript'})),{scope:'./'}).catch(()=>{});
+  /* The worker lives in sw.js. It used to be a blob: URL built right here — browsers refuse to
+     register those, and the .catch(()=>{}) hid it, so the app promised offline support and had
+     none for six weeks (checked live 2026-08-10: zero registrations). Record the outcome instead
+     of discarding it; Settings shows it. */
+  window.SW_STATE = { supported:'serviceWorker' in navigator, ready:false, error:null };
+  if(window.SW_STATE.supported){
+    navigator.serviceWorker.register('./sw.js', {scope:'./'})
+      .then(()=>navigator.serviceWorker.ready)
+      .then(()=>{ window.SW_STATE.ready = true; })
+      .catch(err=>{ window.SW_STATE.error = (err && err.message) || String(err); });
+  } else {
+    window.SW_STATE.error = 'This browser has no service worker support';
+  }
 })();
 
 /* ───────────────────────── Program definition ─────────────────────────
@@ -2418,6 +2418,19 @@ function setPetName(v){ DB.petName = (v||'').trim() || 'Freddie'; save(); }
    Names drift — that's how one squat ended up with three spellings. Rather than needing a dev to
    untangle it, renaming and merging live here. Only exercises you've actually logged are listed;
    the other ~30 program names would be noise. */
+/* Offline support, stated rather than assumed. The previous worker never registered and nothing
+   said so — the app claimed offline capability it did not have for six weeks. If it breaks again
+   it will be visible here rather than discovered in a dead spot at the gym. */
+function offlineCardHTML(){
+  const s = window.SW_STATE || { supported:false, ready:false, error:'not initialised' };
+  if(s.ready) return `<div class="card"><div style="font-weight:700;font-size:14px">${ph('check-circle','lead')}Offline ready</div>
+    <p class="muted" style="line-height:1.5;margin-top:4px">The app opens and logs without a signal. Your data lives on the device either way — this is about the app itself loading.</p></div>`;
+  if(s.error) return `<div class="card" style="border:1.5px solid var(--warm-bd);background:var(--warm-bg)">
+    <div style="font-weight:700;font-size:14px">${ph('warning','lead')}Offline unavailable</div>
+    <p class="muted" style="line-height:1.5;margin-top:4px">The app needs a connection to open. Logging still works once it's open, and nothing is lost.</p>
+    <p class="muted" style="font-size:11px;margin-top:6px;font-family:var(--font-mono)">${esc(s.error)}</p></div>`;
+  return `<div class="card"><p class="muted">${ph('clock-counter-clockwise','lead')}Setting up offline support…</p></div>`;
+}
 let exSortByUse = true;
 function exListRows(){
   const seen = new Map();
@@ -3212,6 +3225,8 @@ function viewData(){
     </div>
       <p class="muted" style="font-size:12px">4-Day adds a specialized 4th day each week — pick Chest & Triceps, Back, Shoulders, Biceps, or Legs fresh each time it comes up.</p>
     </div>
+    <h2>Offline</h2>
+    ${offlineCardHTML()}
     <h2>Exercises</h2>
     ${exercisesCardHTML()}
     <h2>Pet</h2>
