@@ -469,5 +469,31 @@ ok('the same schema is fine', app.remoteTooNew({ _schema: app.SCHEMA }) === fals
 ok('an older remote is fine (that is what migrations are for)', app.remoteTooNew({ _schema: app.SCHEMA - 1 }) === false);
 ok('a remote with no schema at all is fine', app.remoteTooNew({}) === false && app.remoteTooNew(null) === false);
 
+/* Import is the only way a file you didn't write becomes your data. The old guard was "has a
+   sessions array and a weights array", so a truncated download could sail through. */
+console.log('\n── a bad backup is refused, and says why ──');
+const realBackup = JSON.parse(JSON.stringify(Object.assign(app.blank(), {
+  sessions:[{ id:'x', workout:'PUSH 1', date:'2026-07-15', endedAt:1, extras:{}, entries:[{name:'Barbell bench press', sets:[{w:'135',r:'8',skipped:false}]}] }],
+  weights:[{ date:'2026-07-15', value:194.2 }] })));
+ok('a good backup passes', app.validateBackup(realBackup) === null, app.validateBackup(realBackup));
+const reject = (label, mutate, expect) => {
+  const copy = JSON.parse(JSON.stringify(realBackup)); mutate(copy);
+  const msg = app.validateBackup(copy);
+  ok(label, typeof msg === 'string' && (!expect || expect.test(msg)), msg);
+};
+reject('a truncated file (no weights list) is refused', d=>{ delete d.weights; }, /weights/);
+reject('  …and names what is missing', d=>{ delete d.sessions; }, /sessions/);
+reject('a workout with no date is refused', d=>{ delete d.sessions[0].date; }, /date/);
+reject('a workout with a mangled date is refused', d=>{ d.sessions[0].date = '15/07/2026'; }, /date/);
+reject('a damaged set list is refused', d=>{ d.sessions[0].entries[0].sets = 'nope'; }, /set list/);
+reject('a damaged exercise list is refused', d=>{ d.sessions[0].entries = 'nope'; }, /exercise list/);
+reject('a non-numeric weigh-in is refused', d=>{ d.weights[0].value = 'heavy'; }, /number/);
+reject('a backup from a NEWER app version is refused', d=>{ d._schema = app.SCHEMA + 3; }, /newer version/);
+reject('a damaged journal is refused', d=>{ d.journal = []; }, /journal/);
+ok('something that isn\'t a backup at all is refused', typeof app.validateBackup([1,2,3]) === 'string' && typeof app.validateBackup(null) === 'string');
+ok('an OLDER backup is still accepted (that is what migrations are for)', (()=>{
+  const old = JSON.parse(JSON.stringify(realBackup)); old._schema = 12; return app.validateBackup(old) === null; })());
+ok('the real exported shape passes', app.validateBackup(app.normalize(JSON.parse(JSON.stringify(realBackup)))) === null);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

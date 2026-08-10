@@ -3270,9 +3270,42 @@ function exportData(){
   a.download=`ppl-backup-${todayISO()}.json`; a.click();
   DB.lastBackupAt=Date.now(); DB.backupSnoozeAt=null; save();
 }
+/* Import is the one place a file you didn't write gets to become your data, and the old check was
+   "has a sessions array and a weights array" — a truncated download or the wrong JSON entirely
+   could sail through and scramble two months of training. Nothing is touched until every check
+   passes, and a refusal says which one failed rather than "Not a valid backup file."
+   Returns null when the blob is fine, otherwise the reason. */
+function validateBackup(raw){
+  if(!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'This file isn’t a backup — it doesn’t contain a data object.';
+  const arrays = ['sessions','weights'];
+  for(const k of arrays) if(!Array.isArray(raw[k])) return `This backup is missing its ${k} list, so it’s incomplete or truncated.`;
+  for(const k of ['petWeights','cardio','ideas','todos','hobbyLog']) if(raw[k]!=null && !Array.isArray(raw[k])) return `The ${k} section is damaged (expected a list).`;
+  for(const k of ['journal','mobilityLog','lawnLog']) if(raw[k]!=null && (typeof raw[k]!=='object' || Array.isArray(raw[k]))) return `The ${k} section is damaged.`;
+  const schema = +raw._schema;
+  if(raw._schema!=null && !(schema>=0)) return 'This backup’s version number is unreadable.';
+  if(schema > SCHEMA) return `This backup came from a newer version of the app (v${schema}, this is v${SCHEMA}). Update this device first — importing it here would lose whatever that version added.`;
+  for(let i=0;i<raw.sessions.length;i++){
+    const s = raw.sessions[i];
+    if(!s || typeof s!=='object') return `Workout ${i+1} of ${raw.sessions.length} is damaged.`;
+    if(!s.date || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) return `Workout ${i+1} has no usable date${s.workout?` (${s.workout})`:''} — the file is probably truncated.`;
+    if(s.entries!=null && !Array.isArray(s.entries)) return `Workout ${i+1} (${s.date}) has a damaged exercise list.`;
+    if(Array.isArray(s.entries)) for(const e of s.entries){
+      if(!e || typeof e!=='object') return `Workout ${i+1} (${s.date}) contains a damaged exercise.`;
+      if(e.sets!=null && !Array.isArray(e.sets)) return `“${e.name||'An exercise'}” on ${s.date} has a damaged set list.`;
+    }
+  }
+  for(let i=0;i<raw.weights.length;i++){
+    const w = raw.weights[i];
+    if(!w || typeof w!=='object' || !w.date) return `Weigh-in ${i+1} of ${raw.weights.length} is damaged.`;
+    if(w.value!=null && isNaN(+w.value)) return `Weigh-in on ${w.date} has a value that isn’t a number.`;
+  }
+  return null;
+}
 function importData(inp){
   const f=inp.files[0]; if(!f)return; const r=new FileReader();
-  r.onload=()=>{ try{ const raw=JSON.parse(r.result); if(!raw || !Array.isArray(raw.sessions) || !Array.isArray(raw.weights)) throw 0;
+  r.onload=()=>{ try{ const raw=JSON.parse(r.result);
+    const bad = validateBackup(raw);
+    if(bad){ alert('Nothing was imported.\n\n'+bad); inp.value=''; return; }
     const merge = confirm('Merge this backup with your current data?\n\nOK = MERGE (keeps both, nothing lost — recommended)\nCancel = choose replace instead');
     if(merge){
       snapshotNow('before-import');
@@ -3284,7 +3317,8 @@ function importData(inp){
       const g=(+DB.gen||0)+1;   // gen++ so the merge replaces wholesale instead of unioning the old rows back
       const wx=DB.wx; DB=normalize(raw); if(wx!==undefined) DB.wx=wx; DB.gen=g; DB.updatedAt=Date.now();
       DB.lastBackupAt=Date.now(); save(); cloudVersion('import'); toast('Backup restored'); render(); } }
-    catch(e){ alert('Not a valid backup file.'); } };
+    catch(e){ alert('Nothing was imported.\n\nThis file isn’t readable as JSON — it may be truncated or not a backup at all.'); }
+    finally{ inp.value=''; } };   // let the same file be picked again after a failure
   r.readAsText(f);
 }
 /* gen++ makes this a WHOLESALE replace at merge time. Without it, save()'s push would union every

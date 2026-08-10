@@ -104,7 +104,7 @@ function loadApp(htmlPath, seed){
     'setStatus','badgeState','exercisePRs','prSetIndex','sessionRanges','sessionExercises',
     'platesText','plateBreakdown','barWeight','barStyle','isBarbell','extraCard','ACCESSORIES',
     'accOpen','toggleAcc','viewToday','remoteTooNew','renameLoggedExercise',
-    'exKey','exLabel','exRow','exRows','exEnsure','exMerge','exUsage','exSuggest','exIdByName','normEx','exercisesWithData','exerciseHistory','viewStrength','selectExercise',
+    'validateBackup','exKey','exLabel','exRow','exRows','exEnsure','exMerge','exUsage','exSuggest','exIdByName','normEx','exercisesWithData','exerciseHistory','viewStrength','selectExercise',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
