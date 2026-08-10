@@ -240,16 +240,20 @@ const quadSlot = app.PROGRAM['LEGS 1'].slots.findIndex(s=>s.examples.includes('L
 const qRange = app.effRange(app.PROGRAM['LEGS 1'].slots[quadSlot], 'Leg press');
 const prSess = (date, sets) => ({ id:'p'+date, workout:'LEGS 1', date, endedAt:1, extras:{},
   entries: slotNames('LEGS 1', quadSlot, 'Leg press').map((n,i)=>({ name:n, sets: i===quadSlot ? sets : [] })) });
+/* Build the fixture the way the app does — through normalize(), so exercises get their identities
+   exactly as a real device would. Asserting against hand-built rows would test a shape the app
+   never actually holds. */
+const withSessions = list => { app.DB = app.normalize(Object.assign(app.blank(), { _schema:16, sessions:list, draft:null })); };
 app.DB.draft = null;
-app.DB.sessions = [ prSess('2026-07-20', [{w:'130',r:String(qRange.lo),skipped:false}]) ];
+withSessions([ prSess('2026-07-20', [{w:'130',r:String(qRange.lo),skipped:false}]) ]);
 ok('an in-range set sets the baseline', (app.exercisePRs().find(p=>p.name==='Leg press')||{}).v === 130, app.exercisePRs());
-app.DB.sessions.push(prSess('2026-07-27', [{w:'155',r:'3',skipped:false}]));
+withSessions(app.DB.sessions.concat([prSess('2026-07-27', [{w:'155',r:'3',skipped:false}])]));
 ok('a heavy 3-rep single below the range is NOT a PR', (app.exercisePRs().find(p=>p.name==='Leg press')||{}).v === 130, app.exercisePRs());
-app.DB.sessions.push(prSess('2026-08-03', [{w:'135',r:String(qRange.lo),skipped:false},{w:'95',r:'4',skipped:false}]));
+withSessions(app.DB.sessions.concat([prSess('2026-08-03', [{w:'135',r:String(qRange.lo),skipped:false},{w:'95',r:'4',skipped:false}])]));
 ok('an in-range PR survives an out-of-range backoff set', (app.exercisePRs().find(p=>p.name==='Leg press')||{}).v === 135, app.exercisePRs());
 ok('the trophy marks agree with the PR list', (()=>{ const idx=app.prSetIndex(); const s=app.DB.sessions[2]; return idx.isPR(s,'Leg press',0) && !idx.isPR(s,'Leg press',1); })());
 ok('a session whose program is unknown keeps its PR', (()=>{
-  app.DB.sessions=[{ id:'legacy', workout:'MYSTERY DAY', date:'2026-07-01', endedAt:1, entries:[{name:'Leg press', sets:[{w:'200',r:'2',skipped:false}]}], extras:{} }];
+  withSessions([{ id:'legacy', workout:'MYSTERY DAY', date:'2026-07-01', endedAt:1, entries:[{name:'Leg press', sets:[{w:'200',r:'2',skipped:false}]}], extras:{} }]);
   return (app.exercisePRs().find(p=>p.name==='Leg press')||{}).v === 200; })(), app.exercisePRs());
 
 console.log('\n── plate math ──');
@@ -378,12 +382,77 @@ ok('the hand-typed capitalisation is folded in too', (()=>{
   typed._schema = 15; typed.sessions[0].entries[0].name = 'Deficit Sumo Squat';
   return app.normalize(typed).sessions[0].entries[0].name === 'Deficit sumo squat';
 })());
-ok('untouched sessions keep their original mtime (no false "newest")', (()=>{
-  const d = JSON.parse(JSON.stringify(gobletV14()));
-  d.sessions.push({ id:'other', workout:'PUSH 1', date:'2026-07-16', endedAt:1, mtime:42,
-    entries:[{name:'Barbell bench press', sets:[{w:'135',r:'8',skipped:false}]}], extras:{} });
-  return app.normalize(d).sessions[1].mtime === 42;
+/* Migrations must settle. If a boot re-touches rows it already migrated, every open of the app
+   would churn `mtime` and re-push the whole history to the other device forever. */
+ok('a second run touches nothing (migrations settle)', (()=>{
+  const once = app.normalize(gobletV14());
+  const stamps = once.sessions.map(s=>s.mtime);
+  const twice = app.normalize(JSON.parse(JSON.stringify(once)));
+  return JSON.stringify(twice.sessions.map(s=>s.mtime)) === JSON.stringify(stamps);
 })());
+
+/* Identity. Ian's Aug 10 export had 37 spellings for ~30 movements — "Seated Fly" and "Seated Flys"
+   were two lifts with two PR histories, and "Deficit Sumo Squat" missed the program's own 12–15
+   range because the override is keyed by the canonical spelling. */
+console.log('\n── an exercise is a thing, not a spelling ──');
+const p1lo = String(app.effRange(app.PROGRAM['PUSH 1'].slots[0], 'x').lo);   // reps inside slot 0's range, so a PR can register
+const twoSpellings = () => app.normalize(Object.assign(app.blank(), { _schema:16, draft:null, sessions:[
+  { id:'a', workout:'PUSH 1', date:'2026-07-01', endedAt:1, extras:{}, entries:[{name:'Seated Fly',  sets:[{w:'95',r:p1lo,skipped:false}]}] },
+  { id:'b', workout:'PUSH 1', date:'2026-07-08', endedAt:1, extras:{}, entries:[{name:'Seated Flys', sets:[{w:'100',r:p1lo,skipped:false}]}] },
+]}));
+app.DB = twoSpellings();
+ok('a plural typo resolves to the same exercise', app.exKey(app.DB.sessions[0].entries[0]) === app.exKey(app.DB.sessions[1].entries[0]),
+   [app.exKey(app.DB.sessions[0].entries[0]), app.exKey(app.DB.sessions[1].entries[0])]);
+ok('  …so it is ONE history, not two', app.exerciseHistory(app.exIdByName('Seated Fly')).length === 2, app.exerciseHistory(app.exIdByName('Seated Fly')).length);
+ok('  …and one PR entry', app.exercisePRs().filter(p=>/seated fly/i.test(p.name)).length === 1, app.exercisePRs());
+ok('the label is the tidy spelling', app.exLabel(app.exIdByName('Seated Flys')) === 'Seated Fly', app.exLabel(app.exIdByName('Seated Flys')));
+ok('case and spacing never split a lift', app.exKey('  BARBELL   bench Press ') === app.exKey('Barbell bench press'));
+ok('ids are derived from the name, so two devices agree offline', app.exIdByName('Barbell bench press') === 'barbell-bench-press', app.exIdByName('Barbell bench press'));
+ok('a hand-typed capitalisation still finds the program range', (()=>{
+  const d = app.normalize(Object.assign(app.blank(), { _schema:16, draft:null, sessions:[
+    { id:'c', workout:'LEGS 1', date:'2026-07-02', endedAt:1, extras:{},
+      entries: slotNames('LEGS 1', app.PROGRAM['LEGS 1'].slots.findIndex(s=>s.examples.includes('Deficit sumo squat')), 'DEFICIT SUMO SQUAT')
+        .map((n,i)=>({ name:n, sets: i===0 ? [{w:'50',r:'13',skipped:false}] : [] })) }]}));
+  const s = d.sessions[0]; app.DB = d;
+  const rng = app.sessionRanges(s).get(s.entries[0]);
+  return rng && rng.lo === 12 && rng.hi === 15;
+})(), 'the 12–15 override was missed');
+app.DB = twoSpellings();
+ok('merging two exercises keeps every set', (()=>{
+  const keep = app.exIdByName('Seated Fly');
+  app.exEnsure('Pec deck');
+  app.DB.sessions.push({ id:'c', workout:'PUSH 1', date:'2026-07-15', endedAt:1, extras:{}, entries:[{name:'Pec deck', exId:'pec-deck', sets:[{w:'110',r:p1lo,skipped:false}]}] });
+  app.exMerge('pec-deck', keep);
+  return app.exerciseHistory(keep).length === 3 && !app.exRow('pec-deck');
+})(), app.exerciseHistory(app.exIdByName('Seated Fly')));
+ok('  …and the merged rows are touched so the merge survives a sync', app.DB.sessions.every(s=>typeof s.mtime === 'number'));
+ok('"did you mean" spots a one-letter difference', (()=>{ const s = app.exSuggest('Seated Flyss'); return !!s && s.name === 'Seated Fly'; })(), app.exSuggest('Seated Flyss'));
+ok('  …and stays quiet for a genuinely different lift', app.exSuggest('Hack squat') === null || app.exSuggest('Hack squat').name !== 'Seated Fly');
+ok('the orphaned forearm sets get a name and become visible', (()=>{
+  const d = app.normalize(Object.assign(app.blank(), { _schema:16, draft:null, sessions:[
+    { id:'f', workout:'PUSH 1', date:'2026-06-29', endedAt:1, entries:[],
+      extras:{ forearms:{ name:'', sets:[{w:'5',r:'12',skipped:false},{w:'5',r:'13',skipped:false}] } } }]}));
+  app.DB = d;
+  return d.sessions[0].extras.forearms.name === 'Wrist curls' && app.sessionExercises(d.sessions[0]).length === 1;
+})(), 'still invisible');
+
+/* Booting with data that needs migrating is a different code path from booting empty, and only the
+   first one runs save() at startup. Skipping it hid a temporal-dead-zone crash that killed the app
+   outright on every device that had anything to migrate — the tests were green and the app was
+   dead. Boot a whole second instance from a seeded store to cover it. */
+console.log('\n── booting with data that needs migrating ──');
+const booted = loadApp(APP_PATH, Object.assign(app.blank(), { _schema:14, draft:null, sessions:[
+  { id:'g1', workout:'LEGS 1', date:'2026-07-15', endedAt:1, extras:{},
+    entries:[{name:'Goblet squat', sets:[{w:'50',r:'12',skipped:false}]}] }]}));
+ok('the app boots at all (no dead-zone crash)', typeof booted.exKey === 'function' && typeof booted.exRows === 'function');
+ok('  …the migration ran', booted.DB._schema === app.SCHEMA && booted.DB.sessions[0].entries[0].name === 'Deficit sumo squat',
+   { schema: booted.DB._schema, name: booted.DB.sessions[0].entries[0].name });
+ok('  …and was WRITTEN to storage, not just held in memory', (()=>{
+  const s = booted.__stored();
+  return s && s._schema === app.SCHEMA && s.sessions[0].entries[0].name === 'Deficit sumo squat';
+})(), booted.__stored() && booted.__stored()._schema);
+ok('  …with the identity stamped on the row', !!booted.__stored().sessions[0].entries[0].exId, booted.__stored().sessions[0].entries[0].exId);
+ok('a fresh install still boots clean', (()=>{ const fresh = loadApp(APP_PATH); return fresh.DB._schema === app.SCHEMA && fresh.DB.sessions.length === 0; })());
 
 console.log('\n── an older build must not write over a migrated one ──');
 ok('a remote from a newer schema is refused', app.remoteTooNew({ _schema: app.SCHEMA + 1 }) === true);

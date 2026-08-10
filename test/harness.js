@@ -36,13 +36,17 @@ const FrozenDate = frozenDateClass(FROZEN_MS);
    definition of "today" across both sides. */
 function freezeRunnerClock(){ global.Date = FrozenDate; }
 
-function loadApp(htmlPath){
+/* `seed` puts a blob in localStorage BEFORE the app script runs, so boot takes the same path a real
+   device does — including migrating and saving. Booting only from an empty store hid a
+   temporal-dead-zone crash that killed the app on every device that had data to migrate. */
+function loadApp(htmlPath, seed){
   const src = fs.readFileSync(htmlPath, 'utf8');
   const m = [...src.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)];
   if(!m.length) throw new Error('no inline <script> found in ' + htmlPath);
   const code = m[m.length-1][1];
 
   const store = {};
+  if(seed) store['ppl_tracker_v1'] = typeof seed === 'string' ? seed : JSON.stringify(seed);
   const el = () => ({ innerHTML:'', textContent:'', value:'', style:{}, dataset:{},
     classList:{ add(){}, remove(){}, toggle(){} }, querySelector:()=>null, querySelectorAll:()=>[],
     addEventListener(){}, removeEventListener(){}, appendChild(){}, remove(){}, focus(){}, click(){},
@@ -100,6 +104,7 @@ function loadApp(htmlPath){
     'setStatus','badgeState','exercisePRs','prSetIndex','sessionRanges','sessionExercises',
     'platesText','plateBreakdown','barWeight','barStyle','isBarbell','extraCard','ACCESSORIES',
     'accOpen','toggleAcc','viewToday','remoteTooNew','renameLoggedExercise',
+    'exKey','exLabel','exRow','exRows','exEnsure','exMerge','exUsage','exSuggest','exIdByName','normEx','exercisesWithData','exerciseHistory','viewStrength','selectExercise',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
@@ -107,6 +112,7 @@ function loadApp(htmlPath){
   })`, sandbox);
   api.__sandbox = sandbox;
   api.__src = code;
+  api.__stored = () => { try{ return JSON.parse(store['ppl_tracker_v1']); }catch(e){ return null; } };
   return api;
 }
 

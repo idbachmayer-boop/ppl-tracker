@@ -471,7 +471,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 16;
+const SCHEMA = 17;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -517,12 +517,66 @@ const MIGRATIONS = {
      at schema 15. Re-applying it under a new version is the only way to reach data already stamped.
      Also folds in the capitalised variant he typed by hand on Aug 8. */
   16:d=>renameLoggedExercise(d, {'Goblet squat':'Deficit sumo squat', 'Deficit Sumo Squat':'Deficit sumo squat'}),
+  /* Exercises stop being strings and become things with ids. See buildExerciseRegistry(). */
+  17:d=>buildExerciseRegistry(d),
 };
 /* Rewriting rows that ALREADY EXIST is the dangerous kind of migration. `mergeUnion` resolves a
    collision by per-item `mtime`, so a rewritten row that isn't touched loses to the untouched copy
    on the other device — silently, and permanently once `_schema` moves past the migration. Every
    migration that edits existing rows must go through a helper like this one: rewrite, then `touch()`
    so the migrated row wins, and let the boot save (see `load()`) push it before anything can pull. */
+/* Migration 17: build the exercise registry and stamp every logged row with an identity.
+   Deliberately reads only PROGRAM — `ACCESSORIES` is declared far below and this runs during
+   `let DB = load()`, so touching it would throw a TDZ ReferenceError straight into the silent
+   catch in normalize(), skipping the migration while `_schema` advanced anyway (the trap the
+   comment on migration 13 describes). Everything else is discovered from the data itself. */
+function buildExerciseRegistry(d){
+  const norm = s => String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,' ');
+  const slug = s => norm(s).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'ex';
+  const rows = Array.isArray(d.exercises) ? d.exercises : (d.exercises = []);
+  const byAlias = new Map();
+  rows.forEach(r=>{ (r.aliases||[]).forEach(a=>byAlias.set(a,r)); });
+  const ensure = name => {
+    const k = norm(name); if(!k) return null;
+    if(byAlias.has(k)) return byAlias.get(k);
+    let id = slug(name), n = 2;
+    while(rows.some(x=>x.id===id)) id = slug(name)+'-'+(n++);
+    const r = { id, name:String(name).trim(), aliases:[k], mtime:Date.now() };
+    rows.push(r); byAlias.set(k, r);
+    return r;
+  };
+  /* The program's spellings go in first so a logged variant attaches to the canonical row rather
+     than founding a rival one. */
+  Object.keys(PROGRAM).forEach(w=>(PROGRAM[w].slots||[]).forEach(s=>(s.examples||[]).forEach(ensure)));
+  /* The duplicate Ian confirmed: same lift, one letter apart, two separate PR histories. */
+  [['Seated Flys','Seated Fly']].forEach(([from,to])=>{
+    const r = ensure(to), k = norm(from);
+    if(r && r.aliases.indexOf(k)<0){ r.aliases.push(k); byAlias.set(k, r); }
+  });
+  /* Two sessions (2026-06-29, 2026-07-06) logged forearm sets with no name at all, so
+     sessionExercises() filtered them out and the work appeared nowhere in the app. */
+  const FOREARM_ORPHAN = 'Wrist curls';
+  const stamp = (e, fallbackName) => {
+    if(!e || !e.sets || !e.sets.length) return false;
+    if(!e.name && fallbackName) e.name = fallbackName;
+    if(!e.name) return false;
+    const r = ensure(e.name); if(!r) return false;
+    if(e.exId === r.id) return false;
+    e.exId = r.id;
+    return true;
+  };
+  (d.sessions||[]).forEach(s=>{
+    let hit=false;
+    (s.entries||[]).forEach(e=>{ if(stamp(e)) hit=true; });
+    if(s.extras) Object.keys(s.extras).forEach(k=>{ if(stamp(s.extras[k], k==='forearms'?FOREARM_ORPHAN:null)) hit=true; });
+    if(hit) touch(s);   // a rewritten row must win the next merge — see renameLoggedExercise
+  });
+  if(d.draft){
+    (d.draft.entries||[]).forEach(e=>stamp(e));
+    if(d.draft.extras) Object.keys(d.draft.extras).forEach(k=>stamp(d.draft.extras[k], k==='forearms'?FOREARM_ORPHAN:null));
+  }
+  return d;
+}
 function renameLoggedExercise(d, map){
   const hit = e => { if(e && map[e.name]){ e.name = map[e.name]; return true; } return false; };
   (d.sessions||[]).forEach(s=>{
@@ -557,13 +611,12 @@ function normalize(raw){
 }
 let migrationRan = false;
 let DB = load();
-/* Persist a migration the moment it happens. Until this line existed, `normalize()` upgraded the
-   data in memory and the first thing to touch the network could pull the pre-migration rows back
-   over it — which is exactly how migration 15's rename was lost in production. Saving here stamps
-   `updatedAt` and queues the push, so the migrated copy is the one the other device merges against. */
-if(migrationRan) save();
+/* `migrationRan` is consumed at the very bottom of this script, not here: save() reaches
+   maybeDailySnapshot() → snapshotNow() → SNAP_KEY, a const declared further down, so calling it at
+   this point dies on a temporal-dead-zone ReferenceError and takes the whole boot with it. Same
+   family of trap as the MIGRATIONS comment above. */
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
-function blank(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[], petWeights:[], petName:"Freddie", draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
+function blank(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[], petWeights:[], petName:"Freddie", exercises:[], draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
 
 /* ── Soft delete ─────────────────────────────────────────────────────────────────────────────
    Deleting used to splice the row out, but sync UNIONS both devices — so the cloud copy came
@@ -721,7 +774,7 @@ function lastRealEntry(workout, slotIndex, exName){
     const s=ls[i];
     if(s.workout!==workout || s.skipped || !s.entries) continue;
     const e=s.entries[slotIndex];
-    if(exName!=null && (!e || e.name!==exName)) continue;
+    if(exName!=null && (!e || exKey(e)!==exKey(exName))) continue;
     if(e && !e.deload && e.sets && e.sets.some(x=>!x.skipped && x.r!=='')) return {entry:e, date:s.date}; // deloads never reset the baseline
   }
   return null;
@@ -735,7 +788,7 @@ function lastAnywhere(exName){
   for(let i=ls.length-1;i>=0;i--){
     const s=ls[i];
     if(s.skipped) continue;
-    const hits = sessionExercises(s).filter(e=> e.name===exName && !e.deload && e.sets && e.sets.some(x=>!x.skipped && x.r!==''));
+    const hits = sessionExercises(s).filter(e=> exKey(e)===exKey(exName) && !e.deload && e.sets && e.sets.some(x=>!x.skipped && x.r!==''));
     if(hits.length) return {entry:hits[hits.length-1], date:s.date, workout:s.workout};
   }
   return null;
@@ -987,15 +1040,99 @@ function sessionExercises(s){
   if(s.extras) Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.name && e.sets && e.sets.length) list.push(e); });
   return list;
 }
+/* ── Exercise identity ───────────────────────────────────────────────────────────────────────
+   Everything used to compare the typed NAME, so "Seated Fly" and "Seated Flys" were two different
+   lifts with two separate PR histories, and "Deficit Sumo Squat" didn't match the program's own
+   "Deficit sumo squat". Ian's Aug 10 export had 37 spellings for roughly 30 movements.
+
+   An exercise is now a row in `DB.exercises` with a stable `id`; the name is a label you can retype
+   or correct without splitting the history behind it. Ids are derived from the name rather than
+   random, so two devices that invent the same exercise offline land on the same id — a random id
+   would have produced duplicates the union merge could never reconcile.
+
+   Every identity comparison goes through `exKey()`. Entries that predate the registry resolve by
+   normalised name, so nothing has to be migrated for the app to keep working. */
+const normEx = s => String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,' ');
+const slugEx = s => normEx(s).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'ex';
+const exRows = () => DB.exercises || (DB.exercises = []);
+function exRow(id){ return exRows().find(x=>x && x.id===id) || null; }
+function exIdByName(name){
+  const k = normEx(name); if(!k) return null;
+  const rows = exRows();
+  for(let i=0;i<rows.length;i++){ const r=rows[i]; if(r && r.aliases && r.aliases.indexOf(k)>=0) return r.id; }
+  return null;
+}
+/* The identity of a logged entry — or of a bare name. Falls back to the normalised name so data
+   logged before the registry existed still groups exactly as it did. */
+function exKey(e){
+  if(!e) return '';
+  if(typeof e === 'string') return exIdByName(e) || normEx(e);
+  return e.exId || exIdByName(e.name) || normEx(e.name);
+}
+/* What to show for an identity: the registry's label, else the raw key. */
+function exLabel(key){ const r = exRow(key); return r ? r.name : (key||''); }
+/* Register a name and return its id, creating the row when it's genuinely new. */
+function exEnsure(name){
+  const k = normEx(name); if(!k) return null;
+  const found = exIdByName(name); if(found) return found;
+  let id = slugEx(name), n = 2;
+  while(exRow(id)) id = slugEx(name) + '-' + (n++);
+  exRows().push(touch({ id, name:String(name).trim(), aliases:[k] }));
+  return id;
+}
+/* Fold `fromId` into `intoId`: the alias comes along, every logged row is restamped, and the merged
+   row is dropped. Rows are touched so the change survives the next sync. */
+function exMerge(fromId, intoId){
+  if(!fromId || !intoId || fromId===intoId) return false;
+  const a = exRow(fromId), b = exRow(intoId); if(!a || !b) return false;
+  b.aliases = (b.aliases||[]).concat(a.aliases||[]).filter((v,i,arr)=>arr.indexOf(v)===i);
+  touch(b);
+  const restamp = e => { if(e && exKey(e)===fromId){ e.exId = intoId; e.name = b.name; return true; } return false; };
+  (DB.sessions||[]).forEach(s=>{
+    let hit=false;
+    (s.entries||[]).forEach(e=>{ if(restamp(e)) hit=true; });
+    if(s.extras) Object.keys(s.extras).forEach(k=>{ if(restamp(s.extras[k])) hit=true; });
+    if(hit) touch(s);
+  });
+  if(DB.draft){ (DB.draft.entries||[]).forEach(restamp); if(DB.draft.extras) Object.keys(DB.draft.extras).forEach(k=>restamp(DB.draft.extras[k])); }
+  DB.exercises = exRows().filter(x=>x.id!==fromId);
+  return true;
+}
+/* How many logged sessions reference an identity — shown in the merge screen so it's obvious which
+   of two spellings is the one you've actually been using. */
+function exUsage(key){
+  let n=0;
+  liveSessions().forEach(s=>{ if(s.skipped) return; if(sessionExercises(s).some(e=>exKey(e)===key)) n++; });
+  return n;
+}
+/* Close-but-not-equal names, for the "did you mean…?" prompt. One edit apart catches the plural and
+   the transposed letter, which is how the duplicates got in. */
+function exLevenshtein(a,b){
+  if(a===b) return 0;
+  const m=a.length, n=b.length; if(Math.abs(m-n)>2) return 99;
+  let prev=Array.from({length:n+1},(_,j)=>j);
+  for(let i=1;i<=m;i++){
+    const cur=[i];
+    for(let j=1;j<=n;j++) cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    prev=cur;
+  }
+  return prev[n];
+}
+function exSuggest(name){
+  const k = normEx(name); if(!k || exIdByName(name)) return null;
+  let best=null, bestD=3;
+  exRows().forEach(r=>{ (r.aliases||[]).forEach(a=>{ const d=exLevenshtein(k,a); if(d<bestD){ bestD=d; best=r; } }); });
+  return best;
+}
 function exercisesWithData(){
   const set=new Set();
-  liveSessions().forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{ if(e.sets.some(x=>!x.skipped && e1rm(x.w,x.r)>0)) set.add(e.name); }); });
-  return [...set].sort();
+  liveSessions().forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{ if(e.sets.some(x=>!x.skipped && e1rm(x.w,x.r)>0)) set.add(exKey(e)); }); });
+  return [...set].sort((a,b)=>exLabel(a).localeCompare(exLabel(b)));
 }
-function exerciseSeries(name){
+function exerciseSeries(key){
   const out=[];
   liveSessions().forEach(s=>{ if(s.skipped) return; let best=0;
-    sessionExercises(s).forEach(e=>{ if(e.name!==name) return; e.sets.forEach(x=>{ if(!x.skipped){ const v=e1rm(x.w,x.r); if(v>best) best=v; } }); });
+    sessionExercises(s).forEach(e=>{ if(exKey(e)!==key) return; e.sets.forEach(x=>{ if(!x.skipped){ const v=e1rm(x.w,x.r); if(v>best) best=v; } }); });
     if(best>0) out.push({date:s.date, value:best}); });
   return out;
 }
@@ -1011,7 +1148,9 @@ const setLoad = x => (x.w===''||x.w==null) ? 0 : +x.w;
 function sessionRanges(s){
   const out = new Map();
   const slots = (PROGRAM[s.workout] && PROGRAM[s.workout].slots) || null;
-  (s.entries||[]).forEach((e,i)=>{ const slot = slots && slots[i]; out.set(e, slot ? effRange(slot, e.name) : null); });
+  /* The override is keyed by the program's canonical name, so resolve through the registry first —
+     otherwise a variant spelling ("Deficit Sumo Squat") silently misses its 12–15 range. */
+  (s.entries||[]).forEach((e,i)=>{ const slot = slots && slots[i]; out.set(e, slot ? effRange(slot, exLabel(exKey(e))) : null); });
   if(s.extras) Object.keys(s.extras).forEach(id=>{ const e=s.extras[id]; if(!e || !e.name || !e.sets || !e.sets.length) return;
     const a=ACCESSORIES[id]; out.set(e, a ? {lo:a.lo, hi:a.hi} : null); });
   return out;
@@ -1023,8 +1162,9 @@ function exercisePRs(){
   const map={};
   liveSessions().forEach(s=>{ if(s.skipped) return; const rngs=sessionRanges(s); sessionExercises(s).forEach(e=>{
     const rng=rngs.get(e);
-    e.sets.forEach(x=>{ if(x.skipped || x.r==='' || !prEligible(rng,x)) return; const v=setLoad(x); if(v>0 && (!map[e.name] || v>map[e.name].v)) map[e.name]={v, w:x.w, r:x.r, date:s.date}; }); }); });
-  return Object.entries(map).map(([name,d])=>({name,...d})).sort((a,b)=>b.v-a.v);
+    const key = exKey(e);
+    e.sets.forEach(x=>{ if(x.skipped || x.r==='' || !prEligible(rng,x)) return; const v=setLoad(x); if(v>0 && (!map[key] || v>map[key].v)) map[key]={v, w:x.w, r:x.r, date:s.date}; }); }); });
+  return Object.entries(map).map(([id,d])=>({id, name:exLabel(id), ...d})).sort((a,b)=>b.v-a.v);
 }
 /* Which individual sets were PRs, resolved live by replaying every session in date order against a
    running heaviest-per-exercise. Deriving it beats trusting the `prs` array stamped at save time:
@@ -1041,29 +1181,30 @@ function prSetIndex(){
         if(x.skipped || x.r==='' || !prEligible(rng,x)) return;   // same gate as exercisePRs — these two must never disagree
         const v=setLoad(x); if(v>topV){ topV=v; topK=k; }
       });
-      if(topV>0 && (best[e.name]==null || topV>best[e.name])){
-        best[e.name]=topV;
-        marks.add(`${e.name}|${topK}`);
+      const key = exKey(e);
+      if(topV>0 && (best[key]==null || topV>best[key])){
+        best[key]=topV;
+        marks.add(`${key}|${topK}`);
       }
     });
     if(marks.size) bySession.set(s, marks);
   });
   return {
-    isPR:(s,name,k)=> !!(bySession.get(s)||{has:()=>false}).has(`${name}|${k}`),
+    isPR:(s,nameOrEntry,k)=> !!(bySession.get(s)||{has:()=>false}).has(`${exKey(nameOrEntry)}|${k}`),
     sessionHasPR:s=> bySession.has(s),
   };
 }
 /* Bodyweight exercises (weight-0 sets with reps) that aren't tracked as loaded lifts. */
 function bwExercisesWithData(){
   const loaded=new Set(exercisesWithData()), set=new Set();
-  liveSessions().forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{ if(loaded.has(e.name)) return;
-    if(e.sets.some(x=>!x.skipped && x.r!=='' && (x.w===''||+x.w===0))) set.add(e.name); }); });
-  return [...set].sort();
+  liveSessions().forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{ if(loaded.has(exKey(e))) return;
+    if(e.sets.some(x=>!x.skipped && x.r!=='' && (x.w===''||+x.w===0))) set.add(exKey(e)); }); });
+  return [...set].sort((a,b)=>exLabel(a).localeCompare(exLabel(b)));
 }
-function bwSeries(name){
+function bwSeries(key){
   const out=[];
   liveSessions().forEach(s=>{ if(s.skipped) return; let total=0, has=false;
-    sessionExercises(s).forEach(e=>{ if(e.name!==name) return; e.sets.forEach(x=>{ if(!x.skipped && x.r!==''){ total+=+x.r; has=true; } }); });
+    sessionExercises(s).forEach(e=>{ if(exKey(e)!==key) return; e.sets.forEach(x=>{ if(!x.skipped && x.r!==''){ total+=+x.r; has=true; } }); });
     if(has) out.push({date:s.date, value:total}); });
   return out;
 }
@@ -1639,9 +1780,25 @@ function viewActive(){
 function setDraftDate(v){ DB.draft.date=v; save(); }
 function setDraftDur(v){ DB.draft.durationMin=v; save(); }
 
+/* Typing a name that's one letter off an existing one is how "Seated Fly" and "Seated Flys" became
+   two lifts with two PR histories. Offer the match before it happens; "keep it separate" is always
+   available, because some near-identical names really are different movements. */
+function resolveTypedName(raw){
+  const name = String(raw||'').trim(); if(!name) return null;
+  const near = exSuggest(name);
+  if(near && confirm(`Did you mean “${near.name}”?\n\nOK — use ${near.name} (keeps one history)\nCancel — keep “${name}” as a separate exercise`)){
+    return { name: near.name, exId: near.id };
+  }
+  return { name, exId: exEnsure(name) };
+}
 function pickEx(i, sel){
-  if(sel.value==='__custom'){ const v=prompt('Exercise name:', DB.draft.entries[i].name); if(v){DB.draft.entries[i].name=v.trim();} save(); render(); return; }
-  DB.draft.entries[i].name = sel.value; save(); render();
+  const e = DB.draft.entries[i];
+  if(sel.value==='__custom'){
+    const picked = resolveTypedName(prompt('Exercise name:', e.name));
+    if(picked){ e.name = picked.name; e.exId = picked.exId; }
+    save(); render(); return;
+  }
+  e.name = sel.value; e.exId = exEnsure(sel.value); save(); render();
 }
 function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; if(f==='r' && v!=='') restCtx=restTargetForSlot(i); save(); /* live save, no re-render to keep focus */ }
 function setNote(i,v){ DB.draft.entries[i].note=v; save(); }
@@ -1735,6 +1892,10 @@ function finishWorkout(){
   if(!hasEx && !hasStairs && !hasExtra){ alert('Log at least one set (with reps) before saving.'); return; }
   // keep skipped sets (they carry a reason); drop sets with no reps (incl. pre-filled-weight-only)
   d.entries.forEach(e=>{ e.sets = e.sets.filter(s=> s.skipped || s.r!==''); e.sets.forEach(s=>delete s._cel); });
+  /* Stamp identity at save time so a session is self-describing the moment it's written, rather than
+     leaning on name resolution forever. */
+  d.entries.forEach(e=>{ if(e.name && !e.exId) e.exId = exEnsure(e.name); });
+  Object.keys(x).forEach(w=>{ const e=x[w]; if(e && e.name && !e.exId) e.exId = exEnsure(e.name); });
   Object.keys(x).forEach(w=>{ x[w].sets = x[w].sets.filter(s=> s.r!==''); });
   const endedAt = Date.now(), hist = d.historical;
   const prior = hist ? {} : Object.fromEntries(exercisePRs().map(p=>[p.name,p.v]));
@@ -1897,7 +2058,7 @@ function viewHistory(){
       right = `<span class="muted">${s.durationMin?s.durationMin+' min · ':''}${e_count(s)} sets ${ph(open?'caret-up':'caret-down')}</span>`;
       if(open){
         /* 🏆 sits on the set that actually set the record, so you can see which one it was. */
-        const setsOf = e => e.sets.map((x,k)=> x.skipped ? '<em>skip</em>' : fmtSet(x.w,x.r) + (prIdx.isPR(s, e.name, k) ? ' 🏆' : '')).join(', ');
+        const setsOf = e => e.sets.map((x,k)=> x.skipped ? '<em>skip</em>' : fmtSet(x.w,x.r) + (prIdx.isPR(s, e, k) ? ' 🏆' : '')).join(', ');
         const lines = (s.entries||[]).map(e=>{
           const setStr = setsOf(e);
           return `<strong>${esc(e.name)}</strong> — ${setStr||'—'}${e.deload?' <em>(deload)</em>':''}${e.note?` <span class="muted">· ${esc(e.note)}</span>`:''}`;
@@ -1960,7 +2121,7 @@ function editSession(idx){
 let chartRange = 30, progSub='body', selectedExercise=null;
 function progSubTab(t){ progSub=t; render(); }
 function selectExercise(m){ selectedExercise=m; render(); }
-function selectPR(i){ const p=exercisePRs()[i]; if(p) selectExercise(p.name); }
+function selectPR(i){ const p=exercisePRs()[i]; if(p) selectExercise(p.id); }
 function rangeSeg(){ return `<div class="seg" style="margin:14px 0 0">
     <button class="${chartRange===30?'active':''}" onclick="setRange(30)">30d</button>
     <button class="${chartRange===90?'active':''}" onclick="setRange(90)">90d</button>
@@ -2038,12 +2199,12 @@ function viewPetWeight(sub){
 }
 /* Every logged session of one exercise, newest first — the "past data" behind the chart.
    LIVE sessions only (soft-deleted rows must never ghost back in here). */
-function exerciseHistory(name){
+function exerciseHistory(key){
   const out=[];
   const ls=liveSessions();
   for(let i=ls.length-1;i>=0;i--){ const s=ls[i]; if(s.skipped) continue;
     sessionExercises(s).forEach(e=>{
-      if(e.name!==name) return;
+      if(exKey(e)!==key) return;
       const worked=e.sets.filter(x=>!x.skipped && x.r!==''); if(!worked.length) return;
       let best=0, reps=0; worked.forEach(x=>{ const v=e1rm(x.w,x.r); if(v>best) best=v; reps+=+x.r; });
       out.push({ date:s.date, setsStr:worked.map(x=>fmtSet(x.w,x.r)).join(', '), best:Math.round(best), reps, deload:!!e.deload, note:e.note||'' });
@@ -2060,10 +2221,12 @@ function viewStrength(sub){
   const first=series[0], best = series.length ? Math.max(...series.map(s=>s.value)) : 0;
   let delta='';
   if(series.length>=2){ const d=best-first.value; const cls=d>0?'trend-down':'trend-flat'; delta=`<span class="${cls}">▲ ${Math.abs(d).toFixed(0)} ${isReps?'reps':DB.unit}</span> since ${fmtDate(first.date)}`; }
-  const opts = loadEx.map(m=>`<option ${m===selectedExercise?'selected':''}>${esc(m)}</option>`).join('')
-    + bwEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(m)} (reps)</option>`).join('');
+  /* The <option> VALUE is the identity, the text is the label — so correcting a name never changes
+     which series is selected. */
+  const opts = loadEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(exLabel(m))}</option>`).join('')
+    + bwEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(exLabel(m))} (reps)</option>`).join('');
   /* PRs are heaviest-load-ever now, so show the bar weight and what you hit it for, not an e1RM. */
-  const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.name===selectedExercise?ph('caret-right','lead'):''}${esc(p.name)}</span><span><strong>${p.v} ${DB.unit}</strong> <span class="muted">× ${esc(String(p.r))} · ${fmtDate(p.date)}</span></span></div>`).join('');
+  const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.id===selectedExercise?ph('caret-right','lead'):''}${esc(p.name)}</span><span><strong>${p.v} ${DB.unit}</strong> <span class="muted">× ${esc(String(p.r))} · ${fmtDate(p.date)}</span></span></div>`).join('');
   const hist = exerciseHistory(selectedExercise).slice(0,15);
   const histRows = hist.map(h=>`<div class="hist-item">
       <div style="min-width:0"><div style="font-weight:600;font-size:13px">${fmtDate(h.date)}${h.deload?' <em class="muted" style="font-size:11px">(deload)</em>':''}</div>
@@ -2077,11 +2240,11 @@ function viewStrength(sub){
     </div>
     <div class="card">
       <div style="margin-bottom:8px"><div class="stat-big" style="font-size:26px">${series.length?Math.round(best):'—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${isReps?'best reps':DB.unit+' best e1RM'}</span></div>
-      <div class="stat-sub">${delta||((isReps?'Best total reps · ':'Best estimated 1RM · ')+esc(selectedExercise))}</div></div>
+      <div class="stat-sub">${delta||((isReps?'Best total reps · ':'Best estimated 1RM · ')+esc(exLabel(selectedExercise)))}</div></div>
       <svg id="schart" viewBox="0 0 320 150" preserveAspectRatio="none" style="height:150px"></svg>
       <p class="muted" style="font-size:11px;margin-top:6px;text-align:center">Bold line = <strong>best to date</strong> (only rises) · dots = each session</p>
     </div>
-    ${hist.length?`<div class="card"><div class="card-label" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">History — ${esc(selectedExercise)}</div>${histRows}</div>`:''}
+    ${hist.length?`<div class="card"><div class="card-label" style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">History — ${esc(exLabel(selectedExercise))}</div>${histRows}</div>`:''}
     ${prs?`<div class="card"><div class="muted" style="font-weight:700;margin-bottom:6px">Personal records — heaviest ever (tap to chart)</div>${prs}</div>`:''}
     <p class="muted" style="text-align:center;font-size:12px">e1RM = estimated 1-rep max (weight × reps), so it normalizes heavy/low-rep and light/high-rep days into one number. The <strong>best-to-date</strong> line rises whenever you set a new estimated 1RM — even from a single extra rep. A <strong>personal record</strong> is stricter: it only counts when you move up in weight, which is why the 🏆 and the chart don't always move together. Bodyweight moves chart <strong>total reps</strong> instead.</p>`;
 }
@@ -2250,6 +2413,60 @@ function petWeightList(){
   ).join('');
 }
 function setPetName(v){ DB.petName = (v||'').trim() || 'Freddie'; save(); }
+
+/* ── Settings → Exercises ────────────────────────────────────────────────────────────────────
+   Names drift — that's how one squat ended up with three spellings. Rather than needing a dev to
+   untangle it, renaming and merging live here. Only exercises you've actually logged are listed;
+   the other ~30 program names would be noise. */
+let exSortByUse = true;
+function exListRows(){
+  const seen = new Map();
+  liveSessions().forEach(s=>{ if(s.skipped) return; sessionExercises(s).forEach(e=>{
+    const k = exKey(e); if(!k) return;
+    seen.set(k, (seen.get(k)||0) + 1);
+  }); });
+  const rows = [...seen.entries()].map(([id,n])=>({ id, name:exLabel(id), n }));
+  return exSortByUse ? rows.sort((a,b)=>b.n-a.n || a.name.localeCompare(b.name))
+                     : rows.sort((a,b)=>a.name.localeCompare(b.name));
+}
+function exercisesCardHTML(){
+  const rows = exListRows();
+  if(!rows.length) return `<div class="card"><p class="muted">Log a workout and your exercises show up here to rename or merge.</p></div>`;
+  const opts = rows.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');
+  return `<div class="card">
+    <p class="muted" style="margin-bottom:10px">Two spellings of the same lift split its history in two. Rename one, or merge them — your logged sets are never changed, only the label they sit under.</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <select id="ex-merge-from" style="flex:1;min-width:130px">${opts}</select>
+      <span class="muted" style="align-self:center;font-size:12px">into</span>
+      <select id="ex-merge-into" style="flex:1;min-width:130px">${opts}</select>
+      <button class="btn btn-sm" onclick="doExMerge()">Merge</button>
+    </div>
+    ${rows.map(r=>`<div class="hist-item">
+      <span style="min-width:0"><strong style="font-size:13px">${esc(r.name)}</strong>
+        <span class="muted" style="font-size:11px">· ${r.n} session${r.n===1?'':'s'}</span></span>
+      <button class="btn btn-sm btn-ghost" onclick="renameExercise('${esc(r.id)}')">${ph('pencil-simple')}Rename</button>
+    </div>`).join('')}
+  </div>`;
+}
+function renameExercise(id){
+  const r = exRow(id); if(!r) return;
+  const v = prompt('Name for this exercise:', r.name);
+  if(v===null) return;
+  const name = v.trim(); if(!name) return;
+  const clash = exIdByName(name);
+  if(clash && clash!==id){ if(!confirm(`“${name}” already exists. Merge this one into it?`)) return; exMerge(id, clash); save(); toast('Merged ✓'); render(); return; }
+  r.name = name;
+  const k = normEx(name); if(r.aliases.indexOf(k)<0) r.aliases.push(k);   // keep the old spelling resolving
+  touch(r); save(); toast('Renamed ✓'); render();
+}
+function doExMerge(){
+  const from = (document.getElementById('ex-merge-from')||{}).value;
+  const into = (document.getElementById('ex-merge-into')||{}).value;
+  if(!from || !into || from===into){ toast('Pick two different exercises'); return; }
+  const a = exRow(from), b = exRow(into); if(!a || !b) return;
+  if(!confirm(`Merge “${a.name}” into “${b.name}”?\n\nEvery set logged under ${a.name} keeps its weights and reps, and moves under ${b.name}. One chart, one PR history.`)) return;
+  exMerge(from, into); save(); toast('Merged ✓'); render();
+}
 /* trend (optional): a parallel series (same length as pts) drawn as the bold primary line, with
    pts shown as faint dots + a hairline. Used for the running-best strength trend. */
 function paintChart(svg, pts, emptyMsg, gradId, trend, colorVar){
@@ -2377,7 +2594,15 @@ function ensureExtras(){
   if(!DB.draft) return; if(!DB.draft.extras) DB.draft.extras={};
   accessoryIdsFor(DB.draft.workout).forEach(id=>{ if(!DB.draft.extras[id]) DB.draft.extras[id]={ name:lastExtraName(id)||ACCESSORIES[id].examples[0], sets:emptyExtraSets(ACCESSORIES[id].sets) }; });
 }
-function exPick(which, sel){ if(sel.value==='__custom'){ const v=prompt('Exercise name:', DB.draft.extras[which].name); if(v) DB.draft.extras[which].name=v.trim(); save(); render(); return; } DB.draft.extras[which].name=sel.value; save(); }
+function exPick(which, sel){
+  const e = DB.draft.extras[which];
+  if(sel.value==='__custom'){
+    const picked = resolveTypedName(prompt('Exercise name:', e.name));
+    if(picked){ e.name = picked.name; e.exId = picked.exId; }
+    save(); render(); return;
+  }
+  e.name = sel.value; e.exId = exEnsure(sel.value); save();
+}
 function exSet(which,k,f,v){ DB.draft.extras[which].sets[k][f]=v; save(); }
 function exRoll(which,k,v){ const sets=DB.draft.extras[which].sets; sets[k].w=v; if(v!==''){ for(let j=k+1;j<sets.length;j++){ if(sets[j].w===''){ sets[j].w=v; const el=document.getElementById(`ex-${which}-w-${j}`); if(el) el.value=v; } } } save(); }
 function exAddSet(which){ DB.draft.extras[which].sets.push({w:'',r:'',skipped:false}); save(); render(); }
@@ -2987,6 +3212,8 @@ function viewData(){
     </div>
       <p class="muted" style="font-size:12px">4-Day adds a specialized 4th day each week — pick Chest & Triceps, Back, Shoulders, Biceps, or Legs fresh each time it comes up.</p>
     </div>
+    <h2>Exercises</h2>
+    ${exercisesCardHTML()}
     <h2>Pet</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Name on the daily pet weigh-in — shown on the Today card and the Progress sub-tab.</p>
@@ -3818,6 +4045,12 @@ function fallbackCopy(text, cb){ try{ const ta=document.createElement('textarea'
    call ph() inside a template literal like every view does — they declare data-ph instead and
    get their icon prepended once here. Re-rendered views don't need this; they call ph() directly. */
 document.querySelectorAll('[data-ph]').forEach(el => { el.innerHTML = ph(el.dataset.ph) + el.innerHTML; });
+/* Persist a migration the moment it happens. Until this existed, normalize() upgraded the data in
+   memory and the first thing to touch the network could pull the pre-migration rows back over it —
+   which is exactly how migration 15's rename was lost in production. Saving stamps `updatedAt` and
+   queues the push, so the migrated copy is the one the other device merges against. Runs here,
+   after every const in the file is initialized. */
+if(migrationRan) save();
 buildTabBar();
 render();
 updateStopwatch();
