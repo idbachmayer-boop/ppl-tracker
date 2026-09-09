@@ -34,6 +34,17 @@ ok('  …with a versioned cache that drops old shells', /CACHE_VERSION/.test(fs.
 ok('index.html registers it as a real URL, not a blob', /register\('\.\/sw\.js'/.test(rawHtml) && !/register\(URL\.createObjectURL/.test(rawHtml));
 ok('  …and does not swallow the failure', !/register\([^)]*\)\.catch\(\(\)=>\{\}\)/.test(rawHtml));
 
+/* The security rules belong in the repo, not only in a web console. This does not prove what is
+   DEPLOYED — only Firebase knows that — it proves the repo still has a reviewable copy, and that
+   nobody has quietly relaxed the one line the whole model rests on. */
+const rulesPath = APP_PATH.replace(/index\.html$/, 'firestore.rules');
+ok('firestore.rules is in the repo', fs.existsSync(rulesPath));
+if(fs.existsSync(rulesPath)){
+  const rules = fs.readFileSync(rulesPath, 'utf8');
+  ok('  …a user document is scoped to its owner', /request\.auth\.uid\s*==\s*uid/.test(rules));
+  ok('  …and everything else is denied by default', /match\s*\/\{document=\*\*\}[\s\S]*?allow read, write:\s*if false/.test(rules));
+}
+
 const app = loadApp(APP_PATH);
 const today = app.todayISO();
 const dayOff = n => { const d = new Date(today+'T00:00'); d.setDate(d.getDate()+n); return d.toLocaleDateString('en-CA'); };
