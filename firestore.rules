@@ -1,0 +1,67 @@
+rules_version = '2';
+
+/* Firestore security rules for ppl-tracker.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * READ THIS BEFORE DEPLOYING.
+ *
+ * This file was written on 2026-09-09 from what the app's code actually does. It has NOT been
+ * diffed against the rules currently live in the Firebase console — nobody has looked at those.
+ * Open the console (Firestore → Rules), compare, and reconcile BEFORE you deploy this. Deploying
+ * a guess over a working configuration is how you turn a documentation gap into an outage.
+ *
+ * Why the file exists at all: until now the entire data-protection layer for two months of
+ * training data lived in a web console — not in git, not diffable, not reviewable, not
+ * revertible. One misclick made `users/{uid}` world-readable and nothing would have said so.
+ *
+ * Deploy:  firebase deploy --only firestore:rules
+ * (There is no CI step for this on purpose — it needs a service-account secret. Deploy by hand,
+ * and treat a change here like a change to the merge code: deliberate, and tested.)
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ *
+ * The whole data model, from index.html:
+ *   users/{uid}                    one JSON blob — the entire DB. Written by runTransaction only.
+ *   users/{uid}/versions/{id}      append-only snapshots, capped client-side at CLOUD_VERSIONS_MAX.
+ *
+ * There is no sharing, no multi-user anything, and no server. A signed-in account touches its own
+ * document and nothing else, ever.
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* A user's own data, and nothing else. `request.auth.uid == uid` is the entire security model:
+       there is no path on which one account reads another's, so an account someone else created
+       (signup is open — see the note at the bottom) can never reach Ian's data. */
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      /* Version history. Created by cloudVersion(), read back by the Settings screen, and pruned
+         by the client. Same owner check, one level down. */
+      match /versions/{versionId} {
+        allow read, create, delete: if request.auth != null && request.auth.uid == uid;
+        /* No update: a snapshot is a point in time. Rewriting one is never correct, and refusing
+           it here means a bug can't quietly rewrite history. */
+        allow update: if false;
+      }
+    }
+
+    /* Everything else is closed. Explicit, so a future collection added in the console without
+       rules is denied by default rather than inheriting something permissive. */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────────────────────
+ * STILL OPEN, and NOT fixable in this file:
+ *
+ * Email/password SIGNUP is enabled on a public site with a public repo, so anyone can create an
+ * account in this Firebase project. The rules above mean they cannot touch Ian's data — but it is
+ * still his quota, his billing, and an abuse surface for a feature exactly two people need.
+ *
+ * Fix it in the console, not here: Authentication → Settings → disable new sign-ups once both
+ * accounts exist. (The "Create account" button in the app then simply fails, which is correct.)
+ * Or add App Check, which is more work for the same outcome.
+ * ───────────────────────────────────────────────────────────────────────────────────────────── */

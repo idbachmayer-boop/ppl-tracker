@@ -41,8 +41,15 @@ using `save()` is what let a stale device look "newest" merely by being opened.
 
 ## Conventions
 
-- **Escaping:** every user-controlled string rendered into HTML goes through `esc()`. Note `esc()`
-  does **not** escape `'` — never put a user string inside an inline handler's quotes.
+- **Escaping:** every user-controlled string rendered into HTML goes through `esc()`. Two holes to
+  know about: `esc()` does **not** escape `'`, so never put a user string inside an inline handler's
+  quotes; and values interpolated into an **attribute** (`value="${st.w}"` in the set rows) are not
+  escaped at all. `validateBackup()` checks the *shape* of an imported file, never the types inside
+  it, so a hand-edited backup can put anything in a set's `w`. Escape attributes too when you touch
+  them.
+- **Security rules live in `firestore.rules`**, in this repo — not only in the Firebase console.
+  Read the header of that file before changing or deploying it; it has not yet been reconciled with
+  what is actually live.
 - **Icons:** Phosphor, inlined in the `PH` map. No CDN, no web font — offline-first. Emoji stay where
   they mark something logged, typed or celebrated.
 - **Theme:** "Nocturne". Colours come from the `:root` custom properties; don't hard-code hex.
@@ -52,6 +59,10 @@ using `save()` is what let a stale device look "newest" merely by being opened.
 ## After shipping
 
 Append a dated entry to the changelog in Ian's vault at
-`C:\Users\idbac\Documents\Obsidian Vaults\Ian's Valut\10-19 Personal\19. Projects\PPL Tracker App.md`,
+`C:\Main Vault\50-59 Projects & Events\56. Software Projects\PPL Tracker App.md`,
 and update its **Current Features** section when the change is structural. Write for a human skimming
 later: what changed and why it matters, not how the code does it.
+
+> **`C:\Main Vault` is the live vault.** There is a second, pre-rebuild vault at
+> `C:\Users\idbac\Documents\Obsidian Vaults\Ian's Valut` — this file pointed at it until 2026-09-09,
+> so every changelog entry written before then landed in a vault Ian doesn't open. Don't put it back.

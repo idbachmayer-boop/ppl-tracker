@@ -591,6 +591,27 @@ function renameLoggedExercise(d, map){
   }
   return d;
 }
+/* The draft is the one object the views walk BLIND — viewActive reads .entries, .stairs and .extras
+   without checking any of them, because startWorkout() always builds all three. Anything that did
+   NOT come from startWorkout() can be short a field: a draft synced from a device on an older
+   schema, or a hand-edited backup. mergeDB already nulls a draft whose `workout` is unknown, for
+   exactly this reason ("would crash viewActive's PROGRAM[name] lookup") — it was just one field
+   short, and a draft missing `stairs` takes out the Log tab, which is the screen Ian is standing in
+   front of at the rack.
+   Repair what is safely repairable; null the draft only when the workout itself is unusable — a
+   crashing Log tab loses the workout anyway. Deliberately no function calls in here: normalize()
+   runs at module-eval time (see load() below), so anything declared further down is in the temporal
+   dead zone and would take the whole boot with it. */
+function normalizeDraft(d){
+  const k = d && d.draft;
+  if(!k || typeof k!=='object') return d;
+  if(!PROGRAM[k.workout] || !Array.isArray(k.entries)){ d.draft = null; return d; }
+  if(!k.stairs || typeof k.stairs!=='object') k.stairs = { level:'', seconds:'', skipped:false, reason:'' };
+  if(!k.extras || typeof k.extras!=='object') k.extras = {};
+  if(typeof k.sessionNote!=='string') k.sessionNote = '';
+  return d;
+}
+
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
 function normalize(raw){
   let d = (raw && typeof raw==='object') ? raw : blank();
@@ -607,6 +628,7 @@ function normalize(raw){
      schema onto the shared blob and make the newer device re-run migrations (migration 4 is not
      idempotent — it resets hobbies, resurrecting deleted ones). */
   d._schema = Math.max(SCHEMA, +d._schema || 0);
+  normalizeDraft(d);
   return d;
 }
 let migrationRan = false;
@@ -3658,9 +3680,10 @@ function mergeDB(remote, local, localWins){
      stale non-null draft existed anywhere (a device's memory, or the cloud doc from before a
      workout was finished), it won FOREVER — finishing/discarding sets draft:null, but null could
      never beat a stale non-null value, so the old workout kept getting resurrected on every merge
-     and re-pushed via the live listener, looping endlessly across every device. Only guard against
-     a corrupt/unknown workout name here (would crash viewActive's PROGRAM[name] lookup). */
-  if(out.draft && !PROGRAM[out.draft.workout]) out.draft = null;
+     and re-pushed via the live listener, looping endlessly across every device. The merged output
+     does NOT pass back through normalize(), so the draft is repaired here too — a draft short a
+     field crashes viewActive exactly like an unknown workout name does. */
+  normalizeDraft(out);
   // ── invariants ──
   out.weights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   out.petWeights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
