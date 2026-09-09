@@ -506,5 +506,150 @@ ok('an OLDER backup is still accepted (that is what migrations are for)', (()=>{
   const old = JSON.parse(JSON.stringify(realBackup)); old._schema = 12; return app.validateBackup(old) === null; })());
 ok('the real exported shape passes', app.validateBackup(app.normalize(JSON.parse(JSON.stringify(realBackup)))) === null);
 
+/* ─────────────────────────────────────────────────────────────────────────────────────────────
+   Every screen still draws.
+
+   render() catches anything a view throws and shows a friendly "Something broke on this screen"
+   card. That is right for Ian mid-workout and wrong for this suite: until now an agent could break
+   viewHistory() outright and every one of the 187 checks above would still pass, because none of
+   them render anything. The failure would show up on the phone.
+
+   So: seed one realistic database — every collection populated, plus the awkward states (a workout
+   in progress, a first-run install with nothing logged) — then walk every tab and sub-tab. These
+   assert only that a screen DRAWS. Behaviour is asserted above; this is the floor beneath it.
+   ───────────────────────────────────────────────────────────────────────────────────────────── */
+console.log('\n── every screen still draws ──');
+
+function populatedDB(a){
+  const d = a.blank();
+  d.sessions = [
+    { id:'s1', workout:'PUSH 1', date:dayOff(-9), endedAt:1, durationMin:52, extras:{},
+      entries:[{ name:'Barbell bench press', sets:[{w:'135',r:'8',skipped:false},{w:'135',r:'7',skipped:false}] }] },
+    { id:'s2', workout:'LEGS 1', date:dayOff(-7), endedAt:2, durationMin:61, extras:{},
+      entries:[{ name:'Back squat', sets:[{w:'185',r:'6',skipped:false}] }], stairs:{ minutes:12 } },
+    { id:'s3', workout:'PULL 1', date:dayOff(-5), endedAt:3, skipped:true, reason:'slept in', entries:[] },
+    { id:'s4', workout:'PUSH 2', date:dayOff(-3), endedAt:4, extras:{},
+      entries:[{ name:'Barbell bench press', sets:[{w:'140',r:'8',skipped:false}] }] },
+    /* a soft-deleted row: every view must read through liveSessions() and never show this */
+    { id:'s5', workout:'LEGS 2', date:dayOff(-2), endedAt:5, entries:[], deletedAt:Date.now(), mtime:Date.now() },
+  ];
+  d.weights    = [{ date:dayOff(-9), value:196.4 }, { date:dayOff(-4), value:195.1 }, { date:today, value:194.2 }];
+  d.petWeights = [{ date:dayOff(-30), value:12.1 }, { date:today, value:12.6 }];
+  d.cardio     = [{ id:'c1', date:dayOff(-6), kind:'run', minutes:28, miles:2.8 }];
+  d.ideas      = [{ id:'i1', text:'A hostile <script> & "quotes" — must be escaped', at:Date.now() }];
+  d.todos      = [{ text:'Order more creatine', created:dayOff(-4) }];
+  d.hobbyLog   = [{ date:dayOff(-1), item:'🎨 Mini-painting', cat:'hobby' }];
+  d.journal    = { [dayOff(-1)]: 'Felt strong.', [today]: '' };
+  d.mobilityLog= { [today]: { 'Couch stretch': true } };
+  d.lawnLog    = { [dayOff(-4)]: { mow:true }, [dayOff(-1)]: { water:true } };
+  d.lawn       = { lat:41.88, lon:-87.63 };
+  d.wx         = makeWx({ todayISO: today });
+  return d;
+}
+
+/* Each entry: [label, how to get there]. `sub` null means the tab has no sub-nav. */
+const SCREENS = [];
+(app.TABS || []).forEach(t => {
+  if(t.sub) t.sub.forEach(([k, label]) => SCREENS.push([`${t.label} → ${label}`, t.id, k]));
+  else SCREENS.push([t.label, t.id, null]);
+});
+ok('the router exposes every tab', SCREENS.length >= 7, SCREENS.map(s=>s[0]));
+
+/* Drive the REAL router, exactly as a tap does: go(tab) → setSub(sub) → render(). Then read the
+   container. render() never throws by design, so the tell is the error card's own wording. */
+function drawEvery(a, stateLabel){
+  const appEl = a.__sandbox.document.getElementById('app');
+  SCREENS.forEach(([label, tab, sub]) => {
+    appEl.innerHTML = '';
+    let threw = null;
+    try { a.go(tab); if(sub) a.setSub(sub); } catch(e){ threw = e; }
+    const html = appEl.innerHTML || '';
+    const broke = /Something broke on this screen/.test(html);
+    const detail = broke ? (html.match(/<p class="muted"[^>]*>([^<]*)</) || [,'?'])[1] : (threw && threw.message);
+    ok(`${stateLabel}: ${label}`, !threw && !broke && html.length > 0, detail);
+  });
+}
+
+const uiFull = loadApp(APP_PATH);
+uiFull.DB = populatedDB(uiFull);
+drawEvery(uiFull, 'with data');
+
+/* First run. Empty lists are where views divide by zero, index [-1], or read .value off undefined —
+   and it is the one state Ian will never see again, so nothing else would catch it. */
+const uiEmpty = loadApp(APP_PATH);
+uiEmpty.DB = uiEmpty.blank();
+drawEvery(uiEmpty, 'fresh install');
+
+/* Mid-workout. viewPicker and viewActive are the same tab in two states; only one is ever on
+   screen, so a break in the other stays invisible until Ian is standing at the rack. */
+const draftFor = (a, workout) => ({
+  workout, date:today, startedAt:Date.now(), sessionNote:'', extras:{},
+  stairs:{ level:'', seconds:'', skipped:false, reason:'' },
+  entries: a.PROGRAM[workout].slots.map(s => ({ name:s.examples[0], deload:false, sets:[{w:'',r:'',skipped:false}] })),
+});
+const uiDraft = loadApp(APP_PATH);
+{
+  const d = populatedDB(uiDraft);
+  d.draft = draftFor(uiDraft, 'PUSH 1');
+  uiDraft.DB = d;
+  drawEvery(uiDraft, 'mid-workout');
+}
+
+/* ── a draft that did not come from startWorkout() ──
+   Found by the smoke check above on its first run. viewActive walks .entries, .stairs and .extras
+   blind, because startWorkout() always builds all three — but a draft synced from a device on an
+   older schema, or restored from a hand-edited backup, can be short a field. mergeDB already nulled
+   a draft whose `workout` was unknown for this exact reason; it was one field short, and the screen
+   it takes out is the Log tab. normalizeDraft() now repairs what it can and nulls the rest, on both
+   the boot path and the merge path (mergeDB's output does not pass back through normalize). */
+console.log('\n── a malformed draft must not take out the Log tab ──');
+{
+  const a = loadApp(APP_PATH);
+  const withDraft = mutate => { const d = populatedDB(a); d.draft = draftFor(a,'PUSH 1'); mutate(d.draft); return d; };
+  const drawsLog = d => {
+    a.DB = a.normalize(d);
+    const appEl = a.__sandbox.document.getElementById('app');
+    appEl.innerHTML = '';
+    try { a.go('train'); a.setSub('log'); } catch(e){ return 'threw: ' + e.message; }
+    return /Something broke on this screen/.test(appEl.innerHTML) ? 'error card' : true;
+  };
+  ok('a draft with no stairs still draws',      drawsLog(withDraft(k=>{ delete k.stairs; }))      === true, drawsLog(withDraft(k=>{ delete k.stairs; })));
+  ok('a draft with no extras still draws',      drawsLog(withDraft(k=>{ delete k.extras; }))      === true);
+  ok('a draft with no sessionNote still draws', drawsLog(withDraft(k=>{ delete k.sessionNote; })) === true);
+  ok('  …and the repair fills the missing field rather than dropping the workout', (()=>{
+    const d = a.normalize(withDraft(k=>{ delete k.stairs; }));
+    return d.draft && d.draft.workout === 'PUSH 1' && d.draft.stairs && d.draft.stairs.seconds === '';
+  })());
+  ok('an unusable draft is dropped, not half-repaired', (()=>{
+    const d = a.normalize(withDraft(k=>{ k.workout = 'NOT A WORKOUT'; }));
+    return d.draft === null;
+  })());
+  ok('  …same for a draft with no entries list', a.normalize(withDraft(k=>{ delete k.entries; })).draft === null);
+  ok('a null draft stays null', a.normalize(populatedDB(a)).draft === null);
+
+  /* The merge path repairs too — mergeDB's output never passes back through normalize(). */
+  ok('the sync merge repairs a malformed draft as well', (()=>{
+    const remote = populatedDB(a); remote.draft = draftFor(a,'PUSH 1'); delete remote.draft.stairs;
+    remote.updatedAt = Date.now();
+    const local = populatedDB(a); local.updatedAt = Date.now() - 60000;
+    const out = a.mergeDB(remote, local, false);
+    return out.draft && out.draft.workout === 'PUSH 1' && !!out.draft.stairs;
+  })());
+  ok('  …and still drops one with an unknown workout (the 2026-07-25 guard)', (()=>{
+    const remote = populatedDB(a); remote.draft = draftFor(a,'PUSH 1'); remote.draft.workout = 'GONE';
+    remote.updatedAt = Date.now();
+    const local = populatedDB(a); local.updatedAt = Date.now() - 60000;
+    return a.mergeDB(remote, local, false).draft === null;
+  })());
+}
+
+/* The escaping convention, checked on the one string in the seed that is trying to break out. */
+{
+  const appEl = uiFull.__sandbox.document.getElementById('app');
+  appEl.innerHTML = ''; uiFull.go('today');
+  const everyScreen = SCREENS.map(([, tab, sub]) => { appEl.innerHTML=''; uiFull.go(tab); if(sub) uiFull.setSub(sub); return appEl.innerHTML; }).join('');
+  ok('a user string never reaches the page as live markup', !/<script>/i.test(everyScreen));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

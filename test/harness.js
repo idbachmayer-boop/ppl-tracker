@@ -105,6 +105,12 @@ function loadApp(htmlPath, seed){
     'platesText','plateBreakdown','barWeight','barStyle','isBarbell','extraCard','ACCESSORIES',
     'accOpen','toggleAcc','viewToday','remoteTooNew','renameLoggedExercise',
     'validateBackup','exKey','exLabel','exRow','exRows','exEnsure','exMerge','exUsage','exSuggest','exIdByName','normEx','exercisesWithData','exerciseHistory','viewStrength','selectExercise',
+    /* Every screen, plus the router that reaches them. render() wraps each view in a try/catch and
+       shows Ian a friendly "something broke" card instead of crashing — right for the gym, wrong for
+       a test suite, because a view an agent broke stays silent and the suite stays green. Exporting
+       the views lets the smoke check call them directly, where a throw is a throw. */
+    'TABS','tabDef','render','go','setSub','subState',
+    'viewActive','viewCardio','viewCardioTrend','viewData','viewHistory','viewPicker','viewSkincare','viewVolume',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
