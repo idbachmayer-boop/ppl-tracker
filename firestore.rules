@@ -3,65 +3,73 @@ rules_version = '2';
 /* Firestore security rules for ppl-tracker.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * READ THIS BEFORE DEPLOYING.
+ * RECONCILED 2026-09-10. The rules below are what is ACTUALLY DEPLOYED — Ian read them out of the
+ * Firebase console and they were diffed against this file the same day. This is a true record, not
+ * a proposal. Keep it that way: if you change the console, change this file in the same sitting,
+ * and vice versa. The moment the two drift, this file becomes worse than useless — it becomes a
+ * confident lie about who can read two months of training data.
  *
- * This file was written on 2026-09-09 from what the app's code actually does. It has NOT been
- * diffed against the rules currently live in the Firebase console — nobody has looked at those.
- * Open the console (Firestore → Rules), compare, and reconcile BEFORE you deploy this. Deploying
- * a guess over a working configuration is how you turn a documentation gap into an outage.
- *
- * Why the file exists at all: until now the entire data-protection layer for two months of
- * training data lived in a web console — not in git, not diffable, not reviewable, not
- * revertible. One misclick made `users/{uid}` world-readable and nothing would have said so.
+ * Why the file exists: until 2026-09-09 the entire data-protection layer lived only in a web
+ * console. Not diffable, not reviewable, not revertible. One misclick made `users/{uid}`
+ * world-readable and nothing would have said so.
  *
  * Deploy:  firebase deploy --only firestore:rules
- * (There is no CI step for this on purpose — it needs a service-account secret. Deploy by hand,
- * and treat a change here like a change to the merge code: deliberate, and tested.)
+ * Or paste into the console (Firestore → Rules). There is no CI step on purpose — it needs a
+ * service-account secret, and a rules change deserves a human anyway.
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  *
  * The whole data model, from index.html:
  *   users/{uid}                    one JSON blob — the entire DB. Written by runTransaction only.
- *   users/{uid}/versions/{id}      append-only snapshots, capped client-side at CLOUD_VERSIONS_MAX.
+ *   users/{uid}/versions/{id}      append-only snapshots. Created by cloudVersion() (3902), read
+ *                                  back by Settings (3911), pruned by the client (3925).
  *
  * There is no sharing, no multi-user anything, and no server. A signed-in account touches its own
  * document and nothing else, ever.
+ *
+ * NOTE ON WHAT IS *NOT* HERE: there is no catch-all `match /{document=**} { allow read, write: if
+ * false; }`. It is not needed — Firestore denies by default, so every path not matched below is
+ * already refused. An earlier draft of this file included one; it was documentation, not
+ * protection, and it has been removed so this file matches the console byte-for-byte in intent.
  */
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /* A user's own data, and nothing else. `request.auth.uid == uid` is the entire security model:
-       there is no path on which one account reads another's, so an account someone else created
-       (signup is open — see the note at the bottom) can never reach Ian's data. */
-    match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+    /* A user's own data, and nothing else. `request.auth.uid == userId` is the entire security
+       model: there is no path on which one account reads another's. Email/password sign-UP was
+       disabled in the console on 2026-09-10, so no new accounts can be created — but even before
+       that, an account someone else made could never have reached Ian's data. */
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
 
-      /* Version history. Created by cloudVersion(), read back by the Settings screen, and pruned
-         by the client. Same owner check, one level down. */
+      /* Version history — the recovery path after the 2026-07-25 data loss. Same owner check. */
       match /versions/{versionId} {
-        allow read, create, delete: if request.auth != null && request.auth.uid == uid;
-        /* No update: a snapshot is a point in time. Rewriting one is never correct, and refusing
-           it here means a bug can't quietly rewrite history. */
-        allow update: if false;
+        allow read, write, delete: if request.auth != null && request.auth.uid == userId;
       }
-    }
-
-    /* Everything else is closed. Explicit, so a future collection added in the console without
-       rules is denied by default rather than inheriting something permissive. */
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────────────────────
- * STILL OPEN, and NOT fixable in this file:
+ * OPTIONAL TIGHTENING — considered 2026-09-10, deliberately NOT deployed.
  *
- * Email/password SIGNUP is enabled on a public site with a public repo, so anyone can create an
- * account in this Firebase project. The rules above mean they cannot touch Ian's data — but it is
- * still his quota, his billing, and an abuse surface for a feature exactly two people need.
+ * `write` covers create + update + delete, so the rules above technically permit rewriting an
+ * existing version snapshot. Nothing in the app ever does: all three call sites were checked
+ * (add() at 3902, get() at 3911 and 3925, plus the client-side prune) and none of them update a
+ * snapshot. A snapshot is a point in time; rewriting one is never correct, and these snapshots are
+ * the recovery path if the main document is ever lost.
  *
- * Fix it in the console, not here: Authentication → Settings → disable new sign-ups once both
- * accounts exist. (The "Create account" button in the app then simply fails, which is correct.)
- * Or add App Check, which is more work for the same outcome.
+ * So this would be strictly safe and marginally stronger:
+ *
+ *     match /versions/{versionId} {
+ *       allow read, create, delete: if request.auth != null && request.auth.uid == userId;
+ *       allow update: if false;
+ *     }
+ *
+ * It was left undeployed because the risk it closes is theoretical on a single-user app, and the
+ * standing preference on this project is not to change things that work. If you deploy it, update
+ * the block above in the same sitting so this file keeps matching the console.
+ *
+ * STILL OPEN, and not fixable in this file: App Check is not enabled. Lower priority now that
+ * sign-up is off — there is no way to obtain an account to abuse.
  * ───────────────────────────────────────────────────────────────────────────────────────────── */

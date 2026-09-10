@@ -34,15 +34,30 @@ ok('  …with a versioned cache that drops old shells', /CACHE_VERSION/.test(fs.
 ok('index.html registers it as a real URL, not a blob', /register\('\.\/sw\.js'/.test(rawHtml) && !/register\(URL\.createObjectURL/.test(rawHtml));
 ok('  …and does not swallow the failure', !/register\([^)]*\)\.catch\(\(\)=>\{\}\)/.test(rawHtml));
 
-/* The security rules belong in the repo, not only in a web console. This does not prove what is
-   DEPLOYED — only Firebase knows that — it proves the repo still has a reviewable copy, and that
-   nobody has quietly relaxed the one line the whole model rests on. */
+/* The security rules belong in the repo, not only in a web console. This cannot prove what is
+   DEPLOYED — only Firebase knows that — it proves the repo still has a reviewable copy and that
+   nobody has quietly relaxed the property the whole model rests on.
+
+   These originally asserted the exact text of a DRAFT of firestore.rules rather than the security
+   property, so reconciling the file with the real console rules on 2026-09-10 broke them both: one
+   hard-coded the variable name `uid` (the console calls it `userId` — identical behaviour), and the
+   other required a catch-all deny block that turned out to be unnecessary, since Firestore denies
+   by default. Assert the property, never the wording. */
 const rulesPath = APP_PATH.replace(/index\.html$/, 'firestore.rules');
 ok('firestore.rules is in the repo', fs.existsSync(rulesPath));
 if(fs.existsSync(rulesPath)){
-  const rules = fs.readFileSync(rulesPath, 'utf8');
-  ok('  …a user document is scoped to its owner', /request\.auth\.uid\s*==\s*uid/.test(rules));
-  ok('  …and everything else is denied by default', /match\s*\/\{document=\*\*\}[\s\S]*?allow read, write:\s*if false/.test(rules));
+  /* Strip comments: the file discusses rules it deliberately does NOT deploy, and a naive scan
+     would read those as live. Only the real rule text counts. */
+  const rules = fs.readFileSync(rulesPath, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+  ok('  …every allow is gated on the caller owning the document',
+     (rules.match(/allow\b[^;]*:\s*if\b[^;]*;/g) || []).length > 0
+     && (rules.match(/allow\b[^;]*:\s*if\b[^;]*;/g) || [])
+          .every(a => /request\.auth\.uid\s*==\s*\w+/.test(a) || /\bif\s+false\b/.test(a)));
+  ok('  …and nothing is granted unconditionally', !/allow\b[^;]*:\s*if\s+true\b/.test(rules));
+  ok('  …the owner check survives a rename of the path variable',
+     /match\s*\/users\/\{(\w+)\}[\s\S]*?request\.auth\.uid\s*==\s*\1/.test(rules));
 }
 
 const app = loadApp(APP_PATH);

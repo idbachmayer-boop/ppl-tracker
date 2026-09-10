@@ -48,8 +48,11 @@ using `save()` is what let a stale device look "newest" merely by being opened.
   it, so a hand-edited backup can put anything in a set's `w`. Escape attributes too when you touch
   them.
 - **Security rules live in `firestore.rules`**, in this repo — not only in the Firebase console.
-  Read the header of that file before changing or deploying it; it has not yet been reconciled with
-  what is actually live.
+  **Reconciled 2026-09-10: the file matches what is deployed.** Keep it that way — change the console
+  and the file in the same sitting, in either direction. A rules file that has silently drifted is
+  worse than none, because it reads as authoritative. The suite asserts the security *property* (every
+  `allow` gated on the caller owning the document, nothing granted unconditionally), never the exact
+  wording — an earlier version pinned the variable name and broke the moment the file matched reality.
 - **Icons:** Phosphor, inlined in the `PH` map. No CDN, no web font — offline-first. Emoji stay where
   they mark something logged, typed or celebrated.
 - **Theme:** "Nocturne". Colours come from the `:root` custom properties; don't hard-code hex.
