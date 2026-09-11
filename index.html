@@ -3812,6 +3812,35 @@ function mergeDateMap(a, b, bNewer, innerMerge){
   });
   return out;
 }
+/* Derived from COLLECTIONS (REG-09/REG-10/REG-05). Three things to know before touching this:
+   1. This is the ONLY per-collection merge — every list and map assignment mergeDB used to write
+      by hand now happens here, dispatched on each entry's declared `merge` strategy.
+   2. The gen-mismatch wholesale replace is NOT part of this and must stay a hard early return in
+      mergeDB, above the call to this function — mergeCollections is never reached when gen differs
+      (PITFALLS Pitfall 1; folding it in here would silently disable Erase all data/Import→Replace).
+   3. Sort invariants are applied from each entry's declared `sortBy` right here, so a future
+      collection's declared order needs no mergeDB edit (SLEEP-04, plan 01-05) — this is a
+      deliberate departure from 01-PATTERNS.md's note that sorts stay hand-written outside the loop. */
+function mergeCollections(r, l, localNewer, out){
+  for(const name in COLLECTIONS){
+    const spec = COLLECTIONS[name];
+    if(spec.kind === 'list'){
+      if(spec.merge !== 'union') throw new Error('COLLECTIONS.' + name + ' has no usable merge strategy (' + spec.merge + ')');
+      const keyOf = typeof spec.key === 'function' ? spec.key : (x => x[spec.key]);
+      out[name] = mergeUnion(r[name], l[name], keyOf, localNewer);
+      if(typeof spec.sortBy === 'function') out[name].sort(spec.sortBy);
+      else if(typeof spec.sortBy === 'string') out[name].sort((a,b)=>String(a[spec.sortBy]).localeCompare(String(b[spec.sortBy])));
+    } else if(spec.merge === 'line-union'){
+      out[name] = mergeDateMap(r[name], l[name], localNewer, (a,b,bN)=>mergeJournalEntry(a,b,bN));
+    } else if(spec.merge === 'replace-whole'){
+      /* mobilityLog / lawnLog: take the WHOLE inner object from the newer side. Do NOT union inner
+         keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
+      out[name] = mergeDateMap(r[name], l[name], localNewer, null);
+    } else {
+      throw new Error('COLLECTIONS.' + name + ' has no usable merge strategy (' + spec.merge + ')');
+    }
+  }
+}
 /* localWins: on a straight tie (same updatedAt) prefer `local`. Used after a round trip so
    keystrokes typed while the transaction was in flight aren't discarded. */
 function mergeDB(remote, local, localWins){
@@ -3833,20 +3862,7 @@ function mergeDB(remote, local, localWins){
   const localNewer = localWins ? (lU >= rU) : (lU > rU);
   const newer = localNewer ? l : r, older = localNewer ? r : l;
   const out = Object.assign({}, blank(), older, newer); // start from newer's scalars, guarantee all blank() keys
-  // ── append-only logs: union, never subtract ──
-  out.sessions = mergeUnion(r.sessions, l.sessions, sessKey, localNewer);
-  out.weights  = mergeUnion(r.weights,  l.weights,  w=>w.date, localNewer);
-  out.petWeights = mergeUnion(r.petWeights, l.petWeights, w=>w.date, localNewer);  // one cat weigh-in per date, same key rule as weights
-  out.cardio   = mergeUnion(r.cardio,   l.cardio,   cardioKey, localNewer);
-  out.ideas    = mergeUnion(r.ideas,    l.ideas,    ideaKey, localNewer);
-  out.todos    = mergeUnion(r.todos,    l.todos,    todoKey, localNewer);
-  out.hobbyLog = mergeUnion(r.hobbyLog, l.hobbyLog, hobbyKey, localNewer);
-  // ── date-keyed maps ──
-  out.journal = mergeDateMap(r.journal, l.journal, localNewer, (a,b,bN)=>mergeJournalEntry(a,b,bN));
-  /* mobilityLog / lawnLog: take the WHOLE inner object from the newer side. Do NOT union inner
-     keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
-  out.mobilityLog = mergeDateMap(r.mobilityLog, l.mobilityLog, localNewer, null);
-  out.lawnLog     = mergeDateMap(r.lawnLog,     l.lawnLog,     localNewer, null);
+  mergeCollections(r, l, localNewer, out);
   /* draft: already set correctly by Object.assign(newer) above — same recency rule as every other
      field. BUG FIXED HERE (2026-07-25): this used to be `localDraft || remoteDraft || null`, which
      picked whichever side had ANY non-null draft, ignoring which side was actually newer. Once a
@@ -3858,9 +3874,6 @@ function mergeDB(remote, local, localWins){
      field crashes viewActive exactly like an unknown workout name does. */
   normalizeDraft(out);
   // ── invariants ──
-  out.weights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-  out.petWeights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-  out.sessions.sort(sessionSort);
   out._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
   out.updatedAt = Math.max(rU, lU);
   delete out.wx; // weather is derived cache — excluded from sync entirely (see saveLocal)

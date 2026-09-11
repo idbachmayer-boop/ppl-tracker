@@ -70,7 +70,7 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'sessionRows','hobbyRows','journalRows','dayFlagRows','blank_legacy',
   'liveOf','liveSessions','liveCardio','liveIdeas','liveTodos','liveHobbyLog','softDelete',
   'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy',
-  'validateBackup_legacy', 'mergeDB_legacy'];
+  'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -831,6 +831,75 @@ LEGACY_LISTS.forEach(name => {
 
   ok('merge: derived mergeDB still short-circuits wholesale-replace on gen mismatch — Erase all and Import→Replace leave zero survivors',
      erasedOk && replaceOk, { erasedOut, replaceOut });
+}
+
+/* The gen-mismatch block copied verbatim from mergeDB itself (not mergeDB_legacy, which says
+   blank_legacy) BEFORE Task 2's edit — the pre-phase text this phase's own diff must leave
+   untouched, whitespace aside. */
+const GEN_BLOCK = `const rG = +r.gen || 0, lG = +l.gen || 0;
+  if(rG !== lG){
+    const win = Object.assign({}, blank(), lG > rG ? l : r);
+    win.gen = Math.max(rG, lG);
+    win.updatedAt = Math.max(+r.updatedAt||0, +l.updatedAt||0);
+    win._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
+    delete win.wx;
+    return win;
+  }`;
+
+console.log('\n── mergeDB() is derived from COLLECTIONS (REG-09/REG-10/REG-05) ──');
+{
+  const collapse = s => s.replace(/\s+/g, ' ').trim();
+  ok('merge: the gen-mismatch block is byte-for-byte the pre-phase block',
+     collapse(app.mergeDB.toString()).includes(collapse(GEN_BLOCK)));
+}
+{
+  const src = app.mergeDB.toString();
+  ok('merge: the gen early return comes before mergeCollections',
+     src.indexOf('return win;') >= 0 && src.indexOf('mergeCollections(') >= 0 && src.indexOf('return win;') < src.indexOf('mergeCollections('));
+}
+{
+  const src = app.mergeDB.toString();
+  ok('merge: mergeDB delegates every per-collection merge', !src.includes('mergeUnion(') && !src.includes('mergeDateMap('));
+}
+{
+  const inst = loadApp(APP_PATH);
+  inst.COLLECTIONS.lawnLog.merge = 'bogus';
+  let threw = null;
+  try { inst.mergeDB(inst.blank(), inst.blank(), false); } catch(e){ threw = e; }
+  ok('merge: an unrecognised map strategy throws, never defaults', !!threw && /lawnLog/.test(threw.message), threw && threw.message);
+}
+{
+  const inst = loadApp(APP_PATH);
+  inst.COLLECTIONS.cardio.merge = 'replace-whole';
+  let threw = null;
+  try { inst.mergeDB(inst.blank(), inst.blank(), false); } catch(e){ threw = e; }
+  ok('merge: a list with a map strategy throws, never defaults', !!threw && /cardio/.test(threw.message), threw && threw.message);
+}
+{
+  const shuffledA = Object.assign(app.blank(), {
+    weights: [{ date:'2026-08-03', value:1, mtime:10 }, { date:'2026-08-01', value:2, mtime:10 }],
+    petWeights: [{ date:'2026-08-02', value:1, mtime:10 }],
+    sessions: [{ id:'z', date:'2026-08-05', endedAt:1, mtime:10, entries:[] }, { id:'a', date:'2026-08-01', endedAt:2, mtime:10, entries:[] }],
+    cardio: [{ id:'c2', date:'2026-08-02', mtime:10 }, { id:'c1', date:'2026-08-01', mtime:10 }],
+    updatedAt: 100,
+  });
+  const shuffledB = Object.assign(app.blank(), {
+    weights: [{ date:'2026-08-02', value:3, mtime:10 }],
+    petWeights: [{ date:'2026-08-04', value:2, mtime:10 }, { date:'2026-08-01', value:3, mtime:10 }],
+    sessions: [{ id:'m', date:'2026-08-03', endedAt:1, mtime:10, entries:[] }],
+    cardio: [{ id:'c3', date:'2026-08-03', mtime:10 }],
+    updatedAt: 900,
+  });
+  const legacyOut = app.mergeDB_legacy(clone(shuffledA), clone(shuffledB), false);
+  const derivedOut = app.mergeDB(clone(shuffledA), clone(shuffledB), false);
+  const isSorted = (arr, cmp) => arr.every((v,i) => i===0 || cmp(arr[i-1], v) <= 0);
+  const weightsSorted = isSorted(derivedOut.weights, (a,b)=>String(a.date).localeCompare(String(b.date)));
+  const petWeightsSorted = isSorted(derivedOut.petWeights, (a,b)=>String(a.date).localeCompare(String(b.date)));
+  const sessionsSorted = isSorted(derivedOut.sessions, app.sessionSort);
+  const cardioMatchesLegacyOrder = JSON.stringify(derivedOut.cardio.map(c=>c.id)) === JSON.stringify(legacyOut.cardio.map(c=>c.id));
+  ok('merge: declared sortBy is applied, undeclared lists keep merge order',
+     weightsSorted && petWeightsSorted && sessionsSorted && cardioMatchesLegacyOrder,
+     { weightsSorted, petWeightsSorted, sessionsSorted, derivedCardio: derivedOut.cardio.map(c=>c.id), legacyCardio: legacyOut.cardio.map(c=>c.id) });
 }
 
 /* Identity. Ian's Aug 10 export had 37 spellings for ~30 movements — "Seated Fly" and "Seated Flys"
