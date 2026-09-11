@@ -1,0 +1,6 @@
+# This repo and the live site are public, and the Pages deploy job uploads the whole checkout as
+# the site (see .github/workflows/deploy.yml). A committed backup would publish Ian's journal,
+# weights and notes. Real data for the REG-13 differential (test/app.test.js) lives only in
+# test/local/, git-ignored below and never committed.
+test/local/
+ppl-backup-*.json

@@ -11,12 +11,26 @@
  */
 const { loadApp, makeWx, freezeRunnerClock, APP_PATH } = require('./harness');
 const fs = require('fs');
+const path = require('path');
 
 freezeRunnerClock();
 
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, skip = 0;
 const ok = (name, cond, extra) => { if(cond){ pass++; console.log('  PASS  ' + name); }
   else { fail++; console.log('  FAIL  ' + name + (extra!==undefined ? '  → ' + JSON.stringify(extra) : '')); } };
+/* A skip is never a pass and never a fail: absent real data (REG-13's real-backup leg, local only
+   per Ian's 2026-09-11 decision) must read as a loud, separate line and its own count — never
+   silently folded into "0 failed" or counted toward "passed". */
+const skipLine = msg => { skip++; console.log('  SKIP  ' + msg); };
+const REAL_PATH = path.join(__dirname, 'local', 'real-db-snapshot.json');
+
+console.log("\n── the repo keeps Ian's real backup out of git (T-01-12) ──");
+{
+  const gitignorePath = path.join(__dirname, '..', '.gitignore');
+  const lines = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8').split(/\r?\n/) : [];
+  ok('gitignore: test/local/ is ignored', lines.includes('test/local/'));
+  ok('gitignore: exported backups (ppl-backup-*.json) are ignored', lines.includes('ppl-backup-*.json'));
+}
 
 console.log('\n── the file itself ──');
 const rawHtml = fs.readFileSync(APP_PATH, 'utf8');
@@ -1086,6 +1100,97 @@ function contentOfLists(db){
      { legacyGroup1, derivedGroup1, legacyGroup2, derivedGroup2 });
 }
 
+console.log("\n── real backup: legacy vs derived over Ian's actual data (REG-13, local only) ──");
+/* This block reads Ian's real journal, weights and notes, when the local-only fixture is present
+   (see .gitignore and STATE.md's 2026-09-11 decision). An ok() extra here may only hold numbers,
+   booleans, collection names or scenario names — never a row, a date, a note or a refusal message
+   — because a FAIL prints its extra (T-01-13). */
+if(!fs.existsSync(REAL_PATH)){
+  skipLine('real-backup differential — test/local/real-db-snapshot.json is not present (local only, git-ignored; see .gitignore)');
+} else {
+  let rawText = null, parsed = null, parseError = null;
+  try {
+    rawText = fs.readFileSync(REAL_PATH, 'utf8');
+    parsed = JSON.parse(rawText);
+  } catch(e){ parseError = e; }
+  ok('real backup: the file parses as JSON', !parseError, parseError ? 'unparseable' : undefined);
+
+  if(!parseError){
+    const derivedMsg = app.validateBackup(parsed), legacyMsg = app.validateBackup_legacy(parsed);
+    const norm = m => m === null ? null : 'refused';
+    ok('real backup: validateBackup and its legacy twin agree', derivedMsg === legacyMsg, { derived: norm(derivedMsg), legacy: norm(legacyMsg) });
+    ok('real backup: it is a valid backup', derivedMsg === null, derivedMsg === null ? undefined : 'refused');
+
+    let R = null, bootThrew = null;
+    try { R = loadApp(APP_PATH, rawText); } catch(e){ bootThrew = e; }
+    const shapeFails = [];
+    if(!bootThrew){
+      Object.keys(R.COLLECTIONS).forEach(name => {
+        const spec = R.COLLECTIONS[name], val = R.DB[name];
+        const shaped = spec.kind === 'list' ? Array.isArray(val) : (!!val && typeof val === 'object' && !Array.isArray(val));
+        if(!shaped) shapeFails.push(name);
+      });
+    }
+    ok('real backup: boots with every declared collection shaped', !bootThrew && shapeFails.length === 0, bootThrew ? [] : shapeFails);
+
+    if(!bootThrew){
+      LIVE_WRAPPERS.forEach(([wrapper, legacy]) => {
+        const derived = R[wrapper](), twin = R[legacy]();
+        ok('real backup: ' + wrapper + ' matches its twin', canon(derived) === canon(twin), derived.length);
+      });
+
+      const base = clone(R.DB);
+      const realMerge = (label, a, b, lw) => {
+        const legacyOut = legacyView(R.mergeDB_legacy(clone(a), clone(b), lw));
+        const derivedOut = legacyView(R.mergeDB(clone(a), clone(b), lw));
+        if(legacyOut === derivedOut){ ok('real backup: merge parity — ' + label, true); return; }
+        const aObj = JSON.parse(legacyOut), bObj = JSON.parse(derivedOut);
+        const diffKeys = Object.keys(aObj).filter(k => JSON.stringify(aObj[k]) !== JSON.stringify(bObj[k]));
+        ok('real backup: merge parity — ' + label, false, diffKeys);
+      };
+
+      const staleRemote = clone(base);
+      LEGACY_LISTS.forEach(name => (staleRemote[name] || []).forEach(row => { if(row && typeof row === 'object') delete row.mtime; }));
+      staleRemote.updatedAt = (base.updatedAt || 0) - 86400000;
+
+      const withDeletions = clone(base);
+      LEGACY_LISTS.forEach(name => {
+        (withDeletions[name] || []).forEach((row, i) => {
+          if(row && typeof row === 'object' && i % 3 === 2){ row.deletedAt = Date.now() + 1; row.mtime = Date.now() + 1; }
+        });
+      });
+
+      const freshDevice = Object.assign(R.blank(), { gen: base.gen || 0 });
+      const eraseDevice = Object.assign(R.blank(), { gen: (base.gen || 0) + 1 });
+
+      const scenarios = [
+        ['self', clone(base), clone(base)],
+        ['stale copy', staleRemote, clone(base)],
+        ['stale copy (swapped)', clone(base), staleRemote],
+        ['deletions elsewhere', withDeletions, clone(base)],
+        ['fresh device', freshDevice, clone(base)],
+        ['erase', eraseDevice, clone(base)],
+      ];
+      scenarios.forEach(([label, a, b]) => {
+        [false, true].forEach(lw => { realMerge(label + ' (localWins ' + lw + ')', a, b, lw); });
+      });
+
+      const LEGACY_KEY = {
+        sessions: R.sessKey, weights: w => w.date, petWeights: w => w.date,
+        cardio: R.cardioKey, ideas: R.ideaKey, todos: R.todoKey, hobbyLog: R.hobbyKey,
+      };
+      Object.keys(LEGACY_KEY).forEach(name => {
+        const spec = R.COLLECTIONS[name];
+        const keyOf = typeof spec.key === 'function' ? spec.key : (x => x[spec.key]);
+        const rows = R.DB[name] || [];
+        const derivedCount = new Set(rows.map(keyOf)).size;
+        const legacyCount = new Set(rows.map(LEGACY_KEY[name])).size;
+        ok('real backup: ' + name + ' keeps the same number of distinct keys', derivedCount === legacyCount, derivedCount);
+      });
+    }
+  }
+}
+
 /* Identity. Ian's Aug 10 export had 37 spellings for ~30 movements — "Seated Fly" and "Seated Flys"
    were two lifts with two PR histories, and "Deficit Sumo Squat" missed the program's own 12–15
    range because the override is keyed by the canonical spelling. */
@@ -1673,5 +1778,5 @@ console.log('\n── a malformed draft must not take out the Log tab ──');
   ok('registry: never mutated by boot, merge or render (REG-01)', diffNames.length === 0, diffNames);
 }
 
-console.log(`\n${pass} passed, ${fail} failed`);
+console.log(`\n${pass} passed, ${fail} failed, ${skip} skipped`);
 process.exit(fail ? 1 : 0);
