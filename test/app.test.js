@@ -67,7 +67,7 @@ console.log('\n── the harness exports what the suite calls ──');
    comment) rather than throwing, so a test that only checks two `undefined`s are equal would
    silently "pass". Assert every name the suite below calls through `app` is actually exported. */
 const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessKey','todoKey','hobbyKey','cardioKey','ideaKey','sessionSort',
-  'sessionRows','hobbyRows','journalRows','dayFlagRows'];
+  'sessionRows','hobbyRows','journalRows','dayFlagRows','blank_legacy'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -412,6 +412,74 @@ ok('migrations are idempotent', JSON.stringify(app.normalize(JSON.parse(JSON.str
 ok('the strength history stays one line', (()=>{ app.DB = mig; app.DB.draft = null;
   return app.exercisePRs().some(p=>p.name==='Deficit sumo squat') && !app.exercisePRs().some(p=>p.name==='Goblet squat'); })(), app.exercisePRs().map(p=>p.name));
 ok('the program no longer offers the old name', !JSON.stringify(app.PROGRAM).includes('Goblet squat'));
+
+/* Canonical JSON text for deep-equality comparisons across this phase's differential blocks: object
+   keys sorted recursively (key ORDER never matters — REG-06/07/08 compare by value, not by
+   insertion order), array order kept (array order is meaningful — it's stored row order), and
+   functions rendered as 'fn:' plus their name so a function-valued field is comparable at all. */
+function canon(v){
+  const walk = x => {
+    if(typeof x === 'function') return 'fn:' + (x.name || 'anonymous');
+    if(Array.isArray(x)) return x.map(walk);
+    if(x && typeof x === 'object') return Object.keys(x).sort().reduce((o,k)=>{ o[k]=walk(x[k]); return o; }, {});
+    return x;
+  };
+  return JSON.stringify(walk(v));
+}
+/* The legacy functions know exactly these ten; a collection declared later is exempt from legacy
+   comparisons by construction, and is covered by its own tests. */
+const LEGACY_COLLECTIONS = ['sessions','weights','petWeights','cardio','ideas','todos','hobbyLog','journal','mobilityLog','lawnLog'];
+
+console.log('\n── blank() is derived from COLLECTIONS (REG-06) ──');
+{
+  const bl = app.blank_legacy();
+  const bn = app.blank();
+  const legacyKeys = Object.keys(bl);
+  const diffKeys = legacyKeys.filter(k => canon(bl[k]) !== canon(bn[k]));
+  ok('blank: every key the hand-written blank() had is unchanged', diffKeys.length === 0, diffKeys);
+
+  const extraKeys = Object.keys(bn).filter(k => legacyKeys.indexOf(k) < 0);
+  const badExtra = extraKeys.filter(name => {
+    if(!(name in app.COLLECTIONS)) return true;
+    const spec = app.COLLECTIONS[name], val = bn[name];
+    return spec.kind === 'list'
+      ? !(Array.isArray(val) && val.length === 0)
+      : !(val && typeof val === 'object' && !Array.isArray(val) && Object.keys(val).length === 0);
+  });
+  ok('blank: every extra key is a declared collection holding its kind\'s empty default', badExtra.length === 0, { extraKeys, badExtra });
+
+  const shapeMismatch = Object.keys(app.COLLECTIONS).filter(name => {
+    const spec = app.COLLECTIONS[name], val = bn[name];
+    return spec.kind === 'list' ? !Array.isArray(val) : (!val || typeof val !== 'object' || Array.isArray(val));
+  });
+  ok('blank: every declared collection is present in its kind\'s shape', shapeMismatch.length === 0, shapeMismatch);
+}
+{
+  const first = app.blank();
+  first.sessions.push({ id:'x' });
+  first.journal['2026-01-01'] = 'hi';
+  first.hobbies.push('an extra hobby');
+  const second = app.blank();
+  ok('blank: returns fresh containers on every call',
+     second.sessions.length === 0 && Object.keys(second.journal).length === 0 && second.hobbies.length === app.HOBBIES_DEFAULT.length,
+     { sessions: second.sessions.length, journalKeys: Object.keys(second.journal).length, hobbies: second.hobbies.length });
+}
+{
+  const bn = app.blank();
+  ok('blank: scalar defaults unchanged',
+     bn._schema === app.SCHEMA && bn.gen === 0 && bn.unit === 'lb' && bn.petName === 'Freddie'
+     && bn.routineMode === '4day' && bn.draft === null && bn.lawn === null && bn.wx === null
+     && bn.hobbySeedV2 === true && Array.isArray(bn.exercises) && bn.exercises.length === 0,
+     { _schema: bn._schema, gen: bn.gen, unit: bn.unit, petName: bn.petName, routineMode: bn.routineMode,
+       draft: bn.draft, lawn: bn.lawn, wx: bn.wx, hobbySeedV2: bn.hobbySeedV2, exercises: bn.exercises });
+}
+{
+  const src = app.blank.toString().replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  ok('blank: reads only kind from the registry',
+     /COLLECTIONS/.test(src) && /\bkind\b/.test(src)
+     && !/\.key\b/.test(src) && !/\.sortBy\b/.test(src) && !/\.merge\b/.test(src) && !/\.columns\b/.test(src) && !/\.format\b/.test(src),
+     src);
+}
 
 /* The failure this whole workstream exists to prevent, replayed end to end.
    Migration 15 renamed rows in memory, nothing persisted them, the rows carried no `mtime`, and the

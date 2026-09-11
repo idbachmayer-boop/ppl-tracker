@@ -117,6 +117,7 @@ function loadApp(htmlPath, seed, opts){
     'viewActive','viewCardio','viewCardioTrend','viewData','viewHistory','viewPicker','viewSkincare','viewVolume',
     'COLLECTIONS','collectionProblems','MIGRATIONS','sessKey','todoKey','hobbyKey','cardioKey','ideaKey','sessionSort',
     'sessionRows','hobbyRows','journalRows','dayFlagRows',
+    'blank_legacy','HOBBIES_DEFAULT',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

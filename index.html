@@ -666,7 +666,19 @@ let DB = load();
    this point dies on a temporal-dead-zone ReferenceError and takes the whole boot with it. Same
    family of trap as the MIGRATIONS comment above. */
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
-function blank(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[], petWeights:[], petName:"Freddie", exercises:[], draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
+/* Derived from COLLECTIONS (REG-06): scalars stay hand-written, every list/map field loops the
+   registry. blank() runs during `let DB = load()` above, so this loop may read only `spec.kind` —
+   `key`/`sortBy`/`merge`/`columns`/`format` are all declared further down and touching them here
+   would be the same TDZ trap the placement comments on migrations 13 and 17 describe. */
+function blank(){
+  const out = { _schema:SCHEMA, gen:0, petName:"Freddie", exercises:[], draft:null, unit:"lb",
+                routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(),
+                lawn:null, wx:null, hobbySeedV2:true };
+  for(const name in COLLECTIONS) out[name] = COLLECTIONS[name].kind==='list' ? [] : {};
+  return out;
+}
+/* FROZEN pre-registry reference for the REG-13 differential. Do not edit. Deleted in a later commit (REG-14). */
+function blank_legacy(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[], petWeights:[], petName:"Freddie", exercises:[], draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
 
 /* ── Soft delete ─────────────────────────────────────────────────────────────────────────────
    Deleting used to splice the row out, but sync UNIONS both devices — so the cloud copy came
