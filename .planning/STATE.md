@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: F1 — The COLLECTIONS Registry
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-09-11T19:17:16.115Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-09-11T19:30:58.641Z"
 last_activity: 2026-09-11
 last_activity_desc: Phase 1 planned — 7 plans in 6 waves, all 23 requirements covered, plan checker passed first time
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 7
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 ## Current Position
 
 Phase: 01 (F1 — The COLLECTIONS Registry) — EXECUTING
-Plan: 2 of 7
+Plan: 3 of 7
 Status: Ready to execute
 Last activity: 2026-09-11 — Phase 01 execution started
 
-Progress: [█░░░░░░░░░] 14%
+Progress: [███░░░░░░░] 29%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [█░░░░░░░░░] 14%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P01 | 65min | 2 tasks | 3 files |
+| Phase 01 P02 | 15min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,8 @@ Recent decisions affecting current work:
 - [Phase 1, plan 01-01]: COLLECTIONS is declared as dead data only in this plan — no consumer (blank, liveX, validateBackup, mergeDB) reads it yet; migration happens one collection per commit in plans 01-02 and 01-03.
 - [Phase 1, plan 01-01]: cardio, ideas, todos and hobbyLog deliberately declare no sortBy in COLLECTIONS — the hand-written merge never sorted them, so declaring one would change stored order.
 - [Phase 1, plan 01-01]: columns/format validation was deliberately deferred from Task 1 to Task 2 so the module-eval placement contract and merge-strategy refusal could land first, independently of REG-17's export metadata.
+- [Phase ?]: REG-08 shape prologue kept as three ordered COLLECTIONS passes (required lists, optional lists, maps) rather than one combined loop, to guarantee legacy fault-precedence regardless of registry declaration order
+- [Phase ?]: liveOf(name) throws on an undeclared/non-soft-list name instead of defaulting to permissive behavior, closing the gap Pitfall 6 warned about
 
 ### Pending Todos
 
@@ -102,6 +105,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-11T19:17:16.102Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-09-11T19:30:58.629Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None

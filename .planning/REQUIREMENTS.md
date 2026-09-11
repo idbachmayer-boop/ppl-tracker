@@ -16,14 +16,14 @@ The one declaration the rest of the data layer derives from.
 - [x] **REG-03**: Every value inside `COLLECTIONS` is a literal or a reference to a hoisted `function` declaration — never a `const` arrow, never a reference to a `const` declared later
 - [x] **REG-04**: The existing composite-key arrows (`sessKey`, `todoKey`, `hobbyKey`, and the inline `cardio`/`ideas` key arrows) are promoted to `function` declarations before being referenced from `COLLECTIONS`
 - [x] **REG-05**: `merge` is an explicit required field on every collection with no inferred default; a map-shaped collection that omits it fails loudly at declaration rather than defaulting to list semantics
-- [ ] **REG-06**: `blank()` is derived from `COLLECTIONS` and produces a database with a correctly-shaped key for every declared collection
-- [ ] **REG-07**: The `liveX()` soft-delete filters are derived from `COLLECTIONS`, so a new collection cannot ship without its filter
-- [ ] **REG-08**: `validateBackup()`'s shape checks are derived from `COLLECTIONS` and accept and reject exactly what the hand-written version does — strict behavioural parity
+- [x] **REG-06**: `blank()` is derived from `COLLECTIONS` and produces a database with a correctly-shaped key for every declared collection
+- [x] **REG-07**: The `liveX()` soft-delete filters are derived from `COLLECTIONS`, so a new collection cannot ship without its filter
+- [x] **REG-08**: `validateBackup()`'s shape checks are derived from `COLLECTIONS` and accept and reject exactly what the hand-written version does — strict behavioural parity
 - [ ] **REG-09**: `mergeDB()`'s per-collection merging is derived from `COLLECTIONS`
 - [ ] **REG-10**: The `gen`-mismatch wholesale-replace stays a hard early `return` before any per-collection merging, untouched by the derived loop
 - [x] **REG-11**: `MIGRATIONS` stays hand-written and is not derived from `COLLECTIONS`; it may read `COLLECTIONS` one-way
-- [ ] **REG-12**: Each hand-written consumer is replaced in its own commit, cheapest-first and `mergeDB()` last, with the app shippable at every commit
-- [ ] **REG-13**: Every replaced function is kept renamed (not deleted) and differential-tested against its derived replacement over a real exported backup plus per-incident synthetic two-device fixtures
+- [x] **REG-12**: Each hand-written consumer is replaced in its own commit, cheapest-first and `mergeDB()` last, with the app shippable at every commit
+- [x] **REG-13**: Every replaced function is kept renamed (not deleted) and differential-tested against its derived replacement over a real exported backup plus per-incident synthetic two-device fixtures
 - [ ] **REG-14**: The renamed legacy functions are deleted only in a later commit than the one that introduced their replacement, never the same one
 - [x] **REG-15**: A boot-order regression test asserts the app boots without throwing for every schema version from 1 to current, and that every declared collection exists with the right shape afterward
 - [ ] **REG-16**: If any row rewrite is introduced, it stamps `mtime` via `touch()`, persists immediately, is idempotent, never downgrades `_schema`, and ships with a stale-device merge replay test — all four, or the rewrite does not ship
