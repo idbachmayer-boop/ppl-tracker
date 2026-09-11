@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: F1 — The COLLECTIONS Registry
 status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-09-11T19:45:54.581Z"
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-09-11T22:36:53.325Z"
 last_activity: 2026-09-11
 last_activity_desc: Phase 1 planned — 7 plans in 6 waves, all 23 requirements covered, plan checker passed first time
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 7
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 ## Current Position
 
 Phase: 01 (F1 — The COLLECTIONS Registry) — EXECUTING
-Plan: 4 of 7
+Plan: 5 of 7
 Status: Ready to execute
 Last activity: 2026-09-11 — Phase 01 execution started
 
-Progress: [████░░░░░░] 43%
+Progress: [██████░░░░] 57%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [████░░░░░░] 43%
 | Phase 01 P01 | 65min | 2 tasks | 3 files |
 | Phase 01 P02 | 15min | 3 tasks | 3 files |
 | Phase 01 P03 | ~20min | 2 tasks | 3 files |
+| Phase 01 P04 | ~50min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 1, plan 01-03]: mergeDB_legacy copies the pre-phase mergeDB verbatim (comments included) with the single sanctioned edit blank() -> blank_legacy(), preserving the exact historical code the incidents were fixed against.
 - [Phase ?]: [Phase 1, plan 01-03]: Sort invariants (weights/petWeights by date, sessions via sessionSort) moved into mergeCollections, dispatched from each COLLECTIONS entry's declared sortBy, rather than staying hand-written in mergeDB -- a deliberate departure from 01-PATTERNS.md so plan 01-05's sleep collection needs no mergeDB edit.
 - [Phase ?]: [Phase 1, plan 01-03]: ROW_FOR's row factories are keyed by exactly the fields each list's real key function reads, so the REG-13 fixtures exercise the actual sessKey/cardioKey/ideaKey/todoKey/hobbyKey composite-key logic rather than bypassing it.
+- [Phase ?]: [Phase 1, plan 01-04]: Property tests for the merge (idempotence/commutativity/associativity) are written at the mergeDB() level, never on raw mergeUnion/mergeDateMap — per PITFALLS Pitfall 5, only mergeDB owns recomputing which side is newer.
+- [Phase ?]: [Phase 1, plan 01-04]: Map collections (mobilityLog, lawnLog) are not associative today because a map day carries no per-day mtime; documented via a fixed counterexample rather than patched, per PITFALLS Pitfall 5 and the plan's explicit prohibition.
 
 ### Pending Todos
 
@@ -109,6 +112,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-11T19:45:54.569Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-09-11T22:36:53.303Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None
