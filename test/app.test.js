@@ -70,7 +70,7 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'sessionRows','hobbyRows','journalRows','dayFlagRows','blank_legacy',
   'liveOf','liveSessions','liveCardio','liveIdeas','liveTodos','liveHobbyLog','softDelete',
   'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy',
-  'validateBackup_legacy'];
+  'validateBackup_legacy', 'mergeDB_legacy'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -589,6 +589,249 @@ ok('a second run touches nothing (migrations settle)', (()=>{
   const twice = app.normalize(JSON.parse(JSON.stringify(once)));
   return JSON.stringify(twice.sessions.map(s=>s.mtime)) === JSON.stringify(stamps);
 })());
+
+/* ── every sync incident, replayed: legacy merge vs current merge (REG-13) ──
+ * Every rule CLAUDE.md's "Rules that exist because breaking them cost real data" section names is
+ * replayed here as a synthetic two-device fixture, run through BOTH mergeDB_legacy and mergeDB.
+ * At this point in the phase the two are still the same code (mergeDB_legacy is a verbatim copy),
+ * so this block is a CHARACTERISATION BASELINE — proof the fixtures actually exercise the rule
+ * they're named for. Plan 01-03 Task 2 must keep every one of these green after mergeDB is thinned
+ * to call mergeCollections(); a break there means the derivation diverged from the frozen behaviour.
+ */
+console.log('\n── every sync incident, replayed: legacy merge vs current merge (REG-13) ──');
+
+/* Deep-copies through JSON. Every merge call gets fresh inputs, because normalizeDraft mutates the
+   newer side's draft object in place — reusing one fixture object across two merge calls would let
+   the first call's repair leak into the second. */
+function clone(x){ return x === null || x === undefined ? x : JSON.parse(JSON.stringify(x)); }
+
+/* canon(out) after dropping every key that is a COLLECTIONS name NOT in LEGACY_COLLECTIONS. A
+   collection declared after this phase's baseline is exempt, because mergeDB_legacy carries it
+   wholesale (via blank_legacy()'s Object.assign) instead of unioning it — comparing it would only
+   prove blank_legacy() and blank() disagree, which REG-06's own differential already covers. */
+function legacyView(out){
+  const copy = Object.assign({}, out);
+  Object.keys(app.COLLECTIONS).forEach(name => { if(LEGACY_COLLECTIONS.indexOf(name) < 0) delete copy[name]; });
+  return canon(copy);
+}
+
+/* Runs mergeDB_legacy and mergeDB on separate clones of the same inputs, asserts their legacyView()
+   results are equal (ok labelled "merge parity: " + label), and returns the DERIVED output so the
+   caller can make incident-specific assertions on it. On a mismatch, the extra lists only the
+   differing top-level keys, not the whole (potentially huge) object. */
+function sameMerge(label, remote, local, localWins){
+  const legacyOut = app.mergeDB_legacy(clone(remote), clone(local), localWins);
+  const derivedOut = app.mergeDB(clone(remote), clone(local), localWins);
+  const a = legacyView(legacyOut), b = legacyView(derivedOut);
+  if(a === b){
+    ok('merge parity: ' + label, true);
+  } else {
+    const aObj = JSON.parse(a), bObj = JSON.parse(b);
+    const diffKeys = Object.keys(aObj).filter(k => JSON.stringify(aObj[k]) !== JSON.stringify(bObj[k]));
+    ok('merge parity: ' + label, false, diffKeys);
+  }
+  return derivedOut;
+}
+
+/* One row factory per legacy list, keyed by exactly the fields that list's key function uses, so
+   two calls with the same tag collide on purpose and two calls with different tags never do. The
+   extra fields (mtime, deletedAt, value, …) are merged in on top. */
+const ROW_FOR = {
+  sessions:   (tag, extra) => Object.assign({ id: tag, entries: [] }, extra),
+  weights:    (tag, extra) => Object.assign({ date: tag }, extra),
+  petWeights: (tag, extra) => Object.assign({ date: tag }, extra),
+  cardio:     (tag, extra) => Object.assign({ id: tag }, extra),
+  ideas:      (tag, extra) => Object.assign({ id: tag }, extra),
+  todos:      (tag, extra) => Object.assign({ created: tag, text: tag }, extra),
+  hobbyLog:   (tag, extra) => Object.assign({ date: tag, item: tag, cat: tag }, extra),
+};
+const LEGACY_LISTS = ['sessions','weights','petWeights','cardio','ideas','todos','hobbyLog'];
+const LEGACY_MAPS = ['journal','mobilityLog','lawnLog'];
+/* A local helper, NOT populatedDB() (declared later in the file) — one ROW_FOR row in every legacy
+   list, one day in every legacy map, all tagged so two calls with different tags never collide. */
+function populatedLegacyDB(tag, mtime){
+  const d = app.blank();
+  LEGACY_LISTS.forEach(name => { d[name] = [ROW_FOR[name](tag, { mtime })]; });
+  LEGACY_MAPS.forEach(name => { d[name] = { [today]: name === 'journal' ? ('line-' + tag) : { flag: true } }; });
+  return d;
+}
+
+{
+  // "blind-write 2026-07-25": the stale device holds the NEWER wall-clock updatedAt (that's the bug).
+  const dates3 = ['2026-07-20', '2026-07-21', '2026-07-22'];
+  const dates7 = dates3.concat(['2026-07-23', '2026-07-24', '2026-07-25', '2026-07-26']);
+  const staleRemote = Object.assign(app.blank(), { weights: dates3.map(d => ({ date: d, value: 190, mtime: 100 })), updatedAt: 900 });
+  const freshLocal  = Object.assign(app.blank(), { weights: dates7.map(d => ({ date: d, value: 190, mtime: 100 })), updatedAt: 100 });
+  const out = sameMerge('blind-write 2026-07-25', staleRemote, freshLocal, false);
+  ok('merge incident: blind-write 2026-07-25 keeps all 7 dates', out.weights.length === 7, out.weights.map(w=>w.date));
+}
+{
+  // "migration 15 replay": a pre-migration device (still schema 15, no mtime) meets the migrated one.
+  const local = app.normalize(gobletV14());
+  local.updatedAt = Date.now();
+  const remote = JSON.parse(JSON.stringify(gobletV14()));
+  remote._schema = 15;
+  remote.updatedAt = Date.now() + 60000; // looks newer — exactly what fooled the old merge
+  const out = sameMerge('migration 15 replay', remote, local, false);
+  ok('merge incident: migration 15 replay keeps the renamed exercise', out.sessions[0].entries[0].name === 'Deficit sumo squat', out.sessions[0].entries[0].name);
+}
+['mobilityLog', 'lawnLog'].forEach(name => {
+  // "explicit false beats an older true": the newer side's explicit false must win.
+  const remoteNewer = Object.assign(app.blank(), { [name]: { [today]: { mowed: false } }, updatedAt: 900 });
+  const localOlder  = Object.assign(app.blank(), { [name]: { [today]: { mowed: true } }, updatedAt: 100 });
+  const out = sameMerge('explicit false beats an older true (' + name + ')', remoteNewer, localOlder, false);
+  ok('merge incident: explicit false beats an older true (' + name + ')', out[name][today].mowed === false, out[name][today]);
+});
+['mobilityLog', 'lawnLog'].forEach(name => {
+  // "absence cannot turn a flag off": the newer side simply never logged the day.
+  const remoteNewer = Object.assign(app.blank(), { [name]: {}, updatedAt: 900 });
+  const localOlder  = Object.assign(app.blank(), { [name]: { [today]: { mowed: true } }, updatedAt: 100 });
+  const out = sameMerge('absence cannot turn a flag off (' + name + ')', remoteNewer, localOlder, false);
+  ok('merge incident: absence cannot turn a flag off (' + name + ')', out[name][today].mowed === true, out[name][today]);
+});
+['mobilityLog', 'lawnLog'].forEach(name => {
+  // "inner keys are never unioned": the whole newer object wins, not a per-key merge.
+  const remoteNewer = Object.assign(app.blank(), { [name]: { [today]: { watered: true } }, updatedAt: 900 });
+  const localOlder  = Object.assign(app.blank(), { [name]: { [today]: { mowed: true } }, updatedAt: 100 });
+  const out = sameMerge('inner keys are never unioned (' + name + ')', remoteNewer, localOlder, false);
+  ok('merge incident: inner keys are never unioned (' + name + ')', JSON.stringify(out[name][today]) === JSON.stringify({ watered: true }), out[name][today]);
+});
+{
+  // "journal lines union, newer first": older day has "a\nb", newer day has "b\nc" → b, c, a.
+  const remoteOlder = Object.assign(app.blank(), { journal: { [today]: 'a\nb' }, updatedAt: 100 });
+  const localNewer  = Object.assign(app.blank(), { journal: { [today]: 'b\nc' }, updatedAt: 900 });
+  const out = sameMerge('journal lines union, newer first', remoteOlder, localNewer, false);
+  ok('merge incident: journal lines union, newer first', out.journal[today] === 'b\nc\na', out.journal[today]);
+}
+{
+  // "Erase all data: the erased side wins wholesale", both argument positions.
+  const erasedRemote = Object.assign(app.blank(), { gen: 1, updatedAt: 100 });
+  const fullLocal = Object.assign(populatedLegacyDB('erase', 500), { gen: 0, updatedAt: 900 });
+  const everyEmpty = out => LEGACY_LISTS.every(n => out[n].length === 0) && LEGACY_MAPS.every(n => Object.keys(out[n]).length === 0) && !('wx' in out);
+  let out = sameMerge('Erase all data: the erased side wins wholesale', erasedRemote, fullLocal, false);
+  ok('merge incident: Erase all data: the erased side wins wholesale', everyEmpty(out), out);
+  out = sameMerge('Erase all data: the erased side wins wholesale (swapped)', fullLocal, erasedRemote, false);
+  ok('merge incident: Erase all data: the erased side wins wholesale (swapped)', everyEmpty(out), out);
+}
+{
+  // "Import→Replace: the replacing side wins wholesale": local's gen 2 rows entirely replace remote's gen 1 rows.
+  const remoteOld = Object.assign(populatedLegacyDB('remote-old', 100), { gen: 1, updatedAt: 100 });
+  const localNew  = Object.assign(populatedLegacyDB('local-new', 500), { gen: 2, updatedAt: 900 });
+  const out = sameMerge('Import→Replace: the replacing side wins wholesale', remoteOld, localNew, false);
+  ok('merge incident: Import→Replace: the replacing side wins wholesale',
+     LEGACY_LISTS.every(n => JSON.stringify(out[n]) === JSON.stringify(localNew[n])), out);
+}
+LEGACY_LISTS.forEach(name => {
+  // "a delete is never resurrected": the delete's device LOOKS stale (older updatedAt) but its
+  // higher per-row mtime must still win.
+  const deletedRow = ROW_FOR[name]('del-' + name, { mtime: 900, deletedAt: 900 });
+  const liveRow    = ROW_FOR[name]('del-' + name, { mtime: 100 });
+  const deviceWithDelete = Object.assign(app.blank(), { [name]: [deletedRow], updatedAt: 100 });
+  const deviceWithLive   = Object.assign(app.blank(), { [name]: [liveRow], updatedAt: 900 });
+  const out = sameMerge('a delete is never resurrected (' + name + ')', deviceWithLive, deviceWithDelete, false);
+  ok('merge incident: a delete is never resurrected (' + name + ')', !!out[name][0].deletedAt, out[name]);
+});
+LEGACY_LISTS.forEach(name => {
+  // "delete here, re-add there": the re-add's higher mtime wins over the earlier delete.
+  const deletedRow = ROW_FOR[name]('readd-' + name, { mtime: 100, deletedAt: 100 });
+  const liveRow    = ROW_FOR[name]('readd-' + name, { mtime: 800 });
+  const deviceA = Object.assign(app.blank(), { [name]: [deletedRow], updatedAt: 100 });
+  const deviceB = Object.assign(app.blank(), { [name]: [liveRow], updatedAt: 900 });
+  const out = sameMerge('delete here, re-add there (' + name + ')', deviceA, deviceB, false);
+  ok('merge incident: delete here, re-add there (' + name + ')', !out[name][0].deletedAt, out[name]);
+});
+LEGACY_LISTS.forEach(name => {
+  // "equal mtime: the newer device decides": whole-DB updatedAt breaks the tie when mtimes match
+  // exactly; with equal updatedAt too, localWins decides.
+  const rowA = ROW_FOR[name]('tie-' + name, { mtime: 500, val: 'A' });
+  const rowB = ROW_FOR[name]('tie-' + name, { mtime: 500, val: 'B' });
+  const remote = Object.assign(app.blank(), { [name]: [rowA], updatedAt: 200 });
+  const localNewer = Object.assign(app.blank(), { [name]: [rowB], updatedAt: 900 });
+  let out = sameMerge('equal mtime: the newer device decides (' + name + ')', remote, localNewer, false);
+  ok('merge incident: equal mtime: the newer device decides (' + name + ')', out[name][0].val === 'B', out[name]);
+
+  const remoteTie = Object.assign(app.blank(), { [name]: [rowA], updatedAt: 500 });
+  const localTie  = Object.assign(app.blank(), { [name]: [rowB], updatedAt: 500 });
+  out = sameMerge('equal mtime, equal updatedAt, localWins true (' + name + ')', remoteTie, localTie, true);
+  ok('merge incident: equal mtime, equal updatedAt, localWins true — local wins (' + name + ')', out[name][0].val === 'B', out[name]);
+});
+{
+  // "pre-id sessions keep their identities" (Pitfall 3): sessKey's composite fallback must still
+  // distinguish two id-less sessions that differ only by `skipped`, and collapse two identical ones.
+  const sess1 = { date: today, workout: 'PUSH 1', endedAt: 1, skipped: false, entries: [], mtime: 100 };
+  const sess2 = { date: today, workout: 'PUSH 1', endedAt: 1, skipped: true, entries: [], mtime: 100 };
+  const remote1 = Object.assign(app.blank(), { sessions: [sess1], updatedAt: 100 });
+  const local1  = Object.assign(app.blank(), { sessions: [sess2], updatedAt: 200 });
+  const out1 = sameMerge('pre-id sessions keep their identities: skipped differs', remote1, local1, false);
+  ok('merge incident: pre-id sessions keep their identities: skipped differs gives 2 rows', out1.sessions.length === 2, out1.sessions);
+
+  const dup1 = { date: today, workout: 'PULL 1', endedAt: 2, skipped: false, entries: [], mtime: 100 };
+  const dup2 = { date: today, workout: 'PULL 1', endedAt: 2, skipped: false, entries: [], mtime: 100 };
+  const remote2 = Object.assign(app.blank(), { sessions: [dup1], updatedAt: 100 });
+  const local2  = Object.assign(app.blank(), { sessions: [dup2], updatedAt: 200 });
+  const out2 = sameMerge('pre-id sessions keep their identities: identical rows collapse', remote2, local2, false);
+  ok('merge incident: pre-id sessions keep their identities: identical rows give 1 row', out2.sessions.length === 1, out2.sessions);
+}
+{
+  // "a finished workout's null draft beats a stale draft": null must win over a stale non-null draft.
+  const validDraft = { workout: 'PUSH 1', date: today, entries: [], extras: {}, stairs: { level: '', seconds: '', skipped: false, reason: '' } };
+  const olderWithDraft = Object.assign(app.blank(), { draft: validDraft, updatedAt: 100 });
+  const newerNullDraft = Object.assign(app.blank(), { draft: null, updatedAt: 900 });
+  const out = sameMerge("a finished workout's null draft beats a stale draft", newerNullDraft, olderWithDraft, false);
+  ok("merge incident: a finished workout's null draft beats a stale draft", out.draft === null, out.draft);
+}
+{
+  // "the weather cache never syncs": neither side's wx may reach the output.
+  const remote = Object.assign(app.blank(), { wx: { at: Date.now(), data: {} }, updatedAt: 100 });
+  const local  = Object.assign(app.blank(), { wx: { at: Date.now(), data: {} }, updatedAt: 900 });
+  const out = sameMerge('the weather cache never syncs', remote, local, false);
+  ok('merge incident: the weather cache never syncs', !('wx' in out), Object.keys(out));
+}
+{
+  // "empty inputs": (null, null), ({}, populated), (populated, {}) — every declared collection present.
+  const populated = populatedLegacyDB('empty-pair', 100);
+  [[null, null], [{}, populated], [populated, {}]].forEach(([remote, local], i) => {
+    const out = sameMerge('empty inputs #' + (i + 1), remote, local, false);
+    const allPresent = Object.keys(app.COLLECTIONS).every(name => name in out);
+    ok('merge incident: empty inputs #' + (i + 1) + ' — every declared collection present', allPresent, Object.keys(out));
+  });
+}
+{
+  // "schema never goes backwards": the higher _schema always wins, merge path or wholesale path.
+  const remote = Object.assign(app.blank(), { _schema: app.SCHEMA + 2, updatedAt: 900 });
+  const local  = Object.assign(app.blank(), { _schema: app.SCHEMA, updatedAt: 100 });
+  const out = sameMerge('schema never goes backwards', remote, local, false);
+  ok('merge incident: schema never goes backwards', out._schema === app.SCHEMA + 2, out._schema);
+}
+{
+  // "gen off by one": gens 3 vs 4 replace wholesale; gens 4 vs 4 union.
+  const remote3 = Object.assign(populatedLegacyDB('gen3', 100), { gen: 3, updatedAt: 100 });
+  const local4  = Object.assign(populatedLegacyDB('gen4', 500), { gen: 4, updatedAt: 900 });
+  let out = sameMerge('gen off by one: 3 vs 4 replaces wholesale', remote3, local4, false);
+  ok('merge incident: gen off by one: 3 vs 4 replaces wholesale', LEGACY_LISTS.every(n => JSON.stringify(out[n]) === JSON.stringify(local4[n])), out);
+
+  const remote4a = Object.assign(populatedLegacyDB('gen4a', 100), { gen: 4, updatedAt: 100 });
+  const remote4b = Object.assign(populatedLegacyDB('gen4b', 500), { gen: 4, updatedAt: 900 });
+  out = sameMerge('gen off by one: 4 vs 4 unions', remote4a, remote4b, false);
+  ok('merge incident: gen off by one: 4 vs 4 unions', LEGACY_LISTS.every(n => out[n].length === 2), out);
+}
+/* PITFALLS Pitfall 1's own hazard, named for exactly that hazard and asserted on app.mergeDB
+   (never the legacy copy): the derived merge must still leave zero survivors from the losing side
+   on a gen mismatch, in both directions, for Erase all data and Import→Replace alike. */
+{
+  const erasedRemote = Object.assign(app.blank(), { gen: 1, updatedAt: 100 });
+  const fullLocal = Object.assign(populatedLegacyDB('hazard-erase', 500), { gen: 0, updatedAt: 900 });
+  const erasedOut = app.mergeDB(clone(erasedRemote), clone(fullLocal), false);
+  const erasedOk = LEGACY_LISTS.every(n => erasedOut[n].length === 0) && LEGACY_MAPS.every(n => Object.keys(erasedOut[n]).length === 0);
+
+  const oldRemote = Object.assign(populatedLegacyDB('hazard-old', 100), { gen: 1, updatedAt: 100 });
+  const newLocal  = Object.assign(populatedLegacyDB('hazard-new', 500), { gen: 2, updatedAt: 900 });
+  const replaceOut = app.mergeDB(clone(oldRemote), clone(newLocal), false);
+  const replaceOk = LEGACY_LISTS.every(n => JSON.stringify(replaceOut[n]) === JSON.stringify(newLocal[n]));
+
+  ok('merge: derived mergeDB still short-circuits wholesale-replace on gen mismatch — Erase all and Import→Replace leave zero survivors',
+     erasedOk && replaceOk, { erasedOut, replaceOut });
+}
 
 /* Identity. Ian's Aug 10 export had 37 spellings for ~30 movements — "Seated Fly" and "Seated Flys"
    were two lifts with two PR histories, and "Deficit Sumo Squat" missed the program's own 12–15

@@ -3866,6 +3866,59 @@ function mergeDB(remote, local, localWins){
   delete out.wx; // weather is derived cache — excluded from sync entirely (see saveLocal)
   return out;
 }
+/* FROZEN pre-registry merge for the REG-13 differential. Do not edit. Deleted in a later commit (REG-14). */
+function mergeDB_legacy(remote, local, localWins){
+  const r = remote && typeof remote==='object' ? remote : {};
+  const l = local  && typeof local==='object'  ? local  : {};
+  /* Wholesale replace: "Erase all data" and Import→Replace bump `gen`. Without this the union
+     below would pull every erased row straight back from the cloud, so both of those actions
+     silently did nothing. A higher generation replaces everything, no key enumeration needed. */
+  const rG = +r.gen || 0, lG = +l.gen || 0;
+  if(rG !== lG){
+    const win = Object.assign({}, blank_legacy(), lG > rG ? l : r);
+    win.gen = Math.max(rG, lG);
+    win.updatedAt = Math.max(+r.updatedAt||0, +l.updatedAt||0);
+    win._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
+    delete win.wx;
+    return win;
+  }
+  const rU = +r.updatedAt || 0, lU = +l.updatedAt || 0;
+  const localNewer = localWins ? (lU >= rU) : (lU > rU);
+  const newer = localNewer ? l : r, older = localNewer ? r : l;
+  const out = Object.assign({}, blank_legacy(), older, newer); // start from newer's scalars, guarantee all blank() keys
+  // ── append-only logs: union, never subtract ──
+  out.sessions = mergeUnion(r.sessions, l.sessions, sessKey, localNewer);
+  out.weights  = mergeUnion(r.weights,  l.weights,  w=>w.date, localNewer);
+  out.petWeights = mergeUnion(r.petWeights, l.petWeights, w=>w.date, localNewer);  // one cat weigh-in per date, same key rule as weights
+  out.cardio   = mergeUnion(r.cardio,   l.cardio,   cardioKey, localNewer);
+  out.ideas    = mergeUnion(r.ideas,    l.ideas,    ideaKey, localNewer);
+  out.todos    = mergeUnion(r.todos,    l.todos,    todoKey, localNewer);
+  out.hobbyLog = mergeUnion(r.hobbyLog, l.hobbyLog, hobbyKey, localNewer);
+  // ── date-keyed maps ──
+  out.journal = mergeDateMap(r.journal, l.journal, localNewer, (a,b,bN)=>mergeJournalEntry(a,b,bN));
+  /* mobilityLog / lawnLog: take the WHOLE inner object from the newer side. Do NOT union inner
+     keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
+  out.mobilityLog = mergeDateMap(r.mobilityLog, l.mobilityLog, localNewer, null);
+  out.lawnLog     = mergeDateMap(r.lawnLog,     l.lawnLog,     localNewer, null);
+  /* draft: already set correctly by Object.assign(newer) above — same recency rule as every other
+     field. BUG FIXED HERE (2026-07-25): this used to be `localDraft || remoteDraft || null`, which
+     picked whichever side had ANY non-null draft, ignoring which side was actually newer. Once a
+     stale non-null draft existed anywhere (a device's memory, or the cloud doc from before a
+     workout was finished), it won FOREVER — finishing/discarding sets draft:null, but null could
+     never beat a stale non-null value, so the old workout kept getting resurrected on every merge
+     and re-pushed via the live listener, looping endlessly across every device. The merged output
+     does NOT pass back through normalize(), so the draft is repaired here too — a draft short a
+     field crashes viewActive exactly like an unknown workout name does. */
+  normalizeDraft(out);
+  // ── invariants ──
+  out.weights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  out.petWeights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  out.sessions.sort(sessionSort);
+  out._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
+  out.updatedAt = Math.max(rU, lU);
+  delete out.wx; // weather is derived cache — excluded from sync entirely (see saveLocal)
+  return out;
+}
 
 /* ───────────────────────── Cloud sync (Firebase Auth + Firestore) ─────────────────────────
    Whole DB is stored as one JSON blob at users/{uid}. Every write is a TRANSACTION that reads the
