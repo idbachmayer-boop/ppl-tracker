@@ -111,6 +111,7 @@ function loadApp(htmlPath, seed){
        the views lets the smoke check call them directly, where a throw is a throw. */
     'TABS','tabDef','render','go','setSub','subState',
     'viewActive','viewCardio','viewCardioTrend','viewData','viewHistory','viewPicker','viewSkincare','viewVolume',
+    'COLLECTIONS','collectionProblems','MIGRATIONS','sessKey','todoKey','hobbyKey','cardioKey','ideaKey','sessionSort',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

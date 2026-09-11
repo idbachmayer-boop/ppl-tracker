@@ -476,6 +476,34 @@ const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 C
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
 const PRODUCTIVITY_DEFAULT = ["🧹 Clean up crafting station","🗂️ Clean off work desk","📦 Organize the basement","🌀 Vacuum the basement","🌿 Pull weeds","✂️ Edge and trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🍱 Meal prep","💼 Clean the office room","🛋️ Wash couch cushions","🍳 Clean the stovetop","🧊 Clean out the fridge"];
+/* ───────────────────────── Collections registry (F1) ─────────────────────────
+   Declared before DB boots via load() a few dozen lines down, after SCHEMA/KEY, before MIGRATIONS;
+   every value is a literal or a reference to a hoisted `function` declaration — never a const
+   arrow, never a forward const.
+   blank() may read only `kind` at module-eval time (see the placement comments on migration 13 and
+   migration 17 above, and the one on `let migrationRan` below — this is the same trap). Everything
+   else here (`key`, `sortBy`, `merge`, `columns`, `format`) is read later, by code that runs after
+   boot, never during it.
+   cardio, ideas, todos and hobbyLog deliberately have no `sortBy` because the hand-written merge
+   never sorted them — declaring one now would change stored order, which this plan must not do. */
+const COLLECTIONS = {
+  sessions:   { kind:'list', key:sessKey,   sortBy:sessionSort, merge:'union', soft:true,  required:true },
+  weights:    { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:true },
+  petWeights: { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:false },
+  cardio:     { kind:'list', key:cardioKey, merge:'union', soft:true, required:false },
+  ideas:      { kind:'list', key:ideaKey,   merge:'union', soft:true, required:false },
+  todos:      { kind:'list', key:todoKey,   merge:'union', soft:true, required:false },
+  hobbyLog:   { kind:'list', key:hobbyKey,  merge:'union', soft:true, required:false },
+  journal:    { kind:'map',  merge:'line-union', soft:false, required:false, explicitFalse:false },
+  /* mobilityLog / lawnLog: take the WHOLE inner object from the newer side. Do NOT union inner
+     keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
+  mobilityLog:{ kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true },
+  lawnLog:    { kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true },
+};
+{
+  const problems = collectionProblems(COLLECTIONS);
+  if(problems.length) throw new Error('COLLECTIONS is invalid: ' + problems.join('; '));
+}
 /* Ordered schema migrations. Each takes the data object up one version. Must be idempotent. */
 const MIGRATIONS = {
   1:d=>{ if(!d.hobbies) d.hobbies=DEFAULT_HOBBIES.slice(); if(!d.hobbyLog) d.hobbyLog=[]; if(!('lawn' in d)) d.lawn=null; if(!('wx' in d)) d.wx=null; return d; },
@@ -3614,10 +3642,53 @@ function mergeUnion(aArr, bArr, keyOf, newerFirst){
   return out;
 }
 /* Session key: prefer the stable id; fall back to content for pre-id rows (migration 12 backfills,
-   but MIGRATIONS is wrapped in a silent try/catch so never trust it alone). */
-const sessKey = s => s.id || ('c_'+(s.date||'')+'|'+(s.workout||'')+'|'+(s.endedAt||'')+'|'+(s.skipped?'1':'0'));
-const todoKey = t => (t.created||'')+'|'+(t.text||'');
-const hobbyKey = h => (h.date||'')+'|'+(h.item||h.hobby||'')+'|'+(h.cat||'');
+   but MIGRATIONS is wrapped in a silent try/catch so never trust it alone). Promoted to `function`
+   declarations (from `const` arrows) so COLLECTIONS, declared earlier in the file, can reference
+   them by name — a `function` declaration hoists, a `const` arrow does not (see the COLLECTIONS
+   placement comment). Bodies are byte-identical to the arrows they replace. */
+function sessKey(s){ return s.id || ('c_'+(s.date||'')+'|'+(s.workout||'')+'|'+(s.endedAt||'')+'|'+(s.skipped?'1':'0')); }
+function todoKey(t){ return (t.created||'')+'|'+(t.text||''); }
+function hobbyKey(h){ return (h.date||'')+'|'+(h.item||h.hobby||'')+'|'+(h.cat||''); }
+/* cardio/ideas keys and the sessions comparator, promoted out of their inline call sites in
+   mergeDB() below so COLLECTIONS can reference them the same way. */
+function cardioKey(c){ return c.id || ((c.date||'')+'|'+(c.type||'')+'|'+(c.minutes||'')); }
+function ideaKey(i){ return i.id || ((i.date||'')+'|'+(i.text||'')); }
+function sessionSort(a,b){ return a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : String(a.date).localeCompare(String(b.date)); }
+/* ── COLLECTIONS registry contracts (REG-01 through REG-05, REG-17) ──
+   collectionProblems(reg) enforces the shape rules every COLLECTIONS entry must satisfy. Lives here,
+   next to the promoted key functions, so every registry helper is in one place. */
+function collectionProblems(reg){
+  const problems = [];
+  if(!reg || typeof reg!=='object' || Array.isArray(reg) || Object.keys(reg).length===0){
+    return ['registry: empty or not an object'];
+  }
+  const ALLOWED = ['kind','key','sortBy','merge','soft','required','explicitFalse','columns','format'];
+  Object.keys(reg).forEach(name=>{
+    const spec = reg[name] && typeof reg[name]==='object' ? reg[name] : {};
+    const p = msg => problems.push(name+': '+msg);
+    Object.keys(spec).forEach(field=>{ if(ALLOWED.indexOf(field)<0) p('unknown field "'+field+'"'); });
+    if(spec.kind!=='list' && spec.kind!=='map'){ p('kind must be "list" or "map"'); return; }
+    if(!spec.merge){ p('merge is required and has no default'); }
+    else if(spec.kind==='list' && spec.merge!=='union'){ p('a list must declare merge "union"'); }
+    else if(spec.kind==='map' && spec.merge!=='line-union' && spec.merge!=='replace-whole'){ p('a map must declare merge "line-union" or "replace-whole" (never "union" — that is the key-union trap)'); }
+    if(typeof spec.soft!=='boolean') p('soft must be a boolean');
+    if('required' in spec && typeof spec.required!=='boolean') p('required must be a boolean');
+    if(spec.kind==='list'){
+      if(spec.key==null || (typeof spec.key!=='string' && typeof spec.key!=='function') || spec.key===''){ p('a list needs key, as a non-empty string or a function'); }
+      if('sortBy' in spec && spec.sortBy!=null){ if(typeof spec.sortBy!=='string' && typeof spec.sortBy!=='function') p('sortBy must be a string or a function'); else if(spec.sortBy==='') p('sortBy must not be empty'); }
+      if('explicitFalse' in spec) p('a list must not declare explicitFalse');
+    } else {
+      if('key' in spec) p('a map must not declare key');
+      if('sortBy' in spec) p('a map must not declare sortBy');
+      if(spec.soft===true) p('a map must not declare soft true');
+      if(spec.required===true) p('a map must not declare required true');
+      if(typeof spec.explicitFalse!=='boolean') p('a map must declare explicitFalse as a boolean');
+      if(spec.explicitFalse===true && spec.merge!=='replace-whole') p('explicitFalse true is allowed only with merge "replace-whole"');
+    }
+    // columns/format rules are added in Task 2, once every entry actually declares them.
+  });
+  return problems;
+}
 function mergeJournalEntry(x, y, yNewer){
   /* Line-level union: logToJournal appends lines, so the usual conflict is one side being a
      superset. "Longer string wins" would silently drop a whole day's note. */
@@ -3664,8 +3735,8 @@ function mergeDB(remote, local, localWins){
   out.sessions = mergeUnion(r.sessions, l.sessions, sessKey, localNewer);
   out.weights  = mergeUnion(r.weights,  l.weights,  w=>w.date, localNewer);
   out.petWeights = mergeUnion(r.petWeights, l.petWeights, w=>w.date, localNewer);  // one cat weigh-in per date, same key rule as weights
-  out.cardio   = mergeUnion(r.cardio,   l.cardio,   c=>c.id || ((c.date||'')+'|'+(c.type||'')+'|'+(c.minutes||'')), localNewer);
-  out.ideas    = mergeUnion(r.ideas,    l.ideas,    i=>i.id || ((i.date||'')+'|'+(i.text||'')), localNewer);
+  out.cardio   = mergeUnion(r.cardio,   l.cardio,   cardioKey, localNewer);
+  out.ideas    = mergeUnion(r.ideas,    l.ideas,    ideaKey, localNewer);
   out.todos    = mergeUnion(r.todos,    l.todos,    todoKey, localNewer);
   out.hobbyLog = mergeUnion(r.hobbyLog, l.hobbyLog, hobbyKey, localNewer);
   // ── date-keyed maps ──
@@ -3687,7 +3758,7 @@ function mergeDB(remote, local, localWins){
   // ── invariants ──
   out.weights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   out.petWeights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-  out.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : String(a.date).localeCompare(String(b.date)));
+  out.sessions.sort(sessionSort);
   out._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
   out.updatedAt = Math.max(rU, lU);
   delete out.wx; // weather is derived cache — excluded from sync entirely (see saveLocal)

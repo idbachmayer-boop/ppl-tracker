@@ -61,6 +61,30 @@ if(fs.existsSync(rulesPath)){
 }
 
 const app = loadApp(APP_PATH);
+
+console.log('\n── the harness exports what the suite calls ──');
+/* A renamed or forgotten export comes back `undefined` from the harness (see harness.js's own
+   comment) rather than throwing, so a test that only checks two `undefined`s are equal would
+   silently "pass". Assert every name the suite below calls through `app` is actually exported. */
+const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessKey','todoKey','hobbyKey','cardioKey','ideaKey','sessionSort'];
+REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
+
+/* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
+   may ever mutate COLLECTIONS). Function values are recorded by name, not by reference, so the
+   snapshot is a plain, comparable string. */
+function snapshotRegistry(reg){
+  return JSON.stringify(Object.keys(reg).sort().reduce((out, name) => {
+    const spec = reg[name];
+    out[name] = Object.keys(spec).sort().reduce((s, field) => {
+      const v = spec[field];
+      s[field] = typeof v === 'function' ? 'fn:' + (v.name || 'anonymous') : v;
+      return s;
+    }, {});
+    return out;
+  }, {}));
+}
+const REGISTRY_AT_START = snapshotRegistry(app.COLLECTIONS);
+
 const today = app.todayISO();
 const dayOff = n => { const d = new Date(today+'T00:00'); d.setDate(d.getDate()+n); return d.toLocaleDateString('en-CA'); };
 
@@ -488,6 +512,114 @@ ok('  …and was WRITTEN to storage, not just held in memory', (()=>{
 })(), booted.__stored() && booted.__stored()._schema);
 ok('  …with the identity stamped on the row', !!booted.__stored().sessions[0].entries[0].exId, booted.__stored().sessions[0].entries[0].exId);
 ok('a fresh install still boots clean', (()=>{ const fresh = loadApp(APP_PATH); return fresh.DB._schema === app.SCHEMA && fresh.DB.sessions.length === 0; })());
+
+/* The temporal-dead-zone trap COLLECTIONS must survive (see the placement comments on migrations
+   13 and 17): a registry that throws, or that resolves a reference incorrectly, would be swallowed
+   by normalize()'s silent try/catch while `_schema` still advances. Booting the REAL app from every
+   schema version — not just the current one — is the only way to catch that. */
+console.log('\n── every schema version boots, and every declared collection has its shape (REG-15) ──');
+const INTRODUCED_AT = { sessions:0, weights:0, hobbyLog:1, journal:2, mobilityLog:5, todos:6, cardio:7, ideas:8, lawnLog:10, petWeights:14 };
+Object.keys(app.COLLECTIONS).forEach(name => {
+  ok('boot: introduced-at table knows ' + name, name in INTRODUCED_AT, name);
+});
+
+const shapeCheck = (DB, v) => {
+  for(const name in app.COLLECTIONS){
+    const spec = app.COLLECTIONS[name];
+    const val = DB[name];
+    if(spec.kind === 'list' && !Array.isArray(val)) return name + ' is not an array';
+    if(spec.kind === 'map' && (!val || typeof val !== 'object' || Array.isArray(val))) return name + ' is not a map';
+  }
+  return true;
+};
+
+for(let v = 0; v <= app.SCHEMA; v++){
+  let seed;
+  if(v === app.SCHEMA){
+    seed = Object.assign(app.blank(), {
+      sessions: [{ id:'b'+v, workout:'PUSH 1', date:'2026-07-01', endedAt:1, extras:{},
+        entries:[{ name:'Barbell bench press', sets:[{ w:'135', r:'8', skipped:false }] }] }],
+      weights: [{ date:'2026-07-01', value:190 }],
+    });
+  } else {
+    seed = {
+      sessions: [{ id:'b'+v, workout:'PUSH 1', date:'2026-07-01', endedAt:1, extras:{},
+        entries:[{ name:'Barbell bench press', sets:[{ w:'135', r:'8', skipped:false }] }] }],
+      weights: [{ date:'2026-07-01', value:190 }],
+    };
+    Object.keys(app.COLLECTIONS).forEach(name => {
+      if(name === 'sessions' || name === 'weights') return;
+      if(INTRODUCED_AT[name] <= v) seed[name] = app.COLLECTIONS[name].kind === 'list' ? [] : {};
+    });
+    if(v > 0) seed._schema = v;
+  }
+  let booted, threw = null;
+  try { booted = loadApp(APP_PATH, seed); } catch(e){ threw = e; }
+  const result = (()=>{
+    if(threw) return 'threw: ' + threw.message;
+    const DB = booted.DB;
+    if(DB._schema !== app.SCHEMA) return 'schema stuck at ' + DB._schema;
+    const shape = shapeCheck(DB, v);
+    if(shape !== true) return shape;
+    if(!(DB.sessions || []).some(s => s.id === 'b' + v)) return 'seeded session missing';
+    if(!(DB.weights || []).some(w => w.date === '2026-07-01')) return 'seeded weigh-in missing';
+    if(v < app.SCHEMA){
+      const stored = booted.__stored();
+      if(!stored || stored._schema !== app.SCHEMA) return 'migration not persisted';
+    }
+    return true;
+  })();
+  ok('boot: schema ' + v + ' → every declared collection shaped', result === true, result);
+}
+
+[
+  [null, 'empty store'],
+  ['not json {', 'unparseable store'],
+  ['{}', "'{}' store"],
+].forEach(([seed, label]) => {
+  let booted, threw = null;
+  try { booted = loadApp(APP_PATH, seed); } catch(e){ threw = e; }
+  const result = threw ? 'threw: ' + threw.message : shapeCheck(booted.DB);
+  ok('boot: ' + label + ' → every declared collection shaped', result === true, result);
+});
+
+/* COLLECTIONS sits above `let DB = load()` textually, so a bad edit that moves it, or that
+   introduces an arrow-function or forward-const value, must turn this suite red — not the phone. */
+console.log('\n── COLLECTIONS sits where module-eval can reach it (REG-02/03/11) ──');
+{
+  const src = app.__src;
+  const iSchema = src.indexOf('const SCHEMA');
+  const iCollections = src.indexOf('const COLLECTIONS');
+  const iMigrations = src.indexOf('const MIGRATIONS');
+  const iLoad = src.indexOf('let DB = load()');
+  ok('placement: COLLECTIONS sits after SCHEMA, before MIGRATIONS and before let DB = load()',
+     iSchema >= 0 && iCollections > iSchema && iCollections < iMigrations && iMigrations < iLoad,
+     { iSchema, iCollections, iMigrations, iLoad });
+
+  const startIdx = src.indexOf('const COLLECTIONS = {');
+  const rest = src.slice(startIdx);
+  const endMatch = rest.match(/\r?\n\};\r?\n/);
+  const literal = endMatch ? rest.slice(0, endMatch.index + endMatch[0].length) : rest;
+
+  ok('placement: the COLLECTIONS literal holds no arrow functions', !literal.includes('=>'), literal.length);
+
+  const idents = [...literal.matchAll(/:\s*([A-Za-z_$][A-Za-z0-9_$]*)\s*[,}\n]/g)].map(m => m[1])
+    .filter(id => id !== 'true' && id !== 'false' && id !== 'null');
+  const badRefs = idents.filter(id => {
+    const isFnDecl = new RegExp('function\\s+' + id + '\\s*\\(').test(src);
+    const isConstLetVar = new RegExp('\\b(const|let|var)\\s+' + id + '\\b').test(src);
+    return !isFnDecl || isConstLetVar;
+  });
+  ok('placement: every function value in COLLECTIONS is a hoisted function declaration', badRefs.length === 0, badRefs);
+
+  ok('placement: COLLECTIONS never references MIGRATIONS', !literal.includes('MIGRATIONS'));
+
+  ok('registry: the shipped COLLECTIONS has no problems', app.collectionProblems(app.COLLECTIONS).length === 0, app.collectionProblems(app.COLLECTIONS));
+
+  ok('registry: entries are declared in the pre-phase order',
+     JSON.stringify(Object.keys(app.COLLECTIONS).slice(0, 10)) === JSON.stringify(['sessions','weights','petWeights','cardio','ideas','todos','hobbyLog','journal','mobilityLog','lawnLog']),
+     Object.keys(app.COLLECTIONS));
+}
 
 console.log('\n── an older build must not write over a migrated one ──');
 ok('a remote from a newer schema is refused', app.remoteTooNew({ _schema: app.SCHEMA + 1 }) === true);
