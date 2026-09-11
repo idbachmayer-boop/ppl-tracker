@@ -1,12 +1,19 @@
 ---
-gsd_state_version: '1.0'
-status: planning
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+current_phase: 1
+current_phase_name: F1 — The COLLECTIONS Registry
+status: executing
+stopped_at: "Phase 1 planned and verified: 7 plans in 6 waves, plan checker passed with no issues. Next: `/gsd-execute-phase 1`."
+last_updated: "2026-09-11T16:45:54.664Z"
+last_activity: 2026-09-11
+last_activity_desc: Phase 1 planned — 7 plans in 6 waves, all 23 requirements covered, plan checker passed first time
 progress:
   total_phases: 7
   completed_phases: 0
-  total_plans: 0
+  total_plans: 7
   completed_plans: 0
-  percent: 0
 ---
 
 # Project State
@@ -21,15 +28,16 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 ## Current Position
 
 Phase: 1 of 7 (F1 — The COLLECTIONS Registry)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-09-10 — ROADMAP.md created, all 56 v1 requirements mapped to 7 phases, coverage verified 100%
+Plan: 0 of 7 in current phase
+Status: Ready to execute
+Last activity: 2026-09-11 — Phase 1 planned: 7 plans in 6 waves, all 23 requirements covered, plan checker passed first time
 
 Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: - min
 - Total execution time: 0 hours
@@ -41,6 +49,7 @@ Progress: [░░░░░░░░░░] 0%
 | - | - | - | - |
 
 **Recent Trend:**
+
 - Last 5 plans: none yet
 - Trend: N/A
 
@@ -58,15 +67,19 @@ Recent decisions affecting current work:
 - [Phase 1]: The `gen`-mismatch wholesale-replace stays a hard early `return` in `mergeDB()`, untouched by the derived per-collection loop — folding it in silently disables "Erase all data" and Import→Replace.
 - [Phase 1]: `merge` is an explicit required field on every collection; map collections (`journal`, `mobilityLog`, `lawnLog`) take the whole inner object from the newer side, never a union of inner keys.
 - [Phase 1]: A row rewrite is permitted only with all four guards — `touch()`, persist immediately, idempotent, stale-device merge replay test.
+- [Phase 1]: The real-backup fixture (REG-13) stays LOCAL ONLY in a git-ignored folder — the repo and the live site are public, so a committed backup would publish Ian's journal, weights and notes. Committed tests use synthetic per-incident fixtures; the real-data differential runs only when the local file is present and skips loudly, never silently, when it is absent. (Ian, 2026-09-11)
+- [Phase 1]: Planned without CONTEXT.md and without a UI-SPEC (`--skip-ui`) — the sleep view copies an existing log screen rather than a written design contract. (Ian, 2026-09-11)
 - [Phase 7]: Meta CSP has no report-only mode; local DevTools verification against a static file server is the only pre-production check, and cloud sync must be actively confirmed working after the policy goes live, not assumed.
 
 ### Pending Todos
 
-None yet.
+- [Phase 1, plan 01-06]: Ian exports a real backup from the app (Settings → Export backup) and saves it as `test/local/real-db-snapshot.json` (git-ignored). Plan 01-07's legacy deletion waits on the real-data PASS.
 
 ### Blockers/Concerns
 
 - [Phase 1]: Highest-risk phase in the milestone — the only one touching the merge/soft-delete/migration code paths that already caused the 2026-07-25 blind-write and Migration-15 incidents. Do not relax the differential-test-before-delete discipline under time pressure.
+- [Phase 1]: The planner flagged two items for Ian's review before or during execution — the sleep-form defaults (SLEEP-02, plan 01-05) and when to delete the legacy functions (REG-14, plan 01-07). It also documented a pre-existing gap: the three date-keyed map collections are not order-independent across three devices, because a day carries no timestamp of its own. Plan 01-04 records it and does not change behaviour.
+- [Phase 1]: Shipping SCHEMA 18 is one-way — the cloud copy is stamped 18 and older builds refuse to sync. No plan pushes to `main`; the code goes through a PR after the phase.
 - [Phase 7]: A CSP that blocks `gstatic.com` fails silently — the app keeps working on localStorage with cloud sync dead and no visible error. Verify sync explicitly after the policy ships.
 
 ## Deferred Items
@@ -82,5 +95,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-09-11
-Stopped at: Roadmap approved by Ian and committed. GSD's generated `.claude/CLAUDE.md` deliberately skipped — the root `CLAUDE.md` stays the only instruction file. Next: `/gsd-plan-phase 1`.
+Stopped at: Phase 1 planned and verified — 7 plans in 6 waves, plan checker passed with no issues. Next: `/gsd-execute-phase 1`.
 Resume file: None

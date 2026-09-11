@@ -61,6 +61,37 @@ Seed rows below map each requirement to its test signal (from `01-RESEARCH.md`).
 
 ---
 
+### Planned task map (planner, 2026-09-11)
+
+The seed rows above are the requirement-level view. This table maps each planned task to its test signal. Every task's `<verify>` runs the suite. The only exception is 01-06 Task 1, a human checkpoint whose verification is a pair of read-only git checks.
+
+| Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command |
+|---------|------|------|-------------|------------|-----------------|-----------|-------------------|
+| 01-01-T1 | 01 | 1 | REG-01/02/03/04/15 | T-01-01, T-01-03 | App boots without a TDZ throw from every schema | boot-order regression + placement scan (tracer) | `TZ=America/Chicago node test/app.test.js` |
+| 01-01-T2 | 01 | 1 | REG-04/05/11/17 | T-01-02, T-01-04 | A map with no merge strategy is refused at boot | contract tests + transform-booted refusal | `TZ=America/Chicago node test/app.test.js` |
+| 01-02-T1 | 02 | 2 | REG-06, REG-12 | T-01-07 | Fresh containers on every blank() | parity vs blank_legacy | `TZ=America/Chicago node test/app.test.js` |
+| 01-02-T2 | 02 | 2 | REG-07, REG-12 | T-01-06 | Soft-deleted rows never shown; deletes mutate stored rows | differential vs 7 twins + per-soft-collection loop | `TZ=America/Chicago node test/app.test.js` |
+| 01-02-T3 | 02 | 2 | REG-08, REG-12 | T-01-05 | Malformed backups still refused, same wording | string-parity differential (named + generated + two-fault) | `TZ=America/Chicago node test/app.test.js` |
+| 01-03-T1 | 03 | 3 | REG-13, REG-10 | T-01-08 | Erase / Import→Replace leave zero survivors | per-incident two-device replay (characterisation) | `TZ=America/Chicago node test/app.test.js` |
+| 01-03-T2 | 03 | 3 | REG-09/10/05/12 | T-01-08, T-01-09, T-01-11 | Gen block untouched; explicit false survives; no default strategy | differential + textual + dispatch-throw | `TZ=America/Chicago node test/app.test.js` |
+| 01-04-T1 | 04 | 4 | REG-13, REG-09 | T-01-11 | N/A | seeded random differential + mergeDB-level merge laws | `TZ=America/Chicago node test/app.test.js` |
+| 01-04-T2 | 04 | 4 | REG-13 | T-01-12, T-01-13, T-01-14 | Real data never committed or printed; a skip is loud | real-backup differential (local only) + .gitignore checks | `TZ=America/Chicago node test/app.test.js` |
+| 01-05-T1 | 05 | 5 | SLEEP-01/06, REG-15/16 | T-01-17, T-01-18 | Deleted sleep row never resurrects; no row rewritten | synthetic stale replay + no-rewrite + boot 0..18 | `TZ=America/Chicago node test/app.test.js` |
+| 01-05-T2 | 05 | 5 | SLEEP-02/03 | T-01-15, T-01-16 | Note escaped; unsafe id gets no delete button | behaviour + every-screen smoke (+ human-check) | `TZ=America/Chicago node test/app.test.js` |
+| 01-05-T3 | 05 | 5 | SLEEP-04/05 | — | N/A | probe collection via source transform + structural | `TZ=America/Chicago node test/app.test.js` |
+| 01-06-T1 | 06 | 5 | REG-13 | T-01-19 | Backup stays local and untracked | checkpoint:human-action | `git check-ignore -q test/local/real-db-snapshot.json` |
+| 01-06-T2 | 06 | 5 | REG-13 | T-01-19 | Real-data PASS recorded counts-only | real-backup differential run (must PASS, not SKIP) | `TZ=America/Chicago node test/app.test.js` |
+| 01-07-T1 | 07 | 6 | REG-13 | T-01-23 | Goldens hold hashes of synthetic data only | golden capture | `TZ=America/Chicago node test/app.test.js` |
+| 01-07-T2 | 07 | 6 | REG-14 | T-01-21, T-01-22 | Legacy deleted only after the real-data PASS | golden + invariant + source check | `TZ=America/Chicago node test/app.test.js` |
+
+Wave 0 items are created inside the tasks, not in a separate wave:
+- harness exports and REQUIRED_EXPORTS: 01-01-T1, extended by each later task
+- .gitignore: 01-04-T2
+- the real-backup fixture: 01-06-T1
+- synthetic per-incident fixtures: 01-03-T1
+- the gen, explicit-false, boot-order, SLEEP-04/05 and SLEEP-06 blocks: 01-01, 01-03, 01-05
+- populatedDB sleep rows: 01-05-T2
+
 ## Wave 0 Requirements
 
 - [ ] `test/harness.js` `names` export array (~line 97) — gains every new function the tests call; an unlisted name silently returns `undefined` to tests
