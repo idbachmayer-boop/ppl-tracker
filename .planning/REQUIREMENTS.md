@@ -19,8 +19,8 @@ The one declaration the rest of the data layer derives from.
 - [x] **REG-06**: `blank()` is derived from `COLLECTIONS` and produces a database with a correctly-shaped key for every declared collection
 - [x] **REG-07**: The `liveX()` soft-delete filters are derived from `COLLECTIONS`, so a new collection cannot ship without its filter
 - [x] **REG-08**: `validateBackup()`'s shape checks are derived from `COLLECTIONS` and accept and reject exactly what the hand-written version does — strict behavioural parity
-- [ ] **REG-09**: `mergeDB()`'s per-collection merging is derived from `COLLECTIONS`
-- [ ] **REG-10**: The `gen`-mismatch wholesale-replace stays a hard early `return` before any per-collection merging, untouched by the derived loop
+- [x] **REG-09**: `mergeDB()`'s per-collection merging is derived from `COLLECTIONS`
+- [x] **REG-10**: The `gen`-mismatch wholesale-replace stays a hard early `return` before any per-collection merging, untouched by the derived loop
 - [x] **REG-11**: `MIGRATIONS` stays hand-written and is not derived from `COLLECTIONS`; it may read `COLLECTIONS` one-way
 - [x] **REG-12**: Each hand-written consumer is replaced in its own commit, cheapest-first and `mergeDB()` last, with the app shippable at every commit
 - [x] **REG-13**: Every replaced function is kept renamed (not deleted) and differential-tested against its derived replacement over a real exported backup plus per-incident synthetic two-device fixtures
