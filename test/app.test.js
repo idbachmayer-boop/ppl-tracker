@@ -67,7 +67,9 @@ console.log('\n── the harness exports what the suite calls ──');
    comment) rather than throwing, so a test that only checks two `undefined`s are equal would
    silently "pass". Assert every name the suite below calls through `app` is actually exported. */
 const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessKey','todoKey','hobbyKey','cardioKey','ideaKey','sessionSort',
-  'sessionRows','hobbyRows','journalRows','dayFlagRows','blank_legacy'];
+  'sessionRows','hobbyRows','journalRows','dayFlagRows','blank_legacy',
+  'liveOf','liveSessions','liveCardio','liveIdeas','liveTodos','liveHobbyLog','softDelete',
+  'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -480,6 +482,74 @@ console.log('\n── blank() is derived from COLLECTIONS (REG-06) ──');
      && !/\.key\b/.test(src) && !/\.sortBy\b/.test(src) && !/\.merge\b/.test(src) && !/\.columns\b/.test(src) && !/\.format\b/.test(src),
      src);
 }
+
+console.log('\n── the soft-delete filters are derived from COLLECTIONS (REG-07) ──');
+const LIVE_WRAPPERS = [
+  ['liveSessions','liveSessions_legacy','sessions'],
+  ['liveWeights','liveWeights_legacy','weights'],
+  ['livePetWeights','livePetWeights_legacy','petWeights'],
+  ['liveCardio','liveCardio_legacy','cardio'],
+  ['liveIdeas','liveIdeas_legacy','ideas'],
+  ['liveTodos','liveTodos_legacy','todos'],
+  ['liveHobbyLog','liveHobbyLog_legacy','hobbyLog'],
+];
+/* live, deletedAt truthy, deletedAt 0 (live), deletedAt null (live), a null entry, and a bare
+   string — the same odd shapes a hand-edited backup or a stale migration could leave behind. */
+const sixEntries = () => [ {n:1}, {n:2, deletedAt:5, mtime:5}, {n:3, deletedAt:0}, {n:4, deletedAt:null}, null, 'junk' ];
+const liveApp = loadApp(APP_PATH);
+liveApp.DB = liveApp.blank();
+LIVE_WRAPPERS.forEach(([,,name]) => { liveApp.DB[name] = sixEntries(); });
+
+LIVE_WRAPPERS.forEach(([wrapper, legacy]) => {
+  const derived = liveApp[wrapper](), twin = liveApp[legacy]();
+  ok('live: ' + wrapper + ' matches its hand-written twin', canon(derived) === canon(twin), { derived, twin });
+});
+LIVE_WRAPPERS.forEach(([wrapper, legacy]) => {
+  const derived = liveApp[wrapper](), twin = liveApp[legacy]();
+  const sameRefs = derived.length === twin.length && derived.every((row,i) => row === twin[i]);
+  ok('live: ' + wrapper + ' returns the stored rows, not copies', sameRefs, { derivedLen: derived.length, twinLen: twin.length });
+});
+
+{
+  liveApp.DB.cardio = undefined; liveApp.DB.ideas = null; liveApp.DB.todos = [];
+  const cases = [['liveCardio','liveCardio_legacy'],['liveIdeas','liveIdeas_legacy'],['liveTodos','liveTodos_legacy']];
+  const allEmpty = cases.every(([w,l]) => {
+    const derived = liveApp[w](), twin = liveApp[l]();
+    return Array.isArray(derived) && derived.length === 0 && canon(derived) === canon(twin);
+  });
+  ok('live: a missing, null or empty collection gives []', allEmpty);
+  liveApp.DB.cardio = sixEntries(); liveApp.DB.ideas = sixEntries(); liveApp.DB.todos = sixEntries();
+}
+{
+  const lenBefore = liveApp.DB.sessions.length;
+  const first = liveApp.liveSessions(), second = liveApp.liveSessions();
+  ok('live: calling a filter twice changes nothing', canon(first) === canon(second) && liveApp.DB.sessions.length === lenBefore);
+}
+{
+  liveApp.DB.weights = [{ n:1, date:'2026-01-01' }, { n:2, date:'2026-01-02' }];
+  const before = liveApp.liveWeights().length;
+  liveApp.softDelete(liveApp.DB.weights, x => x && x.n === 1);
+  const after = liveApp.liveWeights().length;
+  ok('live: a delete between two reads shows on the next read', after === before - 1, { before, after });
+}
+Object.keys(liveApp.COLLECTIONS)
+  .filter(name => liveApp.COLLECTIONS[name].kind === 'list' && liveApp.COLLECTIONS[name].soft === true)
+  .forEach(name => {
+    const a = loadApp(APP_PATH); a.DB = a.blank();
+    a.DB[name] = [{ id:'live1' }, { id:'dead1', deletedAt: Date.now(), mtime: Date.now() }];
+    ok('live: soft collection ' + name + ' hides a deleted row', a.liveOf(name).length === 1, a.liveOf(name));
+  });
+{
+  let threwJournal = false, threwNope = false;
+  try { liveApp.liveOf('journal'); } catch(e){ threwJournal = true; }
+  try { liveApp.liveOf('nope'); } catch(e){ threwNope = true; }
+  ok('live: liveOf refuses a name that is not a declared soft list', threwJournal && threwNope);
+}
+{
+  const delegates = LIVE_WRAPPERS.every(([wrapper, , name]) => new RegExp("liveOf\\(\\s*'" + name + "'\\s*\\)").test(liveApp[wrapper].toString()));
+  ok('live: every wrapper delegates to liveOf', delegates);
+}
+ok('live: no dynamically generated filters', !/(window|globalThis)\s*\[\s*['"`]live/.test(liveApp.__src));
 
 /* The failure this whole workstream exists to prevent, replayed end to end.
    Migration 15 renamed rows in memory, nothing persisted them, the rows carried no `mtime`, and the

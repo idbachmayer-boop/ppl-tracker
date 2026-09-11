@@ -690,13 +690,32 @@ function blank_legacy(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[]
 const DELETE_PAYLOAD_KEEP_MS = 30*86400000;  // full payload kept this long, so Restore is lossless
 const isLive = x => !!x && !x.deletedAt;
 function touch(x){ if(x && typeof x==='object') x.mtime = Date.now(); return x; }
-function liveSessions(){ return (DB.sessions||[]).filter(isLive); }
-function liveWeights(){ return (DB.weights||[]).filter(isLive); }
-function livePetWeights(){ return (DB.petWeights||[]).filter(isLive); }
-function liveCardio(){ return (DB.cardio||[]).filter(isLive); }
-function liveIdeas(){ return (DB.ideas||[]).filter(isLive); }
-function liveTodos(){ return (DB.todos||[]).filter(isLive); }
-function liveHobbyLog(){ return (DB.hobbyLog||[]).filter(isLive); }
+/* Derived from COLLECTIONS (REG-07): this is the only soft-delete filter body. Every named
+   wrapper below delegates to it. A name that isn't a declared soft-delete list throws rather than
+   silently returning everything or nothing, so a new soft collection gets a working filter from
+   its declaration alone, and a misuse fails loudly instead of ghosting a row back into a view.
+   Never generate these wrappers dynamically through window or globalThis — that breaks grep and
+   go-to-definition (01-RESEARCH.md, Anti-Patterns). */
+function liveOf(name){
+  const spec = COLLECTIONS[name];
+  if(!spec || spec.kind !== 'list' || spec.soft !== true) throw new Error('liveOf: ' + name + ' is not a declared soft-delete list');
+  return (DB[name]||[]).filter(isLive);
+}
+function liveSessions(){ return liveOf('sessions'); }
+function liveWeights(){ return liveOf('weights'); }
+function livePetWeights(){ return liveOf('petWeights'); }
+function liveCardio(){ return liveOf('cardio'); }
+function liveIdeas(){ return liveOf('ideas'); }
+function liveTodos(){ return liveOf('todos'); }
+function liveHobbyLog(){ return liveOf('hobbyLog'); }
+/* FROZEN pre-registry filters for the REG-13 differential. Do not edit. Deleted in a later commit (REG-14). */
+function liveSessions_legacy(){ return (DB.sessions||[]).filter(isLive); }
+function liveWeights_legacy(){ return (DB.weights||[]).filter(isLive); }
+function livePetWeights_legacy(){ return (DB.petWeights||[]).filter(isLive); }
+function liveCardio_legacy(){ return (DB.cardio||[]).filter(isLive); }
+function liveIdeas_legacy(){ return (DB.ideas||[]).filter(isLive); }
+function liveTodos_legacy(){ return (DB.todos||[]).filter(isLive); }
+function liveHobbyLog_legacy(){ return (DB.hobbyLog||[]).filter(isLive); }
 /* Mark deleted in place. Returns false if it was already gone. */
 function softDelete(arr, pred){
   const it = (arr||[]).find(x=> isLive(x) && pred(x)); if(!it) return false;
