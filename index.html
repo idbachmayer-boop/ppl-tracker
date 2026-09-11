@@ -487,18 +487,18 @@ const PRODUCTIVITY_DEFAULT = ["🧹 Clean up crafting station","🗂️ Clean of
    cardio, ideas, todos and hobbyLog deliberately have no `sortBy` because the hand-written merge
    never sorted them — declaring one now would change stored order, which this plan must not do. */
 const COLLECTIONS = {
-  sessions:   { kind:'list', key:sessKey,   sortBy:sessionSort, merge:'union', soft:true,  required:true },
-  weights:    { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:true },
-  petWeights: { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:false },
-  cardio:     { kind:'list', key:cardioKey, merge:'union', soft:true, required:false },
-  ideas:      { kind:'list', key:ideaKey,   merge:'union', soft:true, required:false },
-  todos:      { kind:'list', key:todoKey,   merge:'union', soft:true, required:false },
-  hobbyLog:   { kind:'list', key:hobbyKey,  merge:'union', soft:true, required:false },
-  journal:    { kind:'map',  merge:'line-union', soft:false, required:false, explicitFalse:false },
+  sessions:   { kind:'list', key:sessKey,   sortBy:sessionSort, merge:'union', soft:true,  required:true,  columns:['date','workout','exercise','set','weight','reps'], format:sessionRows },
+  weights:    { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:true,  columns:['date','value'] },
+  petWeights: { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:false, columns:['date','value'] },
+  cardio:     { kind:'list', key:cardioKey, merge:'union', soft:true, required:false, columns:['date','type','minutes','distanceKm','note'] },
+  ideas:      { kind:'list', key:ideaKey,   merge:'union', soft:true, required:false, columns:['date','text','done'] },
+  todos:      { kind:'list', key:todoKey,   merge:'union', soft:true, required:false, columns:['created','text'] },
+  hobbyLog:   { kind:'list', key:hobbyKey,  merge:'union', soft:true, required:false, columns:['date','item','cat'], format:hobbyRows },
+  journal:    { kind:'map',  merge:'line-union', soft:false, required:false, explicitFalse:false, columns:['date','entry'], format:journalRows },
   /* mobilityLog / lawnLog: take the WHOLE inner object from the newer side. Do NOT union inner
      keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
-  mobilityLog:{ kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true },
-  lawnLog:    { kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true },
+  mobilityLog:{ kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, columns:['date','item','done'], format:dayFlagRows },
+  lawnLog:    { kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, columns:['date','item','done'], format:dayFlagRows },
 };
 {
   const problems = collectionProblems(COLLECTIONS);
@@ -3654,6 +3654,32 @@ function hobbyKey(h){ return (h.date||'')+'|'+(h.item||h.hobby||'')+'|'+(h.cat||
 function cardioKey(c){ return c.id || ((c.date||'')+'|'+(c.type||'')+'|'+(c.minutes||'')); }
 function ideaKey(i){ return i.id || ((i.date||'')+'|'+(i.text||'')); }
 function sessionSort(a,b){ return a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : String(a.date).localeCompare(String(b.date)); }
+/* ── COLLECTIONS export row shapers (REG-17) ── one per non-flat collection, referenced by name from
+   the `format` field on that collection's COLLECTIONS entry. Presentation (ISO dates, units, missing
+   markers, escaping) is Phase 2's job — these hand back raw stored values, one row per exported line,
+   with keys in exactly the order of that collection's `columns`. */
+function sessionRows(s){
+  if(!s || typeof s!=='object') return [];
+  const rows = [];
+  const addItem = item => {
+    if(!item || typeof item!=='object' || !Array.isArray(item.sets)) return;
+    item.sets.forEach((set,i)=>{ rows.push({ date:s.date, workout:s.workout, exercise:item.name, set:i+1, weight:set.w, reps:set.r }); });
+  };
+  if(Array.isArray(s.entries)) s.entries.forEach(addItem);
+  if(s.extras && typeof s.extras==='object' && !Array.isArray(s.extras)) Object.keys(s.extras).forEach(k=>addItem(s.extras[k]));
+  return rows;
+}
+function hobbyRows(h){
+  if(!h || typeof h!=='object') return [];
+  return [{ date:h.date, item:(h.item||h.hobby), cat:h.cat }];
+}
+function journalRows(date, text){
+  return [{ date, entry: (text==null ? '' : String(text)) }];
+}
+function dayFlagRows(date, obj){
+  if(!obj || typeof obj!=='object' || Array.isArray(obj)) return [];
+  return Object.keys(obj).map(k=>({ date, item:k, done:obj[k] }));
+}
 /* ── COLLECTIONS registry contracts (REG-01 through REG-05, REG-17) ──
    collectionProblems(reg) enforces the shape rules every COLLECTIONS entry must satisfy. Lives here,
    next to the promoted key functions, so every registry helper is in one place. */
@@ -3685,7 +3711,11 @@ function collectionProblems(reg){
       if(typeof spec.explicitFalse!=='boolean') p('a map must declare explicitFalse as a boolean');
       if(spec.explicitFalse===true && spec.merge!=='replace-whole') p('explicitFalse true is allowed only with merge "replace-whole"');
     }
-    // columns/format rules are added in Task 2, once every entry actually declares them.
+    if(!Array.isArray(spec.columns) || spec.columns.length===0 || spec.columns.some(c=>typeof c!=='string' || c==='') || new Set(spec.columns).size!==spec.columns.length){
+      p('columns must be a non-empty array of distinct, non-empty strings');
+    }
+    if('format' in spec && spec.format!=null && typeof spec.format!=='function') p('format must be a function');
+    if(spec.kind==='map' && typeof spec.format!=='function') p('a map must declare format');
   });
   return problems;
 }

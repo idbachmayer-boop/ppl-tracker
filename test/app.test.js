@@ -66,7 +66,8 @@ console.log('\n── the harness exports what the suite calls ──');
 /* A renamed or forgotten export comes back `undefined` from the harness (see harness.js's own
    comment) rather than throwing, so a test that only checks two `undefined`s are equal would
    silently "pass". Assert every name the suite below calls through `app` is actually exported. */
-const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessKey','todoKey','hobbyKey','cardioKey','ideaKey','sessionSort'];
+const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessKey','todoKey','hobbyKey','cardioKey','ideaKey','sessionSort',
+  'sessionRows','hobbyRows','journalRows','dayFlagRows'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -621,6 +622,156 @@ console.log('\n── COLLECTIONS sits where module-eval can reach it (REG-02/03
      Object.keys(app.COLLECTIONS));
 }
 
+/* The registry's export metadata (REG-17), the merge-strategy refusal battery (REG-05), the promoted
+   key functions' parity with their pre-phase bodies (REG-04), and the hand-written MIGRATIONS
+   invariant (REG-11). Built with the object form of COLLECTIONS entries, copying real function
+   references off `app` where a format or key function is needed — never re-declaring them here. */
+console.log('\n── the registry refuses what would lose data (REG-05/REG-04/REG-17/REG-11) ──');
+{
+  const validListSpec = () => ({ kind:'list', key:'id', merge:'union', soft:true, required:false, columns:['id'] });
+  const validMapSpec = () => ({ kind:'map', merge:'line-union', soft:false, required:false, explicitFalse:false, columns:['date','entry'], format:app.journalRows });
+
+  let spec = validMapSpec(); delete spec.merge;
+  let problems = app.collectionProblems({ thing: spec });
+  ok('registry: a map with no merge field is refused, naming the collection and "merge"',
+     problems.length > 0 && problems.some(p=>p.includes('thing') && p.includes('merge')), problems);
+
+  spec = validMapSpec(); spec.merge = null;
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a map with merge null is refused, naming the collection and "merge"',
+     problems.length > 0 && problems.some(p=>p.includes('thing') && p.includes('merge')), problems);
+
+  spec = validMapSpec(); spec.merge = '';
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a map with merge \'\' is refused, naming the collection and "merge"',
+     problems.length > 0 && problems.some(p=>p.includes('thing') && p.includes('merge')), problems);
+
+  spec = validMapSpec(); spec.merge = 'union';
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a map declaring merge "union" (the key-union trap) is refused', problems.length > 0, problems);
+
+  spec = validListSpec(); spec.merge = 'replace-whole';
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a list declaring merge "replace-whole" is refused', problems.length > 0, problems);
+
+  spec = validListSpec(); spec.merge = 'line-union';
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a list declaring merge "line-union" is refused', problems.length > 0, problems);
+
+  spec = validListSpec(); delete spec.soft;
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: an entry with soft missing is refused', problems.length > 0, problems);
+
+  spec = validListSpec(); spec.sortby = 'date';
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: an unknown field "sortby" is refused and named', problems.some(p=>p.includes('sortby')), problems);
+
+  problems = app.collectionProblems({
+    a: (()=>{ const s = validListSpec(); delete s.merge; return s; })(),
+    b: (()=>{ const s = validMapSpec(); s.merge = 'union'; return s; })(),
+  });
+  ok('registry: a registry with two bad entries yields problems naming both',
+     problems.some(p=>p.startsWith('a:')) && problems.some(p=>p.startsWith('b:')), problems);
+
+  ok('registry: {} yields a non-empty problem list and never throws', app.collectionProblems({}).length > 0);
+  ok('registry: null yields a non-empty problem list and never throws', app.collectionProblems(null).length > 0);
+
+  spec = validMapSpec(); spec.explicitFalse = true; // merge stays 'line-union'
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a map with explicitFalse true and merge "line-union" is refused', problems.length > 0, problems);
+
+  spec = validListSpec(); delete spec.columns;
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: missing columns is refused', problems.length > 0, problems);
+
+  spec = validListSpec(); spec.columns = [];
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: an empty columns list is refused', problems.length > 0, problems);
+
+  spec = validListSpec(); spec.columns = ['id','id'];
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a columns list with a duplicate is refused', problems.length > 0, problems);
+
+  spec = validMapSpec(); delete spec.format;
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a map with no format is refused', problems.length > 0, problems);
+
+  ok('registry: collectionProblems is idempotent — same input, same output twice',
+     JSON.stringify(app.collectionProblems(app.COLLECTIONS)) === JSON.stringify(app.collectionProblems(app.COLLECTIONS)));
+
+  /* The boot-refusal fixture: delete mobilityLog's merge field from the REAL source via a source
+     transform, then boot that mutated copy and expect the module-eval throw. Assert the regex still
+     matches BEFORE using it, so a reformatted registry fails loudly here instead of passing
+     vacuously (the fixture silently no-op-ing and the boot "passing" for the wrong reason). */
+  const mobilityMergeRe = /(mobilityLog:\{[^}]*?)merge:'replace-whole',\s*/;
+  ok('registry: the refusal fixture still finds mobilityLog\'s merge field', mobilityMergeRe.test(app.__src));
+  const transform = code => code.replace(mobilityMergeRe, '$1');
+  let refusalThrew = null;
+  try { loadApp(APP_PATH, null, { transform }); } catch(e){ refusalThrew = e; }
+  ok('registry: boot refuses a map with no merge strategy',
+     !!refusalThrew && /COLLECTIONS is invalid/.test(refusalThrew.message) && /mobilityLog/.test(refusalThrew.message),
+     refusalThrew && refusalThrew.message);
+
+  // ── REG-04: the promoted key functions, proven identical to their pre-phase bodies ──
+  ok('keys: sessKey uses the stable id when present', app.sessKey({id:'x'}) === 'x', app.sessKey({id:'x'}));
+  ok('keys: sessKey falls back to the composite key, skipped true ends "1"',
+     app.sessKey({id:'', date:'2026-07-01', workout:'PUSH 1', endedAt:5, skipped:true}) === 'c_2026-07-01|PUSH 1|5|1',
+     app.sessKey({id:'', date:'2026-07-01', workout:'PUSH 1', endedAt:5, skipped:true}));
+  ok('keys:  …skipped false ends "0"',
+     app.sessKey({id:'', date:'2026-07-01', workout:'PUSH 1', endedAt:5, skipped:false}) === 'c_2026-07-01|PUSH 1|5|0',
+     app.sessKey({id:'', date:'2026-07-01', workout:'PUSH 1', endedAt:5, skipped:false}));
+  ok('keys: todoKey({}) is "|"', app.todoKey({}) === '|', app.todoKey({}));
+  ok('keys: cardioKey({}) is "||"', app.cardioKey({}) === '||', app.cardioKey({}));
+  ok('keys: ideaKey({}) is "|"', app.ideaKey({}) === '|', app.ideaKey({}));
+  ok('keys: hobbyKey({}) is "||"', app.hobbyKey({}) === '||', app.hobbyKey({}));
+  ok('keys: hobbyKey falls back to hobby when item is absent',
+     app.hobbyKey({date:'d', hobby:'h', cat:'c'}) === 'd|h|c', app.hobbyKey({date:'d', hobby:'h', cat:'c'}));
+  ok('keys: todoKey joins created then text (field order)',
+     app.todoKey({created:'a', text:'b'}) === 'a|b', app.todoKey({created:'a', text:'b'}));
+  ok('keys: cardioKey joins date, type, minutes (field order)',
+     app.cardioKey({date:'d', type:'t', minutes:5}) === 'd|t|5', app.cardioKey({date:'d', type:'t', minutes:5}));
+  ok('keys: sessionSort orders by date first',
+     app.sessionSort({date:'2026-07-01', endedAt:5}, {date:'2026-07-02', endedAt:1}) < 0);
+  ok('keys:  …then by endedAt within the same date',
+     app.sessionSort({date:'2026-07-01', endedAt:5}, {date:'2026-07-01', endedAt:1}) > 0);
+
+  // ── REG-17: export rows match COLLECTIONS.<name>.columns exactly ──
+  const sessionFixture = {
+    date:'2026-07-01', workout:'PUSH 1',
+    entries: [
+      { name:'Barbell bench press', sets:[{w:'135',r:'8',skipped:false},{w:'135',r:'8',skipped:false}] },
+      { name:'Incline press', sets:[{w:'50',r:'10',skipped:false}] },
+    ],
+    extras: { forearms: { name:'Wrist curls', sets:[{w:'0',r:'20',skipped:false}] } },
+  };
+  const sessRows = app.sessionRows(sessionFixture);
+  ok('rows: sessionRows on two entries plus one extra gives 4 rows', sessRows.length === 4, sessRows.length);
+  ok('rows: every row\'s keys equal COLLECTIONS.sessions.columns exactly',
+     sessRows.every(r => JSON.stringify(Object.keys(r)) === JSON.stringify(app.COLLECTIONS.sessions.columns)),
+     sessRows.map(r=>Object.keys(r)));
+  ok('rows: set numbers are 1, 2, 1, 1 and the forearms row comes last',
+     JSON.stringify(sessRows.map(r=>r.set)) === JSON.stringify([1,2,1,1]) && sessRows[3].exercise === 'Wrist curls',
+     sessRows.map(r=>({set:r.set, exercise:r.exercise})));
+  ok('rows: sessionRows({}) returns []', Array.isArray(app.sessionRows({})) && app.sessionRows({}).length === 0);
+  ok('rows: sessionRows(null) returns []', Array.isArray(app.sessionRows(null)) && app.sessionRows(null).length === 0);
+  ok('rows: sessionRows({entries:"x"}) returns []', Array.isArray(app.sessionRows({entries:'x'})) && app.sessionRows({entries:'x'}).length === 0);
+  ok('rows: journalRows(date, null) returns one row with entry ""',
+     JSON.stringify(app.journalRows('2026-08-01', null)) === JSON.stringify([{date:'2026-08-01', entry:''}]),
+     app.journalRows('2026-08-01', null));
+  const flagRows = app.dayFlagRows('2026-08-01', {a:true, b:false});
+  ok('rows: dayFlagRows returns one row per key, including done false',
+     flagRows.length === 2 && flagRows[0].done === true && flagRows[1].done === false, flagRows);
+  ok('rows: dayFlagRows(date, "x") returns []', Array.isArray(app.dayFlagRows('2026-08-01', 'x')) && app.dayFlagRows('2026-08-01', 'x').length === 0);
+  ok('rows: hobbyRows falls back to hobby when item is absent',
+     app.hobbyRows({date:'d', hobby:'h', cat:'c'})[0].item === 'h', app.hobbyRows({date:'d', hobby:'h', cat:'c'}));
+
+  // ── REG-11: MIGRATIONS stays hand-written, keys 1..SCHEMA with no gap ──
+  const migKeys = Object.keys(app.MIGRATIONS).map(Number).sort((a,b)=>a-b);
+  const expectedMigKeys = Array.from({length: app.SCHEMA}, (_,i)=>i+1);
+  ok('migrations: MIGRATIONS keys are exactly 1..SCHEMA with no gap',
+     JSON.stringify(migKeys) === JSON.stringify(expectedMigKeys), migKeys);
+}
+
 console.log('\n── an older build must not write over a migrated one ──');
 ok('a remote from a newer schema is refused', app.remoteTooNew({ _schema: app.SCHEMA + 1 }) === true);
 ok('the same schema is fine', app.remoteTooNew({ _schema: app.SCHEMA }) === false);
@@ -796,6 +947,16 @@ console.log('\n── a malformed draft must not take out the Log tab ──');
   appEl.innerHTML = ''; uiFull.go('today');
   const everyScreen = SCREENS.map(([, tab, sub]) => { appEl.innerHTML=''; uiFull.go(tab); if(sub) uiFull.setSub(sub); return appEl.innerHTML; }).join('');
   ok('a user string never reaches the page as live markup', !/<script>/i.test(everyScreen));
+}
+
+/* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
+   COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
+   REGISTRY_AT_START, naming only the collections that differ. */
+{
+  const endSnapshot = JSON.parse(snapshotRegistry(app.COLLECTIONS));
+  const startSnapshot = JSON.parse(REGISTRY_AT_START);
+  const diffNames = Object.keys(startSnapshot).filter(name => JSON.stringify(startSnapshot[name]) !== JSON.stringify(endSnapshot[name]));
+  ok('registry: never mutated by boot, merge or render (REG-01)', diffNames.length === 0, diffNames);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

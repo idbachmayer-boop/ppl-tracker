@@ -38,12 +38,16 @@ function freezeRunnerClock(){ global.Date = FrozenDate; }
 
 /* `seed` puts a blob in localStorage BEFORE the app script runs, so boot takes the same path a real
    device does — including migrating and saving. Booting only from an empty store hid a
-   temporal-dead-zone crash that killed the app on every device that had data to migrate. */
-function loadApp(htmlPath, seed){
+   temporal-dead-zone crash that killed the app on every device that had data to migrate.
+   `opts.transform(code)`, when given, rewrites the extracted inline-script text before it runs —
+   used to build refusal fixtures (e.g. a registry entry with a field deleted) without maintaining a
+   second copy of index.html. */
+function loadApp(htmlPath, seed, opts){
   const src = fs.readFileSync(htmlPath, 'utf8');
   const m = [...src.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)];
   if(!m.length) throw new Error('no inline <script> found in ' + htmlPath);
-  const code = m[m.length-1][1];
+  let code = m[m.length-1][1];
+  if(opts && typeof opts.transform === 'function') code = opts.transform(code);
 
   const store = {};
   if(seed) store['ppl_tracker_v1'] = typeof seed === 'string' ? seed : JSON.stringify(seed);
@@ -112,6 +116,7 @@ function loadApp(htmlPath, seed){
     'TABS','tabDef','render','go','setSub','subState',
     'viewActive','viewCardio','viewCardioTrend','viewData','viewHistory','viewPicker','viewSkincare','viewVolume',
     'COLLECTIONS','collectionProblems','MIGRATIONS','sessKey','todoKey','hobbyKey','cardioKey','ideaKey','sessionSort',
+    'sessionRows','hobbyRows','journalRows','dayFlagRows',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
