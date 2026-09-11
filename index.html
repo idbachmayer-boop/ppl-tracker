@@ -3358,6 +3358,47 @@ function exportData(){
    Returns null when the blob is fine, otherwise the reason. */
 function validateBackup(raw){
   if(!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'This file isn’t a backup — it doesn’t contain a data object.';
+  /* Shape checks derived from COLLECTIONS (REG-08), in three passes so the precedence a hand-typed
+     list order used to guarantee — required lists, then optional lists, then maps — holds no
+     matter what order COLLECTIONS happens to be declared in. Message templates are copied
+     byte-for-byte (including the U+2019 right single quotation mark) from validateBackup_legacy
+     below, never retyped, so a refusal never changes its wording (REG-13). Deep per-row checks
+     stay hand-written below — there is no validation DSL (Pitfall 11, REQUIREMENTS.md Out of Scope). */
+  for(const name in COLLECTIONS){
+    const spec = COLLECTIONS[name];
+    if(spec.kind==='list' && spec.required && !Array.isArray(raw[name])) return `This backup is missing its ${name} list, so it’s incomplete or truncated.`;
+  }
+  for(const name in COLLECTIONS){
+    const spec = COLLECTIONS[name];
+    if(spec.kind==='list' && !spec.required && raw[name]!=null && !Array.isArray(raw[name])) return `The ${name} section is damaged (expected a list).`;
+  }
+  for(const name in COLLECTIONS){
+    const spec = COLLECTIONS[name];
+    if(spec.kind==='map' && raw[name]!=null && (typeof raw[name]!=='object' || Array.isArray(raw[name]))) return `The ${name} section is damaged.`;
+  }
+  const schema = +raw._schema;
+  if(raw._schema!=null && !(schema>=0)) return 'This backup’s version number is unreadable.';
+  if(schema > SCHEMA) return `This backup came from a newer version of the app (v${schema}, this is v${SCHEMA}). Update this device first — importing it here would lose whatever that version added.`;
+  for(let i=0;i<raw.sessions.length;i++){
+    const s = raw.sessions[i];
+    if(!s || typeof s!=='object') return `Workout ${i+1} of ${raw.sessions.length} is damaged.`;
+    if(!s.date || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) return `Workout ${i+1} has no usable date${s.workout?` (${s.workout})`:''} — the file is probably truncated.`;
+    if(s.entries!=null && !Array.isArray(s.entries)) return `Workout ${i+1} (${s.date}) has a damaged exercise list.`;
+    if(Array.isArray(s.entries)) for(const e of s.entries){
+      if(!e || typeof e!=='object') return `Workout ${i+1} (${s.date}) contains a damaged exercise.`;
+      if(e.sets!=null && !Array.isArray(e.sets)) return `“${e.name||'An exercise'}” on ${s.date} has a damaged set list.`;
+    }
+  }
+  for(let i=0;i<raw.weights.length;i++){
+    const w = raw.weights[i];
+    if(!w || typeof w!=='object' || !w.date) return `Weigh-in ${i+1} of ${raw.weights.length} is damaged.`;
+    if(w.value!=null && isNaN(+w.value)) return `Weigh-in on ${w.date} has a value that isn’t a number.`;
+  }
+  return null;
+}
+/* FROZEN pre-registry validator for the REG-13 differential. Do not edit. Deleted in a later commit (REG-14). */
+function validateBackup_legacy(raw){
+  if(!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'This file isn’t a backup — it doesn’t contain a data object.';
   const arrays = ['sessions','weights'];
   for(const k of arrays) if(!Array.isArray(raw[k])) return `This backup is missing its ${k} list, so it’s incomplete or truncated.`;
   for(const k of ['petWeights','cardio','ideas','todos','hobbyLog']) if(raw[k]!=null && !Array.isArray(raw[k])) return `The ${k} section is damaged (expected a list).`;

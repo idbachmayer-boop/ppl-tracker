@@ -69,7 +69,8 @@ console.log('\n── the harness exports what the suite calls ──');
 const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessKey','todoKey','hobbyKey','cardioKey','ideaKey','sessionSort',
   'sessionRows','hobbyRows','journalRows','dayFlagRows','blank_legacy',
   'liveOf','liveSessions','liveCardio','liveIdeas','liveTodos','liveHobbyLog','softDelete',
-  'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy'];
+  'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy',
+  'validateBackup_legacy'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -941,6 +942,85 @@ ok('something that isn\'t a backup at all is refused', typeof app.validateBackup
 ok('an OLDER backup is still accepted (that is what migrations are for)', (()=>{
   const old = JSON.parse(JSON.stringify(realBackup)); old._schema = 12; return app.validateBackup(old) === null; })());
 ok('the real exported shape passes', app.validateBackup(app.normalize(JSON.parse(JSON.stringify(realBackup)))) === null);
+
+console.log('\n── validateBackup() takes its shape checks from COLLECTIONS (REG-08) ──');
+{
+  const NAMED_MUTATIONS = [
+    ['no weights list', d=>{ delete d.weights; }],
+    ['no sessions list', d=>{ delete d.sessions; }],
+    ['session missing date', d=>{ delete d.sessions[0].date; }],
+    ['session mangled date', d=>{ d.sessions[0].date = '15/07/2026'; }],
+    ['damaged set list', d=>{ d.sessions[0].entries[0].sets = 'nope'; }],
+    ['damaged exercise list', d=>{ d.sessions[0].entries = 'nope'; }],
+    ['non-numeric weigh-in', d=>{ d.weights[0].value = 'heavy'; }],
+    ['newer app version', d=>{ d._schema = app.SCHEMA + 3; }],
+    ['damaged journal', d=>{ d.journal = []; }],
+    ['cardio set to a string', d=>{ d.cardio = 'x'; }],
+    ['mobilityLog set to a list', d=>{ d.mobilityLog = []; }],
+    ['lawnLog set to a number', d=>{ d.lawnLog = 3; }],
+  ];
+  NAMED_MUTATIONS.forEach(([label, mutate]) => {
+    const copy = JSON.parse(JSON.stringify(realBackup)); mutate(copy);
+    const derived = app.validateBackup(copy), legacy = app.validateBackup_legacy(copy);
+    ok('validate: same message — ' + label, derived === legacy, [derived, legacy]);
+  });
+}
+{
+  const DAMAGE_KINDS = [
+    ['deleted', (d,name) => { delete d[name]; }],
+    ['null', (d,name) => { d[name] = null; }],
+    ['string', (d,name) => { d[name] = 'x'; }],
+    ['number', (d,name) => { d[name] = 42; }],
+    ['boolean', (d,name) => { d[name] = true; }],
+    ['empty array', (d,name) => { d[name] = []; }],
+    ['empty object', (d,name) => { d[name] = {}; }],
+  ];
+  let cases = 0, mismatch = null;
+  LEGACY_COLLECTIONS.forEach(name => {
+    DAMAGE_KINDS.forEach(([kind, mutate]) => {
+      const copy = JSON.parse(JSON.stringify(realBackup));
+      mutate(copy, name);
+      const derived = app.validateBackup(copy), legacy = app.validateBackup_legacy(copy);
+      cases++;
+      if(derived !== legacy && !mismatch) mismatch = { name, kind, derived, legacy };
+    });
+  });
+  ok('validate: every legacy collection × every damage gives the same answer', !mismatch, { cases, mismatch });
+}
+{
+  const twoFaultCases = [
+    d=>{ d.cardio = 'x'; d.journal = []; },
+    d=>{ delete d.sessions; d.petWeights = 'x'; },
+    d=>{ d.todos = {}; d.lawnLog = []; },
+  ];
+  const results = twoFaultCases.map(mutate => {
+    const copy = JSON.parse(JSON.stringify(realBackup)); mutate(copy);
+    return [app.validateBackup(copy), app.validateBackup_legacy(copy)];
+  });
+  ok('validate: two faults report the same one first', results.every(([d,l]) => d === l), results);
+}
+{
+  const derived = app.validateBackup({}), legacy = app.validateBackup_legacy({});
+  ok('validate: an empty object is refused with the missing-sessions message',
+     derived === legacy && typeof derived === 'string' && /sessions/.test(derived), [derived, legacy]);
+}
+{
+  const copy = JSON.parse(JSON.stringify(realBackup));
+  Object.keys(app.COLLECTIONS).forEach(name => { if(!app.COLLECTIONS[name].required) delete copy[name]; });
+  const derived = app.validateBackup(copy), legacy = app.validateBackup_legacy(copy);
+  ok('validate: a backup with no optional collections is accepted by both', derived === null && legacy === null, [derived, legacy]);
+}
+{
+  const inputs = [[1,2,3], null, 'str', 5];
+  const results = inputs.map(x => [app.validateBackup(x), app.validateBackup_legacy(x)]);
+  ok('validate: a non-object is refused identically', results.every(([d,l]) => d === l && typeof d === 'string'), results);
+}
+{
+  const src = app.validateBackup.toString();
+  ok('validate: shape lists come from COLLECTIONS, per-row checks stay hand-written',
+     /COLLECTIONS/.test(src) && /Workout /.test(src) && /Weigh-in on/.test(src) && !/'petWeights'\s*,\s*'cardio'/.test(src),
+     src);
+}
 
 /* ─────────────────────────────────────────────────────────────────────────────────────────────
    Every screen still draws.
