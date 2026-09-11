@@ -902,6 +902,190 @@ console.log('\n── mergeDB() is derived from COLLECTIONS (REG-09/REG-10/REG-0
      { weightsSorted, petWeightsSorted, sessionsSorted, derivedCardio: derivedOut.cardio.map(c=>c.id), legacyCardio: legacyOut.cardio.map(c=>c.id) });
 }
 
+/* ── a seeded random battery: legacy vs derived, and the merge laws (REG-13/REG-09) ──
+ * PITFALLS Pitfall 5: property tests are written at the mergeDB(remote, local, localWins) level,
+ * never at the raw mergeUnion/mergeDateMap level — only mergeDB owns recomputing which side is
+ * newer. A law that fails identically on mergeDB_legacy is a pre-existing property of the frozen
+ * merge, not a derivation bug (see the map-associativity check below).
+ */
+console.log('\n── a seeded random battery: legacy vs derived, and the merge laws (REG-13/REG-09) ──');
+
+function mulberry32(seed){
+  let a = seed >>> 0;
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const SEED = 20260911, N = 200;
+
+const TAG_POOL = ['tagA', 'tagB', 'tagC', 'tagD'];
+const MTIME_POOL = [undefined, 1, 2, 2];
+const UPDATED_AT_POOL = [100, 100, 500, 900];
+const JOURNAL_LINES = ['first line', 'second line', 'third line', 'fourth line'];
+const RANDOM_MAP_DAYS = [dayOff(-1), dayOff(-2), dayOff(-3)];
+
+/* 'laws' mode never repeats an mtime or an updatedAt anywhere in the battery, so idempotence,
+   commutativity and associativity are never accidentally satisfied by a coincidental tie. */
+let lawsMtimeSeq = 1, lawsUpdatedAtSeq = 1;
+
+const PUSH1_DRAFT = () => ({ workout:'PUSH 1', date:today, entries:[], extras:{}, stairs:{level:'',seconds:'',skipped:false,reason:''} });
+const PUSH1_DRAFT_NO_STAIRS = () => { const d = PUSH1_DRAFT(); delete d.stairs; return d; };
+
+function genDevice(rand, mode){
+  const d = app.blank();
+  LEGACY_LISTS.forEach(name => {
+    const rowCount = Math.floor(rand() * 5); // 0..4
+    const pool = mode === 'laws' ? TAG_POOL.slice() : null; // drawn without replacement: distinct within one device
+    const rows = [];
+    for(let i = 0; i < rowCount; i++){
+      const tag = mode === 'laws' ? pool.splice(Math.floor(rand() * pool.length), 1)[0]
+                                   : TAG_POOL[Math.floor(rand() * TAG_POOL.length)];
+      const mtime = mode === 'laws' ? lawsMtimeSeq++ : MTIME_POOL[Math.floor(rand() * MTIME_POOL.length)];
+      const extra = { mtime };
+      if(rand() < 0.2) extra.deletedAt = mtime !== undefined ? mtime : 1;
+      rows.push(ROW_FOR[name](tag, extra));
+    }
+    d[name] = rows;
+  });
+
+  d.journal = {};
+  RANDOM_MAP_DAYS.forEach(day => {
+    const lineCount = 1 + Math.floor(rand() * 3);
+    const lines = [];
+    for(let i = 0; i < lineCount; i++) lines.push(JOURNAL_LINES[Math.floor(rand() * JOURNAL_LINES.length)]);
+    d.journal[day] = lines.join('\n');
+  });
+  ['mobilityLog', 'lawnLog'].forEach(name => {
+    d[name] = {};
+    RANDOM_MAP_DAYS.forEach(day => {
+      if(rand() < 0.2) return; // sometimes the day is absent
+      d[name][day] = { mowed: rand() < 0.5, watered: rand() < 0.5 }; // explicit booleans, false included
+    });
+  });
+
+  d.updatedAt = mode === 'laws' ? lawsUpdatedAtSeq++ : UPDATED_AT_POOL[Math.floor(rand() * UPDATED_AT_POOL.length)];
+  d.gen = mode === 'laws' ? 0 : (rand() < 0.9 ? 0 : 1);
+  if(mode === 'laws'){
+    d.draft = null;
+  } else {
+    const r = rand();
+    d.draft = r < 0.7 ? null : (r < 0.9 ? PUSH1_DRAFT() : PUSH1_DRAFT_NO_STAIRS());
+  }
+  if(rand() < 0.3) d.wx = { at: Date.now(), data: {} };
+  return d;
+}
+
+/* Per legacy collection: lists by their COLLECTIONS key (tombstones included), replace-whole maps
+   by day, journal by day as the sorted set of distinct trimmed non-empty lines. Content, never
+   array order — REG-06/07/08 and this differential both compare by value. */
+function contentOf(db){
+  const out = {};
+  LEGACY_LISTS.forEach(name => {
+    const spec = app.COLLECTIONS[name];
+    const keyOf = typeof spec.key === 'function' ? spec.key : (x => x[spec.key]);
+    const map = {};
+    (db[name] || []).forEach(row => { map[keyOf(row)] = canon(row); });
+    out[name] = map;
+  });
+  ['mobilityLog', 'lawnLog'].forEach(name => {
+    const map = {};
+    Object.keys(db[name] || {}).forEach(day => { map[day] = canon(db[name][day]); });
+    out[name] = map;
+  });
+  const journalMap = {};
+  Object.keys(db.journal || {}).forEach(day => {
+    const lines = String(db.journal[day] || '').split('\n').map(l => l.trim()).filter(Boolean);
+    journalMap[day] = Array.from(new Set(lines)).sort();
+  });
+  out.journal = journalMap;
+  return canon(out);
+}
+/* Associativity is checked on list collections only (map non-associativity is the documented finding
+   below), so this restricts contentOf's comparison to just the list half. */
+function contentOfLists(db){
+  const out = {};
+  LEGACY_LISTS.forEach(name => {
+    const spec = app.COLLECTIONS[name];
+    const keyOf = typeof spec.key === 'function' ? spec.key : (x => x[spec.key]);
+    const map = {};
+    (db[name] || []).forEach(row => { map[keyOf(row)] = canon(row); });
+    out[name] = map;
+  });
+  return canon(out);
+}
+
+{
+  const rand = mulberry32(SEED);
+  let firstMismatch = null;
+  for(let i = 0; i < N; i++){
+    const A = genDevice(rand, 'differential');
+    const B = genDevice(rand, 'differential');
+    [false, true].forEach(lw => {
+      if(firstMismatch) return;
+      const legacyOut = legacyView(app.mergeDB_legacy(clone(A), clone(B), lw));
+      const derivedOut = legacyView(app.mergeDB(clone(A), clone(B), lw));
+      if(legacyOut !== derivedOut){
+        const aObj = JSON.parse(legacyOut), bObj = JSON.parse(derivedOut);
+        const diffKeys = Object.keys(aObj).filter(k => JSON.stringify(aObj[k]) !== JSON.stringify(bObj[k]));
+        firstMismatch = { index: i, localWins: lw, diffKeys };
+      }
+    });
+  }
+  ok('random differential: 400 seeded merges, legacy and derived identical', !firstMismatch, firstMismatch);
+}
+
+{
+  const rand = mulberry32(SEED + 1);
+  let idempotenceFail = null, commutativityFail = null, associativityFail = null;
+  for(let i = 0; i < N; i++){
+    const A = genDevice(rand, 'laws');
+    const B = genDevice(rand, 'laws');
+    const C = genDevice(rand, 'laws');
+
+    if(!idempotenceFail){
+      const merged = contentOf(app.mergeDB(clone(A), clone(A), false));
+      if(merged !== contentOf(A)) idempotenceFail = { index: i };
+    }
+    if(!commutativityFail){
+      const ab = contentOf(app.mergeDB(clone(A), clone(B), false));
+      const ba = contentOf(app.mergeDB(clone(B), clone(A), false));
+      if(ab !== ba) commutativityFail = { index: i };
+    }
+    if(!associativityFail){
+      const abThenC = app.mergeDB(app.mergeDB(clone(A), clone(B), false), clone(C), false);
+      const aThenBC = app.mergeDB(clone(A), app.mergeDB(clone(B), clone(C), false), false);
+      if(contentOfLists(abThenC) !== contentOfLists(aThenBC)) associativityFail = { index: i };
+    }
+  }
+  ok('merge law: merging a device with itself changes nothing (idempotence)', !idempotenceFail, idempotenceFail);
+  ok('merge law: argument order does not change the result (commutativity)', !commutativityFail, commutativityFail);
+  ok('merge law: retried transactions converge for every list collection (associativity)', !associativityFail, associativityFail);
+}
+
+/* Map collections (journal aside) have no per-day mtime, only the whole-DB updatedAt — so which
+   grouping a transaction retry happens to compute decides the winner on a three-way conflict. This
+   is a pre-existing property of mergeDateMap (PITFALLS Pitfall 5's own warning: do not "fix" a law
+   that fails identically on both merges), not something this phase changes. Fixed counterexample:
+   A(updatedAt 1, day={mowed:true}), B(updatedAt 3, no day), C(updatedAt 2, day={mowed:false}).
+   (A,B)then C keeps {mowed:true}; A then (B,C) gives {mowed:false} — legacy and derived agree on
+   both wrong-looking-but-identical answers, because they run the exact same mergeDateMap code. */
+{
+  const day = RANDOM_MAP_DAYS[0];
+  const A = Object.assign(app.blank(), { lawnLog: { [day]: { mowed: true } }, updatedAt: 1 });
+  const B = Object.assign(app.blank(), { lawnLog: {}, updatedAt: 3 });
+  const C = Object.assign(app.blank(), { lawnLog: { [day]: { mowed: false } }, updatedAt: 2 });
+  const legacyGroup1 = legacyView(app.mergeDB_legacy(app.mergeDB_legacy(clone(A), clone(B), false), clone(C), false));
+  const derivedGroup1 = legacyView(app.mergeDB(app.mergeDB(clone(A), clone(B), false), clone(C), false));
+  const legacyGroup2 = legacyView(app.mergeDB_legacy(clone(A), app.mergeDB_legacy(clone(B), clone(C), false), false));
+  const derivedGroup2 = legacyView(app.mergeDB(clone(A), app.mergeDB(clone(B), clone(C), false), false));
+  ok('merge law: map collections are not associative today (no per-day mtime) — legacy and derived agree on the counterexample',
+     legacyGroup1 === derivedGroup1 && legacyGroup2 === derivedGroup2,
+     { legacyGroup1, derivedGroup1, legacyGroup2, derivedGroup2 });
+}
+
 /* Identity. Ian's Aug 10 export had 37 spellings for ~30 movements — "Seated Fly" and "Seated Flys"
    were two lifts with two PR histories, and "Deficit Sumo Squat" missed the program's own 12–15
    range because the override is keyed by the canonical spelling. */
