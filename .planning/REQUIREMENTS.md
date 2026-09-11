@@ -11,23 +11,23 @@ Requirements for this milestone. Each maps to exactly one roadmap phase.
 
 The one declaration the rest of the data layer derives from.
 
-- [ ] **REG-01**: A `COLLECTIONS` object declares every collection's `kind`, identity key, sort order, merge strategy and soft-delete behaviour in one place
-- [ ] **REG-02**: `COLLECTIONS` is declared textually before `let DB = load()`, adjacent to `SCHEMA`/`KEY` and before `MIGRATIONS`
-- [ ] **REG-03**: Every value inside `COLLECTIONS` is a literal or a reference to a hoisted `function` declaration — never a `const` arrow, never a reference to a `const` declared later
-- [ ] **REG-04**: The existing composite-key arrows (`sessKey`, `todoKey`, `hobbyKey`, and the inline `cardio`/`ideas` key arrows) are promoted to `function` declarations before being referenced from `COLLECTIONS`
-- [ ] **REG-05**: `merge` is an explicit required field on every collection with no inferred default; a map-shaped collection that omits it fails loudly at declaration rather than defaulting to list semantics
+- [x] **REG-01**: A `COLLECTIONS` object declares every collection's `kind`, identity key, sort order, merge strategy and soft-delete behaviour in one place
+- [x] **REG-02**: `COLLECTIONS` is declared textually before `let DB = load()`, adjacent to `SCHEMA`/`KEY` and before `MIGRATIONS`
+- [x] **REG-03**: Every value inside `COLLECTIONS` is a literal or a reference to a hoisted `function` declaration — never a `const` arrow, never a reference to a `const` declared later
+- [x] **REG-04**: The existing composite-key arrows (`sessKey`, `todoKey`, `hobbyKey`, and the inline `cardio`/`ideas` key arrows) are promoted to `function` declarations before being referenced from `COLLECTIONS`
+- [x] **REG-05**: `merge` is an explicit required field on every collection with no inferred default; a map-shaped collection that omits it fails loudly at declaration rather than defaulting to list semantics
 - [ ] **REG-06**: `blank()` is derived from `COLLECTIONS` and produces a database with a correctly-shaped key for every declared collection
 - [ ] **REG-07**: The `liveX()` soft-delete filters are derived from `COLLECTIONS`, so a new collection cannot ship without its filter
 - [ ] **REG-08**: `validateBackup()`'s shape checks are derived from `COLLECTIONS` and accept and reject exactly what the hand-written version does — strict behavioural parity
 - [ ] **REG-09**: `mergeDB()`'s per-collection merging is derived from `COLLECTIONS`
 - [ ] **REG-10**: The `gen`-mismatch wholesale-replace stays a hard early `return` before any per-collection merging, untouched by the derived loop
-- [ ] **REG-11**: `MIGRATIONS` stays hand-written and is not derived from `COLLECTIONS`; it may read `COLLECTIONS` one-way
+- [x] **REG-11**: `MIGRATIONS` stays hand-written and is not derived from `COLLECTIONS`; it may read `COLLECTIONS` one-way
 - [ ] **REG-12**: Each hand-written consumer is replaced in its own commit, cheapest-first and `mergeDB()` last, with the app shippable at every commit
 - [ ] **REG-13**: Every replaced function is kept renamed (not deleted) and differential-tested against its derived replacement over a real exported backup plus per-incident synthetic two-device fixtures
 - [ ] **REG-14**: The renamed legacy functions are deleted only in a later commit than the one that introduced their replacement, never the same one
-- [ ] **REG-15**: A boot-order regression test asserts the app boots without throwing for every schema version from 1 to current, and that every declared collection exists with the right shape afterward
+- [x] **REG-15**: A boot-order regression test asserts the app boots without throwing for every schema version from 1 to current, and that every declared collection exists with the right shape afterward
 - [ ] **REG-16**: If any row rewrite is introduced, it stamps `mtime` via `touch()`, persists immediately, is idempotent, never downgrades `_schema`, and ships with a stale-device merge replay test — all four, or the rewrite does not ship
-- [ ] **REG-17**: `COLLECTIONS` carries the column/format metadata the Markdown export needs, settled in this phase so the export phase does not reopen the registry
+- [x] **REG-17**: `COLLECTIONS` carries the column/format metadata the Markdown export needs, settled in this phase so the export phase does not reopen the registry
 
 ### Sleep (SLEEP)
 
@@ -146,6 +146,7 @@ Populated during roadmap creation.
 | CSP-01 … CSP-07 | Phase 7 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 56 total
 - Mapped to phases: 56
 - Unmapped: 0

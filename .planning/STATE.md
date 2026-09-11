@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 1
+current_phase: 01
 current_phase_name: F1 — The COLLECTIONS Registry
 status: executing
-stopped_at: "Phase 1 planned and verified: 7 plans in 6 waves, plan checker passed with no issues. Next: `/gsd-execute-phase 1`."
-last_updated: "2026-09-11T16:45:54.664Z"
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-09-11T19:17:16.115Z"
 last_activity: 2026-09-11
 last_activity_desc: Phase 1 planned — 7 plans in 6 waves, all 23 requirements covered, plan checker passed first time
 progress:
-  total_phases: 7
+  total_phases: 1
   completed_phases: 0
   total_plans: 7
-  completed_plans: 0
+  completed_plans: 1
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-10)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 1 — F1: the COLLECTIONS registry
+**Current focus:** Phase 01 — F1 — The COLLECTIONS Registry
 
 ## Current Position
 
-Phase: 1 of 7 (F1 — The COLLECTIONS Registry)
-Plan: 0 of 7 in current phase
+Phase: 01 (F1 — The COLLECTIONS Registry) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
-Last activity: 2026-09-11 — Phase 1 planned: 7 plans in 6 waves, all 23 requirements covered, plan checker passed first time
+Last activity: 2026-09-11 — Phase 01 execution started
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 14%
 
 ## Performance Metrics
 
@@ -54,6 +54,11 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: N/A
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 01 P01 | 65min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -70,6 +75,9 @@ Recent decisions affecting current work:
 - [Phase 1]: The real-backup fixture (REG-13) stays LOCAL ONLY in a git-ignored folder — the repo and the live site are public, so a committed backup would publish Ian's journal, weights and notes. Committed tests use synthetic per-incident fixtures; the real-data differential runs only when the local file is present and skips loudly, never silently, when it is absent. (Ian, 2026-09-11)
 - [Phase 1]: Planned without CONTEXT.md and without a UI-SPEC (`--skip-ui`) — the sleep view copies an existing log screen rather than a written design contract. (Ian, 2026-09-11)
 - [Phase 7]: Meta CSP has no report-only mode; local DevTools verification against a static file server is the only pre-production check, and cloud sync must be actively confirmed working after the policy goes live, not assumed.
+- [Phase 1, plan 01-01]: COLLECTIONS is declared as dead data only in this plan — no consumer (blank, liveX, validateBackup, mergeDB) reads it yet; migration happens one collection per commit in plans 01-02 and 01-03.
+- [Phase 1, plan 01-01]: cardio, ideas, todos and hobbyLog deliberately declare no sortBy in COLLECTIONS — the hand-written merge never sorted them, so declaring one would change stored order.
+- [Phase 1, plan 01-01]: columns/format validation was deliberately deferred from Task 1 to Task 2 so the module-eval placement contract and merge-strategy refusal could land first, independently of REG-17's export metadata.
 
 ### Pending Todos
 
@@ -94,6 +102,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-11
-Stopped at: Phase 1 planned and verified — 7 plans in 6 waves, plan checker passed with no issues. Next: `/gsd-execute-phase 1`.
+Last session: 2026-09-11T19:17:16.102Z
+Stopped at: Completed 01-01-PLAN.md
 Resume file: None
