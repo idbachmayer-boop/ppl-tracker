@@ -471,7 +471,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 17;
+const SCHEMA = 18;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -499,6 +499,9 @@ const COLLECTIONS = {
      keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
   mobilityLog:{ kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, columns:['date','item','done'], format:dayFlagRows },
   lawnLog:    { kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, columns:['date','item','done'], format:dayFlagRows },
+  /* sleep (F1/SLEEP-01): last entry on purpose — keeps every existing collection's validation
+     precedence and merge order unchanged. No format: sleep rows are already flat. */
+  sleep:      { kind:'list', key:'id',        sortBy:'date',      merge:'union', soft:true,  required:false, columns:['date','hours','quality','note'] },
 };
 {
   const problems = collectionProblems(COLLECTIONS);
@@ -547,7 +550,17 @@ const MIGRATIONS = {
   16:d=>renameLoggedExercise(d, {'Goblet squat':'Deficit sumo squat', 'Deficit Sumo Squat':'Deficit sumo squat'}),
   /* Exercises stop being strings and become things with ids. See buildExerciseRegistry(). */
   17:d=>buildExerciseRegistry(d),
+  18:d=>ensureCollectionDefaults(d), // sleep log — creates absent collections only (COLLECTIONS registry, F1)
 };
+/* Creates ABSENT collections only — never rewrites a row that already carries an mtime, so the
+   four REG-16 guards a row-rewriting migration must satisfy (touch, persist immediately, stay
+   idempotent, survive a stale-device replay) are never triggered here; the no-rewrite test below
+   proves it. Called only from MIGRATIONS, which stays hand-written and reads COLLECTIONS one-way
+   (REG-11). A future collection that needs a non-empty default still needs its own migration line. */
+function ensureCollectionDefaults(d){
+  for(const name in COLLECTIONS){ if(d[name]==null) d[name] = COLLECTIONS[name].kind==='list' ? [] : {}; }
+  return d;
+}
 /* Rewriting rows that ALREADY EXIST is the dangerous kind of migration. `mergeUnion` resolves a
    collision by per-item `mtime`, so a rewritten row that isn't touched loses to the untouched copy
    on the other device — silently, and permanently once `_schema` moves past the migration. Every

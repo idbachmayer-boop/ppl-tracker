@@ -84,7 +84,7 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'sessionRows','hobbyRows','journalRows','dayFlagRows','blank_legacy',
   'liveOf','liveSessions','liveCardio','liveIdeas','liveTodos','liveHobbyLog','softDelete',
   'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy',
-  'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections'];
+  'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections', 'ensureCollectionDefaults'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -1191,6 +1191,148 @@ if(!fs.existsSync(REAL_PATH)){
   }
 }
 
+console.log('\n── sleep: one declaration, SCHEMA 18, no row rewritten (SLEEP-01/SLEEP-06/REG-16) ──');
+
+/* A populated schema-17 fixture: one row (carrying an mtime) in every legacy list, one day in
+   every legacy map, the sleep key deleted, and _schema 17 — exactly the shape REG-16 must prove
+   migration 18 leaves untouched. */
+function sleepFixture17(tag, mtime){
+  const d = populatedLegacyDB(tag, mtime);
+  delete d.sleep;
+  d._schema = 17;
+  return d;
+}
+
+ok('sleep: blank() has an empty sleep list', Array.isArray(app.blank().sleep) && app.blank().sleep.length === 0, app.blank().sleep);
+
+{
+  const before = sleepFixture17('m18a', 42);
+  const legacyBefore = {}; LEGACY_COLLECTIONS.forEach(name => { legacyBefore[name] = canon(before[name]); });
+  const mtimesBefore = JSON.stringify(LEGACY_LISTS.reduce((acc, name) => acc.concat((before[name] || []).map(r => r.mtime)), []).sort());
+  const after = app.normalize(clone(before));
+  const legacyAfter = {}; LEGACY_COLLECTIONS.forEach(name => { legacyAfter[name] = canon(after[name]); });
+  const mtimesAfter = JSON.stringify(LEGACY_LISTS.reduce((acc, name) => acc.concat((after[name] || []).map(r => r.mtime)), []).sort());
+  const legacyUnchanged = LEGACY_COLLECTIONS.every(name => legacyBefore[name] === legacyAfter[name]);
+  ok('sleep: migration 18 rewrites no existing row (REG-16 guards not triggered)',
+     legacyUnchanged && mtimesBefore === mtimesAfter && Array.isArray(after.sleep) && after.sleep.length === 0 && after._schema === 18,
+     { legacyUnchanged, mtimesBefore, mtimesAfter, sleepLen: after.sleep.length, schema: after._schema });
+}
+
+{
+  const withSleep = sleepFixture17('m18b', 7);
+  withSleep.sleep = [{ id:'sl-existing', date:'2026-08-01', hours:7, quality:4, note:'', mtime:99 }];
+  const migrated = app.normalize(clone(withSleep));
+  ok('sleep: migration 18 keeps an existing sleep list',
+     canon(migrated.sleep) === canon(withSleep.sleep), { before: withSleep.sleep, after: migrated.sleep });
+}
+
+{
+  const raw = sleepFixture17('m18c', 3);
+  const once = app.normalize(clone(raw));
+  const twice = app.normalize(clone(once));
+  ok('sleep: migrations stay idempotent', JSON.stringify(once) === JSON.stringify(twice));
+}
+
+{
+  const tooNew = Object.assign(app.blank(), { _schema: app.SCHEMA + 1 });
+  const normKept = app.normalize(clone(tooNew))._schema === app.SCHEMA + 1;
+
+  const s17 = Object.assign(app.blank(), { _schema:17, updatedAt:100 }); delete s17.sleep;
+  const s18 = Object.assign(app.blank(), { _schema:18, updatedAt:200 });
+  const mergeStamped = app.mergeDB(clone(s17), clone(s18), false)._schema === 18
+    && app.mergeDB(clone(s18), clone(s17), false)._schema === 18;
+
+  ok('sleep: _schema never goes down', normKept && mergeStamped, { normKept, mergeStamped });
+}
+
+{
+  const oldSide = Object.assign(app.blank(), { _schema:17, updatedAt:500 }); delete oldSide.sleep;
+  const newSide = Object.assign(app.blank(), { _schema:18, updatedAt:100, sleep:[{ id:'sl1', date:'2026-08-01', hours:7, quality:3, note:'', mtime:1 }] });
+  const m1 = app.mergeDB(clone(oldSide), clone(newSide), false);
+  const m2 = app.mergeDB(clone(newSide), clone(oldSide), false);
+  ok('sleep: a schema-17 device merged with a schema-18 device keeps every sleep row',
+     canon(m1.sleep) === canon(newSide.sleep) && canon(m2.sleep) === canon(newSide.sleep), { m1: m1.sleep, m2: m2.sleep });
+}
+
+{
+  const a = Object.assign(app.blank(), { updatedAt:100, sleep:[{ id:'sl1', date:'2026-08-01', hours:7, quality:4, note:'', mtime:1 }] });
+  const b = Object.assign(app.blank(), { updatedAt:100, sleep:[{ id:'sl2', date:'2026-08-01', hours:6, quality:3, note:'', mtime:1 }] });
+  const merged = app.mergeDB(a, b, false);
+  ok('sleep: two nights on the same date both survive (key is id)',
+     merged.sleep.length === 2 && merged.sleep.some(s=>s.id==='sl1') && merged.sleep.some(s=>s.id==='sl2'), merged.sleep);
+}
+
+{
+  const a = Object.assign(app.blank(), { updatedAt:100, sleep:[{ id:'sl3', date:'2026-08-03', hours:7, quality:4, note:'', mtime:1 }] });
+  const b = Object.assign(app.blank(), { updatedAt:100, sleep:[{ id:'sl1', date:'2026-08-01', hours:7, quality:4, note:'', mtime:1 }, { id:'sl2', date:'2026-08-02', hours:7, quality:4, note:'', mtime:1 }] });
+  const merged = app.mergeDB(a, b, false);
+  ok('sleep: merged rows come back date-sorted',
+     JSON.stringify(merged.sleep.map(s=>s.date)) === JSON.stringify(['2026-08-01','2026-08-02','2026-08-03']), merged.sleep.map(s=>s.date));
+}
+
+{
+  const A = Object.assign(app.blank(), { updatedAt:100, sleep:[{ id:'sl1', date:'2026-08-01', hours:7, quality:4, note:'', deletedAt:900, mtime:900 }] });
+  const B = Object.assign(app.blank(), { updatedAt:500, sleep:[{ id:'sl1', date:'2026-08-01', hours:7, quality:4, note:'', mtime:100 }] });
+  const stillDeleted = r => { const row = r.sleep.find(s=>s.id==='sl1'); return !!row && !!row.deletedAt; };
+  const results = [
+    app.mergeDB(clone(A), clone(B), false),
+    app.mergeDB(clone(B), clone(A), false),
+    app.mergeDB(clone(A), clone(B), true),
+    app.mergeDB(clone(B), clone(A), true),
+  ];
+  ok('sleep: a deleted night is not resurrected by a stale device (SLEEP-06)',
+     results.every(stillDeleted), results.map(r=>r.sleep.find(s=>s.id==='sl1')));
+}
+
+{
+  const A = Object.assign(app.blank(), { updatedAt:100, sleep:[{ id:'sl1', date:'2026-08-01', hours:7, quality:4, note:'', deletedAt:900, mtime:900 }] });
+  const B = Object.assign(app.blank(), { updatedAt:500, sleep:[{ id:'sl1', date:'2026-08-01', hours:7, quality:4, note:'', mtime:100 }] });
+  const first = app.mergeDB(clone(A), clone(B), false);
+  const replay = app.mergeDB(clone(first), clone(B), false);
+  const row = replay.sleep.find(s=>s.id==='sl1');
+  ok('sleep: replaying the stale device again keeps it deleted', !!row && !!row.deletedAt, row);
+}
+
+{
+  const older = Object.assign(app.blank(), { updatedAt:100, sleep:[{ id:'sl1', date:'2026-08-01', hours:7, quality:4, note:'old', mtime:500 }] });
+  const newer = Object.assign(app.blank(), { updatedAt:900, sleep:[{ id:'sl1', date:'2026-08-01', hours:6, quality:2, note:'new', mtime:500 }] });
+  const out1 = app.mergeDB(clone(older), clone(newer), false);
+  const out2 = app.mergeDB(clone(newer), clone(older), false);
+  ok('sleep: on an exact mtime tie the newer device decides',
+     out1.sleep[0].note === 'new' && out2.sleep[0].note === 'new', { out1: out1.sleep, out2: out2.sleep });
+}
+
+{
+  const A = Object.assign(app.blank(), { updatedAt:100, sleep:[{ id:'sl1', date:'2026-08-01', hours:7, quality:4, note:'', deletedAt:900, mtime:900 }] });
+  const B = Object.assign(app.blank(), { updatedAt:500 }); delete B.sleep;
+  const out1 = app.mergeDB(clone(A), clone(B), false);
+  const out2 = app.mergeDB(clone(B), clone(A), false);
+  const tombstoneKept = r => { const row = r.sleep.find(s=>s.id==='sl1'); return !!row && !!row.deletedAt; };
+  ok('sleep: a device without any sleep list cannot resurrect or remove',
+     tombstoneKept(out1) && tombstoneKept(out2), { out1: out1.sleep, out2: out2.sleep });
+}
+
+/* A minimal locally-built backup fixture (not `realBackup`, declared later in the file — using it
+   here would hit its temporal-dead-zone before it is initialised). */
+const sleepBackupBase = Object.assign(app.blank(), {
+  sessions: [{ id:'x', workout:'PUSH 1', date:'2026-07-15', endedAt:1, extras:{}, entries:[] }],
+  weights: [{ date:'2026-07-15', value:190 }],
+});
+
+{
+  const copy = JSON.parse(JSON.stringify(sleepBackupBase));
+  copy.sleep = 'x';
+  ok('sleep: a damaged sleep section is refused',
+     app.validateBackup(copy) === 'The sleep section is damaged (expected a list).', app.validateBackup(copy));
+}
+
+{
+  const copy = JSON.parse(JSON.stringify(sleepBackupBase));
+  delete copy.sleep;
+  copy._schema = 12;
+  ok('sleep: an older backup without sleep is accepted', app.validateBackup(copy) === null, app.validateBackup(copy));
+}
+
 /* Identity. Ian's Aug 10 export had 37 spellings for ~30 movements — "Seated Fly" and "Seated Flys"
    were two lifts with two PR histories, and "Deficit Sumo Squat" missed the program's own 12–15
    range because the override is keyed by the canonical spelling. */
@@ -1259,7 +1401,7 @@ ok('a fresh install still boots clean', (()=>{ const fresh = loadApp(APP_PATH); 
    by normalize()'s silent try/catch while `_schema` still advances. Booting the REAL app from every
    schema version — not just the current one — is the only way to catch that. */
 console.log('\n── every schema version boots, and every declared collection has its shape (REG-15) ──');
-const INTRODUCED_AT = { sessions:0, weights:0, hobbyLog:1, journal:2, mobilityLog:5, todos:6, cardio:7, ideas:8, lawnLog:10, petWeights:14 };
+const INTRODUCED_AT = { sessions:0, weights:0, hobbyLog:1, journal:2, mobilityLog:5, todos:6, cardio:7, ideas:8, lawnLog:10, petWeights:14, sleep:18 };
 Object.keys(app.COLLECTIONS).forEach(name => {
   ok('boot: introduced-at table knows ' + name, name in INTRODUCED_AT, name);
 });
