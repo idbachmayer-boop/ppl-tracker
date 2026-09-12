@@ -1433,6 +1433,112 @@ console.log('\n── sleep: log, list and delete (SLEEP-02/SLEEP-03) ──');
   ok('sleep: the router exposes Care → Sleep', !!care && (care.sub||[]).some(([k])=>k==='sleep'), care && care.sub);
 }
 
+console.log('\n── SLEEP-05: a collection declared in one line is picked up everywhere ──');
+/* Existing devices get a new collection through the SCHEMA bump and a MIGRATIONS line (the
+   CLAUDE.md schema rule shown in Task 1) — never through a derived consumer. That's why this
+   proof boots a FRESH instance from a transformed source rather than migrating one: the point is
+   that blank/liveOf/validateBackup/mergeDB/mergeCollections pick the two probes up from their
+   declaration alone, with no line changed in any of the five. */
+const PROBE_LIST_LINE = "  probeList:{ kind:'list', key:'id', sortBy:'date', merge:'union', soft:true, required:false, columns:['date','value'] },";
+const PROBE_MAP_LINE  = "  probeMap:{ kind:'map', merge:'replace-whole', soft:false, required:false, explicitFalse:true, columns:['date','item','done'], format:dayFlagRows },";
+const probeTransform = code => code.replace('const COLLECTIONS = {', 'const COLLECTIONS = {\n' + PROBE_LIST_LINE + '\n' + PROBE_MAP_LINE);
+const probe = loadApp(APP_PATH, null, { transform: probeTransform });
+
+{
+  const lineDiff = probe.__src.split('\n').length - app.__src.split('\n').length;
+  const reconstructed = probe.__src.replace('\n' + PROBE_LIST_LINE + '\n' + PROBE_MAP_LINE, '');
+  ok('SLEEP-05: the probe transform applied (two lines added, nothing else changed)',
+     probe.__src !== app.__src && lineDiff === 2 && reconstructed === app.__src,
+     { lineDiff, reconstructedMatchesApp: reconstructed === app.__src });
+}
+
+ok('SLEEP-05: the declaration is valid', probe.collectionProblems(probe.COLLECTIONS).length === 0, probe.collectionProblems(probe.COLLECTIONS));
+
+{
+  const blankProbe = probe.blank();
+  ok('SLEEP-05: blank() creates the probes empty',
+     Array.isArray(blankProbe.probeList) && blankProbe.probeList.length === 0 &&
+     typeof blankProbe.probeMap === 'object' && !Array.isArray(blankProbe.probeMap) && Object.keys(blankProbe.probeMap).length === 0 &&
+     Array.isArray(probe.DB.probeList) && probe.DB.probeList.length === 0 &&
+     typeof probe.DB.probeMap === 'object' && !Array.isArray(probe.DB.probeMap) && Object.keys(probe.DB.probeMap).length === 0,
+     { blankList: blankProbe.probeList, blankMap: blankProbe.probeMap, dbList: probe.DB.probeList, dbMap: probe.DB.probeMap });
+}
+
+{
+  probe.DB = Object.assign(probe.blank(), { probeList: [
+    { id:'p1', date:'2026-08-01', value:1, mtime:1 },
+    { id:'p2', date:'2026-08-02', value:2, mtime:1, deletedAt:5 },
+  ]});
+  const live = probe.liveOf('probeList');
+  ok('SLEEP-05: liveOf hides a deleted probe row', live.length === 1 && live[0].id === 'p1', live);
+}
+
+{
+  const base = probe.blank();
+  const withoutProbes = JSON.parse(JSON.stringify(base));
+  delete withoutProbes.probeList; delete withoutProbes.probeMap;
+  const badList = JSON.parse(JSON.stringify(base)); badList.probeList = 'x';
+  const badMap = JSON.parse(JSON.stringify(base)); badMap.probeMap = [];
+  const r1 = probe.validateBackup(withoutProbes), r2 = probe.validateBackup(badList), r3 = probe.validateBackup(badMap);
+  ok('SLEEP-05: validateBackup checks the probes',
+     r1 === null && r2 === 'The probeList section is damaged (expected a list).' && r3 === 'The probeMap section is damaged.',
+     { r1, r2, r3 });
+}
+
+{
+  const A = Object.assign(probe.blank(), { updatedAt:100, probeList:[
+    { id:'p3', date:'2026-08-03', value:3, mtime:1 },
+    { id:'p1', date:'2026-08-01', value:1, mtime:1 },
+  ]});
+  const B = Object.assign(probe.blank(), { updatedAt:100, probeList:[
+    { id:'p2', date:'2026-08-02', value:2, mtime:1 },
+  ]});
+  const merged = probe.mergeDB(clone(A), clone(B), false);
+  ok('SLEEP-05: mergeDB unions probe rows and sorts them by date',
+     JSON.stringify(merged.probeList.map(r=>r.date)) === JSON.stringify(['2026-08-01','2026-08-02','2026-08-03']),
+     merged.probeList.map(r=>r.date));
+}
+
+{
+  const A = Object.assign(probe.blank(), { updatedAt:100, probeList:[{ id:'p1', date:'2026-08-01', value:1, deletedAt:900, mtime:900 }] });
+  const B = Object.assign(probe.blank(), { updatedAt:500, probeList:[{ id:'p1', date:'2026-08-01', value:1, mtime:100 }] });
+  const stillDeleted = r => { const row = r.probeList.find(x=>x.id==='p1'); return !!row && !!row.deletedAt; };
+  const out1 = probe.mergeDB(clone(A), clone(B), false);
+  const out2 = probe.mergeDB(clone(B), clone(A), false);
+  ok('SLEEP-05: a deleted probe row survives a stale device', stillDeleted(out1) && stillDeleted(out2), { out1: out1.probeList, out2: out2.probeList });
+}
+
+{
+  const day = '2026-08-01';
+  const older = Object.assign(probe.blank(), { updatedAt:100, probeMap: { [day]: { a:true } } });
+  const newer = Object.assign(probe.blank(), { updatedAt:900, probeMap: { [day]: { b:false } } });
+  const out1 = probe.mergeDB(clone(older), clone(newer), false);
+  const out2 = probe.mergeDB(clone(newer), clone(older), false);
+  ok('SLEEP-05: the map probe replaces whole days and keeps explicit false',
+     JSON.stringify(out1.probeMap[day]) === JSON.stringify({ b:false }) && JSON.stringify(out2.probeMap[day]) === JSON.stringify({ b:false }),
+     { out1: out1.probeMap[day], out2: out2.probeMap[day] });
+}
+
+console.log('\n── SLEEP-04: sleep is added through its declaration alone ──');
+{
+  const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const consumers = { blank: app.blank, liveOf: app.liveOf, validateBackup: app.validateBackup, mergeCollections: app.mergeCollections, mergeDB: app.mergeDB };
+  const hits = Object.keys(consumers).filter(name => stripComments(consumers[name].toString()).indexOf('sleep') >= 0);
+  ok('SLEEP-04: no derived consumer mentions sleep', hits.length === 0, hits);
+}
+
+ok('SLEEP-04: there is no liveSleep wrapper', !/function\s+liveSleep\s*\(/.test(app.__src));
+
+ok("SLEEP-04: viewSleep reads through liveOf('sleep')", app.viewSleep.toString().indexOf("liveOf('sleep')") >= 0);
+
+{
+  const keys = Object.keys(app.COLLECTIONS);
+  const sleepLineMatches = app.__src.match(/^\s*sleep:/gm) || [];
+  ok('SLEEP-04: sleep is declared once, as the last entry',
+     keys[keys.length-1] === 'sleep' && sleepLineMatches.length === 1,
+     { lastKey: keys[keys.length-1], sleepLineCount: sleepLineMatches.length });
+}
+
 /* Identity. Ian's Aug 10 export had 37 spellings for ~30 movements — "Seated Fly" and "Seated Flys"
    were two lifts with two PR histories, and "Deficit Sumo Squat" missed the program's own 12–15
    range because the override is keyed by the canonical spelling. */
