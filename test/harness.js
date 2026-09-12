@@ -121,6 +121,7 @@ function loadApp(htmlPath, seed, opts){
     'liveOf','liveSessions','liveCardio','liveIdeas','liveTodos','liveHobbyLog','softDelete',
     'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy',
     'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections', 'ensureCollectionDefaults',
+    'sleepUid', 'addSleep', 'removeSleep', 'viewSleep',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

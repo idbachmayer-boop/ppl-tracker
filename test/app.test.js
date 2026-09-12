@@ -84,7 +84,8 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'sessionRows','hobbyRows','journalRows','dayFlagRows','blank_legacy',
   'liveOf','liveSessions','liveCardio','liveIdeas','liveTodos','liveHobbyLog','softDelete',
   'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy',
-  'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections', 'ensureCollectionDefaults'];
+  'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections', 'ensureCollectionDefaults',
+  'sleepUid', 'addSleep', 'removeSleep', 'viewSleep'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -1333,6 +1334,105 @@ const sleepBackupBase = Object.assign(app.blank(), {
   ok('sleep: an older backup without sleep is accepted', app.validateBackup(copy) === null, app.validateBackup(copy));
 }
 
+console.log('\n── sleep: log, list and delete (SLEEP-02/SLEEP-03) ──');
+/* Note: `populatedDB` is a hoisted function declaration (defined later in this file), so calling
+   it here is safe. `SCREENS` is a `const` initialised later in file-execution order — referencing
+   it here would hit its temporal dead zone, so the router check below reads app.TABS directly. */
+
+{
+  const S = loadApp(APP_PATH); S.DB = S.blank();
+  const setVal = (id, v) => { S.__sandbox.document.getElementById(id).value = v; };
+  setVal('sleep-date', '2026-08-06'); setVal('sleep-hours', '7.5'); setVal('sleep-quality', '4'); setVal('sleep-note', '  woke at 3  ');
+  S.addSleep();
+  const row = S.DB.sleep[0];
+  ok('sleep: logging a night stores hours, quality and the trimmed note',
+     S.DB.sleep.length === 1 && row.date === '2026-08-06' && row.hours === 7.5 && row.quality === 4 && row.note === 'woke at 3'
+     && typeof row.id === 'string' && row.id.indexOf('sl') === 0 && typeof row.mtime === 'number'
+     && S.__stored().sleep.length === 1,
+     row);
+}
+
+{
+  const S = loadApp(APP_PATH); S.DB = S.blank();
+  const setVal = (id, v) => { S.__sandbox.document.getElementById(id).value = v; };
+  ['', '25', '0'].forEach(h => {
+    setVal('sleep-date', '2026-08-06'); setVal('sleep-hours', h); setVal('sleep-quality', '3'); setVal('sleep-note', '');
+    S.addSleep();
+  });
+  ok('sleep: blank or impossible hours are refused', S.DB.sleep.length === 0, S.DB.sleep);
+}
+
+{
+  const S = loadApp(APP_PATH); S.DB = S.blank();
+  const setVal = (id, v) => { S.__sandbox.document.getElementById(id).value = v; };
+  const qualityFor = q => { setVal('sleep-date','2026-08-06'); setVal('sleep-hours','7'); setVal('sleep-quality', q); setVal('sleep-note',''); S.addSleep(); return S.DB.sleep[S.DB.sleep.length-1].quality; };
+  const results = { nine: qualityFor('9'), x: qualityFor('x'), zero: qualityFor('0') };
+  ok('sleep: quality is clamped to 1–5', results.nine === 5 && results.x === 3 && results.zero === 1, results);
+}
+
+{
+  const S = loadApp(APP_PATH); S.DB = S.blank();
+  const setVal = (id, v) => { S.__sandbox.document.getElementById(id).value = v; };
+  setVal('sleep-date', 'garbage'); setVal('sleep-hours', '7'); setVal('sleep-quality', '3'); setVal('sleep-note', '');
+  S.addSleep();
+  ok('sleep: a bad date falls back to today', S.DB.sleep[0].date === S.todayISO(), S.DB.sleep[0].date);
+}
+
+{
+  const S = loadApp(APP_PATH); S.DB = populatedDB(S);
+  const html = S.viewSleep();
+  ok('sleep: the history lists live nights and hides deleted ones',
+     html.indexOf("removeSleep('sl1')") >= 0 && html.indexOf("removeSleep('sl2')") < 0, html.length);
+}
+
+{
+  const S = loadApp(APP_PATH); S.DB = populatedDB(S);
+  ok('sleep: the note is escaped', !/<script>/i.test(S.viewSleep()));
+}
+
+{
+  const S = loadApp(APP_PATH); S.DB = S.blank();
+  ok('sleep: an empty log shows the empty state', /No sleep logged yet/.test(S.viewSleep()));
+}
+
+{
+  const S = loadApp(APP_PATH); S.DB = populatedDB(S);
+  S.removeSleep('sl1');
+  const row = S.DB.sleep.find(s=>s.id==='sl1');
+  ok('sleep: deleting a night is soft',
+     !!row && !!row.deletedAt && !S.liveOf('sleep').some(s=>s.id==='sl1'), row);
+}
+
+{
+  const S = loadApp(APP_PATH); S.DB = populatedDB(S);
+  S.removeSleep('sl1');
+  const row1 = S.DB.sleep.find(s=>s.id==='sl1');
+  const mtimeAfterFirst = row1.mtime, deletedAtAfterFirst = row1.deletedAt;
+  S.removeSleep('sl1');
+  const row2 = S.DB.sleep.find(s=>s.id==='sl1');
+  ok('sleep: deleting twice is a no-op', row2.mtime === mtimeAfterFirst && row2.deletedAt === deletedAtAfterFirst, row2);
+}
+
+{
+  const S = loadApp(APP_PATH); S.DB = populatedDB(S);
+  const before = canon(S.DB.sleep);
+  S.removeSleep('nope');
+  ok('sleep: an unknown id changes nothing', canon(S.DB.sleep) === before);
+}
+
+{
+  const S = loadApp(APP_PATH); S.DB = S.blank();
+  S.DB.sleep = [{ id:"a'b(c);", date:'2026-08-01', hours:7, quality:3, note:'', mtime:1 }];
+  const html = S.viewSleep();
+  ok('sleep: an id that could break out of the attribute gets no delete button',
+     html.indexOf('7h') >= 0 && html.indexOf('removeSleep(') < 0, html);
+}
+
+{
+  const care = app.TABS.find(t=>t.id==='care');
+  ok('sleep: the router exposes Care → Sleep', !!care && (care.sub||[]).some(([k])=>k==='sleep'), care && care.sub);
+}
+
 /* Identity. Ian's Aug 10 export had 37 spellings for ~30 movements — "Seated Fly" and "Seated Flys"
    were two lifts with two PR histories, and "Deficit Sumo Squat" missed the program's own 12–15
    range because the override is keyed by the canonical spelling. */
@@ -1803,6 +1903,10 @@ function populatedDB(a){
   d.lawnLog    = { [dayOff(-4)]: { mow:true }, [dayOff(-1)]: { water:true } };
   d.lawn       = { lat:41.88, lon:-87.63 };
   d.wx         = makeWx({ todayISO: today });
+  d.sleep      = [
+    { id:'sl1', date:dayOff(-1), hours:7.5, quality:4, note:'A hostile <script> note & "quotes"', mtime:1 },
+    { id:'sl2', date:dayOff(-2), hours:6, quality:2, note:'', deletedAt:Date.now(), mtime:Date.now() },
+  ];
   return d;
 }
 

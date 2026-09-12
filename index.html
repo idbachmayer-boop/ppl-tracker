@@ -1356,8 +1356,8 @@ const TABS = [
   { id:'train', label:'Train', icon:'barbell', sub:[['log','Log'],['history','History'],['cardio','Cardio'],['progress','Progress']],
     view:sub => sub==='log' ? (DB.draft ? viewActive() : viewPicker()) : sub==='history' ? viewHistory() : sub==='cardio' ? viewCardio() : viewWeight(),
     onRender:sub => { if(sub==='progress') drawActiveChart(); } },
-  { id:'care', label:'Care', icon:'sparkle', sub:[['skin','Skin'],['lawn','Lawn']],
-    view:sub => sub==='skin' ? viewSkincare() : viewLawn(),
+  { id:'care', label:'Care', icon:'sparkle', sub:[['skin','Skin'],['lawn','Lawn'],['sleep','Sleep']],
+    view:sub => sub==='skin' ? viewSkincare() : sub==='sleep' ? viewSleep() : viewLawn(),
     onRender:sub => { if(sub==='lawn') maybeFetchWeather(); } },
   { id:'settings', label:'Settings', icon:'gear-six', view:()=>viewData() },
 ];
@@ -3696,6 +3696,57 @@ function viewCardio(){
       <p class="muted" style="margin-bottom:12px;line-height:1.5">Upload a <strong>.gpx</strong> or <strong>.tcx</strong> from a Strava activity (activity page → <strong>⋯</strong> → Export), or the <strong>activities.csv</strong> from Strava's bulk “Export your data.” Distance &amp; time are read automatically — confirm the activity type before saving.</p>
       <button class="btn btn-ghost btn-block" onclick="pickCardioFile()">${ph('upload-simple')}Choose Strava file</button>
       <input type="file" id="cardio-file" accept=".gpx,.tcx,.csv" class="hidden" onchange="handleCardioFile(this)">
+    </div>
+    <h2>History</h2>
+    <div class="card">${rows}</div>`;
+}
+
+/* sleep (F1/SLEEP-02/SLEEP-03): cardio's add/remove/view pattern, minus the Strava import. One
+   extra Care sub-entry, no new navigation (Ian's decisions 1 and 2). */
+function sleepUid(){ return 'sl'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function addSleep(){
+  const dateRaw=(document.getElementById('sleep-date')||{}).value;
+  const date=/^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : todayISO();
+  const hours=parseFloat((document.getElementById('sleep-hours')||{}).value);
+  if(!(hours>0) || !(hours<=24)){ toast('Enter hours slept (0–24)'); return; }
+  let quality=parseInt((document.getElementById('sleep-quality')||{}).value, 10);
+  if(isNaN(quality)) quality=3;
+  quality=Math.min(5, Math.max(1, quality));
+  const note=((document.getElementById('sleep-note')||{}).value||'').trim();
+  if(!Array.isArray(DB.sleep)) DB.sleep=[];
+  DB.sleep.push(touch({ id:sleepUid(), date, hours, quality, note }));
+  save(); toast('Sleep logged 🌙'); render();
+}
+function removeSleep(id){ if(!softDelete(DB.sleep, s=>s.id===id)) return; save(); render(); }
+function viewSleep(){
+  const list=liveOf('sleep').slice().sort((a,b)=> String(b.date||'').localeCompare(String(a.date||'')) || ((b.mtime||0)-(a.mtime||0)));
+  const cutoffDate=new Date(todayISO()+'T00:00'); cutoffDate.setDate(cutoffDate.getDate()-6);
+  const cutoff=cutoffDate.toLocaleDateString('en-CA');
+  const recent=list.filter(s=>/^\d{4}-\d{2}-\d{2}$/.test(s.date) && s.date>=cutoff);
+  const avgHours=recent.length ? (recent.reduce((sum,s)=>sum+(+s.hours||0),0)/recent.length).toFixed(1) : '—';
+  const avgQuality=recent.length ? (recent.reduce((sum,s)=>sum+(+s.quality||0),0)/recent.length).toFixed(1) : '—';
+  const safeId=/^[A-Za-z0-9_-]+$/;
+  const rows=list.length ? list.map(s=>`<div class="hist-item" style="cursor:default">
+      <div><div style="font-weight:600">${esc(String(Number(s.hours)))}h · quality ${esc(String(Number(s.quality)))}/5</div>
+        <div class="muted" style="font-size:12px">${/^\d{4}-\d{2}-\d{2}$/.test(s.date)?fmtDate(s.date):esc(String(s.date||'?'))}${s.note?' · '+esc(s.note):''}</div></div>
+      ${safeId.test(String(s.id)) ? `<button class="x-set" onclick="removeSleep('${s.id}')" title="delete">${ph('x')}</button>` : ''}
+    </div>`).join('') : '<p class="empty">No sleep logged yet. Log last night above.</p>';
+  return `<h1>Sleep</h1>
+    <div class="card">
+      <div class="row"><div>${kicker('Last 7 days')}<div style="font-weight:800;font-size:20px;margin-top:4px">${recent.length} night${recent.length!==1?'s':''}</div></div>
+      <div style="text-align:right"><div style="font-weight:700">${avgHours}h · ${avgQuality}/5</div><div class="muted" style="font-size:11px">avg hours · quality</div></div></div>
+    </div>
+    <h2>${ph('moon','lead')}Log a night</h2>
+    <div class="card">
+      <div class="stair-grid">
+        <div><label>Date</label><input type="date" id="sleep-date" value="${todayISO()}"></div>
+        <div><label>Hours</label><input type="number" inputmode="decimal" step="0.25" min="0" max="24" id="sleep-hours" placeholder="hours"></div>
+        <div><label>Quality</label><select id="sleep-quality">
+          <option value="1">1 · poor</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 · great</option>
+        </select></div>
+      </div>
+      <input id="sleep-note" placeholder="Note (optional)" style="margin-top:10px">
+      <button class="btn btn-block" style="margin-top:12px" onclick="addSleep()">Add sleep</button>
     </div>
     <h2>History</h2>
     <div class="card">${rows}</div>`;
