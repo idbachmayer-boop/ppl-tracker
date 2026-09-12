@@ -24,6 +24,44 @@ const ok = (name, cond, extra) => { if(cond){ pass++; console.log('  PASS  ' + n
 const skipLine = msg => { skip++; console.log('  SKIP  ' + msg); };
 const REAL_PATH = path.join(__dirname, 'local', 'real-db-snapshot.json');
 
+/* Golden hashes of every synthetic differential case's LEGACY output (REG-13's permanent form,
+   recorded ahead of REG-14's later deletion of the legacy functions). Recorded once from the still-
+   present legacy code (WRITE_MERGE_GOLDEN=1), then checked against the derived code's output on
+   every normal run, so the equivalence proof outlives the legacy code — a case with no recorded
+   golden FAILS rather than silently passing. Never populated from real-backup output (see the
+   real-backup block below): only hashes of synthetic fixtures are ever written here. */
+const GOLDEN_PATH = path.join(__dirname, 'fixtures', 'merge-golden.json');
+const WRITE = process.env.WRITE_MERGE_GOLDEN === '1';
+const GOLDEN_IN = fs.existsSync(GOLDEN_PATH) ? JSON.parse(fs.readFileSync(GOLDEN_PATH, 'utf8')) : {};
+const GOLDEN_OUT = {};
+
+/* 32-bit FNV-1a over the string's UTF-16 code units — short, dependency-free, and collision-safe
+   enough to catch any change in output without committing the (potentially large) text itself. */
+function fnv1a(str){
+  let h = 2166136261;
+  for(let i = 0; i < str.length; i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+/* Records (WRITE mode) or checks (normal mode) one differential case's golden hash.
+   WRITE: stores fnv1a(legacyText) — the legacy code's own output — under `label` in GOLDEN_OUT.
+   Never WRITE: requires GOLDEN_IN[label] to equal fnv1a(derivedText), reporting "golden: " + label
+   via ok() unless `opts.silent` is set. A missing label FAILS (extra: 'no golden recorded for this
+   label'), a present-but-wrong hash FAILS (extra: 'hash differs') — so a new case must be recorded
+   deliberately, never silently pass with nothing to check against. `opts.silent` is for the two
+   batteries below (70 and 400 cases) that report one aggregated ok() instead of one per case. */
+function golden(label, legacyText, derivedText, opts){
+  if(WRITE){ GOLDEN_OUT[label] = fnv1a(legacyText); return true; }
+  const hasGolden = Object.prototype.hasOwnProperty.call(GOLDEN_IN, label);
+  const match = hasGolden && GOLDEN_IN[label] === fnv1a(derivedText);
+  if(opts && opts.silent) return match;
+  ok('golden: ' + label, match, hasGolden ? (match ? undefined : 'hash differs') : 'no golden recorded for this label');
+  return match;
+}
+
 console.log("\n── the repo keeps Ian's real backup out of git (T-01-12) ──");
 {
   const gitignorePath = path.join(__dirname, '..', '.gitignore');
@@ -455,6 +493,12 @@ console.log('\n── blank() is derived from COLLECTIONS (REG-06) ──');
   const legacyKeys = Object.keys(bl);
   const diffKeys = legacyKeys.filter(k => canon(bl[k]) !== canon(bn[k]));
   ok('blank: every key the hand-written blank() had is unchanged', diffKeys.length === 0, diffKeys);
+  /* Golden compares only the keys blank_legacy() actually has — bn (app.blank()) legitimately
+     carries extra keys for collections declared after the legacy baseline (e.g. sleep, REG-16),
+     which is exactly what the "every extra key…" check below already covers; comparing the whole
+     object here would fail on that expected growth instead of on an actual divergence. */
+  const legacyPortion = legacyKeys.reduce((o, k) => { o[k] = bn[k]; return o; }, {});
+  golden('blank', canon(bl), canon(legacyPortion));
 
   const extraKeys = Object.keys(bn).filter(k => legacyKeys.indexOf(k) < 0);
   const badExtra = extraKeys.filter(name => {
@@ -519,6 +563,7 @@ LIVE_WRAPPERS.forEach(([,,name]) => { liveApp.DB[name] = sixEntries(); });
 LIVE_WRAPPERS.forEach(([wrapper, legacy]) => {
   const derived = liveApp[wrapper](), twin = liveApp[legacy]();
   ok('live: ' + wrapper + ' matches its hand-written twin', canon(derived) === canon(twin), { derived, twin });
+  golden('live:' + wrapper, canon(twin), canon(derived));
 });
 LIVE_WRAPPERS.forEach(([wrapper, legacy]) => {
   const derived = liveApp[wrapper](), twin = liveApp[legacy]();
@@ -645,6 +690,7 @@ function sameMerge(label, remote, local, localWins){
     const diffKeys = Object.keys(aObj).filter(k => JSON.stringify(aObj[k]) !== JSON.stringify(bObj[k]));
     ok('merge parity: ' + label, false, diffKeys);
   }
+  golden('merge:' + label, a, b);
   return derivedOut;
 }
 
@@ -1035,6 +1081,7 @@ function contentOfLists(db){
 {
   const rand = mulberry32(SEED);
   let firstMismatch = null;
+  let goldenMismatches = 0, firstGoldenMismatch = null;
   for(let i = 0; i < N; i++){
     const A = genDevice(rand, 'differential');
     const B = genDevice(rand, 'differential');
@@ -1047,9 +1094,14 @@ function contentOfLists(db){
         const diffKeys = Object.keys(aObj).filter(k => JSON.stringify(aObj[k]) !== JSON.stringify(bObj[k]));
         firstMismatch = { index: i, localWins: lw, diffKeys };
       }
+      const label = 'random:' + i + ':' + lw;
+      const match = golden(label, legacyOut, derivedOut, { silent: true });
+      if(!match){ goldenMismatches++; if(!firstGoldenMismatch) firstGoldenMismatch = label; }
     });
   }
   ok('random differential: 400 seeded merges, legacy and derived identical', !firstMismatch, firstMismatch);
+  ok('golden: random battery — 400 derived merges match the recorded legacy merges',
+     goldenMismatches === 0, { mismatches: goldenMismatches, first: firstGoldenMismatch });
 }
 
 {
@@ -1105,7 +1157,13 @@ console.log("\n── real backup: legacy vs derived over Ian's actual data (REG
 /* This block reads Ian's real journal, weights and notes, when the local-only fixture is present
    (see .gitignore and STATE.md's 2026-09-11 decision). An ok() extra here may only hold numbers,
    booleans, collection names or scenario names — never a row, a date, a note or a refusal message
-   — because a FAIL prints its extra (T-01-13). */
+   — because a FAIL prints its extra (T-01-13).
+
+   No golden() call anywhere in this block, ever: the committed merge-golden.json holds hashes of
+   synthetic fixtures only. Recording a hash derived from Ian's real data — even a hash, which
+   reveals nothing about content — would still make this block's presence/absence and the file's
+   own diff history a signal about when real data was tested, and goldens exist to be safely
+   committed to a public repo without carrying that risk. */
 if(!fs.existsSync(REAL_PATH)){
   skipLine('real-backup differential — test/local/real-db-snapshot.json is not present (local only, git-ignored; see .gitignore)');
 } else {
@@ -1912,6 +1970,7 @@ console.log('\n── validateBackup() takes its shape checks from COLLECTIONS (
     const copy = JSON.parse(JSON.stringify(realBackup)); mutate(copy);
     const derived = app.validateBackup(copy), legacy = app.validateBackup_legacy(copy);
     ok('validate: same message — ' + label, derived === legacy, [derived, legacy]);
+    golden('validate:' + label, String(legacy), String(derived));
   });
 }
 {
@@ -1925,6 +1984,7 @@ console.log('\n── validateBackup() takes its shape checks from COLLECTIONS (
     ['empty object', (d,name) => { d[name] = {}; }],
   ];
   let cases = 0, mismatch = null;
+  let goldenMismatches = 0, firstGoldenMismatch = null;
   LEGACY_COLLECTIONS.forEach(name => {
     DAMAGE_KINDS.forEach(([kind, mutate]) => {
       const copy = JSON.parse(JSON.stringify(realBackup));
@@ -1932,9 +1992,14 @@ console.log('\n── validateBackup() takes its shape checks from COLLECTIONS (
       const derived = app.validateBackup(copy), legacy = app.validateBackup_legacy(copy);
       cases++;
       if(derived !== legacy && !mismatch) mismatch = { name, kind, derived, legacy };
+      const label = 'validate:gen:' + name + ':' + kind;
+      const match = golden(label, String(legacy), String(derived), { silent: true });
+      if(!match){ goldenMismatches++; if(!firstGoldenMismatch) firstGoldenMismatch = label; }
     });
   });
   ok('validate: every legacy collection × every damage gives the same answer', !mismatch, { cases, mismatch });
+  ok('golden: validate battery — derived answers match the recorded legacy answers',
+     goldenMismatches === 0, { mismatches: goldenMismatches, first: firstGoldenMismatch });
 }
 {
   const twoFaultCases = [
@@ -2128,6 +2193,16 @@ console.log('\n── a malformed draft must not take out the Log tab ──');
   const startSnapshot = JSON.parse(REGISTRY_AT_START);
   const diffNames = Object.keys(startSnapshot).filter(name => JSON.stringify(startSnapshot[name]) !== JSON.stringify(endSnapshot[name]));
   ok('registry: never mutated by boot, merge or render (REG-01)', diffNames.length === 0, diffNames);
+}
+
+if(WRITE){
+  const dir = path.dirname(GOLDEN_PATH);
+  if(!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const sorted = {};
+  Object.keys(GOLDEN_OUT).sort().forEach(k => { sorted[k] = GOLDEN_OUT[k]; });
+  const json = JSON.stringify(sorted, null, 2).replace(/\r\n/g, '\n') + '\n';
+  fs.writeFileSync(GOLDEN_PATH, json);
+  console.log(`\nWrote ${Object.keys(sorted).length} golden hashes to ${GOLDEN_PATH}`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed, ${skip} skipped`);
