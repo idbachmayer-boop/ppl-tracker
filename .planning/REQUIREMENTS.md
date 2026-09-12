@@ -26,19 +26,19 @@ The one declaration the rest of the data layer derives from.
 - [x] **REG-13**: Every replaced function is kept renamed (not deleted) and differential-tested against its derived replacement over a real exported backup plus per-incident synthetic two-device fixtures
 - [ ] **REG-14**: The renamed legacy functions are deleted only in a later commit than the one that introduced their replacement, never the same one
 - [x] **REG-15**: A boot-order regression test asserts the app boots without throwing for every schema version from 1 to current, and that every declared collection exists with the right shape afterward
-- [ ] **REG-16**: If any row rewrite is introduced, it stamps `mtime` via `touch()`, persists immediately, is idempotent, never downgrades `_schema`, and ships with a stale-device merge replay test — all four, or the rewrite does not ship
+- [x] **REG-16**: If any row rewrite is introduced, it stamps `mtime` via `touch()`, persists immediately, is idempotent, never downgrades `_schema`, and ships with a stale-device merge replay test — all four, or the rewrite does not ship
 - [x] **REG-17**: `COLLECTIONS` carries the column/format metadata the Markdown export needs, settled in this phase so the export phase does not reopen the registry
 
 ### Sleep (SLEEP)
 
 The eleventh collection — the proof that REG paid off.
 
-- [ ] **SLEEP-01**: A `sleep` collection is added to `COLLECTIONS` as `{ kind:'list', key:'id', soft:true, sortBy:'date' }`
-- [ ] **SLEEP-02**: Ian can log a night's sleep with hours slept, a 1–5 quality rating, and an optional note
-- [ ] **SLEEP-03**: Ian can see his logged sleep as a dated series and can delete an entry
-- [ ] **SLEEP-04**: Adding `sleep` required one entry in `COLLECTIONS` plus its view — no edits to `blank()`, `mergeDB()`, the filter family, `validateBackup()` or the exporter
-- [ ] **SLEEP-05**: A test asserts SLEEP-04 — that the declaration alone caused every derived consumer to pick the collection up
-- [ ] **SLEEP-06**: A deleted sleep entry survives a stale-device merge replay without resurrecting
+- [x] **SLEEP-01**: A `sleep` collection is added to `COLLECTIONS` as `{ kind:'list', key:'id', soft:true, sortBy:'date' }`
+- [x] **SLEEP-02**: Ian can log a night's sleep with hours slept, a 1–5 quality rating, and an optional note
+- [x] **SLEEP-03**: Ian can see his logged sleep as a dated series and can delete an entry
+- [x] **SLEEP-04**: Adding `sleep` required one entry in `COLLECTIONS` plus its view — no edits to `blank()`, `mergeDB()`, the filter family, `validateBackup()` or the exporter
+- [x] **SLEEP-05**: A test asserts SLEEP-04 — that the declaration alone caused every derived consumer to pick the collection up
+- [x] **SLEEP-06**: A deleted sleep entry survives a stale-device merge replay without resurrecting
 
 ### Export (EXP)
 
