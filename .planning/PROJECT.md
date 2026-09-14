@@ -25,18 +25,18 @@ every other feature can fail before that one does.
 - ✓ Soft delete across every collection — `deletedAt` + `touch()`, read through `liveX()` filters, so a union merge cannot resurrect a deleted row — existing
 - ✓ Generation counter (`gen`) so "Erase all data" and Import→Replace survive the union merge — existing
 - ✓ Local snapshot ring in its own localStorage key — the undo buffer that was missing when a bad sync wiped four days of data — existing
-- ✓ Schema migrations with a never-downgrade guard (`SCHEMA = 17`) — existing
+- ✓ Schema migrations with a never-downgrade guard (`SCHEMA = 18`) — existing; migration 18 only creates absent collections
 - ✓ Offline-first PWA — service worker, inlined Phosphor icons, no CDN, no build step, no dependencies — existing
 - ✓ Backup export/import with shape validation (`validateBackup()`) — existing
 - ✓ Lawn scheduler with weather-driven mow forecasting — 12 log entries in 47 days, genuine regular use — existing
-- ✓ A test suite that blocks the deploy — 226 checks, including a smoke check on every screen — existing
+- ✓ **F1 — the `COLLECTIONS` registry**: `blank()`, `mergeDB()`, the `liveX()` filters, `validateBackup()` and the export columns all derive from one declaration; each replaced function kept renamed and differential-tested against it, including over Ian's real exported backup — Validated in Phase 1: F1 — The COLLECTIONS Registry
+- ✓ **`sleep`, the eleventh collection**, added as one `COLLECTIONS` entry plus its Care → Sleep log/list/delete screen — Validated in Phase 1: F1 — The COLLECTIONS Registry
+- ✓ A test suite that blocks the deploy — 226 checks at initialization, 623 after Phase 1 (653 with the local-only real backup present), including a smoke check on every screen — existing
 
 ### Active
 
 <!-- This milestone. Hypotheses until shipped. -->
 
-- [ ] **F1 — a `COLLECTIONS` declaration** that `blank()`, `mergeDB()`, the `liveX()` filters and `validateBackup()` all derive from, so a collection's merge rule, soft-delete behaviour, explicit-`false` requirement and sort order live in code rather than in memory
-- [ ] **A `sleep` collection added in one line** — the proof that F1 worked, and a real feature rather than a fixture
 - [ ] **A clean "export for Claude"** as Markdown tables, derived from the same declaration rather than hand-written as a second serialiser
 - [ ] **F3 — an "adding a new tracked thing" checklist** in `CLAUDE.md`, written against the declaration F1 creates
 - [ ] **Stop syncing the in-progress workout** — make `draft` device-local
@@ -98,14 +98,15 @@ deployed.
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Declare collections once; derive `blank()`, `mergeDB()`, `liveX()` and `validateBackup()` from it | The merge rule cannot be forgotten because there is nowhere left to forget it | — Pending |
+| Declare collections once; derive `blank()`, `mergeDB()`, `liveX()` and `validateBackup()` from it | The merge rule cannot be forgotten because there is nowhere left to forget it | ✓ Good — shipped in Phase 1; verified 5/5 |
 | The export for Claude is Markdown tables | Cheapest for Claude to read, eyeballable before pasting, no parsing step | — Pending |
 | The export derives from `COLLECTIONS`, not a second hand-written serialiser | A separate serialiser is a sixth place the schema would live | — Pending |
-| F1's acceptance test is adding a real 11th collection in one line | Behaviour parity proves the refactor didn't break; only a new collection proves the declaration actually pays off | — Pending |
-| The 11th collection is `sleep` — `{ kind:'list', key:'id', soft:true, sortBy:'date' }` | List-shaped, so it exercises union merge, soft delete, the `liveX()` filter and the sort invariant; pairs naturally with the workout and weight trends already tracked | — Pending |
+| F1's acceptance test is adding a real 11th collection in one line | Behaviour parity proves the refactor didn't break; only a new collection proves the declaration actually pays off | ✓ Good — `sleep` needed no edit to any derived function, asserted by test |
+| The 11th collection is `sleep` — `{ kind:'list', key:'id', soft:true, sortBy:'date' }` | List-shaped, so it exercises union merge, soft delete, the `liveX()` filter and the sort invariant; pairs naturally with the workout and weight trends already tracked | ✓ Good — shipped with SCHEMA 18; form conventions confirmed by Ian 2026-09-12 |
 | Six phases, one per in-scope item, in the agreed order | Each ships and is verified alone; cleanest rollback on a single-file app | — Pending |
 | `.gitattributes` lands in its own commit, alone | `* -text` produces a 4,131-line diff on `index.html`; bundling it would hide a real change inside a reformat | — Pending |
 | `draft` stops syncing and becomes device-local | Ian would never finish a workout on another device, so the draft has no reason to cross the wire; removing it deletes a whole bug family | — Pending |
+| Keep the ten renamed `_legacy` functions after the real-data differential passed | Deletion is allowed but not urgent; Ian wants SCHEMA 18 to run on the phone for a few days first. 540 committed goldens keep the differential alive once they go | — Pending (Ian, 2026-09-14) |
 | Leave sync, features, capacity, auth and layout alone | Each was put to Ian on 2026-09-09 and answered; see Out of Scope | ✓ Good |
 
 ## Evolution
@@ -126,4 +127,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-10 after initialization*
+*Last updated: 2026-09-14 after Phase 1: F1 — The COLLECTIONS Registry*
