@@ -93,16 +93,18 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 1, plan 01-05]: sleep is declared last in COLLECTIONS on one line, keeping every existing collection's validation precedence and merge order unchanged, verified by a structural test rather than only by placement.
 - [Phase ?]: [Phase 1, plan 01-05]: SLEEP-02 confirmed by Ian, 2026-09-12 — the sleep form conventions (date defaults to today, hours 0-24 in 0.25 steps, quality integer 1-5 default 3, optional trimmed note, multiple entries per date via id key) are no longer an open flagged assumption.
 - [Phase ?]: [Phase 1, plan 01-05]: SLEEP-05's proof boots a fresh probe instance via test/harness.js's opts.transform rather than adding a permanent fixture collection to the real registry, since existing devices only ever gain a collection through the SCHEMA/MIGRATIONS ritual, never through a derived consumer.
-- [Phase ?]: [Phase 1, plan 01-06]: REG-13's real-backup differential ran to completion over Ian's actual exported backup (225602 bytes, _schema 17) on 2026-09-14 — 30 real-backup PASS lines, 0 FAIL, suite at 653 passed / 0 failed / 0 skipped. Plan 01-07's legacy-function deletion precondition is now met.
+- [Phase 1, plan 01-06]: REG-13's real-backup differential ran to completion over Ian's actual exported backup (225602 bytes, _schema 17) on 2026-09-14 — 30 real-backup PASS lines, 0 FAIL, suite at 653 passed / 0 failed / 0 skipped. Plan 01-07's legacy-function deletion precondition is now met.
+- [Phase 1, plan 01-05]: SLEEP-02's form conventions (date defaults to today; hours >0 and <=24 in 0.25 steps; quality 1–5 default 3; note optional and trimmed; multiple entries per date) confirmed by Ian at the Task 2 visual checkpoint. (Ian, 2026-09-12)
+- [Phase 1, plan 01-07]: Legacy-function deletion (REG-14, Task 2) DEFERRED — "keep for now". The precondition is met, but the ten `_legacy` twins stay until SCHEMA 18 has shipped and run on the phone for a few days. Task 1's 540 goldens are committed, so the differential outlives the legacy code whenever it goes. REG-14 holds: nothing was deleted early. (Ian, 2026-09-14)
 
 ### Pending Todos
 
-- [Phase 1, plan 01-06]: Ian exports a real backup from the app (Settings → Export backup) and saves it as `test/local/real-db-snapshot.json` (git-ignored). Plan 01-07's legacy deletion waits on the real-data PASS.
+- [Phase 1, plan 01-07 Task 2]: Delete the ten legacy data-layer functions once SCHEMA 18 has shipped and been used on the phone for a few days (Ian's call, 2026-09-14). Precondition already met (01-06 PASS). Follow 01-07-PLAN.md Task 2 exactly: own commit, retarget synthetic differentials to the goldens, make golden() refuse regeneration, convert the real-backup block to invariants, add the "legacy scaffolding is gone" check.
 
 ### Blockers/Concerns
 
 - [Phase 1]: Highest-risk phase in the milestone — the only one touching the merge/soft-delete/migration code paths that already caused the 2026-07-25 blind-write and Migration-15 incidents. Do not relax the differential-test-before-delete discipline under time pressure.
-- [Phase 1]: The planner flagged two items for Ian's review before or during execution — the sleep-form defaults (SLEEP-02, plan 01-05) and when to delete the legacy functions (REG-14, plan 01-07). It also documented a pre-existing gap: the three date-keyed map collections are not order-independent across three devices, because a day carries no timestamp of its own. Plan 01-04 records it and does not change behaviour.
+- [Phase 1]: The planner's two flagged items are resolved — SLEEP-02 confirmed (2026-09-12), REG-14 deletion deferred by Ian (2026-09-14; see Decisions and Pending Todos). The planner also documented a pre-existing gap: the three date-keyed map collections are not order-independent across three devices, because a day carries no timestamp of its own. Plan 01-04 records it and does not change behaviour.
 - [Phase 1]: Shipping SCHEMA 18 is one-way — the cloud copy is stamped 18 and older builds refuse to sync. No plan pushes to `main`; the code goes through a PR after the phase.
 - [Phase 7]: A CSP that blocks `gstatic.com` fails silently — the app keeps working on localStorage with cloud sync dead and no visible error. Verify sync explicitly after the policy ships.
 
