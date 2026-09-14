@@ -49,7 +49,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Every hand-written function being replaced (`mergeDB_v0` etc.) stays in the file, renamed, and a differential test proves its derived replacement matches it over a real exported backup plus a synthetic two-device fixture for each past incident — before the legacy function is deleted in a later commit (REG-12, REG-13, REG-14).
   5. Two behaviors that must never regress both hold under test: the `gen`-mismatch wholesale-replace still short-circuits before any per-collection merge, so "Erase all data" and Import→Replace still produce zero unioned survivors from the losing side (REG-09, REG-10); and a deleted `sleep` row plus a map collection (`journal`, `mobilityLog`, `lawnLog`) row storing an explicit `false` both survive a stale-device merge replay without resurrecting (SLEEP-06, REG-05, REG-16).
 
-**Plans**: 5/7 plans executed
+**Plans**: 6/7 plans executed
 **UI hint**: yes
 
 Plans:
@@ -72,7 +72,7 @@ Plans:
 **Wave 5** *(blocked on Wave 4 completion)*
 
 - [x] 01-05-PLAN.md — sleep as one COLLECTIONS entry (SCHEMA 18), Care → Sleep log/list/delete, SLEEP-05 probe proof
-- [ ] 01-06-PLAN.md — Checkpoint: Ian exports a real backup into test/local/; the real-data differential must PASS (counts-only record)
+- [x] 01-06-PLAN.md — Checkpoint: Ian exports a real backup into test/local/; the real-data differential must PASS (counts-only record)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -196,7 +196,7 @@ Phase 5 completes.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. F1 — The COLLECTIONS Registry | 5/7 | In Progress|  |
+| 1. F1 — The COLLECTIONS Registry | 6/7 | In Progress|  |
 | 2. Export for Claude | 0/TBD | Not started | - |
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 0/TBD | Not started | - |
 | 4. Draft Goes Device-Local | 0/TBD | Not started | - |
