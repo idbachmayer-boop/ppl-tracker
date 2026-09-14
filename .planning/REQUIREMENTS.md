@@ -24,7 +24,7 @@ The one declaration the rest of the data layer derives from.
 - [x] **REG-11**: `MIGRATIONS` stays hand-written and is not derived from `COLLECTIONS`; it may read `COLLECTIONS` one-way
 - [x] **REG-12**: Each hand-written consumer is replaced in its own commit, cheapest-first and `mergeDB()` last, with the app shippable at every commit
 - [x] **REG-13**: Every replaced function is kept renamed (not deleted) and differential-tested against its derived replacement over a real exported backup plus per-incident synthetic two-device fixtures
-- [ ] **REG-14**: The renamed legacy functions are deleted only in a later commit than the one that introduced their replacement, never the same one
+- [x] **REG-14**: The renamed legacy functions are deleted only in a later commit than the one that introduced their replacement, never the same one
 - [x] **REG-15**: A boot-order regression test asserts the app boots without throwing for every schema version from 1 to current, and that every declared collection exists with the right shape afterward
 - [x] **REG-16**: If any row rewrite is introduced, it stamps `mtime` via `touch()`, persists immediately, is idempotent, never downgrades `_schema`, and ships with a stale-device merge replay test — all four, or the rewrite does not ship
 - [x] **REG-17**: `COLLECTIONS` carries the column/format metadata the Markdown export needs, settled in this phase so the export phase does not reopen the registry
