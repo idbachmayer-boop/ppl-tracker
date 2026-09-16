@@ -492,7 +492,7 @@ Not applicable in the conventional sense (no library version drift to track) —
 | A2 | `exportMarkdown()` should NOT update `DB.lastBackupAt`/`DB.backupSnoozeAt` or call `save()`, unlike `exportData()` | Code Examples, Open Questions | If Ian actually wants the Markdown export to also count as "a backup happened" for the backup-reminder nag, omitting this would leave the nag firing even after a fresh export — low-severity, easily corrected in review since CONTEXT.md doesn't address it either way |
 | A3 | The recommended icon `arrow-square-out` is the best fit among existing `PH` map entries | Code Examples | Purely cosmetic; CONTEXT.md marks icon choice as Claude's Discretion, so any reasonable choice is acceptable |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does `exportMarkdown()` touch `DB.lastBackupAt`/`backupSnoozeAt`, or skip persistence entirely?**
    - What we know: `exportData()` (the JSON backup) does both; CONTEXT.md D-01 says the Markdown
@@ -503,6 +503,7 @@ Not applicable in the conventional sense (no library version drift to track) —
      snapshot, and touching `DB` for a feature explicitly scoped as "not a backup" (per Out of Scope:
      "A round-trippable or re-importable Markdown export") risks confusing two different guarantees.
      Flag for Ian confirmation during planning/discussion if the planner wants certainty.
+   - RESOLVED: no persistence. 02-03 Task 2 tests that no export path writes DB, localStorage or `lastBackupAt`.
 
 2. **What happens on a `navigator.share` rejection that is NOT `AbortError`?**
    - What we know: D-01 only specifies behavior for the unsupported case (fall back to download) and
@@ -514,6 +515,7 @@ Not applicable in the conventional sense (no library version drift to track) —
      to the Blob download rather than leaving Ian with nothing. This matches the spirit of "the export
      must succeed one way or another" without over-engineering error-specific UI. Falls under
      Claude's Discretion per CONTEXT.md (not explicitly decided).
+   - RESOLVED: any non-`AbortError` rejection falls back to the Blob download (02-03 Task 2).
 
 3. **Exact final shape of the `{field,label,unit}` column metadata (D-08 leaves this to the planner).**
    - What we know: The shape needs a `field` (for row projection), a human-readable `label`, and an
@@ -524,6 +526,7 @@ Not applicable in the conventional sense (no library version drift to track) —
      position and ordering semantics (order defines table column order, per the existing contract at
      `test/app.test.js:1895-1897`) — a parallel map would lose the implicit ordering `columns` already
      provides for free.
+   - RESOLVED: array of `{field,label,unit}` objects, promoted to the single column representation (02-01).
 
 ## Environment Availability
 

@@ -1,0 +1,1 @@
+No external API integration: the only "API" is the browser's built-in Web Share (`navigator.share`/`navigator.canShare`), called client-side with a Blob-download fallback, adding no external service, SDK, credential or network call.
