@@ -2726,6 +2726,258 @@ let exportResult;
      rows[0][4]==='0', rows);
 }
 
+/* Plan 02-03 Task 1 (D-13/EXP-08): the header block — what the file is, when it was generated, the
+   date range across sections, and a row count per section — plus the EXP-06/EXP-07 battery that
+   pins the unit/ISO-date/escaping guarantees plan 02-01 already shipped. */
+{
+  const text = X.buildMarkdownExport();
+  ok('export: the header says what the file is and when it was generated (EXP-08/D-13)',
+     text.startsWith('# PPL Tracker export\n') &&
+     text.indexOf('\nLogged data from PPL Tracker') >= 0 &&
+     text.indexOf('\n- Generated: 2026-08-07T17:00:00.000Z\n') >= 0,
+     text.slice(0, 200));
+
+  ok('export: the header states the date range across sections (EXP-08/D-13)',
+     text.indexOf('\n- Date range: 2026-07-08 to 2026-08-07\n') >= 0,
+     text.split('\n').find(l=>l.startsWith('- Date range:')));
+}
+
+{
+  const text = X.buildMarkdownExport();
+  const headerLine = text.split('\n').find(l=>l.startsWith('- Rows per section: '));
+  const entries = headerLine ? headerLine.slice('- Rows per section: '.length).split(' · ') : [];
+  const labels = entries.map(e=>e.slice(0, e.lastIndexOf(': ')));
+  const expectedLabels = Object.keys(X.COLLECTIONS).map(n=>X.COLLECTIONS[n].label);
+  const formatOk = entries.every(e=>/: (\d+ rows?|0 entries)$/.test(e));
+  ok('export: the header lists every section\'s row count in COLLECTIONS order (D-13)',
+     !!headerLine && JSON.stringify(labels) === JSON.stringify(expectedLabels) && formatOk,
+     { headerLine, labels });
+
+  const sections = mdSections(text);
+  const mismatches = [];
+  entries.forEach(e=>{
+    const idx = e.lastIndexOf(': ');
+    const label = e.slice(0, idx);
+    const countStr = e.slice(idx+2);
+    const sec = sections[label];
+    const actual = !sec || sec.empty ? 0 : sec.rows.length;
+    const expectedCount = countStr === '0 entries' ? 0 : parseInt(countStr, 10);
+    if(expectedCount !== actual) mismatches.push(label);
+  });
+  ok('export: every header count equals its table\'s rows (EXP-08)', mismatches.length===0, mismatches);
+}
+
+{
+  const a16 = loadApp(APP_PATH);
+  a16.DB = Object.assign(a16.blank(), { weights: [ { date:'2026-08-01', value:190 } ] });
+  const text = a16.buildMarkdownExport();
+  const headerLine = text.split('\n').find(l=>l.startsWith('- Rows per section: '));
+  const otherLabels = Object.keys(a16.COLLECTIONS).filter(n=>n!=='weights').map(n=>a16.COLLECTIONS[n].label);
+  const allOthersZero = otherLabels.every(label => headerLine.indexOf(label + ': 0 entries') >= 0);
+  ok('export: one dated row gives a D to D range (EXP-08 adjacency)',
+     text.indexOf('\n- Date range: 2026-08-01 to 2026-08-01\n') >= 0 &&
+     headerLine.indexOf('Weigh-ins: 1 row') >= 0 && allOthersZero,
+     headerLine);
+}
+
+{
+  const a17 = loadApp(APP_PATH);
+  a17.DB = a17.blank();
+  const text = a17.buildMarkdownExport();
+  const headerLine = text.split('\n').find(l=>l.startsWith('- Rows per section: '));
+  const allZero = Object.keys(a17.COLLECTIONS).every(n=>headerLine.indexOf(a17.COLLECTIONS[n].label + ': 0 entries') >= 0);
+  ok('export: an empty export says no dated entries and 0 entries everywhere (EXP-08 empty)',
+     text.indexOf('\n- Date range: no dated entries\n') >= 0 && allZero,
+     headerLine);
+}
+
+{
+  const a18 = loadApp(APP_PATH);
+  a18.DB = Object.assign(a18.blank(), { weights: [ { date:'Aug 1', value:1 }, { date:'2026-08-02', value:2 } ] });
+  const text = a18.buildMarkdownExport();
+  const headerLine = text.split('\n').find(l=>l.startsWith('- Rows per section: '));
+  const rows = mdSections(text)['Weigh-ins'].rows;
+  ok('export: a malformed date is exported but does not stretch the range (EXP-08 ordering)',
+     text.indexOf('\n- Date range: 2026-08-02 to 2026-08-02\n') >= 0 &&
+     headerLine.indexOf('Weigh-ins: 2 rows') >= 0 &&
+     rows.length===2 && rows.some(r=>r[0]==='Aug 1'),
+     { headerLine, rows });
+}
+
+{
+  const weightLabels = ['Workouts','Weigh-ins','Pet weigh-ins'];
+  X.DB.unit = 'lb';
+  const secLb = mdSections(X.buildMarkdownExport());
+  X.DB.unit = 'kg';
+  const secKg = mdSections(X.buildMarkdownExport());
+  X.DB.unit = 'lb'; // restore, so every test below and after keeps assuming the default unit
+  const lbOk = weightLabels.every(l => secLb[l].header.includes('weight (lb)'));
+  const kgOk = weightLabels.every(l => secKg[l].header.includes('weight (kg)'));
+  const noCellSuffix = secLb['Weigh-ins'].rows.concat(secKg['Weigh-ins'].rows).every(r => !/\b(lb|kg)$/.test(r[1]));
+  ok('export: weight headers follow DB.unit, lb then kg (EXP-06)',
+     lbOk && kgOk && noCellSuffix,
+     { lbHeaders: weightLabels.map(l=>secLb[l].header), kgHeaders: weightLabels.map(l=>secKg[l].header) });
+
+  ok('export: distance stays km whatever DB.unit is (EXP-06)',
+     secLb['Cardio'].header.includes('distance (km)') && secKg['Cardio'].header.includes('distance (km)'),
+     { lb: secLb['Cardio'].header, kg: secKg['Cardio'].header });
+}
+
+{
+  /* A fresh instance, not X: by this point in the file X's Sleep collection has been emptied by
+     the earlier EXP-04 softDelete test, so re-seeding here (rather than reusing X) is what lets
+     every one of the six required sections still carry a live, dated row. */
+  const isoCheck = loadApp(APP_PATH);
+  isoCheck.DB = populatedDB(isoCheck);
+  const text = isoCheck.buildMarkdownExport();
+  const sections = mdSections(text);
+  const ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const isoSeen = {};
+  const bad = [];
+  Object.keys(sections).forEach(label=>{
+    const sec = sections[label];
+    if(sec.empty) return;
+    sec.rows.forEach(r=>{
+      const cell = r[0];
+      if(ISO_RE.test(cell)) isoSeen[label] = true;
+      else if(cell !== '—') bad.push(label);
+    });
+  });
+  const requiredLabels = ['Workouts','Weigh-ins','Cardio','Todos','Journal','Sleep'];
+  const allHaveIso = requiredLabels.every(l=>isoSeen[l]);
+  const noFmtDate = text.indexOf(isoCheck.fmtDate(dayOff(-9))) < 0;
+  ok('export: dates are ISO, never display-formatted (EXP-06)',
+     bad.length===0 && allHaveIso && noFmtDate, { bad, isoSeen, noFmtDate });
+}
+
+{
+  const a19 = loadApp(APP_PATH);
+  a19.DB = Object.assign(a19.blank(), {
+    ideas: [
+      { id:'e1', date:'2026-08-01', text:'line one\nline two | with pipe' },
+      { id:'e2', date:'2026-08-02', text:'a\\|b' },
+      { id:'e3', date:'2026-08-03', text:'ends with a backslash \\' },
+      { id:'e4', date:'2026-08-04', text:'CRLF\r\nCR\rLF\nLS PS end' },
+      { id:'e5', date:'2026-08-05', text:'  two\n\n  blank lines  ' },
+      { id:'e6', date:'2026-08-06', text:'   ' },
+      { id:'e7', date:'2026-08-07', text:'|edge pipes|' },
+    ],
+  });
+  const ideasRows = mdSections(a19.buildMarkdownExport())['Ideas'].rows;
+  const cellFor = date => { const r = ideasRows.find(r=>r[0]===date); return r && r[1]; };
+  const expected = {
+    '2026-08-01': 'line one<br>line two \\| with pipe',
+    '2026-08-02': 'a\\\\\\|b',
+    '2026-08-03': 'ends with a backslash \\',
+    '2026-08-04': 'CRLF<br>CR<br>LF<br>LS<br>PS<br>end',
+    '2026-08-05': 'two<br>blank lines',
+    '2026-08-06': '—',
+    '2026-08-07': '\\|edge pipes\\|',
+  };
+  const mismatches = Object.keys(expected).filter(d => cellFor(d) !== expected[d]);
+  ok('export: pipes, backslashes and line breaks never change a row\'s width (EXP-07)',
+     mismatches.length===0 && ideasRows.every(r=>r.length===3),
+     { mismatches, cells: Object.keys(expected).map(d=>({ d, got: cellFor(d) })) });
+
+  ok('export: CRLF, CR, LF, U+2028 and U+2029 become <br> (EXP-07)',
+     cellFor('2026-08-04') === 'CRLF<br>CR<br>LF<br>LS<br>PS<br>end', cellFor('2026-08-04'));
+}
+
+{
+  const a20 = loadApp(APP_PATH);
+  a20.DB = Object.assign(a20.blank(), {
+    ideas: [
+      { id:'f1', date:'2026-08-01', text:'  padded text  ' },
+      { id:'f2', date:'2026-08-02', text:'' },
+      { id:'f3', date:'2026-08-03', text:null },
+      { id:'f4', date:'2026-08-04', text:undefined },
+      { id:'f5', date:'2026-08-05', text:'   ' },
+    ],
+  });
+  const rows = mdSections(a20.buildMarkdownExport())['Ideas'].rows;
+  const cellFor = date => { const r = rows.find(r=>r[0]===date); return r && r[1]; };
+  ok('export: cells are trimmed and whitespace-only is — (EXP-07 empty)',
+     cellFor('2026-08-01')==='padded text' && cellFor('2026-08-02')==='—' &&
+     cellFor('2026-08-03')==='—' && cellFor('2026-08-04')==='—' && cellFor('2026-08-05')==='—',
+     rows);
+}
+
+{
+  const family = '\u{1F468}‍\u{1F469}‍\u{1F467}';
+  const text = '🎨 Mini-painting ' + family + ' café';
+  const a21 = loadApp(APP_PATH);
+  a21.DB = Object.assign(a21.blank(), { ideas: [ { id:'g1', date:'2026-08-01', text } ] });
+  const rows = mdSections(a21.buildMarkdownExport())['Ideas'].rows;
+  ok('export: emoji and accented text survive unchanged (EXP-07 encoding)',
+     rows[0][1] === text, rows[0]);
+}
+
+{
+  const sections = mdSections(X.buildMarkdownExport());
+  const text = X.buildMarkdownExport();
+  const hostile = sections['Ideas'].rows.find(r=>r[1] && r[1].indexOf('<script>')>=0);
+  ok('export: a hostile <script> idea is exported as typed, not HTML-escaped (EXP-07)',
+     !!hostile && hostile[1].indexOf('<script>')>=0 && hostile[1].indexOf('&')>=0 &&
+     hostile[1].indexOf('"quotes"')>=0 && text.indexOf('&lt;')<0 && text.indexOf('&quot;')<0,
+     hostile);
+}
+
+{
+  const a22 = loadApp(APP_PATH);
+  a22.DB = Object.assign(a22.blank(), {
+    sessions: [ { id:'w1', date:'2026-08-01', workout:'PUSH 1', endedAt:1, entries:[
+      { name:'Odd data', sets:[ { w:{x:'a|b'}, r:'5' } ] },
+    ], extras:{} } ],
+  });
+  const rows = mdSections(a22.buildMarkdownExport())['Workouts'].rows;
+  ok('export: an object-valued weight exports as escaped JSON with the row intact (EXP-07)',
+     rows.length===1 && rows[0].length===6 && rows[0][4]==='{"x":"a\\|b"}' && rows[0][5]==='5',
+     rows);
+}
+
+console.log("\n── real backup: the Markdown export over Ian's actual data (EXP-08, local only) ──");
+/* Counts only — never a row, a date or a note (T-01-13's real-backup rule). An ok() extra here may
+   hold only numbers, booleans, or collection/section names. */
+if(!fs.existsSync(REAL_PATH)){
+  skipLine('Markdown export over the real backup — test/local/real-db-snapshot.json is not present (local only, git-ignored)');
+} else {
+  let R = null, bootThrew = null, realText = null, buildThrew = null;
+  try { R = loadApp(APP_PATH, fs.readFileSync(REAL_PATH, 'utf8')); } catch(e){ bootThrew = e; }
+  if(!bootThrew){
+    try { realText = R.buildMarkdownExport(); } catch(e){ buildThrew = e; }
+  }
+  ok('real backup: the Markdown export builds without throwing', !bootThrew && !buildThrew);
+
+  if(!bootThrew && !buildThrew){
+    const sections = mdSections(realText);
+    const collectionCount = Object.keys(R.COLLECTIONS).length;
+    const headingCount = Object.keys(sections).length;
+    ok('real backup: one section per declared collection', headingCount === collectionCount, headingCount);
+
+    const headerLine = realText.split('\n').find(l=>l.startsWith('- Rows per section: '));
+    const entries = headerLine ? headerLine.slice('- Rows per section: '.length).split(' · ') : [];
+    const countMismatches = [];
+    entries.forEach(e=>{
+      const idx = e.lastIndexOf(': ');
+      const label = e.slice(0, idx);
+      const countStr = e.slice(idx+2);
+      const sec = sections[label];
+      const actual = !sec || sec.empty ? 0 : sec.rows.length;
+      const expectedCount = countStr === '0 entries' ? 0 : parseInt(countStr, 10);
+      if(expectedCount !== actual) countMismatches.push(label);
+    });
+    ok('real backup: every section count equals its table rows', countMismatches.length === 0, countMismatches.length);
+
+    const widthFails = [];
+    Object.keys(sections).forEach(label=>{
+      const sec = sections[label];
+      if(sec.empty) return;
+      sec.rows.forEach(r=>{ if(r.length !== sec.header.length) widthFails.push(label); });
+    });
+    ok('real backup: every table row has its header\'s cell count', widthFails.length === 0, widthFails.length);
+  }
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */

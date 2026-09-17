@@ -3414,14 +3414,31 @@ function exportRows(name){
   return rows;
 }
 function buildMarkdownExport(){
+  /* D-13/EXP-08: every section is computed exactly once, here, into `sections`. Both the header's
+     date range and per-section counts, and the tables printed below, read from these same arrays —
+     so a header count can never disagree with the table under it (EXP-08 concurrency). */
+  const sections = Object.keys(COLLECTIONS).map(name=>({ spec: COLLECTIONS[name], rows: exportRows(name) }));
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  let first = null, last = null;
+  sections.forEach(({spec, rows})=>{
+    const field = spec.columns[0].field;
+    rows.forEach(row=>{
+      const v = row[field];
+      if(typeof v==='string' && DATE_RE.test(v)){
+        if(first===null || v<first) first = v;
+        if(last===null || v>last) last = v;
+      }
+    });
+  });
+  const countText = n => n===0 ? '0 entries' : n===1 ? '1 row' : n+' rows';
   const lines = [
     '# PPL Tracker export', '',
     'Logged data from PPL Tracker, one Markdown table per collection, oldest first. Deleted entries and internal ids are not included, and — marks a missing value.', '',
     '- Generated: ' + new Date().toISOString(),
+    '- Date range: ' + (first===null ? 'no dated entries' : first + ' to ' + last),
+    '- Rows per section: ' + sections.map(({spec, rows}) => mdEscape(spec.label) + ': ' + countText(rows.length)).join(' · '),
   ];
-  Object.keys(COLLECTIONS).forEach(name=>{
-    const spec = COLLECTIONS[name];
-    const rows = exportRows(name);
+  sections.forEach(({spec, rows})=>{
     lines.push('', '## ' + mdEscape(spec.label), '');
     if(rows.length===0){
       lines.push('No entries');
