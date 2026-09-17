@@ -1499,7 +1499,7 @@ console.log('\n── SLEEP-05: a collection declared in one line is picked up e
    that blank/liveOf/validateBackup/mergeDB/mergeCollections pick the two probes up from their
    declaration alone, with no line changed in any of the five. */
 const PROBE_LIST_LINE = "  probeList:{ kind:'list', key:'id', sortBy:'date', merge:'union', soft:true, required:false, label:'Probe list', columns:[{field:'date',label:'date'},{field:'value',label:'value',unit:'mass'}] },";
-const PROBE_MAP_LINE  = "  probeMap:{ kind:'map', merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Probe map', columns:[{field:'date',label:'date'},{field:'item',label:'item'},{field:'done',label:'done'}], format:dayFlagRows },";
+const PROBE_MAP_LINE  = "  probeMap:{ kind:'map', merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Probe map', columns:[{field:'date',label:'date'},{field:'item',label:'item'}], format:dayFlagRows },";
 const probeTransform = code => code.replace('const COLLECTIONS = {', 'const COLLECTIONS = {\n' + PROBE_LIST_LINE + '\n' + PROBE_MAP_LINE);
 const probe = loadApp(APP_PATH, null, { transform: probeTransform });
 
@@ -1958,12 +1958,37 @@ console.log('\n── the registry refuses what would lose data (REG-05/REG-04/R
   ok('rows: sessionRows({}) returns []', Array.isArray(app.sessionRows({})) && app.sessionRows({}).length === 0);
   ok('rows: sessionRows(null) returns []', Array.isArray(app.sessionRows(null)) && app.sessionRows(null).length === 0);
   ok('rows: sessionRows({entries:"x"}) returns []', Array.isArray(app.sessionRows({entries:'x'})) && app.sessionRows({entries:'x'}).length === 0);
+
+  // ── D-04: a skipped workout day is exactly one "(skipped)" row, never silently absent ──
+  const skippedFixture = { id:'k', date:'2026-08-02', workout:'PULL 1', skipped:true, reason:'slept in', entries:[] };
+  ok('rows: a skipped session is one row — (skipped), no set, weight or reps (D-04)',
+     JSON.stringify(app.sessionRows(skippedFixture)) === JSON.stringify([{date:'2026-08-02', workout:'PULL 1', exercise:'(skipped)', set:null, weight:null, reps:null}]),
+     app.sessionRows(skippedFixture));
+  const skippedWithEntry = { id:'k', date:'2026-08-02', workout:'PULL 1', skipped:true, reason:'slept in', entries:[{ name:'Back squat', sets:[{w:'185',r:'5'}] }] };
+  ok('rows: a skipped session with entries is still one row (D-04)',
+     app.sessionRows(skippedWithEntry).length === 1 && app.sessionRows(skippedWithEntry)[0].exercise === '(skipped)',
+     app.sessionRows(skippedWithEntry));
+  ok('rows: the skipped row\'s keys equal the sessions column fields',
+     JSON.stringify(Object.keys(app.sessionRows(skippedFixture)[0])) === JSON.stringify(app.COLLECTIONS.sessions.columns.map(c=>c.field)),
+     Object.keys(app.sessionRows(skippedFixture)[0]));
+
   ok('rows: journalRows(date, null) returns one row with entry ""',
      JSON.stringify(app.journalRows('2026-08-01', null)) === JSON.stringify([{date:'2026-08-01', entry:''}]),
      app.journalRows('2026-08-01', null));
-  const flagRows = app.dayFlagRows('2026-08-01', {a:true, b:false});
-  ok('rows: dayFlagRows returns one row per key, including done false',
-     flagRows.length === 2 && flagRows[0].done === true && flagRows[1].done === false, flagRows);
+
+  // ── D-05: dayFlagRows keeps only what Ian actually ticked — no bookkeeping keys, no done column ──
+  ok('rows: dayFlagRows keeps only true flags, as date + item (D-05)',
+     JSON.stringify(app.dayFlagRows('2026-08-01', {a:true, b:false})) === JSON.stringify([{date:'2026-08-01', item:'a'}]),
+     app.dayFlagRows('2026-08-01', {a:true, b:false}));
+  ok('rows: dayFlagRows drops __ keys such as __session (D-05)',
+     JSON.stringify(app.dayFlagRows('d', {'Couch stretch':true, __session:'yoga'})) === JSON.stringify([{date:'d', item:'Couch stretch'}]),
+     app.dayFlagRows('d', {'Couch stretch':true, __session:'yoga'}));
+  ok('rows: dayFlagRows drops override keys and false flags (D-05)',
+     JSON.stringify(app.dayFlagRows('d', {mowed:true, overrideMow:true, overrideWater:false, watered:false})) === JSON.stringify([{date:'d', item:'mowed'}]),
+     app.dayFlagRows('d', {mowed:true, overrideMow:true, overrideWater:false, watered:false}));
+  ok('rows: dayFlagRows ignores truthy values that are not true (D-05)',
+     app.dayFlagRows('d', {a:'yes', b:1}).length === 0, app.dayFlagRows('d', {a:'yes', b:1}));
+  ok('rows: dayFlagRows on an empty day returns []', app.dayFlagRows('d', {}).length === 0);
   ok('rows: dayFlagRows(date, "x") returns []', Array.isArray(app.dayFlagRows('2026-08-01', 'x')) && app.dayFlagRows('2026-08-01', 'x').length === 0);
   ok('rows: hobbyRows falls back to hobby when item is absent',
      app.hobbyRows({date:'d', hobby:'h', cat:'c'})[0].item === 'h', app.hobbyRows({date:'d', hobby:'h', cat:'c'}));
@@ -2468,6 +2493,83 @@ let exportResult;
   const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   ok('export: exportRows reads lists through liveOf (EXP-04)',
      stripComments(app.exportRows.toString()).indexOf('liveOf(') >= 0);
+}
+
+/* Task 1 (D-04/D-05/EXP-03): the skipped-day row, the mobility/lawn bookkeeping filter, and the
+   workout-flattening edges. Each fixture below is its own loadApp(APP_PATH) instance so a session
+   shape mistake in one test can't bleed into another. */
+{
+  const sections = mdSections(X.buildMarkdownExport());
+  const workouts = sections['Workouts'];
+  const skippedRow = workouts && workouts.rows.find(r=>r[1]==='PULL 1' && r[0]===dayOff(-5));
+  ok('export: a skipped workout day is one Workouts row (D-04)',
+     !!skippedRow && JSON.stringify(skippedRow) === JSON.stringify([dayOff(-5),'PULL 1','(skipped)','—','—','—']) &&
+     !workouts.rows.some(r=>r.some(c=>c==='slept in')),
+     workouts && workouts.rows);
+
+  const mobility = sections['Mobility'];
+  const lawn = sections['Lawn'];
+  ok('export: Mobility and Lawn export date + item only (D-05)',
+     !!mobility && JSON.stringify(mobility.header) === JSON.stringify(['date','stretch']) &&
+     !!lawn && JSON.stringify(lawn.header) === JSON.stringify(['date','task']) && lawn.rows.length === 2,
+     { mobilityHeader: mobility && mobility.header, lawnHeader: lawn && lawn.header, lawnRows: lawn && lawn.rows });
+}
+
+{
+  const a2 = loadApp(APP_PATH);
+  a2.DB = Object.assign(a2.blank(), {
+    sessions: [ { id:'e1', date:'2026-08-01', workout:'PUSH 1', endedAt:1, entries:[
+      { name:'Exercise A', sets:[{w:'135',r:'8'},{w:'135',r:'8'}] },
+    ], extras:{} } ],
+  });
+  const workouts = mdSections(a2.buildMarkdownExport())['Workouts'];
+  ok('export: sets number from 1 within an exercise (EXP-03 boundary)',
+     !!workouts && workouts.rows.length===2 && workouts.rows[0][3]==='1' && workouts.rows[1][3]==='2',
+     workouts && workouts.rows);
+  ok('export: two identical sets stay two rows (EXP-03 adjacency)',
+     !!workouts && workouts.rows.length===2, workouts && workouts.rows);
+}
+
+{
+  const a3 = loadApp(APP_PATH);
+  a3.DB = Object.assign(a3.blank(), {
+    sessions: [ { id:'e2', date:'2026-08-01', workout:'PUSH 1', endedAt:1, entries:[], extras:{} } ],
+  });
+  const workouts = mdSections(a3.buildMarkdownExport())['Workouts'];
+  ok('export: a live session with no sets contributes no rows (EXP-03 boundary)',
+     !!workouts && workouts.empty === true, workouts);
+}
+
+{
+  const a4 = loadApp(APP_PATH);
+  a4.DB = Object.assign(a4.blank(), {
+    sessions: [ { id:'e3', date:'2026-08-01', workout:'PUSH 1', endedAt:1, entries:[
+      { name:'Exercise A', sets:[{w:187.5,r:5},{w:'0',r:'12'},{w:'',r:''}] },
+    ], extras:{} } ],
+  });
+  const rows = mdSections(a4.buildMarkdownExport())['Workouts'].rows;
+  ok('export: weight and reps are written exactly as stored (EXP-03 precision)',
+     rows[0][4]==='187.5' && rows[0][5]==='5' && rows[1][4]==='0' && rows[1][5]==='12',
+     rows);
+  ok('export: an unfilled set writes — for weight and reps (EXP-03 empty/D-09)',
+     rows[2][4]==='—' && rows[2][5]==='—', rows);
+}
+
+{
+  const a5 = loadApp(APP_PATH);
+  a5.DB = Object.assign(a5.blank(), {
+    sessions: [ { id:'e4', date:'2026-08-01', workout:'PUSH 1', endedAt:1,
+      entries:[
+        { name:'A', sets:[{w:'1',r:'1'},{w:'2',r:'2'}] },
+        { name:'B', sets:[{w:'3',r:'3'}] },
+      ],
+      extras:{ forearms: { name:'C', sets:[{w:'4',r:'4'}] } },
+    } ],
+  });
+  const rows = mdSections(a5.buildMarkdownExport())['Workouts'].rows;
+  ok('export: rows keep entries-then-extras order, sets ascending (EXP-03 ordering)',
+     JSON.stringify(rows.map(r=>r[2]+r[3])) === JSON.stringify(['A1','A2','B1','C1']),
+     rows);
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

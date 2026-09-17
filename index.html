@@ -500,8 +500,8 @@ const COLLECTIONS = {
   journal:    { kind:'map',  merge:'line-union', soft:false, required:false, explicitFalse:false, label:'Journal', columns:[{field:'date',label:'date'},{field:'entry',label:'entry'}], format:journalRows },
   /* mobilityLog / lawnLog: take the WHOLE inner object from the newer side. Do NOT union inner
      keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
-  mobilityLog:{ kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Mobility', columns:[{field:'date',label:'date'},{field:'item',label:'stretch'},{field:'done',label:'done'}], format:dayFlagRows },
-  lawnLog:    { kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Lawn', columns:[{field:'date',label:'date'},{field:'item',label:'task'},{field:'done',label:'done'}], format:dayFlagRows },
+  mobilityLog:{ kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Mobility', columns:[{field:'date',label:'date'},{field:'item',label:'stretch'}], format:dayFlagRows },
+  lawnLog:    { kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Lawn', columns:[{field:'date',label:'date'},{field:'item',label:'task'}], format:dayFlagRows },
   /* sleep (F1/SLEEP-01): last entry on purpose — keeps every existing collection's validation
      precedence and merge order unchanged. No format: sleep rows are already flat. */
   sleep:      { kind:'list', key:'id',        sortBy:'date',      merge:'union', soft:true,  required:false, label:'Sleep', columns:[{field:'date',label:'date'},{field:'hours',label:'hours'},{field:'quality',label:'quality (1-5)'},{field:'note',label:'note'}] },
@@ -3855,9 +3855,11 @@ function sessionSort(a,b){ return a.date===b.date ? ((a.endedAt||0)-(b.endedAt||
 /* ── COLLECTIONS export row shapers (REG-17) ── one per non-flat collection, referenced by name from
    the `format` field on that collection's COLLECTIONS entry. Presentation (ISO dates, units, missing
    markers, escaping) is Phase 2's job — these hand back raw stored values, one row per exported line,
-   with keys in exactly the order of that collection's `columns`. */
+   with keys in exactly the order of that collection's `columns`. A skipped session is one row, so a
+   skipped day is never silently absent (D-04). */
 function sessionRows(s){
   if(!s || typeof s!=='object') return [];
+  if(s.skipped) return [{ date:s.date, workout:s.workout, exercise:'(skipped)', set:null, weight:null, reps:null }];
   const rows = [];
   const addItem = item => {
     if(!item || typeof item!=='object' || !Array.isArray(item.sets)) return;
@@ -3874,9 +3876,17 @@ function hobbyRows(h){
 function journalRows(date, text){
   return [{ date, entry: (text==null ? '' : String(text)) }];
 }
+/* D-05: two independent checks, run in this order — never folded into one condition (RESEARCH
+   Pitfall 3). (a) drop bookkeeping keys: __-prefixed (mobilityLog's __session) and override*
+   (lawnLog's overrideWater/overrideMow, written by toggleLawnOverride). (b) keep only keys whose
+   value is strictly true — an explicit false is sync bookkeeping, not a logged event ("absence never
+   means off", CLAUDE.md). */
 function dayFlagRows(date, obj){
   if(!obj || typeof obj!=='object' || Array.isArray(obj)) return [];
-  return Object.keys(obj).map(k=>({ date, item:k, done:obj[k] }));
+  return Object.keys(obj)
+    .filter(k => k.indexOf('__')!==0 && !/^override[A-Z]/.test(k))
+    .filter(k => obj[k]===true)
+    .map(k=>({ date, item:k }));
 }
 /* ── Markdown export presentation (Phase 2) ──
    Never esc() here: HTML entities (&lt; etc.) would corrupt plain text in a file Claude reads as
