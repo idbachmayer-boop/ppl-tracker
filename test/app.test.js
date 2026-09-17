@@ -1872,6 +1872,14 @@ console.log('\n── the registry refuses what would lose data (REG-05/REG-04/R
   ok('registry: a column unit that is empty or not a string is refused',
      unitProblems1.length > 0 && unitProblems2.length > 0, { unitProblems1, unitProblems2 });
 
+  spec = validListSpec(); spec.columns = [{field:'date', label:'date', zeroIsMissing:'yes'}];
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a zeroIsMissing that is not a boolean is refused', problems.length > 0, problems);
+
+  spec = validListSpec(); spec.columns = [{field:'date', label:'date', zeroIsMissing:true}];
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: zeroIsMissing true is accepted', problems.length === 0, problems);
+
   spec = validListSpec(); spec.label = 'A|B';
   let labelProblems1 = app.collectionProblems({ thing: spec });
   spec = validListSpec(); spec.columns = [{field:'date', label:'da\nte'}];
@@ -2570,6 +2578,152 @@ let exportResult;
   ok('export: rows keep entries-then-extras order, sets ascending (EXP-03 ordering)',
      JSON.stringify(rows.map(r=>r[2]+r[3])) === JSON.stringify(['A1','A2','B1','C1']),
      rows);
+}
+
+/* Task 2 (D-11/D-09/D-07): oldest-first stable order, cardio's zero-as-missing rule, and proof that
+   deleted rows, internal ids and non-registry data never reach the file. */
+{
+  const a1 = loadApp(APP_PATH);
+  a1.DB = Object.assign(a1.blank(), {
+    ideas: [
+      { id:'i3', date:'2026-08-05', text:'third' },
+      { id:'i2', date:'2026-08-03', text:'second' },
+      { id:'i1', date:'2026-08-01', text:'first' },
+    ],
+  });
+  const ideasRows = mdSections(a1.buildMarkdownExport())['Ideas'].rows;
+  ok('export: rows run oldest first (D-11)',
+     JSON.stringify(ideasRows.map(r=>r[0])) === JSON.stringify(['2026-08-01','2026-08-03','2026-08-05']),
+     ideasRows);
+}
+
+{
+  const a2 = loadApp(APP_PATH);
+  a2.DB = Object.assign(a2.blank(), {
+    sessions: [
+      { id:'p1', date:'2026-08-01', workout:'PUSH 1', endedAt:1, entries:[{name:'A', sets:[{w:'1',r:'1'}]}], extras:{} },
+      { id:'p2', date:'2026-08-01', workout:'PULL 1', endedAt:2, entries:[{name:'B', sets:[{w:'2',r:'2'}]}], extras:{} },
+    ],
+  });
+  const wRows = mdSections(a2.buildMarkdownExport())['Workouts'].rows;
+  ok('export: equal dates keep stored order — sessions (D-11 stable)',
+     wRows.length===2 && wRows[0][1]==='PUSH 1' && wRows[1][1]==='PULL 1', wRows);
+}
+
+{
+  const a3 = loadApp(APP_PATH);
+  a3.DB = Object.assign(a3.blank(), {
+    ideas: [ { id:'x', date:'2026-08-01', text:'x' }, { id:'y', date:'2026-08-01', text:'y' } ],
+  });
+  const iRows = mdSections(a3.buildMarkdownExport())['Ideas'].rows;
+  ok('export: equal dates keep stored order — ideas (D-11 stable)',
+     iRows[0][1]==='x' && iRows[1][1]==='y', iRows);
+}
+
+{
+  const a4 = loadApp(APP_PATH);
+  a4.DB = Object.assign(a4.blank(), { journal: { '2026-08-05':'b', '2026-08-01':'a' } });
+  const jRows = mdSections(a4.buildMarkdownExport())['Journal'].rows;
+  ok('export: map days run oldest first (D-11)',
+     jRows.map(r=>r[0]).join(',') === '2026-08-01,2026-08-05', jRows);
+}
+
+{
+  const a5 = loadApp(APP_PATH);
+  a5.DB = Object.assign(a5.blank(), {
+    ideas: [ { id:'nodate', text:'no date idea' }, { id:'dated', date:'2026-08-01', text:'dated' } ],
+  });
+  const iRows = mdSections(a5.buildMarkdownExport())['Ideas'].rows;
+  ok('export: a row with no date sorts first and writes — (D-11/D-09)',
+     iRows[0][0]==='—' && iRows[1][0]==='2026-08-01', iRows);
+}
+
+{
+  const a6 = loadApp(APP_PATH);
+  a6.DB = Object.assign(a6.blank(), {
+    weights: [ { date:'2026-08-01', value:190, deletedAt:5, mtime:5 }, { date:'2026-08-01', value:191 } ],
+  });
+  const wRows = mdSections(a6.buildMarkdownExport())['Weigh-ins'].rows;
+  ok('export: a deleted row sharing a date with a live row leaves only the live row (EXP-04 adjacency)',
+     wRows.length===1 && JSON.stringify(wRows[0]) === JSON.stringify(['2026-08-01','191']),
+     wRows);
+}
+
+{
+  const sleepBefore = mdSections(X.buildMarkdownExport())['Sleep'];
+  X.softDelete(X.DB.sleep, s=>s.id==='sl1');
+  const sleepAfter = mdSections(X.buildMarkdownExport())['Sleep'];
+  ok('export: deleting a row and exporting again drops it (EXP-04)',
+     !!sleepBefore && !sleepBefore.empty && sleepBefore.rows.length===1 &&
+     !!sleepAfter && sleepAfter.empty === true,
+     { sleepBefore, sleepAfter });
+}
+
+{
+  const a7 = loadApp(APP_PATH);
+  a7.DB = a7.blank();
+  delete a7.DB.cardio;
+  a7.DB.journal = 'x';
+  a7.DB.lawnLog = null;
+  let threw = null, sections = {};
+  try { sections = mdSections(a7.buildMarkdownExport()); } catch(e){ threw = e; }
+  ok('export: a missing list and a non-object or null map export No entries (EXP-04 empty)',
+     !threw && !!sections['Cardio'] && sections['Cardio'].empty && !!sections['Journal'] && sections['Journal'].empty && !!sections['Lawn'] && sections['Lawn'].empty,
+     { threw: threw && threw.message, sections });
+}
+
+{
+  const a8 = loadApp(APP_PATH);
+  const d = populatedDB(a8);
+  d.cardio = [ { id:'c9', date:dayOff(-2), type:'Walk', minutes:20, distanceKm:1.5, note:'n', source:'manual', mtime:1 } ];
+  a8.DB = d;
+  const text = a8.buildMarkdownExport();
+  const sections = mdSections(text);
+  const badHeaderCell = Object.keys(sections).some(h => !sections[h].empty && sections[h].header.some(c=>['id','mtime','deletedAt','source'].includes(c)));
+  const badRowCell = Object.keys(sections).some(h => !sections[h].empty && sections[h].rows.some(r=>r.some(c=>['s1','c9','i1','sl1'].includes(c))));
+  ok('export: no id, mtime, deletedAt or source column or value leaks (EXP-05)',
+     !badHeaderCell && !badRowCell && text.indexOf('deletedAt')<0 && text.indexOf('mtime')<0,
+     { badHeaderCell, badRowCell });
+}
+
+{
+  const a9 = loadApp(APP_PATH);
+  const d = populatedDB(a9);
+  d.petName = 'Rover-Unique-Pet';
+  d.lawn = { lat:44.9412, lon:-93.3611, label:'Home-Label-Unique' };
+  d.exercises = [ { id:'x1', name:'Unique Registry Lift' } ];
+  d.draft = draftFor(a9, 'PUSH 1');
+  d.draft.sessionNote = 'Draft-Note-Unique';
+  a9.DB = d;
+  const text = a9.buildMarkdownExport();
+  const markers = ['Rover-Unique-Pet','44.9412','-93.3611','Home-Label-Unique','Unique Registry Lift','Draft-Note-Unique','🧊 Clean out the fridge'];
+  const found = markers.filter(m=>text.indexOf(m)>=0);
+  ok('export: nothing outside COLLECTIONS is exported (D-07)', found.length===0, found);
+}
+
+{
+  const a10 = loadApp(APP_PATH);
+  a10.DB = Object.assign(a10.blank(), {
+    cardio: [
+      { id:'c2', date:'2026-08-02', type:'Longboard', minutes:30, distanceKm:0, note:'' },
+      { id:'c3', date:'2026-08-03', type:'Walk', minutes:0, distanceKm:3.2, note:'x' },
+    ],
+  });
+  const rows = mdSections(a10.buildMarkdownExport())['Cardio'].rows;
+  ok('export: cardio\'s blank minutes or distance writes — (D-09)',
+     JSON.stringify(rows[0]) === JSON.stringify(['2026-08-02','Longboard','30','—','—']) &&
+     JSON.stringify(rows[1]) === JSON.stringify(['2026-08-03','Walk','—','3.2','x']),
+     rows);
+}
+
+{
+  const a11 = loadApp(APP_PATH);
+  a11.DB = Object.assign(a11.blank(), {
+    sessions: [ { id:'z1', date:'2026-08-01', workout:'PUSH 1', endedAt:1, entries:[{name:'A', sets:[{w:0,r:10}]}], extras:{} } ],
+  });
+  const rows = mdSections(a11.buildMarkdownExport())['Workouts'].rows;
+  ok('export: a column without zeroIsMissing still writes a real 0',
+     rows[0][4]==='0', rows);
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

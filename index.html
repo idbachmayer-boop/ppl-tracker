@@ -493,7 +493,14 @@ const COLLECTIONS = {
   sessions:   { kind:'list', key:sessKey,   sortBy:sessionSort, merge:'union', soft:true,  required:true,  label:'Workouts', columns:[{field:'date',label:'date'},{field:'workout',label:'workout'},{field:'exercise',label:'exercise'},{field:'set',label:'set'},{field:'weight',label:'weight',unit:'mass'},{field:'reps',label:'reps'}], format:sessionRows },
   weights:    { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:true,  label:'Weigh-ins', columns:[{field:'date',label:'date'},{field:'value',label:'weight',unit:'mass'}] },
   petWeights: { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:false, label:'Pet weigh-ins', columns:[{field:'date',label:'date'},{field:'value',label:'weight',unit:'mass'}] },
-  cardio:     { kind:'list', key:cardioKey, merge:'union', soft:true, required:false, label:'Cardio', columns:[{field:'date',label:'date'},{field:'type',label:'type'},{field:'minutes',label:'minutes'},{field:'distanceKm',label:'distance',unit:'km'},{field:'note',label:'note'}] },
+  /* minutes/distanceKm declare zeroIsMissing: addCardio requires minutes or distance and stores 0
+     for whichever Ian left blank; the Cardio view already shows — for a zero distance, so exporting
+     a literal 0 would be a silent "not entered" (D-09/EXP-06). */
+  cardio:     { kind:'list', key:cardioKey, merge:'union', soft:true, required:false, label:'Cardio', columns:[
+                {field:'date',label:'date'},{field:'type',label:'type'},
+                {field:'minutes',label:'minutes',zeroIsMissing:true},
+                {field:'distanceKm',label:'distance',unit:'km',zeroIsMissing:true},
+                {field:'note',label:'note'}] },
   ideas:      { kind:'list', key:ideaKey,   merge:'union', soft:true, required:false, label:'Ideas', columns:[{field:'date',label:'date'},{field:'text',label:'idea'},{field:'done',label:'done'}] },
   todos:      { kind:'list', key:todoKey,   merge:'union', soft:true, required:false, label:'Todos', columns:[{field:'created',label:'created'},{field:'text',label:'todo'}] },
   hobbyLog:   { kind:'list', key:hobbyKey,  merge:'union', soft:true, required:false, label:'Hobbies & chores', columns:[{field:'date',label:'date'},{field:'item',label:'item'},{field:'cat',label:'category'}], format:hobbyRows },
@@ -3388,16 +3395,28 @@ function exportRows(name){
       if(Array.isArray(out)) outputs.push(...out);
     });
   }
-  return outputs.filter(item=>item && typeof item==='object').map(item=>{
+  const rows = outputs.filter(item=>item && typeof item==='object').map(item=>{
     const row = {};
     spec.columns.forEach(c=>{ row[c.field] = item[c.field]; });
     return row;
   });
+  /* D-11: oldest first, stable, a missing date sorts first. Compared as plain strings — never
+     localeCompare, which varies with the phone's locale — so the order is the same everywhere.
+     Array.prototype.sort is stable, so rows with equal first-column values keep the order liveOf
+     (or the sorted map keys) produced: stored session order (sessionSort by endedAt) and, within
+     one session, set order. */
+  const firstField = spec.columns[0].field;
+  const strOf = v => (v===null || v===undefined) ? '' : String(v);
+  rows.sort((a,b)=>{
+    const av = strOf(a[firstField]), bv = strOf(b[firstField]);
+    return av<bv ? -1 : av>bv ? 1 : 0;
+  });
+  return rows;
 }
 function buildMarkdownExport(){
   const lines = [
     '# PPL Tracker export', '',
-    'Logged data from PPL Tracker, one Markdown table per collection. Deleted entries and internal ids are not included, and — marks a missing value.', '',
+    'Logged data from PPL Tracker, one Markdown table per collection, oldest first. Deleted entries and internal ids are not included, and — marks a missing value.', '',
     '- Generated: ' + new Date().toISOString(),
   ];
   Object.keys(COLLECTIONS).forEach(name=>{
@@ -3409,7 +3428,7 @@ function buildMarkdownExport(){
     } else {
       lines.push('| ' + spec.columns.map(mdHeader).join(' | ') + ' |');
       lines.push('| ' + spec.columns.map(()=>'---').join(' | ') + ' |');
-      rows.forEach(row=>{ lines.push('| ' + spec.columns.map(c=>mdCell(row[c.field])).join(' | ') + ' |'); });
+      rows.forEach(row=>{ lines.push('| ' + spec.columns.map(c=>mdCell(row[c.field], c)).join(' | ') + ' |'); });
     }
   });
   return lines.join('\n') + '\n';
@@ -3898,7 +3917,13 @@ function mdEscape(s){
   out = out.replace(/\\*\|/g, m => { const bs = m.slice(0, -1); return bs + bs + '\\|'; });
   return out;
 }
-function mdCell(v){
+function mdCell(v, col){
+  /* D-09: a column declaring zeroIsMissing writes — for a stored 0 (cardio's addCardio stores 0 for
+     whichever of minutes/distance Ian left blank). Every other column writes a real 0 as 0. */
+  if(col && col.zeroIsMissing===true){
+    if(typeof v==='number' && v===0) return '—';
+    if(typeof v==='string' && v.trim()!=='' && Number(v)===0) return '—';
+  }
   if(v===null || v===undefined) return '—';
   const raw = (typeof v==='object') ? JSON.stringify(v) : String(v);
   const esc = mdEscape(raw);
@@ -3952,7 +3977,7 @@ function collectionProblems(reg){
       let dupField = false, dupLabel = false;
       spec.columns.forEach((c,i)=>{
         if(!c || typeof c!=='object' || Array.isArray(c)){ p('columns['+i+'] must be an object'); return; }
-        Object.keys(c).forEach(k=>{ if(k!=='field' && k!=='label' && k!=='unit') p('columns['+i+'] has unknown key "'+k+'"'); });
+        Object.keys(c).forEach(k=>{ if(k!=='field' && k!=='label' && k!=='unit' && k!=='zeroIsMissing') p('columns['+i+'] has unknown key "'+k+'"'); });
         if(typeof c.field!=='string' || c.field===''){
           p('columns['+i+'].field must be a non-empty string');
         } else {
@@ -3965,6 +3990,7 @@ function collectionProblems(reg){
           if(seenLabels.has(c.label)) dupLabel = true; else seenLabels.add(c.label);
         }
         if('unit' in c && c.unit!=null && !validLabel(c.unit)) p('columns['+i+'].unit must be a non-empty string with no | or line break');
+        if('zeroIsMissing' in c && typeof c.zeroIsMissing!=='boolean') p('columns['+i+'].zeroIsMissing must be a boolean');
       });
       if(dupField) p('columns must not repeat a field');
       if(dupLabel) p('columns must not repeat a label');
