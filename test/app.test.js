@@ -1839,6 +1839,62 @@ console.log('\n── the registry refuses what would lose data (REG-05/REG-04/R
   problems = app.collectionProblems({ thing: spec });
   ok('registry: a columns list with a duplicate is refused', problems.length > 0, problems);
 
+  /* Task 2 (D-08/EXP-05): the column-object shape's own refusal rules, plus registry-level label
+     uniqueness across collections. */
+  spec = validListSpec(); spec.columns = ['date'];
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a column that is not an object is refused', problems.length > 0, problems);
+
+  spec = validListSpec(); spec.columns = [{label:'date'}];
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a column with no field is refused', problems.length > 0, problems);
+
+  spec = validListSpec(); spec.columns = [{field:'date'}];
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a column with no label is refused', problems.length > 0, problems);
+
+  ['id','mtime','deletedAt'].forEach(bad=>{
+    spec = validListSpec(); spec.columns = [{field:bad, label:bad}];
+    problems = app.collectionProblems({ thing: spec });
+    ok('registry: a column declaring field '+bad+' is refused, naming it (EXP-05)',
+       problems.length > 0 && problems.some(p=>p.includes(bad)), problems);
+  });
+
+  spec = validListSpec(); spec.columns = [{field:'date', label:'date', lable:'x'}];
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: an unknown column key is refused and named',
+     problems.length > 0 && problems.some(p=>p.includes('lable')), problems);
+
+  spec = validListSpec(); spec.columns = [{field:'date', label:'date', unit:''}];
+  let unitProblems1 = app.collectionProblems({ thing: spec });
+  spec = validListSpec(); spec.columns = [{field:'date', label:'date', unit:5}];
+  let unitProblems2 = app.collectionProblems({ thing: spec });
+  ok('registry: a column unit that is empty or not a string is refused',
+     unitProblems1.length > 0 && unitProblems2.length > 0, { unitProblems1, unitProblems2 });
+
+  spec = validListSpec(); spec.label = 'A|B';
+  let labelProblems1 = app.collectionProblems({ thing: spec });
+  spec = validListSpec(); spec.columns = [{field:'date', label:'da\nte'}];
+  let labelProblems2 = app.collectionProblems({ thing: spec });
+  ok('registry: a label holding | or a line break is refused',
+     labelProblems1.length > 0 && labelProblems2.length > 0, { labelProblems1, labelProblems2 });
+
+  spec = validListSpec(); delete spec.label;
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: a collection with no label is refused', problems.length > 0, problems);
+
+  spec = validListSpec(); spec.columns = [{field:'date', label:'date'},{field:'value', label:'date'}];
+  problems = app.collectionProblems({ thing: spec });
+  ok('registry: two columns repeating a label are refused', problems.length > 0, problems);
+
+  problems = app.collectionProblems({
+    a: (()=>{ const s = validListSpec(); s.label = 'Same'; return s; })(),
+    b: (()=>{ const s = validMapSpec(); s.label = 'Same'; return s; })(),
+  });
+  ok('registry: two collections sharing a label are refused, naming both',
+     problems.some(p=>p.startsWith('a:') && p.includes('Same')) && problems.some(p=>p.startsWith('b:') && p.includes('Same')),
+     problems);
+
   spec = validMapSpec(); delete spec.format;
   problems = app.collectionProblems({ thing: spec });
   ok('registry: a map with no format is refused', problems.length > 0, problems);
@@ -2322,6 +2378,96 @@ let exportResult;
   ok('export: the JSON backup still downloads ppl-backup-2026-08-07.json and records lastBackupAt (EXP-01)',
      newClicks.length===1 && newClicks[0].download==='ppl-backup-2026-08-07.json' && typeof X.DB.lastBackupAt==='number',
      { newClicks, lastBackupAt: X.DB.lastBackupAt });
+}
+
+/* Task 2 (EXP-02): a probe list and a probe map declared by source transform (the SLEEP-05 `probe`
+   instance) each export their own section with no exporter edit. Set probe.DB explicitly so this
+   proof does not depend on whatever the SLEEP-05 block last left it as. */
+{
+  probe.DB = Object.assign(probe.blank(), {
+    probeList: [
+      { id:'p1', date:'2026-08-01', value:1, mtime:1 },
+      { id:'p2', date:'2026-08-02', value:2, mtime:1, deletedAt:5 },
+    ],
+    probeMap: { '2026-08-03': { a:true } },
+  });
+  const sections = mdSections(probe.buildMarkdownExport());
+  const list = sections['Probe list'];
+  const map = sections['Probe map'];
+  ok('export: a probe collection declared in one line exports its own section with no exporter edit (EXP-02)',
+     !!list && !list.empty && list.rows.length === 1 && JSON.stringify(list.rows[0]) === JSON.stringify(['2026-08-01','1']),
+     list);
+  ok('export: the probe\'s mass column is labelled from DB.unit and its deleted row is absent (EXP-02/EXP-04)',
+     !!list && JSON.stringify(list.header) === JSON.stringify(['date','value (lb)']) && !list.rows.some(r=>r[0]==='2026-08-02'),
+     list);
+  ok('export: a probe map exports its own section (EXP-02)',
+     !!map && !map.empty && map.rows.length === 1 && map.rows[0][0] === '2026-08-03',
+     map);
+
+  const headings = Object.keys(sections);
+  const expectedOrder = Object.keys(probe.COLLECTIONS).map(n=>probe.COLLECTIONS[n].label);
+  ok('export: sections follow COLLECTIONS order (D-12)',
+     JSON.stringify(headings) === JSON.stringify(expectedOrder) && headings[0]==='Probe list' && headings[1]==='Probe map',
+     headings);
+}
+
+{
+  const fresh = loadApp(APP_PATH);
+  fresh.DB = fresh.blank();
+  let threw = null, text;
+  try { text = fresh.buildMarkdownExport(); } catch(e){ threw = e; }
+  const sections = threw ? {} : mdSections(text);
+  const headings = Object.keys(sections);
+  ok('export: a fresh install exports every section as No entries (D-06)',
+     !threw && headings.length === Object.keys(app.COLLECTIONS).length && headings.every(h=>sections[h].empty),
+     { threw: threw && threw.message, count: headings.length });
+}
+
+{
+  const sections = mdSections(X.buildMarkdownExport());
+  const mobility = sections['Mobility'];
+  const lawn = sections['Lawn'];
+  ok('export: Mobility and Lawn share dayFlagRows but export as two sections (EXP-02 adjacency)',
+     !!mobility && !!lawn && mobility.rows.length === 1 && lawn.rows.length === 2,
+     { mobility, lawn });
+}
+
+{
+  const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const collectionNames = Object.keys(app.COLLECTIONS);
+  const liveWrappers = ['liveSessions','liveWeights','livePetWeights','liveCardio','liveIdeas','liveTodos','liveHobbyLog'];
+  const bad = [];
+  EXPORTER_FNS.forEach(name=>{
+    const src = stripComments(app[name].toString());
+    collectionNames.forEach(cn=>{ if(new RegExp('\\b'+cn+'\\b').test(src)) bad.push(name+':'+cn); });
+    liveWrappers.forEach(w=>{ if(src.indexOf(w)>=0) bad.push(name+':'+w); });
+    if(/['"]lb['"]/.test(src)) bad.push(name+':lb');
+    if(/['"]kg['"]/.test(src)) bad.push(name+':kg');
+    if(/['"]km['"]/.test(src)) bad.push(name+':km');
+    if(/\bfmtDate\b/.test(src)) bad.push(name+':fmtDate');
+    if(/\bkmToDisp\b/.test(src)) bad.push(name+':kmToDisp');
+    if(/\besc\(/.test(src)) bad.push(name+':esc(');
+  });
+  ok('export: no exporter function names a collection, a unit, a live wrapper, fmtDate, kmToDisp or esc (EXP-02)',
+     bad.length === 0, bad);
+}
+
+{
+  const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const forbidden = ['save(','saveLocal(','touch(','lastBackupAt','backupSnoozeAt','fetch(','firebase','pushNow','runTransaction'];
+  const bad = [];
+  EXPORTER_FNS.forEach(name=>{
+    const src = stripComments(app[name].toString());
+    forbidden.forEach(tok=>{ if(src.indexOf(tok)>=0) bad.push(name+':'+tok); });
+  });
+  ok('export: no exporter function persists, touches backup bookkeeping or reaches the network',
+     bad.length === 0, bad);
+}
+
+{
+  const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  ok('export: exportRows reads lists through liveOf (EXP-04)',
+     stripComments(app.exportRows.toString()).indexOf('liveOf(') >= 0);
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
