@@ -123,7 +123,8 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'liveOf','liveSessions','liveCardio','liveIdeas','liveTodos','liveHobbyLog','softDelete',
   'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy',
   'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections', 'ensureCollectionDefaults',
-  'sleepUid', 'addSleep', 'removeSleep', 'viewSleep'];
+  'sleepUid', 'addSleep', 'removeSleep', 'viewSleep',
+  'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -1497,8 +1498,8 @@ console.log('\n── SLEEP-05: a collection declared in one line is picked up e
    proof boots a FRESH instance from a transformed source rather than migrating one: the point is
    that blank/liveOf/validateBackup/mergeDB/mergeCollections pick the two probes up from their
    declaration alone, with no line changed in any of the five. */
-const PROBE_LIST_LINE = "  probeList:{ kind:'list', key:'id', sortBy:'date', merge:'union', soft:true, required:false, columns:['date','value'] },";
-const PROBE_MAP_LINE  = "  probeMap:{ kind:'map', merge:'replace-whole', soft:false, required:false, explicitFalse:true, columns:['date','item','done'], format:dayFlagRows },";
+const PROBE_LIST_LINE = "  probeList:{ kind:'list', key:'id', sortBy:'date', merge:'union', soft:true, required:false, label:'Probe list', columns:[{field:'date',label:'date'},{field:'value',label:'value',unit:'mass'}] },";
+const PROBE_MAP_LINE  = "  probeMap:{ kind:'map', merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Probe map', columns:[{field:'date',label:'date'},{field:'item',label:'item'},{field:'done',label:'done'}], format:dayFlagRows },";
 const probeTransform = code => code.replace('const COLLECTIONS = {', 'const COLLECTIONS = {\n' + PROBE_LIST_LINE + '\n' + PROBE_MAP_LINE);
 const probe = loadApp(APP_PATH, null, { transform: probeTransform });
 
@@ -1774,8 +1775,8 @@ console.log('\n── COLLECTIONS sits where module-eval can reach it (REG-02/03
    references off `app` where a format or key function is needed — never re-declaring them here. */
 console.log('\n── the registry refuses what would lose data (REG-05/REG-04/REG-17/REG-11) ──');
 {
-  const validListSpec = () => ({ kind:'list', key:'id', merge:'union', soft:true, required:false, columns:['id'] });
-  const validMapSpec = () => ({ kind:'map', merge:'line-union', soft:false, required:false, explicitFalse:false, columns:['date','entry'], format:app.journalRows });
+  const validListSpec = () => ({ kind:'list', key:'id', merge:'union', soft:true, required:false, label:'Thing', columns:[{field:'date',label:'date'}] });
+  const validMapSpec = () => ({ kind:'map', merge:'line-union', soft:false, required:false, explicitFalse:false, label:'Thing', columns:[{field:'date',label:'date'},{field:'entry',label:'entry'}], format:app.journalRows });
 
   let spec = validMapSpec(); delete spec.merge;
   let problems = app.collectionProblems({ thing: spec });
@@ -1834,7 +1835,7 @@ console.log('\n── the registry refuses what would lose data (REG-05/REG-04/R
   problems = app.collectionProblems({ thing: spec });
   ok('registry: an empty columns list is refused', problems.length > 0, problems);
 
-  spec = validListSpec(); spec.columns = ['id','id'];
+  spec = validListSpec(); spec.columns = [{field:'date',label:'date'},{field:'date',label:'date'}];
   problems = app.collectionProblems({ thing: spec });
   ok('registry: a columns list with a duplicate is refused', problems.length > 0, problems);
 
@@ -1892,8 +1893,8 @@ console.log('\n── the registry refuses what would lose data (REG-05/REG-04/R
   };
   const sessRows = app.sessionRows(sessionFixture);
   ok('rows: sessionRows on two entries plus one extra gives 4 rows', sessRows.length === 4, sessRows.length);
-  ok('rows: every row\'s keys equal COLLECTIONS.sessions.columns exactly',
-     sessRows.every(r => JSON.stringify(Object.keys(r)) === JSON.stringify(app.COLLECTIONS.sessions.columns)),
+  ok('rows: every row\'s keys equal the COLLECTIONS.sessions column fields, in order',
+     sessRows.every(r => JSON.stringify(Object.keys(r)) === JSON.stringify(app.COLLECTIONS.sessions.columns.map(c=>c.field))),
      sessRows.map(r=>Object.keys(r)));
   ok('rows: set numbers are 1, 2, 1, 1 and the forearms row comes last',
      JSON.stringify(sessRows.map(r=>r.set)) === JSON.stringify([1,2,1,1]) && sessRows[3].exercise === 'Wrist curls',
@@ -2183,6 +2184,144 @@ console.log('\n── a malformed draft must not take out the Log tab ──');
   appEl.innerHTML = ''; uiFull.go('today');
   const everyScreen = SCREENS.map(([, tab, sub]) => { appEl.innerHTML=''; uiFull.go(tab); if(sub) uiFull.setSub(sub); return appEl.innerHTML; }).join('');
   ok('a user string never reaches the page as live markup', !/<script>/i.test(everyScreen));
+}
+
+console.log('\n── export for Claude (EXP-01…EXP-08) ──');
+/* mdCells splits one rendered table line the way a GFM parser does: a backslash consumes itself and
+   the next character into the current cell, and an unconsumed `|` ends a cell. The blank text before
+   the first pipe and after the last one is dropped. Escapes are kept raw (not decoded), since the
+   point is to count cells and read exact text, not to re-render Markdown. */
+function mdCells(line){
+  const cells = [];
+  let cur = '';
+  for(let i=0;i<line.length;i++){
+    const ch = line[i];
+    if(ch==='\\' && i+1<line.length){ cur += ch+line[i+1]; i++; }
+    else if(ch==='|'){ cells.push(cur); cur=''; }
+    else cur += ch;
+  }
+  cells.push(cur);
+  if(cells.length && cells[0].trim()==='') cells.shift();
+  if(cells.length && cells[cells.length-1].trim()==='') cells.pop();
+  return cells.map(c=>c.trim());
+}
+/* mdSections maps each "## " heading to { empty, header, rows }, reading the block that follows it
+   exactly the way buildMarkdownExport() writes it: one blank line, then either "No entries" or a
+   header line, a delimiter line, and one line per row, up to the next blank line. */
+function mdSections(md){
+  const lines = md.split('\n');
+  const sections = {};
+  let i = 0;
+  while(i < lines.length){
+    if(lines[i].startsWith('## ')){
+      const heading = lines[i].slice(3).trim();
+      let j = i+1;
+      while(j < lines.length && lines[j].trim()==='') j++;
+      if(j < lines.length && lines[j].trim()==='No entries'){
+        sections[heading] = { empty:true, header:null, rows:[] };
+        i = j+1; continue;
+      }
+      const header = mdCells(lines[j]);
+      let k = j+2; // skip the header line and the delimiter line
+      const rows = [];
+      while(k < lines.length && lines[k].trim()!==''){ rows.push(mdCells(lines[k])); k++; }
+      sections[heading] = { empty:false, header, rows };
+      i = k; continue;
+    }
+    i++;
+  }
+  return sections;
+}
+const EXPORTER_FNS = ['mdEscape','mdCell','mdHeader','exportRows','buildMarkdownExport','exportMarkdown','downloadMarkdown'];
+
+const X = loadApp(APP_PATH);
+X.DB = populatedDB(X);
+const xClicks = [];
+X.__sandbox.document.createElement = () => {
+  const node = { href:'', download:'', click(){ xClicks.push({ href: node.href, download: node.download }); } };
+  return node;
+};
+const xBlobs = [];
+X.__sandbox.Blob = function(parts, opts){ this.parts = parts; this.type = opts && opts.type; xBlobs.push(this); };
+
+{
+  const html = X.viewData();
+  const jsonIdx = html.indexOf('Export backup (.json)');
+  const claudeIdx = html.indexOf('Export for Claude (.md)');
+  const importIdx = html.indexOf('Import backup');
+  const jsonBtnEnd = jsonIdx >= 0 ? html.indexOf('</button>', jsonIdx) : -1;
+  // Between the JSON button's close and the Claude button's own text sits exactly one <button — the
+  // Claude button's own opening tag. A second one would mean another button sits in between.
+  const between = jsonBtnEnd >= 0 && claudeIdx >= 0 ? html.slice(jsonBtnEnd, claudeIdx) : '';
+  const buttonTagsBetween = (between.match(/<button/g) || []).length;
+  const onclickCount = (X.__src.match(/onclick="exportMarkdown\(\)"/g) || []).length;
+  ok('export: Settings shows Export for Claude (.md) directly below Export backup (.json) (D-02)',
+     jsonIdx >= 0 && claudeIdx > jsonIdx && importIdx > claudeIdx && buttonTagsBetween === 1 && onclickCount === 1,
+     { jsonIdx, claudeIdx, importIdx, buttonTagsBetween, onclickCount });
+}
+
+let exportResult;
+{
+  const before = xClicks.length;
+  exportResult = X.exportMarkdown();
+  const newClicks = xClicks.slice(before);
+  const blob = xBlobs[xBlobs.length-1];
+  ok('export: tapping it downloads ppl-export-2026-08-07.md as text/markdown (D-03/EXP-01)',
+     exportResult==='download' && newClicks.length===1 && newClicks[0].download==='ppl-export-2026-08-07.md' && !!blob && blob.type==='text/markdown',
+     { exportResult, newClicks, blobType: blob && blob.type });
+}
+
+{
+  const blob = xBlobs[xBlobs.length-1];
+  const downloadedText = blob && blob.parts && blob.parts[0];
+  ok('export: the downloaded text is exactly buildMarkdownExport()', downloadedText === X.buildMarkdownExport(),
+     downloadedText && downloadedText.slice(0, 80));
+}
+
+{
+  const text = X.buildMarkdownExport();
+  ok('export: the file opens with its title and a Generated timestamp',
+     text.startsWith('# PPL Tracker export\n') && text.indexOf('\n- Generated: 2026-08-07T17:00:00.000Z\n') >= 0,
+     text.slice(0, 120));
+}
+
+{
+  const sections = mdSections(X.buildMarkdownExport());
+  const workouts = sections['Workouts'];
+  ok('export: Workouts header reads date | workout | exercise | set | weight (lb) | reps (D-08/D-10)',
+     !!workouts && JSON.stringify(workouts.header) === JSON.stringify(['date','workout','exercise','set','weight (lb)','reps']),
+     workouts && workouts.header);
+
+  const cardio = sections['Cardio'];
+  ok('export: Cardio header reads date | type | minutes | distance (km) | note (D-08)',
+     !!cardio && JSON.stringify(cardio.header) === JSON.stringify(['date','type','minutes','distance (km)','note']),
+     cardio && cardio.header);
+
+  const weighins = sections['Weigh-ins'];
+  const wRow = weighins && weighins.rows.find(r=>r[0]===dayOff(-9));
+  ok('export: a live weigh-in reaches Weigh-ins through liveOf (EXP-04)',
+     !!wRow && wRow[1]==='196.4', wRow);
+
+  ok('export: the soft-deleted LEGS 2 session is absent (EXP-04)',
+     !!workouts && !workouts.rows.some(r=>r[1]==='LEGS 2'), workouts && workouts.rows);
+
+  const badRows = [];
+  Object.keys(sections).forEach(label=>{
+    const sec = sections[label];
+    if(sec.empty) return;
+    sec.rows.forEach((r,i)=>{ if(r.length !== sec.header.length) badRows.push(label+':'+i); });
+  });
+  ok('export: every table row has its header\'s cell count, even with the hostile idea text (EXP-07)',
+     badRows.length===0, badRows);
+}
+
+{
+  const before = xClicks.length;
+  X.exportData();
+  const newClicks = xClicks.slice(before);
+  ok('export: the JSON backup still downloads ppl-backup-2026-08-07.json and records lastBackupAt (EXP-01)',
+     newClicks.length===1 && newClicks[0].download==='ppl-backup-2026-08-07.json' && typeof X.DB.lastBackupAt==='number',
+     { newClicks, lastBackupAt: X.DB.lastBackupAt });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

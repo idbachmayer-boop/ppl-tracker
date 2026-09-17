@@ -482,26 +482,29 @@ const PRODUCTIVITY_DEFAULT = ["🧹 Clean up crafting station","🗂️ Clean of
    arrow, never a forward const.
    blank() may read only `kind` at module-eval time (see the placement comments on migration 13 and
    migration 17 above, and the one on `let migrationRan` below — this is the same trap). Everything
-   else here (`key`, `sortBy`, `merge`, `columns`, `format`) is read later, by code that runs after
-   boot, never during it.
+   else here (`key`, `sortBy`, `merge`, `label`, `columns`, `format`) is read later, by code that runs
+   after boot, never during it.
    cardio, ideas, todos and hobbyLog deliberately have no `sortBy` because the hand-written merge
-   never sorted them — declaring one now would change stored order, which this plan must not do. */
+   never sorted them — declaring one now would change stored order, which this plan must not do.
+   Column contract (Phase 2, D-08): `columns[0]` is always the row's ISO date, which the export sorts
+   by and builds its date range from. A column's `unit` is either the kind 'mass', resolved to
+   DB.unit when the export runs, or a literal unit string such as 'km'. */
 const COLLECTIONS = {
-  sessions:   { kind:'list', key:sessKey,   sortBy:sessionSort, merge:'union', soft:true,  required:true,  columns:['date','workout','exercise','set','weight','reps'], format:sessionRows },
-  weights:    { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:true,  columns:['date','value'] },
-  petWeights: { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:false, columns:['date','value'] },
-  cardio:     { kind:'list', key:cardioKey, merge:'union', soft:true, required:false, columns:['date','type','minutes','distanceKm','note'] },
-  ideas:      { kind:'list', key:ideaKey,   merge:'union', soft:true, required:false, columns:['date','text','done'] },
-  todos:      { kind:'list', key:todoKey,   merge:'union', soft:true, required:false, columns:['created','text'] },
-  hobbyLog:   { kind:'list', key:hobbyKey,  merge:'union', soft:true, required:false, columns:['date','item','cat'], format:hobbyRows },
-  journal:    { kind:'map',  merge:'line-union', soft:false, required:false, explicitFalse:false, columns:['date','entry'], format:journalRows },
+  sessions:   { kind:'list', key:sessKey,   sortBy:sessionSort, merge:'union', soft:true,  required:true,  label:'Workouts', columns:[{field:'date',label:'date'},{field:'workout',label:'workout'},{field:'exercise',label:'exercise'},{field:'set',label:'set'},{field:'weight',label:'weight',unit:'mass'},{field:'reps',label:'reps'}], format:sessionRows },
+  weights:    { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:true,  label:'Weigh-ins', columns:[{field:'date',label:'date'},{field:'value',label:'weight',unit:'mass'}] },
+  petWeights: { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:false, label:'Pet weigh-ins', columns:[{field:'date',label:'date'},{field:'value',label:'weight',unit:'mass'}] },
+  cardio:     { kind:'list', key:cardioKey, merge:'union', soft:true, required:false, label:'Cardio', columns:[{field:'date',label:'date'},{field:'type',label:'type'},{field:'minutes',label:'minutes'},{field:'distanceKm',label:'distance',unit:'km'},{field:'note',label:'note'}] },
+  ideas:      { kind:'list', key:ideaKey,   merge:'union', soft:true, required:false, label:'Ideas', columns:[{field:'date',label:'date'},{field:'text',label:'idea'},{field:'done',label:'done'}] },
+  todos:      { kind:'list', key:todoKey,   merge:'union', soft:true, required:false, label:'Todos', columns:[{field:'created',label:'created'},{field:'text',label:'todo'}] },
+  hobbyLog:   { kind:'list', key:hobbyKey,  merge:'union', soft:true, required:false, label:'Hobbies & chores', columns:[{field:'date',label:'date'},{field:'item',label:'item'},{field:'cat',label:'category'}], format:hobbyRows },
+  journal:    { kind:'map',  merge:'line-union', soft:false, required:false, explicitFalse:false, label:'Journal', columns:[{field:'date',label:'date'},{field:'entry',label:'entry'}], format:journalRows },
   /* mobilityLog / lawnLog: take the WHOLE inner object from the newer side. Do NOT union inner
      keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
-  mobilityLog:{ kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, columns:['date','item','done'], format:dayFlagRows },
-  lawnLog:    { kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, columns:['date','item','done'], format:dayFlagRows },
+  mobilityLog:{ kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Mobility', columns:[{field:'date',label:'date'},{field:'item',label:'stretch'},{field:'done',label:'done'}], format:dayFlagRows },
+  lawnLog:    { kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Lawn', columns:[{field:'date',label:'date'},{field:'item',label:'task'},{field:'done',label:'done'}], format:dayFlagRows },
   /* sleep (F1/SLEEP-01): last entry on purpose — keeps every existing collection's validation
      precedence and merge order unchanged. No format: sleep rows are already flat. */
-  sleep:      { kind:'list', key:'id',        sortBy:'date',      merge:'union', soft:true,  required:false, columns:['date','hours','quality','note'] },
+  sleep:      { kind:'list', key:'id',        sortBy:'date',      merge:'union', soft:true,  required:false, label:'Sleep', columns:[{field:'date',label:'date'},{field:'hours',label:'hours'},{field:'quality',label:'quality (1-5)'},{field:'note',label:'note'}] },
 };
 {
   const problems = collectionProblems(COLLECTIONS);
@@ -3349,6 +3352,7 @@ function viewData(){
     <div class="card">
       <p class="muted" style="margin-bottom:12px">A downloadable copy of your data — handy as an extra safety net even with Cloud Sync on.</p>
       <button class="btn btn-block" onclick="exportData()">${ph('download-simple')}Export backup (.json)</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="exportMarkdown()">${ph('arrow-square-out')}Export for Claude (.md)</button>
       <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="document.getElementById('imp').click()">${ph('upload-simple')}Import backup</button>
       <input type="file" id="imp" accept="application/json" class="hidden" onchange="importData(this)">
     </div>
@@ -3363,6 +3367,64 @@ function exportData(){
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=`ppl-backup-${todayISO()}.json`; a.click();
   DB.lastBackupAt=Date.now(); DB.backupSnoozeAt=null; save();
+}
+/* ── the other export (Phase 2): a read-only Markdown view of DB, derived from COLLECTIONS and the
+   same live read path the views use (liveOf / DB). It never persists — no save/saveLocal/touch, and
+   no lastBackupAt or backupSnoozeAt — because a Markdown file is not a backup, and exporting must
+   never make this device look newest to sync (CLAUDE.md's stale-device incident class). */
+function exportRows(name){
+  const spec = COLLECTIONS[name];
+  const outputs = [];
+  if(spec.kind==='list'){
+    liveOf(name).forEach(item=>{
+      if(!item || typeof item!=='object') return;
+      const out = typeof spec.format==='function' ? spec.format(item) : [item];
+      if(Array.isArray(out)) outputs.push(...out);
+    });
+  } else {
+    const obj = (DB[name] && typeof DB[name]==='object' && !Array.isArray(DB[name])) ? DB[name] : {};
+    Object.keys(obj).sort().forEach(k=>{
+      const out = spec.format(k, obj[k]);
+      if(Array.isArray(out)) outputs.push(...out);
+    });
+  }
+  return outputs.filter(item=>item && typeof item==='object').map(item=>{
+    const row = {};
+    spec.columns.forEach(c=>{ row[c.field] = item[c.field]; });
+    return row;
+  });
+}
+function buildMarkdownExport(){
+  const lines = [
+    '# PPL Tracker export', '',
+    'Logged data from PPL Tracker, one Markdown table per collection. Deleted entries and internal ids are not included, and — marks a missing value.', '',
+    '- Generated: ' + new Date().toISOString(),
+  ];
+  Object.keys(COLLECTIONS).forEach(name=>{
+    const spec = COLLECTIONS[name];
+    const rows = exportRows(name);
+    lines.push('', '## ' + mdEscape(spec.label), '');
+    if(rows.length===0){
+      lines.push('No entries');
+    } else {
+      lines.push('| ' + spec.columns.map(mdHeader).join(' | ') + ' |');
+      lines.push('| ' + spec.columns.map(()=>'---').join(' | ') + ' |');
+      rows.forEach(row=>{ lines.push('| ' + spec.columns.map(c=>mdCell(row[c.field])).join(' | ') + ' |'); });
+    }
+  });
+  return lines.join('\n') + '\n';
+}
+function downloadMarkdown(text, filename){
+  const blob = new Blob([text], {type:'text/markdown'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = filename; a.click();
+  return true;
+}
+function exportMarkdown(){
+  const text = buildMarkdownExport();
+  const filename = 'ppl-export-' + todayISO() + '.md';
+  downloadMarkdown(text, filename);
+  return 'download';
 }
 /* Import is the one place a file you didn't write gets to become your data, and the old check was
    "has a sessions array and a weights array" — a truncated download or the wrong JSON entirely
@@ -3816,6 +3878,27 @@ function dayFlagRows(date, obj){
   if(!obj || typeof obj!=='object' || Array.isArray(obj)) return [];
   return Object.keys(obj).map(k=>({ date, item:k, done:obj[k] }));
 }
+/* ── Markdown export presentation (Phase 2) ──
+   Never esc() here: HTML entities (&lt; etc.) would corrupt plain text in a file Claude reads as
+   Markdown, not HTML (RESEARCH Pitfall 1). Dates pass through as stored ISO strings and never
+   through fmtDate. The em dash (—) is the one missing-value marker (D-09). */
+function mdEscape(s){
+  let out = String(s).trim();
+  out = out.replace(/\s*[\r\n\u2028\u2029]\s*/g, '<br>');
+  out = out.replace(/\\*\|/g, m => { const bs = m.slice(0, -1); return bs + bs + '\\|'; });
+  return out;
+}
+function mdCell(v){
+  if(v===null || v===undefined) return '—';
+  const raw = (typeof v==='object') ? JSON.stringify(v) : String(v);
+  const esc = mdEscape(raw);
+  return esc==='' ? '—' : esc;
+}
+function mdHeader(col){
+  const unit = col.unit==='mass' ? DB.unit : col.unit;
+  if(typeof unit==='string' && unit.trim()!=='') return mdEscape(col.label+' ('+unit.trim()+')');
+  return mdEscape(col.label);
+}
 /* ── COLLECTIONS registry contracts (REG-01 through REG-05, REG-17) ──
    collectionProblems(reg) enforces the shape rules every COLLECTIONS entry must satisfy. Lives here,
    next to the promoted key functions, so every registry helper is in one place. */
@@ -3824,7 +3907,11 @@ function collectionProblems(reg){
   if(!reg || typeof reg!=='object' || Array.isArray(reg) || Object.keys(reg).length===0){
     return ['registry: empty or not an object'];
   }
-  const ALLOWED = ['kind','key','sortBy','merge','soft','required','explicitFalse','columns','format'];
+  const ALLOWED = ['kind','key','sortBy','merge','soft','required','explicitFalse','label','columns','format'];
+  /* D-08/EXP-05: a label (collection-level or column-level) is a non-empty (after trim) string that
+     can never break a Markdown table row or column list — no pipe, no line break. */
+  const LINEBREAK_RE = /[\r\n\u2028\u2029]/;
+  const validLabel = s => typeof s==='string' && s.trim()!=='' && s.indexOf('|')<0 && !LINEBREAK_RE.test(s);
   Object.keys(reg).forEach(name=>{
     const spec = reg[name] && typeof reg[name]==='object' ? reg[name] : {};
     const p = msg => problems.push(name+': '+msg);
@@ -3847,11 +3934,44 @@ function collectionProblems(reg){
       if(typeof spec.explicitFalse!=='boolean') p('a map must declare explicitFalse as a boolean');
       if(spec.explicitFalse===true && spec.merge!=='replace-whole') p('explicitFalse true is allowed only with merge "replace-whole"');
     }
-    if(!Array.isArray(spec.columns) || spec.columns.length===0 || spec.columns.some(c=>typeof c!=='string' || c==='') || new Set(spec.columns).size!==spec.columns.length){
-      p('columns must be a non-empty array of distinct, non-empty strings');
+    if(!validLabel(spec.label)) p('label must be a non-empty string with no | or line break');
+    if(!Array.isArray(spec.columns) || spec.columns.length===0){
+      p('columns must be a non-empty array of column objects');
+    } else {
+      const seenFields = new Set(), seenLabels = new Set();
+      let dupField = false, dupLabel = false;
+      spec.columns.forEach((c,i)=>{
+        if(!c || typeof c!=='object' || Array.isArray(c)){ p('columns['+i+'] must be an object'); return; }
+        Object.keys(c).forEach(k=>{ if(k!=='field' && k!=='label' && k!=='unit') p('columns['+i+'] has unknown key "'+k+'"'); });
+        if(typeof c.field!=='string' || c.field===''){
+          p('columns['+i+'].field must be a non-empty string');
+        } else {
+          if(c.field==='id' || c.field==='mtime' || c.field==='deletedAt') p('columns['+i+'].field "'+c.field+'" is internal and must never be exported');
+          if(seenFields.has(c.field)) dupField = true; else seenFields.add(c.field);
+        }
+        if(!validLabel(c.label)){
+          p('columns['+i+'].label must be a non-empty string with no | or line break');
+        } else {
+          if(seenLabels.has(c.label)) dupLabel = true; else seenLabels.add(c.label);
+        }
+        if('unit' in c && c.unit!=null && !validLabel(c.unit)) p('columns['+i+'].unit must be a non-empty string with no | or line break');
+      });
+      if(dupField) p('columns must not repeat a field');
+      if(dupLabel) p('columns must not repeat a label');
     }
     if('format' in spec && spec.format!=null && typeof spec.format!=='function') p('format must be a function');
     if(spec.kind==='map' && typeof spec.format!=='function') p('a map must declare format');
+  });
+  /* Registry-level: two collections must never share a label — it is the export's section heading,
+     and a duplicate would merge two collections' data under one "## " in the file. */
+  const labelOwners = {};
+  Object.keys(reg).forEach(name=>{
+    const spec = reg[name] && typeof reg[name]==='object' ? reg[name] : {};
+    if(typeof spec.label==='string') (labelOwners[spec.label] = labelOwners[spec.label] || []).push(name);
+  });
+  Object.keys(labelOwners).forEach(label=>{
+    const owners = labelOwners[label];
+    if(owners.length>1) owners.forEach(name=>{ problems.push(name+': label "'+label+'" is also used by '+owners.filter(n=>n!==name).join(', ')); });
   });
   return problems;
 }
