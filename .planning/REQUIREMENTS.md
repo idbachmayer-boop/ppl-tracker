@@ -44,12 +44,12 @@ The eleventh collection — the proof that REG paid off.
 
 Clean data out of the app and into Claude Desktop.
 
-- [ ] **EXP-01**: Ian can export a Markdown file separate from, and alongside, the existing JSON backup
-- [ ] **EXP-02**: The export is derived from `COLLECTIONS`, not hand-written per collection
+- [x] **EXP-01**: Ian can export a Markdown file separate from, and alongside, the existing JSON backup
+- [x] **EXP-02**: The export is derived from `COLLECTIONS`, not hand-written per collection
 - [ ] **EXP-03**: Workouts export as flat rows — one row per set, carrying date, workout, exercise, set number, weight and reps — not nested
-- [ ] **EXP-04**: Every collection's rows are read through the same `liveX()` path the views use, never raw `DB[key]`
+- [x] **EXP-04**: Every collection's rows are read through the same `liveX()` path the views use, never raw `DB[key]`
 - [ ] **EXP-05**: Soft-deleted rows and internal ids are absent from the export
-- [ ] **EXP-06**: Dates are ISO format, units appear once in the column header (read from `DB.unit`, not hardcoded), and missing values use one consistent explicit marker rather than a blank or a silent zero
+- [x] **EXP-06**: Dates are ISO format, units appear once in the column header (read from `DB.unit`, not hardcoded), and missing values use one consistent explicit marker rather than a blank or a silent zero
 - [ ] **EXP-07**: Cell values are escaped for Markdown tables — pipes escaped, embedded newlines replaced, whitespace trimmed — so no logged text can break the table
 - [ ] **EXP-08**: The file opens with a short header block stating what it is, when it was generated, and the date range covered, so a truncated file cannot be mistaken for complete history
 

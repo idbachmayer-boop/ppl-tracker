@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 2
-current_phase_name: Export for Claude
+current_phase: 02
+current_phase_name: export-for-claude
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-09-16T13:05:21.626Z"
-last_activity: 2026-09-14
-last_activity_desc: Phase 01 complete, transitioned to Phase 2
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-09-17T12:49:02.758Z"
+last_activity: 2026-09-17
+last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 10
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-10)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 01 — F1 — The COLLECTIONS Registry
+**Current focus:** Phase 02 — export-for-claude
 
 ## Current Position
 
-Phase: 2 — Export for Claude
-Plan: Not started
+Phase: 02 (export-for-claude) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-09-14 — Phase 01 complete, transitioned to Phase 2
+Last activity: 2026-09-17 — Phase 02 execution started
 
-Progress: [█████████░] 86%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [█████████░] 86%
 | Phase 01 P04 | ~50min | 2 tasks | 2 files |
 | Phase 01 P05 | ~50min | 3 tasks | 3 files |
 | Phase 01 P06 | ~10min | 2 tasks | 0 files |
+| Phase 02 P01 | 22min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,7 @@ Recent decisions affecting current work:
 - [Phase 1, plan 01-06]: REG-13's real-backup differential ran to completion over Ian's actual exported backup (225602 bytes, _schema 17) on 2026-09-14 — 30 real-backup PASS lines, 0 FAIL, suite at 653 passed / 0 failed / 0 skipped. Plan 01-07's legacy-function deletion precondition is now met.
 - [Phase 1, plan 01-05]: SLEEP-02's form conventions (date defaults to today; hours >0 and <=24 in 0.25 steps; quality 1–5 default 3; note optional and trimmed; multiple entries per date) confirmed by Ian at the Task 2 visual checkpoint. (Ian, 2026-09-12)
 - [Phase 1, plan 01-07]: Legacy-function deletion (REG-14, Task 2) DEFERRED — "keep for now". The precondition is met, but the ten `_legacy` twins stay until SCHEMA 18 has shipped and run on the phone for a few days. Task 1's 540 goldens are committed, so the differential outlives the legacy code whenever it goes. REG-14 holds: nothing was deleted early. (Ian, 2026-09-14)
+- [Phase ?]: [Phase 2, plan 02-01]: COLLECTIONS.columns promoted in place to {field,label,unit}[] rather than a parallel label/unit map (D-08); Task 1's collectionProblems() rewrite already satisfied every Task 2 behavior bullet, so Task 2 landed as test-only coverage.
 
 ### Pending Todos
 
@@ -120,6 +122,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-16T12:18:11.638Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-export-for-claude/02-CONTEXT.md
+Last session: 2026-09-17T12:49:02.743Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None
