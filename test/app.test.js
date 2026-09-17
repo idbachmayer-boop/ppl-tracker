@@ -124,7 +124,7 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy',
   'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections', 'ensureCollectionDefaults',
   'sleepUid', 'addSleep', 'removeSleep', 'viewSleep',
-  'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown'];
+  'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown', 'exportShareFailed'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -2321,7 +2321,7 @@ function mdSections(md){
   }
   return sections;
 }
-const EXPORTER_FNS = ['mdEscape','mdCell','mdHeader','exportRows','buildMarkdownExport','exportMarkdown','downloadMarkdown'];
+const EXPORTER_FNS = ['mdEscape','mdCell','mdHeader','exportRows','buildMarkdownExport','exportMarkdown','downloadMarkdown','exportShareFailed'];
 
 const X = loadApp(APP_PATH);
 X.DB = populatedDB(X);
@@ -2976,6 +2976,181 @@ if(!fs.existsSync(REAL_PATH)){
     });
     ok('real backup: every table row has its header\'s cell count', widthFails.length === 0, widthFails.length);
   }
+}
+
+/* Plan 02-03 Task 2 (D-01/D-03): the share sheet in front of the download, with a download
+   fallback everywhere else. Each scenario gets its own instance and its own navigator/File/Blob/
+   anchor stubs — the default sandbox (no File, no share) is left alone so the smoke draw, the
+   Task 1 tracer test above, and every other check keep the download-only environment they expect. */
+function shareEnv(a, opts){
+  opts = opts || {};
+  const clicks = [];
+  a.__sandbox.document.createElement = () => {
+    const node = { href:'', download:'', click(){ clicks.push({ href: node.href, download: node.download }); } };
+    return node;
+  };
+  const blobs = [];
+  a.__sandbox.Blob = function Blob(parts, o){ this.parts = parts; this.type = o && o.type; blobs.push(this); };
+  const files = [];
+  if(opts.file !== false){
+    a.__sandbox.File = function File(parts, name, o){ this.parts = parts; this.name = name; this.type = o && o.type; files.push(this); };
+  } else {
+    delete a.__sandbox.File;
+  }
+  const canShareCalls = [];
+  const shareCalls = [];
+  const nav = {};
+  if(opts.canShareFn !== false){
+    nav.canShare = data => { canShareCalls.push(data); return opts.canShare === true; };
+  }
+  if(opts.shareFn !== false){
+    nav.share = data => {
+      shareCalls.push(data);
+      if(opts.shareThrows) throw opts.shareThrows;
+      const rejection = opts.shareRejects;
+      return {
+        catch(fn){ if(rejection) fn(rejection); return this; },
+        then(onOk, onBad){ if(rejection){ if(onBad) onBad(rejection); } else if(onOk) onOk(); return this; },
+      };
+    };
+  }
+  a.__sandbox.navigator = nav;
+  return { clicks, blobs, files, canShareCalls, shareCalls };
+}
+
+{
+  const b1 = loadApp(APP_PATH);
+  b1.DB = populatedDB(b1);
+  const env = shareEnv(b1, { canShare:true });
+  const result = b1.exportMarkdown();
+  const file = env.files[env.files.length-1];
+  ok('export: with a file share sheet, tapping shares ppl-export-2026-08-07.md and downloads nothing (D-01/D-03)',
+     result==='share' && env.shareCalls.length===1 && env.shareCalls[0].files[0]===file &&
+     !!file && file.name==='ppl-export-2026-08-07.md' && file.type==='text/markdown' &&
+     file.parts.join('')===b1.buildMarkdownExport() && env.clicks.length===0,
+     { result, clicks: env.clicks.length, fileName: file && file.name });
+
+  ok('export: canShare is asked about the same file that is shared (D-01)',
+     env.canShareCalls.length===1 && env.canShareCalls[0].files[0]===file && env.shareCalls[0].files[0]===file,
+     { canShareCalls: env.canShareCalls.length, shareCalls: env.shareCalls.length });
+}
+
+{
+  const b2 = loadApp(APP_PATH);
+  b2.DB = populatedDB(b2);
+  const env = shareEnv(b2, { canShare:true, shareRejects:{ name:'AbortError' } });
+  b2.exportMarkdown();
+  const toastText = b2.__sandbox.document.getElementById('toast').textContent;
+  ok('export: cancelling the share sheet downloads nothing and shows no error (D-01)',
+     env.clicks.length===0 && toastText==='', { clicks: env.clicks.length, toastText });
+}
+
+{
+  const b3 = loadApp(APP_PATH);
+  b3.DB = populatedDB(b3);
+  const env = shareEnv(b3, { canShare:true, shareRejects:{ name:'NotAllowedError' } });
+  b3.exportMarkdown();
+  ok('export: any other share failure falls back to the download (D-01)',
+     env.clicks.length===1 && env.clicks[0].download==='ppl-export-2026-08-07.md',
+     env.clicks);
+}
+
+{
+  const b4 = loadApp(APP_PATH);
+  b4.DB = populatedDB(b4);
+  const env = shareEnv(b4, { canShare:true, shareThrows:new TypeError('nope') });
+  b4.exportMarkdown();
+  ok('export: a share call that throws falls back to the download (D-01)',
+     env.clicks.length===1 && env.clicks[0].download==='ppl-export-2026-08-07.md',
+     env.clicks);
+}
+
+{
+  const b5 = loadApp(APP_PATH);
+  b5.DB = populatedDB(b5);
+  const env = shareEnv(b5, { canShare:false });
+  const result = b5.exportMarkdown();
+  ok('export: canShare false goes straight to the download (D-01)',
+     result==='download' && env.shareCalls.length===0 && env.clicks.length===1,
+     { result, shareCalls: env.shareCalls.length, clicks: env.clicks.length });
+}
+
+{
+  const b6 = loadApp(APP_PATH);
+  b6.DB = populatedDB(b6);
+  const env = shareEnv(b6, { canShareFn:false });
+  const result = b6.exportMarkdown();
+  ok('export: no canShare goes straight to the download (D-01)',
+     result==='download' && env.shareCalls.length===0 && env.clicks.length===1, result);
+}
+
+{
+  const b7 = loadApp(APP_PATH);
+  b7.DB = populatedDB(b7);
+  const env = shareEnv(b7, { file:false, canShare:true });
+  const result = b7.exportMarkdown();
+  ok('export: no File constructor goes straight to the download (D-01)',
+     result==='download' && env.shareCalls.length===0, { result, shareCalls: env.shareCalls.length });
+}
+
+{
+  const scenarios = [
+    ['download', { canShare:false }],
+    ['share-success', { canShare:true }],
+    ['AbortError', { canShare:true, shareRejects:{ name:'AbortError' } }],
+    ['NotAllowedError', { canShare:true, shareRejects:{ name:'NotAllowedError' } }],
+  ];
+  const bad = [];
+  scenarios.forEach(([label, opts])=>{
+    const b = loadApp(APP_PATH);
+    b.DB = populatedDB(b);
+    b.__sandbox.localStorage.setItem('ppl_tracker_v1', JSON.stringify(b.DB));
+    shareEnv(b, opts);
+    const beforeDB = JSON.stringify(b.DB), beforeStored = JSON.stringify(b.__stored()), beforeBackup = b.DB.lastBackupAt;
+    b.exportMarkdown();
+    const afterDB = JSON.stringify(b.DB), afterStored = JSON.stringify(b.__stored()), afterBackup = b.DB.lastBackupAt;
+    if(beforeDB!==afterDB || beforeStored!==afterStored || beforeBackup!==afterBackup) bad.push(label);
+  });
+  ok('export: no export path writes DB, localStorage or lastBackupAt (EXP-01)', bad.length===0, bad);
+}
+
+{
+  const b9 = loadApp(APP_PATH);
+  b9.DB = populatedDB(b9);
+  const env = shareEnv(b9, { canShareFn:false });
+  b9.exportMarkdown();
+  b9.exportMarkdown();
+  ok('export: two exports in a row produce identical files (EXP-01 concurrency)',
+     env.blobs.length===2 && env.blobs[0].parts[0]===env.blobs[1].parts[0],
+     env.blobs.length);
+}
+
+{
+  const b10 = loadApp(APP_PATH);
+  const env = shareEnv(b10, {});
+  const r1 = b10.exportShareFailed({ name:'AbortError' }, 't', 'f.md');
+  const clicksAfterAbort = env.clicks.length;
+  const r2 = b10.exportShareFailed({ name:'DataError' }, 't', 'f.md');
+  const clicksAfterDataError = env.clicks.length;
+  const r3 = b10.exportShareFailed(undefined, 't', 'f.md');
+  const clicksAfterUndefined = env.clicks.length;
+  ok('export: exportShareFailed stays silent on AbortError and downloads otherwise (D-01)',
+     r1===false && clicksAfterAbort===0 &&
+     r2===true && clicksAfterDataError===1 && env.clicks[0].download==='f.md' &&
+     r3===true && clicksAfterUndefined===2 && env.clicks[1].download==='f.md',
+     { r1, r2, r3, clicks: env.clicks });
+}
+
+{
+  const b11 = loadApp(APP_PATH);
+  b11.DB = populatedDB(b11);
+  Object.defineProperty(b11.DB, 'journal', { configurable:true, enumerable:true, get(){ throw new Error('boom'); } });
+  const env = shareEnv(b11, { canShare:true });
+  const result = b11.exportMarkdown();
+  const toastText = b11.__sandbox.document.getElementById('toast').textContent;
+  ok('export: a build failure shows a toast and neither shares nor downloads',
+     result==='error' && toastText==="Couldn't build the export" && env.clicks.length===0 && env.shareCalls.length===0,
+     { result, toastText, clicks: env.clicks.length, shareCalls: env.shareCalls.length });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

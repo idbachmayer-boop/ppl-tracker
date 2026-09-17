@@ -3456,9 +3456,51 @@ function downloadMarkdown(text, filename){
   a.download = filename; a.click();
   return true;
 }
+/* D-01: what happens after a share attempt that didn't just work. Ian cancelling the share sheet
+   (AbortError) means he changed his mind, not that the export failed — no download, no toast.
+   Any other rejection or synchronous throw (an expired tap's activation, a share target that
+   turned out not to accept the file, an unsupported combination) still owes Ian his file, so it
+   falls back to the same Blob download every unsupported device uses. Returns true when it fell
+   back to a download, false when it stayed silent on a cancel. */
+function exportShareFailed(err, text, filename){
+  if(err && err.name === 'AbortError') return false; // cancelled — silent, no fallback (D-01)
+  downloadMarkdown(text, filename); // any other failure still gets Ian his file
+  return true;
+}
+/* The other export's delivery (Phase 2, D-01/D-03): share the .md file directly where the device
+   supports it, falling back to the same Blob download exportData() uses everywhere else. Stays
+   synchronous right up to navigator.share() — no await, no timer — because the tap's user
+   activation can expire the instant something async runs first (RESEARCH Pitfall 6), and a share
+   call made after that expires fails for a reason that has nothing to do with the file. Returns
+   'share' once a share attempt has been handed to the OS (regardless of how the user resolves the
+   sheet — see exportShareFailed for what happens next), 'download' when the file was downloaded
+   directly, or 'error' when the export itself could not be built. */
 function exportMarkdown(){
-  const text = buildMarkdownExport();
+  let text;
+  try {
+    text = buildMarkdownExport();
+  } catch(e){
+    toast("Couldn't build the export");
+    return 'error';
+  }
   const filename = 'ppl-export-' + todayISO() + '.md';
+  let file = null;
+  if(typeof File === 'function'){
+    try { file = new File([text], filename, {type:'text/markdown'}); }
+    catch(e){ file = null; }
+  }
+  if(file && typeof navigator!=='undefined' && navigator && typeof navigator.canShare==='function' && typeof navigator.share==='function'){
+    let canShare = false;
+    try { canShare = !!navigator.canShare({files:[file]}); } catch(e){ canShare = false; }
+    if(canShare){
+      try {
+        navigator.share({files:[file]}).catch(err => exportShareFailed(err, text, filename));
+      } catch(err){
+        exportShareFailed(err, text, filename); // a synchronous throw counts as a share failure too
+      }
+      return 'share';
+    }
+  }
   downloadMarkdown(text, filename);
   return 'download';
 }
