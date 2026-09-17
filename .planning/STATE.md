@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 02
 current_phase_name: export-for-claude
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-09-17T12:49:02.758Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-09-17T13:03:02.337Z"
 last_activity: 2026-09-17
 last_activity_desc: Phase 02 execution started
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 ## Current Position
 
 Phase: 02 (export-for-claude) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-09-17 — Phase 02 execution started
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [████████░░] 80%
 | Phase 01 P05 | ~50min | 3 tasks | 3 files |
 | Phase 01 P06 | ~10min | 2 tasks | 0 files |
 | Phase 02 P01 | 22min | 2 tasks | 3 files |
+| Phase 02 P02 | ~3min (commit-to-commit) | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,8 @@ Recent decisions affecting current work:
 - [Phase 1, plan 01-05]: SLEEP-02's form conventions (date defaults to today; hours >0 and <=24 in 0.25 steps; quality 1–5 default 3; note optional and trimmed; multiple entries per date) confirmed by Ian at the Task 2 visual checkpoint. (Ian, 2026-09-12)
 - [Phase 1, plan 01-07]: Legacy-function deletion (REG-14, Task 2) DEFERRED — "keep for now". The precondition is met, but the ten `_legacy` twins stay until SCHEMA 18 has shipped and run on the phone for a few days. Task 1's 540 goldens are committed, so the differential outlives the legacy code whenever it goes. REG-14 holds: nothing was deleted early. (Ian, 2026-09-14)
 - [Phase ?]: [Phase 2, plan 02-01]: COLLECTIONS.columns promoted in place to {field,label,unit}[] rather than a parallel label/unit map (D-08); Task 1's collectionProblems() rewrite already satisfied every Task 2 behavior bullet, so Task 2 landed as test-only coverage.
+- [Phase ?]: [Phase 2, plan 02-02]: dayFlagRows' bookkeeping-key filter and strict-true filter are two chained .filter() calls, never folded into one condition (RESEARCH Pitfall 3)
+- [Phase ?]: [Phase 2, plan 02-02]: COLLECTIONS.cardio's columns array is reformatted across multiple lines (unlike every other one-line entry) so each zeroIsMissing:true declaration is independently greppable
 
 ### Pending Todos
 
@@ -122,6 +125,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-17T12:49:02.743Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-09-17T13:03:02.325Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
