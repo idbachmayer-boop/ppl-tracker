@@ -50,8 +50,8 @@ Clean data out of the app and into Claude Desktop.
 - [x] **EXP-04**: Every collection's rows are read through the same `liveX()` path the views use, never raw `DB[key]`
 - [x] **EXP-05**: Soft-deleted rows and internal ids are absent from the export
 - [x] **EXP-06**: Dates are ISO format, units appear once in the column header (read from `DB.unit`, not hardcoded), and missing values use one consistent explicit marker rather than a blank or a silent zero
-- [ ] **EXP-07**: Cell values are escaped for Markdown tables — pipes escaped, embedded newlines replaced, whitespace trimmed — so no logged text can break the table
-- [ ] **EXP-08**: The file opens with a short header block stating what it is, when it was generated, and the date range covered, so a truncated file cannot be mistaken for complete history
+- [x] **EXP-07**: Cell values are escaped for Markdown tables — pipes escaped, embedded newlines replaced, whitespace trimmed — so no logged text can break the table
+- [x] **EXP-08**: The file opens with a short header block stating what it is, when it was generated, and the date range covered, so a truncated file cannot be mistaken for complete history
 
 ### Documentation (DOC)
 
@@ -138,7 +138,7 @@ Populated during roadmap creation.
 |-------------|-------|--------|
 | REG-01 … REG-17 | Phase 1 | Pending |
 | SLEEP-01 … SLEEP-06 | Phase 1 | Pending |
-| EXP-01 … EXP-08 | Phase 2 | Pending |
+| EXP-01 … EXP-08 | Phase 2 | Complete |
 | DOC-01 … DOC-04 | Phase 3 | Pending |
 | DRAFT-01 … DRAFT-05 | Phase 4 | Pending |
 | DELEG-01 … DELEG-07 | Phase 5 | Pending |

@@ -91,7 +91,7 @@ Plans:
   4. Workouts export as one flat row per set (date, workout, exercise, set number, weight, reps), not nested by session (EXP-03).
   5. Dates are ISO format, units appear once in the column header sourced from `DB.unit` rather than hardcoded, and a logged value containing a pipe character or an embedded newline still produces a valid, unbroken table row (EXP-06, EXP-07).
 
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans executed
 
 Plans:
 **Wave 1**
@@ -104,7 +104,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-03-PLAN.md — Header with date range and per-section counts (EXP-08, D-13), units/escaping battery (EXP-06/07), share sheet with download fallback (D-01)
+- [x] 02-03-PLAN.md — Header with date range and per-section counts (EXP-08, D-13), units/escaping battery (EXP-06/07), share sheet with download fallback (D-01)
 
 ### Phase 3: F3 — Adding a New Tracked Thing (Recipe)
 
@@ -206,7 +206,7 @@ Phase 5 completes.
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. F1 — The COLLECTIONS Registry | 7/7 | Complete    | 2026-09-14 |
-| 2. Export for Claude | 2/3 | In Progress|  |
+| 2. Export for Claude | 3/3 | In Progress|  |
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 0/TBD | Not started | - |
 | 4. Draft Goes Device-Local | 0/TBD | Not started | - |
 | 5. F2 — Event Delegation | 0/TBD | Not started | - |
