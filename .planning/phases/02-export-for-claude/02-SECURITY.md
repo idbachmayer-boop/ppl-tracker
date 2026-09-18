@@ -38,7 +38,7 @@ created: 2026-09-18
 | T-02-08 | Information disclosure | soft-deleted rows reaching the file | medium | mitigate | `liveOf()` read path plus field projection and internal-field refusal (EXP-04) | closed |
 | T-02-09 | Information disclosure | data outside COLLECTIONS (lawn location, pet name, exercise registry, draft, weather cache) reaching the file | high | mitigate | `buildMarkdownExport` iterates only `Object.keys(COLLECTIONS)`; marker test (D-07) | closed |
 | T-02-10 | Tampering (integrity) | a skipped day or a "not entered" 0 misreported as real data | low | mitigate | one explicit `(skipped)` row (D-04); `zeroIsMissing` on cardio (D-09) | closed |
-| T-02-11 | Denial of service | malformed stored rows reaching the shapers at export time | low | mitigate | `liveOf` empty-array fallback, map non-object guard, shaper guards — **incomplete: `sessionRows` guards the exercise item but not each individual set** | open — below high threshold (non-blocking) |
+| T-02-11 | Denial of service | malformed stored rows reaching the shapers at export time | low | mitigate | `liveOf` empty-array fallback, map non-object guard, shaper guards; `sessionRows` now guards each set too (fix `a01e9da`, two tests) | closed |
 | T-02-12 | Tampering | an export path writing DB, localStorage or `lastBackupAt` | high | mitigate | no export path touches them; `exportShareFailed` is in the static check's function list (EXP-01) | closed |
 | T-02-13 | Repudiation | header counts disagreeing with the tables, so a truncated file reads as complete | medium | mitigate | header and tables read one `sections` array computed once (EXP-08) | closed |
 | T-02-14 | Tampering | hostile logged text (CRLF, U+2028/9, emoji, `<script>`) breaking a row | medium | mitigate | full EXP-07 battery over every separator and hostile-value case | closed |
@@ -62,6 +62,8 @@ created: 2026-09-18
 
 ## Open, Tracked (non-blocking)
 
+**T-02-11 is now closed** — fixed in `a01e9da` right after this audit, with two tests that fail without the guard. The account below is kept as the finding's history.
+
 **T-02-11 — one malformed set aborts the whole export.** `sessionRows`'s `addItem` guards the
 exercise item but never guards each `set` before reading `set.w`/`set.r`, so a `null` element
 inside a session's `sets` array throws and aborts all eleven sections, not just the offending row.
@@ -82,6 +84,7 @@ the date range depend on is never validated). Both would break a future collecti
 | Audit Date | Threats Total | Closed | Open | Run By |
 |------------|---------------|--------|------|--------|
 | 2026-09-18 | 17 | 16 | 1 (low, non-blocking) | gsd-security-auditor |
+| 2026-09-18 | 17 | 17 | 0 | T-02-11 closed by fix a01e9da |
 
 ---
 

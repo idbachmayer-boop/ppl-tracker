@@ -9,7 +9,8 @@ files_reviewed_list:
   - test/harness.js
 findings:
   critical: 0
-  warning: 3
+  warning: 2
+  warning_resolved: 1
   info: 2
   total: 5
 status: issues_found
