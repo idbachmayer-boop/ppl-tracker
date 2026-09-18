@@ -3941,7 +3941,12 @@ function sessionRows(s){
   const rows = [];
   const addItem = item => {
     if(!item || typeof item!=='object' || !Array.isArray(item.sets)) return;
-    item.sets.forEach((set,i)=>{ rows.push({ date:s.date, workout:s.workout, exercise:item.name, set:i+1, weight:set.w, reps:set.r }); });
+    /* Guard each set, not just the item: a hand-edited backup can put null or a
+       non-object inside sets, and an unguarded set.w threw out of buildMarkdownExport
+       and took every other collection's section down with it (02-REVIEW WR-01,
+       02-SECURITY T-02-11). Drop the bad set, keep the rest, and keep each surviving
+       set's original position rather than renumbering around the hole. */
+    item.sets.forEach((set,i)=>{ if(!set || typeof set!=='object') return; rows.push({ date:s.date, workout:s.workout, exercise:item.name, set:i+1, weight:set.w, reps:set.r }); });
   };
   if(Array.isArray(s.entries)) s.entries.forEach(addItem);
   if(s.extras && typeof s.extras==='object' && !Array.isArray(s.extras)) Object.keys(s.extras).forEach(k=>addItem(s.extras[k]));

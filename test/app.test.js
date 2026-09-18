@@ -2563,6 +2563,31 @@ let exportResult;
      rows[2][4]==='—' && rows[2][5]==='—', rows);
 }
 
+/* WR-01 / T-02-11: a hand-edited backup can leave null or a non-object inside sets. Before the guard
+   in sessionRows' addItem, set.w threw out of buildMarkdownExport and killed every section's export,
+   not just the bad row. The bad set is dropped, its neighbours keep their original set numbers, and
+   the other collections still export. */
+{
+  const aNull = loadApp(APP_PATH);
+  aNull.DB = Object.assign(aNull.blank(), {
+    sessions: [ { id:'e5', date:'2026-08-01', workout:'PUSH 1', endedAt:1, entries:[
+      { name:'A', sets:[{w:'1',r:'1'}, null, 'nonsense', {w:'3',r:'3'}] },
+    ], extras:{} } ],
+    ideas: [ { id:'i9', date:'2026-08-02', text:'still here' } ],
+  });
+  let md = null, threw = null;
+  try { md = aNull.buildMarkdownExport(); } catch(e){ threw = String(e && e.message); }
+  const sections = md === null ? {} : mdSections(md);
+  const workouts = sections['Workouts'];
+  ok('export: a malformed set is dropped instead of aborting the export (WR-01/T-02-11)',
+     threw === null && !!workouts &&
+     JSON.stringify(workouts.rows.map(r=>r[3]+':'+r[4])) === JSON.stringify(['1:1','4:3']),
+     { threw, rows: workouts && workouts.rows });
+  ok('export: one malformed set does not take the other collections down with it (WR-01/T-02-11)',
+     threw === null && !!sections['Ideas'] && sections['Ideas'].rows.length === 1,
+     { threw, ideas: sections['Ideas'] });
+}
+
 {
   const a5 = loadApp(APP_PATH);
   a5.DB = Object.assign(a5.blank(), {
