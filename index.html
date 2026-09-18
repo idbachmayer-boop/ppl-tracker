@@ -471,11 +471,52 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 17;
+const SCHEMA = 18;
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
 const PRODUCTIVITY_DEFAULT = ["🧹 Clean up crafting station","🗂️ Clean off work desk","📦 Organize the basement","🌀 Vacuum the basement","🌿 Pull weeds","✂️ Edge and trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🍱 Meal prep","💼 Clean the office room","🛋️ Wash couch cushions","🍳 Clean the stovetop","🧊 Clean out the fridge"];
+/* ───────────────────────── Collections registry (F1) ─────────────────────────
+   Declared before DB boots via load() a few dozen lines down, after SCHEMA/KEY, before MIGRATIONS;
+   every value is a literal or a reference to a hoisted `function` declaration — never a const
+   arrow, never a forward const.
+   blank() may read only `kind` at module-eval time (see the placement comments on migration 13 and
+   migration 17 above, and the one on `let migrationRan` below — this is the same trap). Everything
+   else here (`key`, `sortBy`, `merge`, `label`, `columns`, `format`) is read later, by code that runs
+   after boot, never during it.
+   cardio, ideas, todos and hobbyLog deliberately have no `sortBy` because the hand-written merge
+   never sorted them — declaring one now would change stored order, which this plan must not do.
+   Column contract (Phase 2, D-08): `columns[0]` is always the row's ISO date, which the export sorts
+   by and builds its date range from. A column's `unit` is either the kind 'mass', resolved to
+   DB.unit when the export runs, or a literal unit string such as 'km'. */
+const COLLECTIONS = {
+  sessions:   { kind:'list', key:sessKey,   sortBy:sessionSort, merge:'union', soft:true,  required:true,  label:'Workouts', columns:[{field:'date',label:'date'},{field:'workout',label:'workout'},{field:'exercise',label:'exercise'},{field:'set',label:'set'},{field:'weight',label:'weight',unit:'mass'},{field:'reps',label:'reps'}], format:sessionRows },
+  weights:    { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:true,  label:'Weigh-ins', columns:[{field:'date',label:'date'},{field:'value',label:'weight',unit:'mass'}] },
+  petWeights: { kind:'list', key:'date',    sortBy:'date',      merge:'union', soft:true,  required:false, label:'Pet weigh-ins', columns:[{field:'date',label:'date'},{field:'value',label:'weight',unit:'mass'}] },
+  /* minutes/distanceKm declare zeroIsMissing: addCardio requires minutes or distance and stores 0
+     for whichever Ian left blank; the Cardio view already shows — for a zero distance, so exporting
+     a literal 0 would be a silent "not entered" (D-09/EXP-06). */
+  cardio:     { kind:'list', key:cardioKey, merge:'union', soft:true, required:false, label:'Cardio', columns:[
+                {field:'date',label:'date'},{field:'type',label:'type'},
+                {field:'minutes',label:'minutes',zeroIsMissing:true},
+                {field:'distanceKm',label:'distance',unit:'km',zeroIsMissing:true},
+                {field:'note',label:'note'}] },
+  ideas:      { kind:'list', key:ideaKey,   merge:'union', soft:true, required:false, label:'Ideas', columns:[{field:'date',label:'date'},{field:'text',label:'idea'},{field:'done',label:'done'}] },
+  todos:      { kind:'list', key:todoKey,   merge:'union', soft:true, required:false, label:'Todos', columns:[{field:'created',label:'created'},{field:'text',label:'todo'}] },
+  hobbyLog:   { kind:'list', key:hobbyKey,  merge:'union', soft:true, required:false, label:'Hobbies & chores', columns:[{field:'date',label:'date'},{field:'item',label:'item'},{field:'cat',label:'category'}], format:hobbyRows },
+  journal:    { kind:'map',  merge:'line-union', soft:false, required:false, explicitFalse:false, label:'Journal', columns:[{field:'date',label:'date'},{field:'entry',label:'entry'}], format:journalRows },
+  /* mobilityLog / lawnLog: take the WHOLE inner object from the newer side. Do NOT union inner
+     keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
+  mobilityLog:{ kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Mobility', columns:[{field:'date',label:'date'},{field:'item',label:'stretch'}], format:dayFlagRows },
+  lawnLog:    { kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Lawn', columns:[{field:'date',label:'date'},{field:'item',label:'task'}], format:dayFlagRows },
+  /* sleep (F1/SLEEP-01): last entry on purpose — keeps every existing collection's validation
+     precedence and merge order unchanged. No format: sleep rows are already flat. */
+  sleep:      { kind:'list', key:'id',        sortBy:'date',      merge:'union', soft:true,  required:false, label:'Sleep', columns:[{field:'date',label:'date'},{field:'hours',label:'hours'},{field:'quality',label:'quality (1-5)'},{field:'note',label:'note'}] },
+};
+{
+  const problems = collectionProblems(COLLECTIONS);
+  if(problems.length) throw new Error('COLLECTIONS is invalid: ' + problems.join('; '));
+}
 /* Ordered schema migrations. Each takes the data object up one version. Must be idempotent. */
 const MIGRATIONS = {
   1:d=>{ if(!d.hobbies) d.hobbies=DEFAULT_HOBBIES.slice(); if(!d.hobbyLog) d.hobbyLog=[]; if(!('lawn' in d)) d.lawn=null; if(!('wx' in d)) d.wx=null; return d; },
@@ -519,7 +560,17 @@ const MIGRATIONS = {
   16:d=>renameLoggedExercise(d, {'Goblet squat':'Deficit sumo squat', 'Deficit Sumo Squat':'Deficit sumo squat'}),
   /* Exercises stop being strings and become things with ids. See buildExerciseRegistry(). */
   17:d=>buildExerciseRegistry(d),
+  18:d=>ensureCollectionDefaults(d), // sleep log — creates absent collections only (COLLECTIONS registry, F1)
 };
+/* Creates ABSENT collections only — never rewrites a row that already carries an mtime, so the
+   four REG-16 guards a row-rewriting migration must satisfy (touch, persist immediately, stay
+   idempotent, survive a stale-device replay) are never triggered here; the no-rewrite test below
+   proves it. Called only from MIGRATIONS, which stays hand-written and reads COLLECTIONS one-way
+   (REG-11). A future collection that needs a non-empty default still needs its own migration line. */
+function ensureCollectionDefaults(d){
+  for(const name in COLLECTIONS){ if(d[name]==null) d[name] = COLLECTIONS[name].kind==='list' ? [] : {}; }
+  return d;
+}
 /* Rewriting rows that ALREADY EXIST is the dangerous kind of migration. `mergeUnion` resolves a
    collision by per-item `mtime`, so a rewritten row that isn't touched loses to the untouched copy
    on the other device — silently, and permanently once `_schema` moves past the migration. Every
@@ -638,7 +689,19 @@ let DB = load();
    this point dies on a temporal-dead-zone ReferenceError and takes the whole boot with it. Same
    family of trap as the MIGRATIONS comment above. */
 function load(){ try { return normalize(JSON.parse(localStorage.getItem(KEY))); } catch(e){ return blank(); } }
-function blank(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[], petWeights:[], petName:"Freddie", exercises:[], draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
+/* Derived from COLLECTIONS (REG-06): scalars stay hand-written, every list/map field loops the
+   registry. blank() runs during `let DB = load()` above, so this loop may read only `spec.kind` —
+   `key`/`sortBy`/`merge`/`columns`/`format` are all declared further down and touching them here
+   would be the same TDZ trap the placement comments on migrations 13 and 17 describe. */
+function blank(){
+  const out = { _schema:SCHEMA, gen:0, petName:"Freddie", exercises:[], draft:null, unit:"lb",
+                routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(),
+                lawn:null, wx:null, hobbySeedV2:true };
+  for(const name in COLLECTIONS) out[name] = COLLECTIONS[name].kind==='list' ? [] : {};
+  return out;
+}
+/* FROZEN pre-registry reference for the REG-13 differential. Do not edit. Deleted in a later commit (REG-14). */
+function blank_legacy(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[], petWeights:[], petName:"Freddie", exercises:[], draft:null, unit:"lb", routineMode:"4day", hobbies:HOBBIES_DEFAULT.slice(), productivity:PRODUCTIVITY_DEFAULT.slice(), hobbyLog:[], journal:{}, mobilityLog:{}, todos:[], cardio:[], ideas:[], lawnLog:{}, lawn:null, wx:null, hobbySeedV2:true }; }
 
 /* ── Soft delete ─────────────────────────────────────────────────────────────────────────────
    Deleting used to splice the row out, but sync UNIONS both devices — so the cloud copy came
@@ -650,13 +713,32 @@ function blank(){ return { _schema:SCHEMA, gen:0, sessions:[], weights:[], petWe
 const DELETE_PAYLOAD_KEEP_MS = 30*86400000;  // full payload kept this long, so Restore is lossless
 const isLive = x => !!x && !x.deletedAt;
 function touch(x){ if(x && typeof x==='object') x.mtime = Date.now(); return x; }
-function liveSessions(){ return (DB.sessions||[]).filter(isLive); }
-function liveWeights(){ return (DB.weights||[]).filter(isLive); }
-function livePetWeights(){ return (DB.petWeights||[]).filter(isLive); }
-function liveCardio(){ return (DB.cardio||[]).filter(isLive); }
-function liveIdeas(){ return (DB.ideas||[]).filter(isLive); }
-function liveTodos(){ return (DB.todos||[]).filter(isLive); }
-function liveHobbyLog(){ return (DB.hobbyLog||[]).filter(isLive); }
+/* Derived from COLLECTIONS (REG-07): this is the only soft-delete filter body. Every named
+   wrapper below delegates to it. A name that isn't a declared soft-delete list throws rather than
+   silently returning everything or nothing, so a new soft collection gets a working filter from
+   its declaration alone, and a misuse fails loudly instead of ghosting a row back into a view.
+   Never generate these wrappers dynamically through window or globalThis — that breaks grep and
+   go-to-definition (01-RESEARCH.md, Anti-Patterns). */
+function liveOf(name){
+  const spec = COLLECTIONS[name];
+  if(!spec || spec.kind !== 'list' || spec.soft !== true) throw new Error('liveOf: ' + name + ' is not a declared soft-delete list');
+  return (DB[name]||[]).filter(isLive);
+}
+function liveSessions(){ return liveOf('sessions'); }
+function liveWeights(){ return liveOf('weights'); }
+function livePetWeights(){ return liveOf('petWeights'); }
+function liveCardio(){ return liveOf('cardio'); }
+function liveIdeas(){ return liveOf('ideas'); }
+function liveTodos(){ return liveOf('todos'); }
+function liveHobbyLog(){ return liveOf('hobbyLog'); }
+/* FROZEN pre-registry filters for the REG-13 differential. Do not edit. Deleted in a later commit (REG-14). */
+function liveSessions_legacy(){ return (DB.sessions||[]).filter(isLive); }
+function liveWeights_legacy(){ return (DB.weights||[]).filter(isLive); }
+function livePetWeights_legacy(){ return (DB.petWeights||[]).filter(isLive); }
+function liveCardio_legacy(){ return (DB.cardio||[]).filter(isLive); }
+function liveIdeas_legacy(){ return (DB.ideas||[]).filter(isLive); }
+function liveTodos_legacy(){ return (DB.todos||[]).filter(isLive); }
+function liveHobbyLog_legacy(){ return (DB.hobbyLog||[]).filter(isLive); }
 /* Mark deleted in place. Returns false if it was already gone. */
 function softDelete(arr, pred){
   const it = (arr||[]).find(x=> isLive(x) && pred(x)); if(!it) return false;
@@ -1284,8 +1366,8 @@ const TABS = [
   { id:'train', label:'Train', icon:'barbell', sub:[['log','Log'],['history','History'],['cardio','Cardio'],['progress','Progress']],
     view:sub => sub==='log' ? (DB.draft ? viewActive() : viewPicker()) : sub==='history' ? viewHistory() : sub==='cardio' ? viewCardio() : viewWeight(),
     onRender:sub => { if(sub==='progress') drawActiveChart(); } },
-  { id:'care', label:'Care', icon:'sparkle', sub:[['skin','Skin'],['lawn','Lawn']],
-    view:sub => sub==='skin' ? viewSkincare() : viewLawn(),
+  { id:'care', label:'Care', icon:'sparkle', sub:[['skin','Skin'],['lawn','Lawn'],['sleep','Sleep']],
+    view:sub => sub==='skin' ? viewSkincare() : sub==='sleep' ? viewSleep() : viewLawn(),
     onRender:sub => { if(sub==='lawn') maybeFetchWeather(); } },
   { id:'settings', label:'Settings', icon:'gear-six', view:()=>viewData() },
 ];
@@ -3277,6 +3359,7 @@ function viewData(){
     <div class="card">
       <p class="muted" style="margin-bottom:12px">A downloadable copy of your data — handy as an extra safety net even with Cloud Sync on.</p>
       <button class="btn btn-block" onclick="exportData()">${ph('download-simple')}Export backup (.json)</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="exportMarkdown()">${ph('arrow-square-out')}Export for Claude (.md)</button>
       <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="document.getElementById('imp').click()">${ph('upload-simple')}Import backup</button>
       <input type="file" id="imp" accept="application/json" class="hidden" onchange="importData(this)">
     </div>
@@ -3292,12 +3375,182 @@ function exportData(){
   a.download=`ppl-backup-${todayISO()}.json`; a.click();
   DB.lastBackupAt=Date.now(); DB.backupSnoozeAt=null; save();
 }
+/* ── the other export (Phase 2): a read-only Markdown view of DB, derived from COLLECTIONS and the
+   same live read path the views use (liveOf / DB). It never persists — no save/saveLocal/touch, and
+   no lastBackupAt or backupSnoozeAt — because a Markdown file is not a backup, and exporting must
+   never make this device look newest to sync (CLAUDE.md's stale-device incident class). */
+function exportRows(name){
+  const spec = COLLECTIONS[name];
+  const outputs = [];
+  if(spec.kind==='list'){
+    liveOf(name).forEach(item=>{
+      if(!item || typeof item!=='object') return;
+      const out = typeof spec.format==='function' ? spec.format(item) : [item];
+      if(Array.isArray(out)) outputs.push(...out);
+    });
+  } else {
+    const obj = (DB[name] && typeof DB[name]==='object' && !Array.isArray(DB[name])) ? DB[name] : {};
+    Object.keys(obj).sort().forEach(k=>{
+      const out = spec.format(k, obj[k]);
+      if(Array.isArray(out)) outputs.push(...out);
+    });
+  }
+  const rows = outputs.filter(item=>item && typeof item==='object').map(item=>{
+    const row = {};
+    spec.columns.forEach(c=>{ row[c.field] = item[c.field]; });
+    return row;
+  });
+  /* D-11: oldest first, stable, a missing date sorts first. Compared as plain strings — never
+     localeCompare, which varies with the phone's locale — so the order is the same everywhere.
+     Array.prototype.sort is stable, so rows with equal first-column values keep the order liveOf
+     (or the sorted map keys) produced: stored session order (sessionSort by endedAt) and, within
+     one session, set order. */
+  const firstField = spec.columns[0].field;
+  const strOf = v => (v===null || v===undefined) ? '' : String(v);
+  rows.sort((a,b)=>{
+    const av = strOf(a[firstField]), bv = strOf(b[firstField]);
+    return av<bv ? -1 : av>bv ? 1 : 0;
+  });
+  return rows;
+}
+function buildMarkdownExport(){
+  /* D-13/EXP-08: every section is computed exactly once, here, into `sections`. Both the header's
+     date range and per-section counts, and the tables printed below, read from these same arrays —
+     so a header count can never disagree with the table under it (EXP-08 concurrency). */
+  const sections = Object.keys(COLLECTIONS).map(name=>({ spec: COLLECTIONS[name], rows: exportRows(name) }));
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  let first = null, last = null;
+  sections.forEach(({spec, rows})=>{
+    const field = spec.columns[0].field;
+    rows.forEach(row=>{
+      const v = row[field];
+      if(typeof v==='string' && DATE_RE.test(v)){
+        if(first===null || v<first) first = v;
+        if(last===null || v>last) last = v;
+      }
+    });
+  });
+  const countText = n => n===0 ? '0 entries' : n===1 ? '1 row' : n+' rows';
+  const lines = [
+    '# PPL Tracker export', '',
+    'Logged data from PPL Tracker, one Markdown table per collection, oldest first. Deleted entries and internal ids are not included, and — marks a missing value.', '',
+    '- Generated: ' + new Date().toISOString(),
+    '- Date range: ' + (first===null ? 'no dated entries' : first + ' to ' + last),
+    '- Rows per section: ' + sections.map(({spec, rows}) => mdEscape(spec.label) + ': ' + countText(rows.length)).join(' · '),
+  ];
+  sections.forEach(({spec, rows})=>{
+    lines.push('', '## ' + mdEscape(spec.label), '');
+    if(rows.length===0){
+      lines.push('No entries');
+    } else {
+      lines.push('| ' + spec.columns.map(mdHeader).join(' | ') + ' |');
+      lines.push('| ' + spec.columns.map(()=>'---').join(' | ') + ' |');
+      rows.forEach(row=>{ lines.push('| ' + spec.columns.map(c=>mdCell(row[c.field], c)).join(' | ') + ' |'); });
+    }
+  });
+  return lines.join('\n') + '\n';
+}
+function downloadMarkdown(text, filename){
+  const blob = new Blob([text], {type:'text/markdown'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = filename; a.click();
+  return true;
+}
+/* D-01: what happens after a share attempt that didn't just work. Ian cancelling the share sheet
+   (AbortError) means he changed his mind, not that the export failed — no download, no toast.
+   Any other rejection or synchronous throw (an expired tap's activation, a share target that
+   turned out not to accept the file, an unsupported combination) still owes Ian his file, so it
+   falls back to the same Blob download every unsupported device uses. Returns true when it fell
+   back to a download, false when it stayed silent on a cancel. */
+function exportShareFailed(err, text, filename){
+  if(err && err.name === 'AbortError') return false; // cancelled — silent, no fallback (D-01)
+  downloadMarkdown(text, filename); // any other failure still gets Ian his file
+  return true;
+}
+/* The other export's delivery (Phase 2, D-01/D-03): share the .md file directly where the device
+   supports it, falling back to the same Blob download exportData() uses everywhere else. Stays
+   synchronous right up to navigator.share() — no await, no timer — because the tap's user
+   activation can expire the instant something async runs first (RESEARCH Pitfall 6), and a share
+   call made after that expires fails for a reason that has nothing to do with the file. Returns
+   'share' once a share attempt has been handed to the OS (regardless of how the user resolves the
+   sheet — see exportShareFailed for what happens next), 'download' when the file was downloaded
+   directly, or 'error' when the export itself could not be built. */
+function exportMarkdown(){
+  let text;
+  try {
+    text = buildMarkdownExport();
+  } catch(e){
+    toast("Couldn't build the export");
+    return 'error';
+  }
+  const filename = 'ppl-export-' + todayISO() + '.md';
+  let file = null;
+  if(typeof File === 'function'){
+    try { file = new File([text], filename, {type:'text/markdown'}); }
+    catch(e){ file = null; }
+  }
+  if(file && typeof navigator!=='undefined' && navigator && typeof navigator.canShare==='function' && typeof navigator.share==='function'){
+    let canShare = false;
+    try { canShare = !!navigator.canShare({files:[file]}); } catch(e){ canShare = false; }
+    if(canShare){
+      try {
+        navigator.share({files:[file]}).catch(err => exportShareFailed(err, text, filename));
+      } catch(err){
+        exportShareFailed(err, text, filename); // a synchronous throw counts as a share failure too
+      }
+      return 'share';
+    }
+  }
+  downloadMarkdown(text, filename);
+  return 'download';
+}
 /* Import is the one place a file you didn't write gets to become your data, and the old check was
    "has a sessions array and a weights array" — a truncated download or the wrong JSON entirely
    could sail through and scramble two months of training. Nothing is touched until every check
    passes, and a refusal says which one failed rather than "Not a valid backup file."
    Returns null when the blob is fine, otherwise the reason. */
 function validateBackup(raw){
+  if(!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'This file isn’t a backup — it doesn’t contain a data object.';
+  /* Shape checks derived from COLLECTIONS (REG-08), in three passes so the precedence a hand-typed
+     list order used to guarantee — required lists, then optional lists, then maps — holds no
+     matter what order COLLECTIONS happens to be declared in. Message templates are copied
+     byte-for-byte (including the U+2019 right single quotation mark) from validateBackup_legacy
+     below, never retyped, so a refusal never changes its wording (REG-13). Deep per-row checks
+     stay hand-written below — there is no validation DSL (Pitfall 11, REQUIREMENTS.md Out of Scope). */
+  for(const name in COLLECTIONS){
+    const spec = COLLECTIONS[name];
+    if(spec.kind==='list' && spec.required && !Array.isArray(raw[name])) return `This backup is missing its ${name} list, so it’s incomplete or truncated.`;
+  }
+  for(const name in COLLECTIONS){
+    const spec = COLLECTIONS[name];
+    if(spec.kind==='list' && !spec.required && raw[name]!=null && !Array.isArray(raw[name])) return `The ${name} section is damaged (expected a list).`;
+  }
+  for(const name in COLLECTIONS){
+    const spec = COLLECTIONS[name];
+    if(spec.kind==='map' && raw[name]!=null && (typeof raw[name]!=='object' || Array.isArray(raw[name]))) return `The ${name} section is damaged.`;
+  }
+  const schema = +raw._schema;
+  if(raw._schema!=null && !(schema>=0)) return 'This backup’s version number is unreadable.';
+  if(schema > SCHEMA) return `This backup came from a newer version of the app (v${schema}, this is v${SCHEMA}). Update this device first — importing it here would lose whatever that version added.`;
+  for(let i=0;i<raw.sessions.length;i++){
+    const s = raw.sessions[i];
+    if(!s || typeof s!=='object') return `Workout ${i+1} of ${raw.sessions.length} is damaged.`;
+    if(!s.date || !/^\d{4}-\d{2}-\d{2}$/.test(s.date)) return `Workout ${i+1} has no usable date${s.workout?` (${s.workout})`:''} — the file is probably truncated.`;
+    if(s.entries!=null && !Array.isArray(s.entries)) return `Workout ${i+1} (${s.date}) has a damaged exercise list.`;
+    if(Array.isArray(s.entries)) for(const e of s.entries){
+      if(!e || typeof e!=='object') return `Workout ${i+1} (${s.date}) contains a damaged exercise.`;
+      if(e.sets!=null && !Array.isArray(e.sets)) return `“${e.name||'An exercise'}” on ${s.date} has a damaged set list.`;
+    }
+  }
+  for(let i=0;i<raw.weights.length;i++){
+    const w = raw.weights[i];
+    if(!w || typeof w!=='object' || !w.date) return `Weigh-in ${i+1} of ${raw.weights.length} is damaged.`;
+    if(w.value!=null && isNaN(+w.value)) return `Weigh-in on ${w.date} has a value that isn’t a number.`;
+  }
+  return null;
+}
+/* FROZEN pre-registry validator for the REG-13 differential. Do not edit. Deleted in a later commit (REG-14). */
+function validateBackup_legacy(raw){
   if(!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'This file isn’t a backup — it doesn’t contain a data object.';
   const arrays = ['sessions','weights'];
   for(const k of arrays) if(!Array.isArray(raw[k])) return `This backup is missing its ${k} list, so it’s incomplete or truncated.`;
@@ -3588,6 +3841,57 @@ function viewCardio(){
     <div class="card">${rows}</div>`;
 }
 
+/* sleep (F1/SLEEP-02/SLEEP-03): cardio's add/remove/view pattern, minus the Strava import. One
+   extra Care sub-entry, no new navigation (Ian's decisions 1 and 2). */
+function sleepUid(){ return 'sl'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function addSleep(){
+  const dateRaw=(document.getElementById('sleep-date')||{}).value;
+  const date=/^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : todayISO();
+  const hours=parseFloat((document.getElementById('sleep-hours')||{}).value);
+  if(!(hours>0) || !(hours<=24)){ toast('Enter hours slept (0–24)'); return; }
+  let quality=parseInt((document.getElementById('sleep-quality')||{}).value, 10);
+  if(isNaN(quality)) quality=3;
+  quality=Math.min(5, Math.max(1, quality));
+  const note=((document.getElementById('sleep-note')||{}).value||'').trim();
+  if(!Array.isArray(DB.sleep)) DB.sleep=[];
+  DB.sleep.push(touch({ id:sleepUid(), date, hours, quality, note }));
+  save(); toast('Sleep logged 🌙'); render();
+}
+function removeSleep(id){ if(!softDelete(DB.sleep, s=>s.id===id)) return; save(); render(); }
+function viewSleep(){
+  const list=liveOf('sleep').slice().sort((a,b)=> String(b.date||'').localeCompare(String(a.date||'')) || ((b.mtime||0)-(a.mtime||0)));
+  const cutoffDate=new Date(todayISO()+'T00:00'); cutoffDate.setDate(cutoffDate.getDate()-6);
+  const cutoff=cutoffDate.toLocaleDateString('en-CA');
+  const recent=list.filter(s=>/^\d{4}-\d{2}-\d{2}$/.test(s.date) && s.date>=cutoff);
+  const avgHours=recent.length ? (recent.reduce((sum,s)=>sum+(+s.hours||0),0)/recent.length).toFixed(1) : '—';
+  const avgQuality=recent.length ? (recent.reduce((sum,s)=>sum+(+s.quality||0),0)/recent.length).toFixed(1) : '—';
+  const safeId=/^[A-Za-z0-9_-]+$/;
+  const rows=list.length ? list.map(s=>`<div class="hist-item" style="cursor:default">
+      <div><div style="font-weight:600">${esc(String(Number(s.hours)))}h · quality ${esc(String(Number(s.quality)))}/5</div>
+        <div class="muted" style="font-size:12px">${/^\d{4}-\d{2}-\d{2}$/.test(s.date)?fmtDate(s.date):esc(String(s.date||'?'))}${s.note?' · '+esc(s.note):''}</div></div>
+      ${safeId.test(String(s.id)) ? `<button class="x-set" onclick="removeSleep('${s.id}')" title="delete">${ph('x')}</button>` : ''}
+    </div>`).join('') : '<p class="empty">No sleep logged yet. Log last night above.</p>';
+  return `<h1>Sleep</h1>
+    <div class="card">
+      <div class="row"><div>${kicker('Last 7 days')}<div style="font-weight:800;font-size:20px;margin-top:4px">${recent.length} night${recent.length!==1?'s':''}</div></div>
+      <div style="text-align:right"><div style="font-weight:700">${avgHours}h · ${avgQuality}/5</div><div class="muted" style="font-size:11px">avg hours · quality</div></div></div>
+    </div>
+    <h2>${ph('moon','lead')}Log a night</h2>
+    <div class="card">
+      <div class="stair-grid">
+        <div><label>Date</label><input type="date" id="sleep-date" value="${todayISO()}"></div>
+        <div><label>Hours</label><input type="number" inputmode="decimal" step="0.25" min="0" max="24" id="sleep-hours" placeholder="hours"></div>
+        <div><label>Quality</label><select id="sleep-quality">
+          <option value="1">1 · poor</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5 · great</option>
+        </select></div>
+      </div>
+      <input id="sleep-note" placeholder="Note (optional)" style="margin-top:10px">
+      <button class="btn btn-block" style="margin-top:12px" onclick="addSleep()">Add sleep</button>
+    </div>
+    <h2>History</h2>
+    <div class="card">${rows}</div>`;
+}
+
 /* ───────────────────────── Merge (union) — the fix for the 2026-07-25 data loss ─────────────
    The old sync was last-write-wins on a whole-DB blob, and `updatedAt` was wall-clock bumped on
    EVERY save (even the weather cache). So a device 4 days STALE could hold the newer timestamp,
@@ -3614,10 +3918,163 @@ function mergeUnion(aArr, bArr, keyOf, newerFirst){
   return out;
 }
 /* Session key: prefer the stable id; fall back to content for pre-id rows (migration 12 backfills,
-   but MIGRATIONS is wrapped in a silent try/catch so never trust it alone). */
-const sessKey = s => s.id || ('c_'+(s.date||'')+'|'+(s.workout||'')+'|'+(s.endedAt||'')+'|'+(s.skipped?'1':'0'));
-const todoKey = t => (t.created||'')+'|'+(t.text||'');
-const hobbyKey = h => (h.date||'')+'|'+(h.item||h.hobby||'')+'|'+(h.cat||'');
+   but MIGRATIONS is wrapped in a silent try/catch so never trust it alone). Promoted to `function`
+   declarations (from `const` arrows) so COLLECTIONS, declared earlier in the file, can reference
+   them by name — a `function` declaration hoists, a `const` arrow does not (see the COLLECTIONS
+   placement comment). Bodies are byte-identical to the arrows they replace. */
+function sessKey(s){ return s.id || ('c_'+(s.date||'')+'|'+(s.workout||'')+'|'+(s.endedAt||'')+'|'+(s.skipped?'1':'0')); }
+function todoKey(t){ return (t.created||'')+'|'+(t.text||''); }
+function hobbyKey(h){ return (h.date||'')+'|'+(h.item||h.hobby||'')+'|'+(h.cat||''); }
+/* cardio/ideas keys and the sessions comparator, promoted out of their inline call sites in
+   mergeDB() below so COLLECTIONS can reference them the same way. */
+function cardioKey(c){ return c.id || ((c.date||'')+'|'+(c.type||'')+'|'+(c.minutes||'')); }
+function ideaKey(i){ return i.id || ((i.date||'')+'|'+(i.text||'')); }
+function sessionSort(a,b){ return a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : String(a.date).localeCompare(String(b.date)); }
+/* ── COLLECTIONS export row shapers (REG-17) ── one per non-flat collection, referenced by name from
+   the `format` field on that collection's COLLECTIONS entry. Presentation (ISO dates, units, missing
+   markers, escaping) is Phase 2's job — these hand back raw stored values, one row per exported line,
+   with keys in exactly the order of that collection's `columns`. A skipped session is one row, so a
+   skipped day is never silently absent (D-04). */
+function sessionRows(s){
+  if(!s || typeof s!=='object') return [];
+  if(s.skipped) return [{ date:s.date, workout:s.workout, exercise:'(skipped)', set:null, weight:null, reps:null }];
+  const rows = [];
+  const addItem = item => {
+    if(!item || typeof item!=='object' || !Array.isArray(item.sets)) return;
+    /* Guard each set, not just the item: a hand-edited backup can put null or a
+       non-object inside sets, and an unguarded set.w threw out of buildMarkdownExport
+       and took every other collection's section down with it (02-REVIEW WR-01,
+       02-SECURITY T-02-11). Drop the bad set, keep the rest, and keep each surviving
+       set's original position rather than renumbering around the hole. */
+    item.sets.forEach((set,i)=>{ if(!set || typeof set!=='object') return; rows.push({ date:s.date, workout:s.workout, exercise:item.name, set:i+1, weight:set.w, reps:set.r }); });
+  };
+  if(Array.isArray(s.entries)) s.entries.forEach(addItem);
+  if(s.extras && typeof s.extras==='object' && !Array.isArray(s.extras)) Object.keys(s.extras).forEach(k=>addItem(s.extras[k]));
+  return rows;
+}
+function hobbyRows(h){
+  if(!h || typeof h!=='object') return [];
+  return [{ date:h.date, item:(h.item||h.hobby), cat:h.cat }];
+}
+function journalRows(date, text){
+  return [{ date, entry: (text==null ? '' : String(text)) }];
+}
+/* D-05: two independent checks, run in this order — never folded into one condition (RESEARCH
+   Pitfall 3). (a) drop bookkeeping keys: __-prefixed (mobilityLog's __session) and override*
+   (lawnLog's overrideWater/overrideMow, written by toggleLawnOverride). (b) keep only keys whose
+   value is strictly true — an explicit false is sync bookkeeping, not a logged event ("absence never
+   means off", CLAUDE.md). */
+function dayFlagRows(date, obj){
+  if(!obj || typeof obj!=='object' || Array.isArray(obj)) return [];
+  return Object.keys(obj)
+    .filter(k => k.indexOf('__')!==0 && !/^override[A-Z]/.test(k))
+    .filter(k => obj[k]===true)
+    .map(k=>({ date, item:k }));
+}
+/* ── Markdown export presentation (Phase 2) ──
+   Never esc() here: HTML entities (&lt; etc.) would corrupt plain text in a file Claude reads as
+   Markdown, not HTML (RESEARCH Pitfall 1). Dates pass through as stored ISO strings and never
+   through fmtDate. The em dash (—) is the one missing-value marker (D-09). */
+function mdEscape(s){
+  let out = String(s).trim();
+  out = out.replace(/\s*[\r\n\u2028\u2029]\s*/g, '<br>');
+  out = out.replace(/\\*\|/g, m => { const bs = m.slice(0, -1); return bs + bs + '\\|'; });
+  return out;
+}
+function mdCell(v, col){
+  /* D-09: a column declaring zeroIsMissing writes — for a stored 0 (cardio's addCardio stores 0 for
+     whichever of minutes/distance Ian left blank). Every other column writes a real 0 as 0. */
+  if(col && col.zeroIsMissing===true){
+    if(typeof v==='number' && v===0) return '—';
+    if(typeof v==='string' && v.trim()!=='' && Number(v)===0) return '—';
+  }
+  if(v===null || v===undefined) return '—';
+  const raw = (typeof v==='object') ? JSON.stringify(v) : String(v);
+  const esc = mdEscape(raw);
+  return esc==='' ? '—' : esc;
+}
+function mdHeader(col){
+  const unit = col.unit==='mass' ? DB.unit : col.unit;
+  if(typeof unit==='string' && unit.trim()!=='') return mdEscape(col.label+' ('+unit.trim()+')');
+  return mdEscape(col.label);
+}
+/* ── COLLECTIONS registry contracts (REG-01 through REG-05, REG-17) ──
+   collectionProblems(reg) enforces the shape rules every COLLECTIONS entry must satisfy. Lives here,
+   next to the promoted key functions, so every registry helper is in one place. */
+function collectionProblems(reg){
+  const problems = [];
+  if(!reg || typeof reg!=='object' || Array.isArray(reg) || Object.keys(reg).length===0){
+    return ['registry: empty or not an object'];
+  }
+  const ALLOWED = ['kind','key','sortBy','merge','soft','required','explicitFalse','label','columns','format'];
+  /* D-08/EXP-05: a label (collection-level or column-level) is a non-empty (after trim) string that
+     can never break a Markdown table row or column list — no pipe, no line break. */
+  const LINEBREAK_RE = /[\r\n\u2028\u2029]/;
+  const validLabel = s => typeof s==='string' && s.trim()!=='' && s.indexOf('|')<0 && !LINEBREAK_RE.test(s);
+  Object.keys(reg).forEach(name=>{
+    const spec = reg[name] && typeof reg[name]==='object' ? reg[name] : {};
+    const p = msg => problems.push(name+': '+msg);
+    Object.keys(spec).forEach(field=>{ if(ALLOWED.indexOf(field)<0) p('unknown field "'+field+'"'); });
+    if(spec.kind!=='list' && spec.kind!=='map'){ p('kind must be "list" or "map"'); return; }
+    if(!spec.merge){ p('merge is required and has no default'); }
+    else if(spec.kind==='list' && spec.merge!=='union'){ p('a list must declare merge "union"'); }
+    else if(spec.kind==='map' && spec.merge!=='line-union' && spec.merge!=='replace-whole'){ p('a map must declare merge "line-union" or "replace-whole" (never "union" — that is the key-union trap)'); }
+    if(typeof spec.soft!=='boolean') p('soft must be a boolean');
+    if('required' in spec && typeof spec.required!=='boolean') p('required must be a boolean');
+    if(spec.kind==='list'){
+      if(spec.key==null || (typeof spec.key!=='string' && typeof spec.key!=='function') || spec.key===''){ p('a list needs key, as a non-empty string or a function'); }
+      if('sortBy' in spec && spec.sortBy!=null){ if(typeof spec.sortBy!=='string' && typeof spec.sortBy!=='function') p('sortBy must be a string or a function'); else if(spec.sortBy==='') p('sortBy must not be empty'); }
+      if('explicitFalse' in spec) p('a list must not declare explicitFalse');
+    } else {
+      if('key' in spec) p('a map must not declare key');
+      if('sortBy' in spec) p('a map must not declare sortBy');
+      if(spec.soft===true) p('a map must not declare soft true');
+      if(spec.required===true) p('a map must not declare required true');
+      if(typeof spec.explicitFalse!=='boolean') p('a map must declare explicitFalse as a boolean');
+      if(spec.explicitFalse===true && spec.merge!=='replace-whole') p('explicitFalse true is allowed only with merge "replace-whole"');
+    }
+    if(!validLabel(spec.label)) p('label must be a non-empty string with no | or line break');
+    if(!Array.isArray(spec.columns) || spec.columns.length===0){
+      p('columns must be a non-empty array of column objects');
+    } else {
+      const seenFields = new Set(), seenLabels = new Set();
+      let dupField = false, dupLabel = false;
+      spec.columns.forEach((c,i)=>{
+        if(!c || typeof c!=='object' || Array.isArray(c)){ p('columns['+i+'] must be an object'); return; }
+        Object.keys(c).forEach(k=>{ if(k!=='field' && k!=='label' && k!=='unit' && k!=='zeroIsMissing') p('columns['+i+'] has unknown key "'+k+'"'); });
+        if(typeof c.field!=='string' || c.field===''){
+          p('columns['+i+'].field must be a non-empty string');
+        } else {
+          if(c.field==='id' || c.field==='mtime' || c.field==='deletedAt') p('columns['+i+'].field "'+c.field+'" is internal and must never be exported');
+          if(seenFields.has(c.field)) dupField = true; else seenFields.add(c.field);
+        }
+        if(!validLabel(c.label)){
+          p('columns['+i+'].label must be a non-empty string with no | or line break');
+        } else {
+          if(seenLabels.has(c.label)) dupLabel = true; else seenLabels.add(c.label);
+        }
+        if('unit' in c && c.unit!=null && !validLabel(c.unit)) p('columns['+i+'].unit must be a non-empty string with no | or line break');
+        if('zeroIsMissing' in c && typeof c.zeroIsMissing!=='boolean') p('columns['+i+'].zeroIsMissing must be a boolean');
+      });
+      if(dupField) p('columns must not repeat a field');
+      if(dupLabel) p('columns must not repeat a label');
+    }
+    if('format' in spec && spec.format!=null && typeof spec.format!=='function') p('format must be a function');
+    if(spec.kind==='map' && typeof spec.format!=='function') p('a map must declare format');
+  });
+  /* Registry-level: two collections must never share a label — it is the export's section heading,
+     and a duplicate would merge two collections' data under one "## " in the file. */
+  const labelOwners = {};
+  Object.keys(reg).forEach(name=>{
+    const spec = reg[name] && typeof reg[name]==='object' ? reg[name] : {};
+    if(typeof spec.label==='string') (labelOwners[spec.label] = labelOwners[spec.label] || []).push(name);
+  });
+  Object.keys(labelOwners).forEach(label=>{
+    const owners = labelOwners[label];
+    if(owners.length>1) owners.forEach(name=>{ problems.push(name+': label "'+label+'" is also used by '+owners.filter(n=>n!==name).join(', ')); });
+  });
+  return problems;
+}
 function mergeJournalEntry(x, y, yNewer){
   /* Line-level union: logToJournal appends lines, so the usual conflict is one side being a
      superset. "Longer string wins" would silently drop a whole day's note. */
@@ -3638,6 +4095,35 @@ function mergeDateMap(a, b, bNewer, innerMerge){
     out[k] = innerMerge ? innerMerge(av,bv,bNewer) : (bNewer? bv : av);
   });
   return out;
+}
+/* Derived from COLLECTIONS (REG-09/REG-10/REG-05). Three things to know before touching this:
+   1. This is the ONLY per-collection merge — every list and map assignment mergeDB used to write
+      by hand now happens here, dispatched on each entry's declared `merge` strategy.
+   2. The gen-mismatch wholesale replace is NOT part of this and must stay a hard early return in
+      mergeDB, above the call to this function — mergeCollections is never reached when gen differs
+      (PITFALLS Pitfall 1; folding it in here would silently disable Erase all data/Import→Replace).
+   3. Sort invariants are applied from each entry's declared `sortBy` right here, so a future
+      collection's declared order needs no mergeDB edit (SLEEP-04, plan 01-05) — this is a
+      deliberate departure from 01-PATTERNS.md's note that sorts stay hand-written outside the loop. */
+function mergeCollections(r, l, localNewer, out){
+  for(const name in COLLECTIONS){
+    const spec = COLLECTIONS[name];
+    if(spec.kind === 'list'){
+      if(spec.merge !== 'union') throw new Error('COLLECTIONS.' + name + ' has no usable merge strategy (' + spec.merge + ')');
+      const keyOf = typeof spec.key === 'function' ? spec.key : (x => x[spec.key]);
+      out[name] = mergeUnion(r[name], l[name], keyOf, localNewer);
+      if(typeof spec.sortBy === 'function') out[name].sort(spec.sortBy);
+      else if(typeof spec.sortBy === 'string') out[name].sort((a,b)=>String(a[spec.sortBy]).localeCompare(String(b[spec.sortBy])));
+    } else if(spec.merge === 'line-union'){
+      out[name] = mergeDateMap(r[name], l[name], localNewer, (a,b,bN)=>mergeJournalEntry(a,b,bN));
+    } else if(spec.merge === 'replace-whole'){
+      /* mobilityLog / lawnLog: take the WHOLE inner object from the newer side. Do NOT union inner
+         keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
+      out[name] = mergeDateMap(r[name], l[name], localNewer, null);
+    } else {
+      throw new Error('COLLECTIONS.' + name + ' has no usable merge strategy (' + spec.merge + ')');
+    }
+  }
 }
 /* localWins: on a straight tie (same updatedAt) prefer `local`. Used after a round trip so
    keystrokes typed while the transaction was in flight aren't discarded. */
@@ -3660,12 +4146,49 @@ function mergeDB(remote, local, localWins){
   const localNewer = localWins ? (lU >= rU) : (lU > rU);
   const newer = localNewer ? l : r, older = localNewer ? r : l;
   const out = Object.assign({}, blank(), older, newer); // start from newer's scalars, guarantee all blank() keys
+  mergeCollections(r, l, localNewer, out);
+  /* draft: already set correctly by Object.assign(newer) above — same recency rule as every other
+     field. BUG FIXED HERE (2026-07-25): this used to be `localDraft || remoteDraft || null`, which
+     picked whichever side had ANY non-null draft, ignoring which side was actually newer. Once a
+     stale non-null draft existed anywhere (a device's memory, or the cloud doc from before a
+     workout was finished), it won FOREVER — finishing/discarding sets draft:null, but null could
+     never beat a stale non-null value, so the old workout kept getting resurrected on every merge
+     and re-pushed via the live listener, looping endlessly across every device. The merged output
+     does NOT pass back through normalize(), so the draft is repaired here too — a draft short a
+     field crashes viewActive exactly like an unknown workout name does. */
+  normalizeDraft(out);
+  // ── invariants ──
+  out._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
+  out.updatedAt = Math.max(rU, lU);
+  delete out.wx; // weather is derived cache — excluded from sync entirely (see saveLocal)
+  return out;
+}
+/* FROZEN pre-registry merge for the REG-13 differential. Do not edit. Deleted in a later commit (REG-14). */
+function mergeDB_legacy(remote, local, localWins){
+  const r = remote && typeof remote==='object' ? remote : {};
+  const l = local  && typeof local==='object'  ? local  : {};
+  /* Wholesale replace: "Erase all data" and Import→Replace bump `gen`. Without this the union
+     below would pull every erased row straight back from the cloud, so both of those actions
+     silently did nothing. A higher generation replaces everything, no key enumeration needed. */
+  const rG = +r.gen || 0, lG = +l.gen || 0;
+  if(rG !== lG){
+    const win = Object.assign({}, blank_legacy(), lG > rG ? l : r);
+    win.gen = Math.max(rG, lG);
+    win.updatedAt = Math.max(+r.updatedAt||0, +l.updatedAt||0);
+    win._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
+    delete win.wx;
+    return win;
+  }
+  const rU = +r.updatedAt || 0, lU = +l.updatedAt || 0;
+  const localNewer = localWins ? (lU >= rU) : (lU > rU);
+  const newer = localNewer ? l : r, older = localNewer ? r : l;
+  const out = Object.assign({}, blank_legacy(), older, newer); // start from newer's scalars, guarantee all blank() keys
   // ── append-only logs: union, never subtract ──
   out.sessions = mergeUnion(r.sessions, l.sessions, sessKey, localNewer);
   out.weights  = mergeUnion(r.weights,  l.weights,  w=>w.date, localNewer);
   out.petWeights = mergeUnion(r.petWeights, l.petWeights, w=>w.date, localNewer);  // one cat weigh-in per date, same key rule as weights
-  out.cardio   = mergeUnion(r.cardio,   l.cardio,   c=>c.id || ((c.date||'')+'|'+(c.type||'')+'|'+(c.minutes||'')), localNewer);
-  out.ideas    = mergeUnion(r.ideas,    l.ideas,    i=>i.id || ((i.date||'')+'|'+(i.text||'')), localNewer);
+  out.cardio   = mergeUnion(r.cardio,   l.cardio,   cardioKey, localNewer);
+  out.ideas    = mergeUnion(r.ideas,    l.ideas,    ideaKey, localNewer);
   out.todos    = mergeUnion(r.todos,    l.todos,    todoKey, localNewer);
   out.hobbyLog = mergeUnion(r.hobbyLog, l.hobbyLog, hobbyKey, localNewer);
   // ── date-keyed maps ──
@@ -3687,7 +4210,7 @@ function mergeDB(remote, local, localWins){
   // ── invariants ──
   out.weights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   out.petWeights.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-  out.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : String(a.date).localeCompare(String(b.date)));
+  out.sessions.sort(sessionSort);
   out._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
   out.updatedAt = Math.max(rU, lU);
   delete out.wx; // weather is derived cache — excluded from sync entirely (see saveLocal)
