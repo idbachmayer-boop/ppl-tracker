@@ -26,7 +26,7 @@ have already caused real, unrecoverable data loss in this app.
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: F1 — The COLLECTIONS Registry** - One declared registry replaces the five places a collection's merge/delete/sort rule could be silently forgotten; adding `sleep` in one line is the proof. (completed 2026-09-14)
-- [ ] **Phase 2: Export for Claude** - A Markdown export of live data, derived from the same registry and the same views, ready to paste into a Claude conversation.
+- [x] **Phase 2: Export for Claude** - A Markdown export of live data, derived from the same registry and the same views, ready to paste into a Claude conversation. (completed 2026-09-18)
 - [ ] **Phase 3: F3 — Adding a New Tracked Thing (Recipe)** - `CLAUDE.md` gets a numbered recipe for the next collection after `sleep`, written against the shipped registry.
 - [ ] **Phase 4: Draft Goes Device-Local** - The in-progress workout stops crossing the wire, closing a whole bug family at the source.
 - [ ] **Phase 5: F2 — Event Delegation** - All 172 inline handler attributes become delegated listeners, which is what makes a real CSP possible.
@@ -206,7 +206,7 @@ Phase 5 completes.
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. F1 — The COLLECTIONS Registry | 7/7 | Complete    | 2026-09-14 |
-| 2. Export for Claude | 3/3 | In Progress|  |
+| 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 0/TBD | Not started | - |
 | 4. Draft Goes Device-Local | 0/TBD | Not started | - |
 | 5. F2 — Event Delegation | 0/TBD | Not started | - |

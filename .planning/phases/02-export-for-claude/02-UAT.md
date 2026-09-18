@@ -43,6 +43,12 @@ blocked: 0
 
 ## Gaps
 
+## Closing note
+
+Ian accepted the download fallback as the Android experience on 2026-09-18, so the share sheet is
+no longer part of what this phase had to deliver. Tests 1 and 2 stay skipped, not passed: the share
+path ships unproven on any device. The phase was marked complete on that basis.
+
 ## Deferred Follow-Ups
 
 - test: 1

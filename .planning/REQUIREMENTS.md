@@ -136,8 +136,8 @@ Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REG-01 … REG-17 | Phase 1 | Pending |
-| SLEEP-01 … SLEEP-06 | Phase 1 | Pending |
+| REG-01 … REG-17 | Phase 1 | Complete |
+| SLEEP-01 … SLEEP-06 | Phase 1 | Complete |
 | EXP-01 … EXP-08 | Phase 2 | Complete |
 | DOC-01 … DOC-04 | Phase 3 | Pending |
 | DRAFT-01 … DRAFT-05 | Phase 4 | Pending |
