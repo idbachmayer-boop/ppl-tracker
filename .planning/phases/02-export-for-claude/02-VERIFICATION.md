@@ -1,7 +1,8 @@
 ---
 phase: 02-export-for-claude
 verified: 2026-09-17T00:00:00Z
-status: human_needed
+status: passed
+human_verification_deferred: post-deploy
 score: 20/20 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
@@ -26,6 +27,22 @@ human_verification:
 **Verified:** 2026-09-17
 **Status:** human_needed
 **Re-verification:** No — initial verification
+
+
+## Post-deploy deferral (2026-09-18)
+
+The four human_verification items above cannot run before this phase ships: they need the app on
+Ian's phone, and the phone runs the published build from `main`. Ian attempted test 1 on 2026-09-18
+and saw no export button at all, because the work was still on an unpushed branch. All four are
+recorded as `blocked` (blocked_by: release-build) in `02-UAT.md`, which stays open.
+
+`status` is set to `passed` on the strength of the automated verification only — 20/20 must-haves,
+all eight requirements, 755 tests green — so the phase can ship. The device checks are deferred to
+post-deploy testing against the live app, by Ian's decision, not waived. Re-run
+`/gsd-verify-work 02` after the deploy to close them.
+
+Also closed since this report was written: code-review WR-01 / security T-02-11 (a malformed set
+aborting the whole export), fixed in `a01e9da` with two tests that fail without the guard.
 
 ## Goal Achievement
 
