@@ -117,11 +117,25 @@ Plans:
   2. The recipe states the module-eval-time placement rule verbatim (declare before `let DB = load()`; literals or hoisted-function references only) and lists the tests a new collection must ship with, including the stale-device merge replay (DOC-02, DOC-03).
   3. Following the recipe end to end, on paper or a scratch branch, for a collection other than `sleep` produces the correct result with no step missing, wrong, or requiring outside knowledge (DOC-04).
 
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
+**Wave 1**
 
-- [ ] 03-01: TBD
+- [ ] 03-01-PLAN.md — Tracer: the companion doc's registry-contract blocks, the `CLAUDE.md` section and step 1, and the test that turns red when the recipe and `collectionProblems()`'s `ALLOWED` list disagree (DOC-01, DOC-03)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — Dry run A: a map-shaped probe injected via the harness's existing `opts.transform`, proving every derived consumer picks it up and the explicit-`false` merge trap holds (DOC-04)
+- [ ] 03-03-PLAN.md — The six-step spine, the required-test categories including the stale-device merge replay, and the worked `sleep` example with the safe-id gate (DOC-01, DOC-03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 03-04-PLAN.md — Checkpoint: which of the repo's three wordings of the placement rule is canonical; then the verbatim quote pinned to its source, plus the copy-paste entry round-tripped through the live validator (DOC-02, DOC-03)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 03-05-PLAN.md — Dry run B: walk the recipe cold for `supplements` on a scratch branch, fold every gap back in, discard the branch (DOC-04, DOC-01)
 
 ### Phase 4: Draft Goes Device-Local
 
@@ -207,7 +221,7 @@ Phase 5 completes.
 |-------|----------------|--------|-----------|
 | 1. F1 — The COLLECTIONS Registry | 7/7 | Complete    | 2026-09-14 |
 | 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
-| 3. F3 — Adding a New Tracked Thing (Recipe) | 0/TBD | Not started | - |
+| 3. F3 — Adding a New Tracked Thing (Recipe) | 0/5 | Not started | - |
 | 4. Draft Goes Device-Local | 0/TBD | Not started | - |
 | 5. F2 — Event Delegation | 0/TBD | Not started | - |
 | 6. F4 — .gitattributes | 0/TBD | Not started | - |
