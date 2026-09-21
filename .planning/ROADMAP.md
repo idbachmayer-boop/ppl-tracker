@@ -117,7 +117,7 @@ Plans:
   2. The recipe states the module-eval-time placement rule verbatim (declare before `let DB = load()`; literals or hoisted-function references only) and lists the tests a new collection must ship with, including the stale-device merge replay (DOC-02, DOC-03).
   3. Following the recipe end to end, on paper or a scratch branch, for a collection other than `sleep` produces the correct result with no step missing, wrong, or requiring outside knowledge (DOC-04).
 
-**Plans**: 3/5 plans executed
+**Plans**: 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -131,7 +131,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 03-04-PLAN.md — Checkpoint: which of the repo's three wordings of the placement rule is canonical; then the verbatim quote pinned to its source, plus the copy-paste entry round-tripped through the live validator (DOC-02, DOC-03)
+- [x] 03-04-PLAN.md — Checkpoint: which of the repo's three wordings of the placement rule is canonical; then the verbatim quote pinned to its source, plus the copy-paste entry round-tripped through the live validator (DOC-02, DOC-03)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -221,7 +221,7 @@ Phase 5 completes.
 |-------|----------------|--------|-----------|
 | 1. F1 — The COLLECTIONS Registry | 7/7 | Complete    | 2026-09-14 |
 | 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
-| 3. F3 — Adding a New Tracked Thing (Recipe) | 3/5 | In Progress|  |
+| 3. F3 — Adding a New Tracked Thing (Recipe) | 4/5 | In Progress|  |
 | 4. Draft Goes Device-Local | 0/TBD | Not started | - |
 | 5. F2 — Event Delegation | 0/TBD | Not started | - |
 | 6. F4 — .gitattributes | 0/TBD | Not started | - |
