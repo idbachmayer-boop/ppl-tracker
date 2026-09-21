@@ -1598,6 +1598,54 @@ ok("SLEEP-04: viewSleep reads through liveOf('sleep')", app.viewSleep.toString()
      { lastKey: keys[keys.length-1], sleepLineCount: sleepLineMatches.length });
 }
 
+console.log('\n── DRY-RUN-A: a map-shaped collection declared in one line is picked up everywhere (DOC-04) ──');
+/* DOC-04's data-layer rehearsal for the "adding a new tracked thing" recipe (CLAUDE.md /
+   docs/adding-a-collection.md), proven for a collection that is NOT sleep. sleep is list-shaped, so
+   SLEEP-05 above never exercised merge:'replace-whole', explicitFalse, or the six map-only branches
+   of collectionProblems() — exactly the ones mobilityLog got wrong in production. This block injects
+   a single map-shaped registry line the same way SLEEP-05 does (test/harness.js's opts.transform, no
+   change to the harness or to index.html) and machine-proves the recipe's data-layer half end to end
+   for it. */
+const RECIPE_PROBE_MAP_LINE = "  recipeProbeMap:{ kind:'map', merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Recipe probe map', columns:[{field:'date',label:'date'},{field:'item',label:'item'}], format:dayFlagRows },";
+const recipeProbeTransform = code => code.replace('const COLLECTIONS = {', 'const COLLECTIONS = {\n' + RECIPE_PROBE_MAP_LINE);
+const recipeProbe = loadApp(APP_PATH, null, { transform: recipeProbeTransform });
+
+{
+  const lineDiff = recipeProbe.__src.split('\n').length - app.__src.split('\n').length;
+  const reconstructed = recipeProbe.__src.replace('\n' + RECIPE_PROBE_MAP_LINE, '');
+  ok('DRY-RUN-A: the recipe probe transform applied (one line added, nothing else changed)',
+     recipeProbe.__src !== app.__src && lineDiff === 1 && reconstructed === app.__src,
+     { lineDiff, reconstructedMatchesApp: reconstructed === app.__src });
+}
+
+ok('DRY-RUN-A: the declaration is valid', recipeProbe.collectionProblems(recipeProbe.COLLECTIONS).length === 0, recipeProbe.collectionProblems(recipeProbe.COLLECTIONS));
+
+{
+  const blankProbe = recipeProbe.blank();
+  ok('DRY-RUN-A: blank() creates the recipe probe empty',
+     typeof blankProbe.recipeProbeMap === 'object' && !Array.isArray(blankProbe.recipeProbeMap) && Object.keys(blankProbe.recipeProbeMap).length === 0 &&
+     typeof recipeProbe.DB.recipeProbeMap === 'object' && !Array.isArray(recipeProbe.DB.recipeProbeMap) && Object.keys(recipeProbe.DB.recipeProbeMap).length === 0,
+     { blankMap: blankProbe.recipeProbeMap, dbMap: recipeProbe.DB.recipeProbeMap });
+}
+
+{
+  let threw = null;
+  try { recipeProbe.liveOf('recipeProbeMap'); } catch(e){ threw = e; }
+  ok('DRY-RUN-A: liveOf refuses a map collection by name',
+     !!threw && /recipeProbeMap/.test(threw.message), threw && threw.message);
+}
+
+{
+  const base = recipeProbe.blank();
+  const withoutProbe = JSON.parse(JSON.stringify(base));
+  delete withoutProbe.recipeProbeMap;
+  const badMap = JSON.parse(JSON.stringify(base)); badMap.recipeProbeMap = [];
+  const r1 = recipeProbe.validateBackup(withoutProbe), r2 = recipeProbe.validateBackup(badMap);
+  ok("DRY-RUN-A: validateBackup checks the recipe probe's shape",
+     r1 === null && r2 === 'The recipeProbeMap section is damaged.',
+     { r1, r2 });
+}
+
 /* Identity. Ian's Aug 10 export had 37 spellings for ~30 movements — "Seated Fly" and "Seated Flys"
    were two lifts with two PR histories, and "Deficit Sumo Squat" missed the program's own 12–15
    range because the override is keyed by the canonical spelling. */
