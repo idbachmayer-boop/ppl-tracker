@@ -1688,7 +1688,7 @@ ok('DRY-RUN-A: the declaration is valid', recipeProbe.collectionProblems(recipeP
 
 {
   const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-  const consumers = { blank: app.blank, liveOf: app.liveOf, validateBackup: app.validateBackup, mergeCollections: app.mergeCollections, mergeDB: app.mergeDB, exportRows: app.exportRows, buildMarkdownExport: app.buildMarkdownExport };
+  const consumers = { blank: recipeProbe.blank, liveOf: recipeProbe.liveOf, validateBackup: recipeProbe.validateBackup, mergeCollections: recipeProbe.mergeCollections, mergeDB: recipeProbe.mergeDB, exportRows: recipeProbe.exportRows, buildMarkdownExport: recipeProbe.buildMarkdownExport };
   const hits = Object.keys(consumers).filter(name => stripComments(consumers[name].toString()).indexOf('recipeProbeMap') >= 0);
   ok('DRY-RUN-A: no derived consumer mentions recipeProbeMap', hits.length === 0, hits);
 }
