@@ -64,9 +64,39 @@ using `save()` is what let a stale device look "newest" merely by being opened.
 Every tracked thing is one `COLLECTIONS` entry — the same registry `blank()`, `mergeDB()`, the
 `liveX()` filters and `validateBackup()` already derive from.
 
-1. Add exactly one entry to `COLLECTIONS` in `index.html`.
+1. Add exactly one entry to `COLLECTIONS` in `index.html`. It goes **last** — never inserted among
+   the existing entries, because entry order fixes validation precedence and merge order — and its
+   `label` must be unused by every other collection: the label becomes the export's section heading,
+   and a duplicate is refused loudly at boot, never silently merged into that collection.
+2. Bump `SCHEMA` and add a `MIGRATIONS` entry — see the **Schema** bullet under Conventions above. An
+   existing device's stored blob does not gain the new key until `_schema` advances past the new
+   number; `blank()` only helps a fresh boot.
+3. If the collection is logged or viewed, write its UI by hand. This step is never derived from the
+   registry — it is the one step the declaration cannot do for you. See `docs/adding-a-collection.md`
+   § "The hand-written UI" for the worked pattern.
+4. Add the tests this collection must ship with:
+   - registry validity — the shipped registry still has no problems;
+   - migration correctness, only if the collection needs a non-empty default — the migration stays
+     idempotent and never downgrades `_schema`;
+   - **a stale-device merge replay** — a deleted row must not be resurrected by an older device, and
+     replaying the stale device again must keep it deleted;
+   - for a map collection, an explicit-`false` replay — a day storing `false` must survive the merge,
+     and an absent key must not be resurrected from the older side;
+   - `validateBackup()` shape — a damaged section is refused, an older backup without the section is
+     accepted;
+   - UI behaviour, only if a UI was written — form validation, escaping, soft delete, and the router
+     exposing the screen;
+   - a declaration-alone structural proof — no derived consumer's source mentions the collection by
+     name.
 
-See `docs/adding-a-collection.md` for the worked example: an annotated entry and its fixtures.
+   Like the `firestore.rules` checks under Conventions, these assert the property, never the wording.
+5. Run `npm test`. `collectionProblems()` validates the registry at module-eval time, so a broken
+   declaration throws at boot and a red suite names which rule was broken.
+6. Do not touch the exporter. `buildMarkdownExport()` derives every section from `COLLECTIONS`, so a
+   new collection exports itself — no export step is needed.
+
+See `docs/adding-a-collection.md` for the worked example: an annotated entry, the field-by-field
+contract, the hand-written UI pattern, and the test walkthrough.
 
 ## After shipping
 
