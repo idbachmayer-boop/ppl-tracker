@@ -139,7 +139,7 @@ Populated during roadmap creation.
 | REG-01 … REG-17 | Phase 1 | Complete |
 | SLEEP-01 … SLEEP-06 | Phase 1 | Complete |
 | EXP-01 … EXP-08 | Phase 2 | Complete |
-| DOC-01 … DOC-04 | Phase 3 | Pending |
+| DOC-01 … DOC-04 | Phase 3 | Complete |
 | DRAFT-01 … DRAFT-05 | Phase 4 | Pending |
 | DELEG-01 … DELEG-07 | Phase 5 | Pending |
 | REPO-01 … REPO-02 | Phase 6 | Pending |

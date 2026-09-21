@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 03
 current_phase_name: f3-adding-a-new-tracked-thing-recipe
-status: executing
-stopped_at: Completed 03-04-PLAN.md
-last_updated: "2026-09-21T12:19:29.064Z"
+status: verifying
+stopped_at: Completed 03-05-PLAN.md
+last_updated: "2026-09-21T12:37:23.197Z"
 last_activity: 2026-09-21
 last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 15
-  completed_plans: 14
+  completed_plans: 15
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 
 Phase: 03 (f3-adding-a-new-tracked-thing-recipe) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-21 — Phase 03 execution started
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Progress: [█████████░] 93%
 | Phase 03 P02 | ~10min | 2 tasks | 1 files |
 | Phase 03 P03 | ~9min | 3 tasks | 2 files |
 | Phase 03 P04 | ~15min | 2 tasks | 2 files |
+| Phase 03 P05 | ~20min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 3, plan 03-03]: the copy-paste example registry entry uses placeholder label 'REPLACE ME' rather than a plausible real collection name, to avoid implying a decision Ian hasn't made.
 - [Phase ?]: [Phase 3, plan 03-04]: Task 1 decision (Ian, 2026-09-21) — option-a: CLAUDE.md quotes index.html's own COLLECTIONS registry comment block verbatim (source path index.html), trimmed to the placement/TDZ sentences only; no looseness note needed since option-a already reads 'after SCHEMA/KEY'.
 - [Phase ?]: [Phase 3, plan 03-04]: docBlock() generalized to take a fence language tag rather than adding a second fenced-block extractor for the js-fenced copy-paste registry entry.
+- [Phase ?]: [Phase 3, plan 03-05]: Dry Run B's cold walk found 8 recipe gaps — most consequential: bumping SCHEMA silently stales the committed merge-golden.json fixture and the INTRODUCED_AT boot table, and the hand-written-UI pattern (generalized from sleep) was wrong for a map collection. All closed in CLAUDE.md/docs/adding-a-collection.md; npm test stayed at the 748/0/2 baseline throughout.
+- [Phase ?]: [Phase 3, plan 03-05]: RESEARCH.md Q1 (preserve scratch-branch diff vs. narrative record) left at its default — narrative record — per the plan; surfaced for Ian rather than decided silently.
 
 ### Pending Todos
 
@@ -141,6 +144,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-21T12:19:29.050Z
-Stopped at: Completed 03-04-PLAN.md
+Last session: 2026-09-21T12:37:23.181Z
+Stopped at: Completed 03-05-PLAN.md
 Resume file: None
