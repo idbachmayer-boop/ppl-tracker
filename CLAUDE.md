@@ -67,7 +67,8 @@ Every tracked thing is one `COLLECTIONS` entry — the same registry `blank()`, 
 1. Add exactly one entry to `COLLECTIONS` in `index.html`. It goes **last** — never inserted among
    the existing entries, because entry order fixes validation precedence and merge order — and its
    `label` must be unused by every other collection: the label becomes the export's section heading,
-   and a duplicate is refused loudly at boot, never silently merged into that collection.
+   and a duplicate is refused loudly at boot, never silently merged into that collection. Whichever
+   collection was previously last likely has its own "I am the last entry" test — retarget it to yours.
 
    This is the rule the boot enforces about where that entry may live — a paraphrase of a
    temporal-dead-zone rule is how the boot died once already.
@@ -83,7 +84,8 @@ Every tracked thing is one `COLLECTIONS` entry — the same registry `blank()`, 
    ```
 2. Bump `SCHEMA` and add a `MIGRATIONS` entry — see the **Schema** bullet under Conventions above. An
    existing device's stored blob does not gain the new key until `_schema` advances past the new
-   number; `blank()` only helps a fresh boot.
+   number; `blank()` only helps a fresh boot. It also stales `test/fixtures/merge-golden.json` — see
+   `docs/adding-a-collection.md` § "Registry validity" to regenerate it.
 3. If the collection is logged or viewed, write its UI by hand. This step is never derived from the
    registry — it is the one step the declaration cannot do for you. See `docs/adding-a-collection.md`
    § "The hand-written UI" for the worked pattern.

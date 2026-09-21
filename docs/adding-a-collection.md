@@ -121,6 +121,11 @@ you.
 
 ## The hand-written UI
 
+There are two shapes here, and which one you need follows directly from `kind` — they do not share
+a pattern, so do not start from the wrong one.
+
+### List-shaped, soft-delete (the `sleep` pattern)
+
 Generalized from `sleep`'s pattern — five pieces, always named the same way:
 
 - an **id helper** producing a collision-free row id;
@@ -141,8 +146,28 @@ escape `'`, and a value interpolated into an attribute is not escaped at all, so
 an inline handler's quotes can break out of the attribute. A naively copied delete button is the
 single most likely place a future collection reintroduces that hole.
 
-One harness mechanic, not an app requirement: a new function must be added to `test/harness.js`'s
-exported-names list, or it comes back `undefined` in tests rather than throwing.
+### Map-shaped, whole-day-replace (the `mobilityLog` pattern)
+
+None of the five pieces above transfer — a map collection has no row id, no per-row delete, and
+`liveOf()` actively **refuses** a map collection by name (it throws; see `liveOf`'s guard clause in
+`index.html`). Three pieces instead, named after `mobilityLog`'s:
+
+- a **today-reader**, `xToday()`, returning `DB.x[todayISO()] || {}` — there is no "add"; the day's
+  object is read directly off `DB`, never through a `liveOf()`-style filter, because none exists for
+  maps;
+- a **toggle function** that writes an *explicit* `true`/`false` into today's object and calls
+  `save()` — never deletes the key, and never calls `softDelete()`: `soft` must be `false` on a map
+  entry (`collectionProblems()` refuses `true`), so there is nothing to soft-delete. This is the
+  literal mechanism behind "absence never means off";
+- a **view function** that reads through the today-reader and renders one row per item, each backed
+  by a checkbox `onchange="toggleX(i)"` — no delete button, so the safe-id gate above doesn't apply
+  either.
+
+Router wiring is identical to the list-shaped pattern above.
+
+One harness mechanic, not an app requirement, and the same for either shape: a new function must be
+added to `test/harness.js`'s exported-names list, or it comes back `undefined` in tests rather than
+throwing.
 
 ## The tests a new collection ships with
 
@@ -157,6 +182,24 @@ line number can never give you.
 `"registry: the shipped COLLECTIONS has no problems"` is the one generic check every collection,
 including yours, shares. Skip it and a typo in your entry (a swapped merge string, an empty
 `columns` array) ships silently instead of throwing at boot the moment `collectionProblems()` runs.
+
+Two more things a `SCHEMA` bump touches, neither obvious from `CLAUDE.md` alone:
+
+- **The boot-compatibility table.** REG-15's "every schema version boots" block (`test/app.test.js`,
+  search `INTRODUCED_AT`) replays a fresh device from every historical `_schema` value and needs to
+  know which version introduced each collection, so it can seed older-version fixtures correctly.
+  Add `yourCollection:<the SCHEMA number you bumped to>` to that table — the block fails loudly,
+  named after your collection (`"boot: introduced-at table knows yourCollection"`), if you forget.
+- **The committed merge-golden fixture.** `test/fixtures/merge-golden.json` holds hashes of the
+  legacy (pre-registry) code's own output for every synthetic differential case (REG-13). Several of
+  those fixtures embed `_schema`, so bumping `SCHEMA` changes what the *current* code produces even
+  though nothing about the legacy-vs-derived equivalence actually changed — and every one of those
+  cases fails as `"hash differs"`, dozens at once, with nothing in the failure text pointing at
+  `SCHEMA`. Regenerate before committing: `WRITE_MERGE_GOLDEN=1 node test/app.test.js`, then check in
+  the updated `test/fixtures/merge-golden.json`. While you're in there: grep `test/app.test.js` for
+  the schema number you just replaced (e.g. the old `SCHEMA` value as a bare literal) — a few
+  pre-existing tests compare against it directly instead of against `app.SCHEMA`, and those break the
+  same way for the same reason.
 
 ### Migration correctness
 
@@ -181,6 +224,14 @@ doesn't undo the first merge's result. Without both, a soft-deleted row that loo
 `mergeDB()` gets resurrected the next time the device that never saw the delete syncs again, which
 is exactly how four days of weigh-ins were lost the first time.
 
+For a map collection there is no per-row delete to replay — `merge:'replace-whole'` takes the whole
+day from whichever side is newer, so this category's map-shaped form is "a day already cleared
+(`{}`, or every flag explicitly `false`) is not resurrected by a stale device that still has entries,
+and replaying that stale device again doesn't undo it." That is a *different* fixture from the
+explicit-`false` replay below — this one varies the whole day object, the next one varies a single
+inner key — so write both; they are not a duplicate of each other even though both exercise
+`replace-whole`.
+
 ### An explicit-`false` replay, for map collections
 
 Only applies to a map-shaped collection — list-shaped collections like `sleep` never declare
@@ -204,7 +255,10 @@ this collection existed becomes unimportable.
 ### UI behaviour
 
 Only if you wrote a UI (see above). Cover form validation and clamping, that user text is escaped
-in the rendered HTML, that delete is soft, and that the router exposes the screen. `sleep`'s
+in the rendered HTML, that delete is soft, and that the router exposes the screen. This list is
+`sleep`-shaped (free-text fields, a soft-deletable row): a toggle-only map UI like `mobilityLog`'s has
+no free text to escape and no soft delete to test — only the router-exposure check transfers as-is.
+Cover whichever of these your actual UI has, not every bullet regardless of shape. `sleep`'s
 versions: `"sleep: logging a night stores hours, quality and the trimmed note"`,
 `"sleep: blank or impossible hours are refused"`, `"sleep: the note is escaped"`,
 `"sleep: deleting a night is soft"`,
@@ -222,3 +276,11 @@ collection by name. `sleep`'s versions: `"no derived consumer mentions sleep"` (
 `CLAUDE.md` step 1). Without this, a future edit could quietly special-case your collection
 somewhere derived code was supposed to be generic, and nothing would say so until the next
 collection after yours broke in the same place.
+
+### An export smoke test, optional but recommended
+
+Not in `CLAUDE.md`'s required list, but worth the four lines: `buildMarkdownExport()` should derive
+your collection's section with zero exporter edits (step 6). `sleep` and Phase 3's Dry Run A probe
+both carry a check of the shape "seed one row, build the export, assert the section exists and holds
+that row" — a quick way to catch a `columns[0]` that isn't actually an ISO date, or a `format`
+function that throws, before Ian's next export silently drops your collection's rows.
