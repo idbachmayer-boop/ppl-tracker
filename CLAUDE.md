@@ -59,6 +59,15 @@ using `save()` is what let a stale device look "newest" merely by being opened.
 - **Schema:** bump `SCHEMA` and add an entry to `MIGRATIONS`. Migrations must be idempotent and must
   never downgrade `_schema`.
 
+## Adding a new tracked thing
+
+Every tracked thing is one `COLLECTIONS` entry — the same registry `blank()`, `mergeDB()`, the
+`liveX()` filters and `validateBackup()` already derive from.
+
+1. Add exactly one entry to `COLLECTIONS` in `index.html`.
+
+See `docs/adding-a-collection.md` for the worked example: an annotated entry and its fixtures.
+
 ## After shipping
 
 Append a dated entry to the changelog in Ian's vault at

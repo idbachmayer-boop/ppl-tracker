@@ -2008,6 +2008,68 @@ console.log('\n── the registry refuses what would lose data (REG-05/REG-04/R
      JSON.stringify(migKeys) === JSON.stringify(expectedMigKeys), migKeys);
 }
 
+console.log('\n── the recipe and the registry cannot silently diverge (DOC-03) ──');
+{
+  /* This block compares VALUES — a key set extracted from the companion doc against the key set
+     collectionProblems() actually enforces — never prose. CLAUDE.md § Conventions already records
+     why that matters: pinning the firestore.rules tests to exact wording broke them the moment the
+     file matched what was actually deployed. Assert the property, never the wording. */
+  const recipeDocPath = APP_PATH.replace(/index\.html$/, 'docs/adding-a-collection.md');
+  const recipeDocExists = fs.existsSync(recipeDocPath);
+  const recipeDoc = recipeDocExists ? fs.readFileSync(recipeDocPath, 'utf8') : '';
+
+  function docBlock(doc, marker){
+    const idx = doc.indexOf(marker);
+    if(idx < 0) return null;
+    const after = doc.slice(idx + marker.length);
+    const m = after.match(/```json\r?\n([\s\S]*?)\r?\n```/);
+    if(!m) return null;
+    try { return JSON.parse(m[1]); } catch(e){ return null; }
+  }
+
+  const docSpecKeysRaw = docBlock(recipeDoc, '<!-- registry-contract: spec keys -->');
+  const docColumnKeysRaw = docBlock(recipeDoc, '<!-- registry-contract: column keys -->');
+  const docSpecKeys = Array.isArray(docSpecKeysRaw) ? docSpecKeysRaw : [];
+  const docColumnKeys = Array.isArray(docColumnKeysRaw) ? docColumnKeysRaw : [];
+
+  const docBlocksOk = recipeDocExists
+    && Array.isArray(docSpecKeysRaw) && docSpecKeysRaw.length > 0
+    && Array.isArray(docColumnKeysRaw) && docColumnKeysRaw.length > 0;
+  ok('recipe: docs/adding-a-collection.md exists and holds both registry-contract blocks',
+     docBlocksOk, { recipeDocExists, docSpecKeysRaw, docColumnKeysRaw });
+
+  /* Extracted straight out of index.html's own collectionProblems() — never transcribed from a
+     planning document — so a restructure of the validator itself is what this anchor is guarding. */
+  const allowedMatch = app.__src.match(/const ALLOWED = \[([^\]]*)\]/);
+  const liveAllowed = allowedMatch
+    ? allowedMatch[1].split(',').map(s => s.trim().replace(/^'|'$/g, '')).filter(Boolean)
+    : [];
+  ok('recipe: the live ALLOWED array anchor is found and yields more than one name',
+     !!allowedMatch && liveAllowed.length > 1, liveAllowed);
+
+  const columnKeyLine = app.__src.split('\n').find(l => l.includes('has unknown key'));
+  const liveColumnKeys = columnKeyLine
+    ? [...columnKeyLine.matchAll(/k!==\s*'([^']+)'/g)].map(m => m[1])
+    : [];
+  ok('recipe: the live column-key anchor is found and yields more than one name',
+     !!columnKeyLine && liveColumnKeys.length > 1, liveColumnKeys);
+
+  const sortedUnique = arr => JSON.stringify(Array.from(new Set(arr)).sort());
+
+  if(docBlocksOk){
+    ok('recipe: the documented spec-key list matches the live ALLOWED list',
+       sortedUnique(docSpecKeys) === sortedUnique(liveAllowed),
+       { docSpecKeys: Array.from(new Set(docSpecKeys)).sort(), liveAllowed: Array.from(new Set(liveAllowed)).sort() });
+
+    ok('recipe: the documented column-key list matches the live column contract',
+       sortedUnique(docColumnKeys) === sortedUnique(liveColumnKeys),
+       { docColumnKeys: Array.from(new Set(docColumnKeys)).sort(), liveColumnKeys: Array.from(new Set(liveColumnKeys)).sort() });
+
+    ok('recipe: the comparison is not vacuous — an extra field breaks it',
+       sortedUnique(docSpecKeys.concat(['zzNotAField'])) !== sortedUnique(liveAllowed));
+  }
+}
+
 console.log('\n── an older build must not write over a migrated one ──');
 ok('a remote from a newer schema is refused', app.remoteTooNew({ _schema: app.SCHEMA + 1 }) === true);
 ok('the same schema is fine', app.remoteTooNew({ _schema: app.SCHEMA }) === false);
