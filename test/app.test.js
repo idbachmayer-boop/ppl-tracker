@@ -2067,6 +2067,61 @@ console.log('\n── the recipe and the registry cannot silently diverge (DOC-0
 
     ok('recipe: the comparison is not vacuous — an extra field breaks it',
        sortedUnique(docSpecKeys.concat(['zzNotAField'])) !== sortedUnique(liveAllowed));
+
+    /* Task 2: close the coverage and encoding gaps around the divergence check above. */
+
+    // ── every key a live COLLECTIONS entry actually uses is named in the companion doc ──
+    const usedSpecKeys = new Set();
+    const usedColumnKeys = new Set();
+    Object.keys(app.COLLECTIONS).forEach(name => {
+      const spec = app.COLLECTIONS[name];
+      Object.keys(spec).forEach(k => usedSpecKeys.add(k));
+      (Array.isArray(spec.columns) ? spec.columns : []).forEach(col => {
+        Object.keys(col).forEach(k => usedColumnKeys.add(k));
+      });
+    });
+    const docSpecKeySet = new Set(docSpecKeys);
+    const docColumnKeySet = new Set(docColumnKeys);
+    const undocumentedSpecKeys = Array.from(usedSpecKeys).filter(k => !docSpecKeySet.has(k));
+    const undocumentedColumnKeys = Array.from(usedColumnKeys).filter(k => !docColumnKeySet.has(k));
+    ok('recipe: every key used by a live COLLECTIONS entry is documented',
+       undocumentedSpecKeys.length === 0 && undocumentedColumnKeys.length === 0,
+       { undocumentedSpecKeys, undocumentedColumnKeys });
+
+    // ── behavioural cross-check: anchor the source-text extraction to live validator behaviour ──
+    const validListSpec = () => ({ kind:'list', key:'id', merge:'union', soft:true, required:false, label:'Thing', columns:[{field:'date',label:'date'}] });
+
+    const specKeyFalselyRefused = [];
+    docSpecKeys.forEach(name => {
+      const spec = validListSpec(); spec[name] = 'dummy';
+      const problems = app.collectionProblems({ thing: spec });
+      if(problems.some(p => p.includes('unknown field "' + name + '"'))) specKeyFalselyRefused.push(name);
+    });
+    const zzSpec = validListSpec(); zzSpec.zzNotAField = 'dummy';
+    const zzSpecProblems = app.collectionProblems({ thing: zzSpec });
+    const zzSpecRefused = zzSpecProblems.some(p => p.includes('unknown field "zzNotAField"'));
+    ok('recipe: every documented spec key is accepted by collectionProblems, and a sentinel key is refused',
+       specKeyFalselyRefused.length === 0 && zzSpecRefused,
+       { specKeyFalselyRefused, zzSpecRefused });
+
+    const columnKeyFalselyRefused = [];
+    docColumnKeys.forEach(name => {
+      const spec = validListSpec(); spec.columns = [Object.assign({field:'date', label:'date'}, {[name]: 'dummy'})];
+      const problems = app.collectionProblems({ thing: spec });
+      if(problems.some(p => p.includes('has unknown key "' + name + '"'))) columnKeyFalselyRefused.push(name);
+    });
+    const zzColSpec = validListSpec(); zzColSpec.columns = [{field:'date', label:'date', zzNotAColumnKey:'dummy'}];
+    const zzColProblems = app.collectionProblems({ thing: zzColSpec });
+    const zzColRefused = zzColProblems.some(p => p.includes('has unknown key "zzNotAColumnKey"'));
+    ok('recipe: every documented column key is accepted by collectionProblems, and a sentinel column key is refused',
+       columnKeyFalselyRefused.length === 0 && zzColRefused,
+       { columnKeyFalselyRefused, zzColRefused });
+
+    // ── encoding guard: a typographic quote or invisible character breaks the extractor unseen ──
+    const ASCII_IDENT_RE = /^[A-Za-z][A-Za-z0-9]*$/;
+    const nonAsciiNames = docSpecKeys.concat(docColumnKeys).filter(n => !ASCII_IDENT_RE.test(n));
+    ok('recipe: the documented key names are plain ASCII identifiers',
+       nonAsciiNames.length === 0, nonAsciiNames);
   }
 }
 
