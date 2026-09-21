@@ -180,3 +180,11 @@ None - no external service configuration required.
 ---
 *Phase: 03-f3-adding-a-new-tracked-thing-recipe*
 *Completed: 2026-09-21*
+
+## Self-Check: PASSED
+
+- FOUND: docs/adding-a-collection.md
+- FOUND: .planning/phases/03-f3-adding-a-new-tracked-thing-recipe/03-01-SUMMARY.md
+- FOUND: 93235b7 (Task 1 commit)
+- FOUND: abcd9ba (Task 2 commit)
+- FOUND: 6e3af2a (SUMMARY commit)
