@@ -58,7 +58,7 @@ Clean data out of the app and into Claude Desktop.
 - [x] **DOC-01**: `CLAUDE.md` gains a numbered "adding a new tracked thing" recipe, written against the shipped `COLLECTIONS` declaration
 - [ ] **DOC-02**: The recipe states the module-eval-time placement rule and what may appear as a value in `COLLECTIONS`
 - [x] **DOC-03**: The recipe names the tests a new collection must ship with, including the stale-device merge replay
-- [ ] **DOC-04**: The recipe is verified by following it end to end for a collection that is not `sleep`, on paper or in a scratch branch
+- [x] **DOC-04**: The recipe is verified by following it end to end for a collection that is not `sleep`, on paper or in a scratch branch
 
 ### Draft (DRAFT)
 

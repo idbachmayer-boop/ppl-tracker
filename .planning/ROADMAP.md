@@ -117,7 +117,7 @@ Plans:
   2. The recipe states the module-eval-time placement rule verbatim (declare before `let DB = load()`; literals or hoisted-function references only) and lists the tests a new collection must ship with, including the stale-device merge replay (DOC-02, DOC-03).
   3. Following the recipe end to end, on paper or a scratch branch, for a collection other than `sleep` produces the correct result with no step missing, wrong, or requiring outside knowledge (DOC-04).
 
-**Plans**: 1/5 plans executed
+**Plans**: 2/5 plans executed
 
 Plans:
 **Wave 1**
@@ -126,7 +126,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-02-PLAN.md — Dry run A: a map-shaped probe injected via the harness's existing `opts.transform`, proving every derived consumer picks it up and the explicit-`false` merge trap holds (DOC-04)
+- [x] 03-02-PLAN.md — Dry run A: a map-shaped probe injected via the harness's existing `opts.transform`, proving every derived consumer picks it up and the explicit-`false` merge trap holds (DOC-04)
 - [ ] 03-03-PLAN.md — The six-step spine, the required-test categories including the stale-device merge replay, and the worked `sleep` example with the safe-id gate (DOC-01, DOC-03)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -221,7 +221,7 @@ Phase 5 completes.
 |-------|----------------|--------|-----------|
 | 1. F1 — The COLLECTIONS Registry | 7/7 | Complete    | 2026-09-14 |
 | 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
-| 3. F3 — Adding a New Tracked Thing (Recipe) | 1/5 | In Progress|  |
+| 3. F3 — Adding a New Tracked Thing (Recipe) | 2/5 | In Progress|  |
 | 4. Draft Goes Device-Local | 0/TBD | Not started | - |
 | 5. F2 — Event Delegation | 0/TBD | Not started | - |
 | 6. F4 — .gitattributes | 0/TBD | Not started | - |

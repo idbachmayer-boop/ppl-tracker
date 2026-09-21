@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 03
 current_phase_name: f3-adding-a-new-tracked-thing-recipe
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-09-21T11:53:52.787Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-09-21T12:00:23.912Z"
 last_activity: 2026-09-21
 last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 15
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 ## Current Position
 
 Phase: 03 (f3-adding-a-new-tracked-thing-recipe) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-09-21 — Phase 03 execution started
 
-Progress: [███████░░░] 73%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -69,6 +69,7 @@ Progress: [███████░░░] 73%
 | Phase 02 P02 | ~3min (commit-to-commit) | 2 tasks | 2 files |
 | Phase 02 P03 | ~5.5min (commit-to-commit) | 2 tasks | 3 files |
 | Phase 03 P01 | ~15min | 2 tasks | 3 files |
+| Phase 03 P02 | ~10min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 2, plan 02-03]: exportMarkdown() returns 'share' as soon as navigator.share() is called, regardless of eventual resolution; exportShareFailed() is the single funnel for every non-cancel outcome (D-01)
 - [Phase ?]: [Phase 3, plan 03-01]: docs/adding-a-collection.md states no field count in prose (03-RESEARCH.md's '9 items; 10 array entries' note was a miscount); the divergence test compares sets, so no number is needed.
 - [Phase ?]: [Phase 3, plan 03-01]: CLAUDE.md's new 'Adding a new tracked thing' section carries only step 1 in this plan; remaining numbered steps deferred to plan 03-03 per the plan's explicit scope boundary.
+- [Phase ?]: [Phase 3, plan 03-02]: recipeProbeMap is its own independent Dry Run A probe (separate transform/line/instance from SLEEP-05's probe/probeList/probeMap), preserving SLEEP-05's own 'two lines added' reconstruction assertion.
+- [Phase ?]: [Phase 3, plan 03-02]: Dry Run A's mergeDB() fixtures vary a top-level updatedAt, not a per-day mtime, matching how mergeDateMap()'s replace-whole branch is actually driven; DOC-04's data-layer half is proven, Dry Run B (plan 03-05) covers the remaining UI step.
 
 ### Pending Todos
 
@@ -132,6 +135,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-21T11:53:52.772Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-09-21T12:00:23.898Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
