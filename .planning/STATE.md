@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 03
 current_phase_name: f3-adding-a-new-tracked-thing-recipe
 status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-09-21T12:00:23.912Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-09-21T12:10:39.683Z"
 last_activity: 2026-09-21
 last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 15
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-10)
 ## Current Position
 
 Phase: 03 (f3-adding-a-new-tracked-thing-recipe) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-09-21 — Phase 03 execution started
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 87%
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Progress: [████████░░] 80%
 | Phase 02 P03 | ~5.5min (commit-to-commit) | 2 tasks | 3 files |
 | Phase 03 P01 | ~15min | 2 tasks | 3 files |
 | Phase 03 P02 | ~10min | 2 tasks | 1 files |
+| Phase 03 P03 | ~9min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 3, plan 03-01]: CLAUDE.md's new 'Adding a new tracked thing' section carries only step 1 in this plan; remaining numbered steps deferred to plan 03-03 per the plan's explicit scope boundary.
 - [Phase ?]: [Phase 3, plan 03-02]: recipeProbeMap is its own independent Dry Run A probe (separate transform/line/instance from SLEEP-05's probe/probeList/probeMap), preserving SLEEP-05's own 'two lines added' reconstruction assertion.
 - [Phase ?]: [Phase 3, plan 03-02]: Dry Run A's mergeDB() fixtures vary a top-level updatedAt, not a per-day mtime, matching how mergeDateMap()'s replace-whole branch is actually driven; DOC-04's data-layer half is proven, Dry Run B (plan 03-05) covers the remaining UI step.
+- [Phase ?]: [Phase 3, plan 03-03]: CLAUDE.md's step 4 required-test categories and docs/adding-a-collection.md's test-walkthrough subheadings are matched one-for-one, in order, so the spine and companion doc cannot silently drift into different category counts.
+- [Phase ?]: [Phase 3, plan 03-03]: the copy-paste example registry entry uses placeholder label 'REPLACE ME' rather than a plausible real collection name, to avoid implying a decision Ian hasn't made.
 
 ### Pending Todos
 
@@ -135,6 +138,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-21T12:00:23.898Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-09-21T12:10:39.667Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None
