@@ -1646,6 +1646,59 @@ ok('DRY-RUN-A: the declaration is valid', recipeProbe.collectionProblems(recipeP
      { r1, r2 });
 }
 
+{
+  const day = '2026-08-01';
+  const A = Object.assign(recipeProbe.blank(), { updatedAt:100, recipeProbeMap: { [day]: { a:'old' } } });
+  const B = Object.assign(recipeProbe.blank(), { updatedAt:900, recipeProbeMap: { [day]: { b:'new' } } });
+  const out1 = recipeProbe.mergeDB(clone(A), clone(B), false);
+  const out2 = recipeProbe.mergeDB(clone(B), clone(A), false);
+  ok('DRY-RUN-A: mergeDB replaces the whole day from the newer side',
+     JSON.stringify(out1.recipeProbeMap[day]) === JSON.stringify({ b:'new' }) && JSON.stringify(out2.recipeProbeMap[day]) === JSON.stringify({ b:'new' }),
+     { out1: out1.recipeProbeMap[day], out2: out2.recipeProbeMap[day] });
+}
+
+{
+  const day = '2026-08-01';
+  const olderTrue = Object.assign(recipeProbe.blank(), { updatedAt:100, recipeProbeMap: { [day]: { flag:true } } });
+  const newerFalse = Object.assign(recipeProbe.blank(), { updatedAt:900, recipeProbeMap: { [day]: { flag:false } } });
+  const falseOut1 = recipeProbe.mergeDB(clone(olderTrue), clone(newerFalse), false);
+  const falseOut2 = recipeProbe.mergeDB(clone(newerFalse), clone(olderTrue), false);
+
+  const olderHasKey = Object.assign(recipeProbe.blank(), { updatedAt:100, recipeProbeMap: { [day]: { flag:true } } });
+  const newerOmits  = Object.assign(recipeProbe.blank(), { updatedAt:900, recipeProbeMap: { [day]: { other:true } } });
+  const absentOut1 = recipeProbe.mergeDB(clone(olderHasKey), clone(newerOmits), false);
+  const absentOut2 = recipeProbe.mergeDB(clone(newerOmits), clone(olderHasKey), false);
+
+  ok('DRY-RUN-A: an explicit false survives the merge, and absence does not mean off',
+     JSON.stringify(falseOut1.recipeProbeMap[day]) === JSON.stringify({ flag:false }) &&
+     JSON.stringify(falseOut2.recipeProbeMap[day]) === JSON.stringify({ flag:false }) &&
+     JSON.stringify(absentOut1.recipeProbeMap[day]) === JSON.stringify({ other:true }) &&
+     JSON.stringify(absentOut2.recipeProbeMap[day]) === JSON.stringify({ other:true }),
+     { falseOut1: falseOut1.recipeProbeMap[day], falseOut2: falseOut2.recipeProbeMap[day], absentOut1: absentOut1.recipeProbeMap[day], absentOut2: absentOut2.recipeProbeMap[day] });
+}
+
+{
+  recipeProbe.DB = Object.assign(recipeProbe.blank(), { recipeProbeMap: { '2026-08-03': { flag:true } } });
+  const sections = mdSections(recipeProbe.buildMarkdownExport());
+  const sec = sections['Recipe probe map'];
+  ok('DRY-RUN-A: the recipe probe exports its own section with no exporter edit',
+     !!sec && !sec.empty && sec.rows.length === 1 && sec.rows[0][0] === '2026-08-03',
+     sec);
+}
+
+{
+  const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const consumers = { blank: app.blank, liveOf: app.liveOf, validateBackup: app.validateBackup, mergeCollections: app.mergeCollections, mergeDB: app.mergeDB, exportRows: app.exportRows, buildMarkdownExport: app.buildMarkdownExport };
+  const hits = Object.keys(consumers).filter(name => stripComments(consumers[name].toString()).indexOf('recipeProbeMap') >= 0);
+  ok('DRY-RUN-A: no derived consumer mentions recipeProbeMap', hits.length === 0, hits);
+}
+
+/* Dry Run A proves the recipe's data-layer half exhaustively for a map-shaped collection: a valid
+   declaration, blank(), liveOf() refusal, validateBackup()'s shape check, mergeDB()'s replace-whole
+   trap (including the explicit-false rule), and the export — all reached from one injected line with
+   no change to any derived consumer. It cannot reach the hand-written logging/viewing UI step the
+   recipe also describes; that is Dry Run B's job (plan 03-05). */
+
 /* Identity. Ian's Aug 10 export had 37 spellings for ~30 movements — "Seated Fly" and "Seated Flys"
    were two lifts with two PR histories, and "Deficit Sumo Squat" missed the program's own 12–15
    range because the override is keyed by the canonical spelling. */
