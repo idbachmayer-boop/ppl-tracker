@@ -2164,13 +2164,22 @@ console.log('\n── the recipe and the registry cannot silently diverge (DOC-0
   const recipeDocExists = fs.existsSync(recipeDocPath);
   const recipeDoc = recipeDocExists ? fs.readFileSync(recipeDocPath, 'utf8') : '';
 
-  function docBlock(doc, marker){
+  /* `lang` picks the fence tag to look for. json (the default) parses the captured text as JSON,
+     matching every pre-existing call site below unchanged; any other tag returns the raw captured
+     text, which is what a `js` object-literal fixture (not valid JSON — unquoted keys, a bare
+     function-reference value) needs. This is the file's only fenced-block extractor (Task 3, DOC-03/DOC-02). */
+  function docBlock(doc, marker, lang){
+    lang = lang || 'json';
     const idx = doc.indexOf(marker);
     if(idx < 0) return null;
     const after = doc.slice(idx + marker.length);
-    const m = after.match(/```json\r?\n([\s\S]*?)\r?\n```/);
+    const re = new RegExp('```' + lang + '\\r?\\n([\\s\\S]*?)\\r?\\n```');
+    const m = after.match(re);
     if(!m) return null;
-    try { return JSON.parse(m[1]); } catch(e){ return null; }
+    if(lang === 'json'){
+      try { return JSON.parse(m[1]); } catch(e){ return null; }
+    }
+    return m[1];
   }
 
   const docSpecKeysRaw = docBlock(recipeDoc, '<!-- registry-contract: spec keys -->');
@@ -2268,6 +2277,39 @@ console.log('\n── the recipe and the registry cannot silently diverge (DOC-0
     const nonAsciiNames = docSpecKeys.concat(docColumnKeys).filter(n => !ASCII_IDENT_RE.test(n));
     ok('recipe: the documented key names are plain ASCII identifiers',
        nonAsciiNames.length === 0, nonAsciiNames);
+
+    // ── the copy-paste example entry round-trips through the live validator (DOC-03, Task 3) ──
+    const exampleEntrySrc = docBlock(recipeDoc, '<!-- registry-contract: example entry -->', 'js');
+    ok('recipe: docs/adding-a-collection.md holds the example-entry fenced block',
+       typeof exampleEntrySrc === 'string' && exampleEntrySrc.trim().length > 0, exampleEntrySrc);
+
+    let exampleEntry = null, exampleEntryError = null;
+    if(typeof exampleEntrySrc === 'string'){
+      try {
+        // Only `dayFlagRows` is injected — any other identifier the fixture references throws here,
+        // which is the point: the fixture is meant to be paste-able against the real file, and this
+        // is what proves it references nothing else.
+        exampleEntry = new Function('dayFlagRows', 'return (' + exampleEntrySrc + ');')(app.dayFlagRows);
+      } catch(e){ exampleEntryError = e.message; }
+    }
+    ok('recipe: the copy-paste entry evaluates with only dayFlagRows injected',
+       exampleEntry !== null && exampleEntryError === null, exampleEntryError);
+
+    if(exampleEntry){
+      const roundTripProblems = app.collectionProblems({ exampleEntry: exampleEntry });
+      ok('recipe: the companion doc\'s copy-paste entry still passes the live validator',
+         Array.isArray(roundTripProblems) && roundTripProblems.length === 0, roundTripProblems);
+
+      ok('recipe: the copy-paste entry is map-shaped and exercises the explicitFalse branch',
+         exampleEntry.kind === 'map' && exampleEntry.merge === 'replace-whole' && exampleEntry.explicitFalse === true,
+         { kind: exampleEntry.kind, merge: exampleEntry.merge, explicitFalse: exampleEntry.explicitFalse });
+
+      const missingFormat = Object.assign({}, exampleEntry);
+      delete missingFormat.format;
+      const missingFormatProblems = app.collectionProblems({ exampleEntry: missingFormat });
+      ok('recipe: the round-trip is not vacuous — dropping format from the copy is refused',
+         Array.isArray(missingFormatProblems) && missingFormatProblems.length > 0, missingFormatProblems);
+    }
   }
 }
 
