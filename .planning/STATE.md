@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 3
-current_phase_name: F3 — Adding a New Tracked Thing (Recipe)
+current_phase: 03
+current_phase_name: f3-adding-a-new-tracked-thing-recipe
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-09-21T01:43:58.830Z"
-last_activity: 2026-09-18
-last_activity_desc: Phase 02 execution started
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-09-21T11:53:52.787Z"
+last_activity: 2026-09-21
+last_activity_desc: Phase 03 execution started
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 15
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-10)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 02 — export-for-claude
+**Current focus:** Phase 03 — f3-adding-a-new-tracked-thing-recipe
 
 ## Current Position
 
-Phase: 3 — F3 — Adding a New Tracked Thing (Recipe)
-Plan: Not started
+Phase: 03 (f3-adding-a-new-tracked-thing-recipe) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-09-18 — Phase 02 complete, transitioned to Phase 3
+Last activity: 2026-09-21 — Phase 03 execution started
 
-Progress: [██████████] 100%
+Progress: [███████░░░] 73%
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Progress: [██████████] 100%
 | Phase 02 P01 | 22min | 2 tasks | 3 files |
 | Phase 02 P02 | ~3min (commit-to-commit) | 2 tasks | 2 files |
 | Phase 02 P03 | ~5.5min (commit-to-commit) | 2 tasks | 3 files |
+| Phase 03 P01 | ~15min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 2, plan 02-02]: COLLECTIONS.cardio's columns array is reformatted across multiple lines (unlike every other one-line entry) so each zeroIsMissing:true declaration is independently greppable
 - [Phase ?]: [Phase 2, plan 02-03]: buildMarkdownExport() computes every section's {spec,rows} exactly once; both the header's date-range/row-count line and the tables read from that same array (EXP-08 concurrency)
 - [Phase ?]: [Phase 2, plan 02-03]: exportMarkdown() returns 'share' as soon as navigator.share() is called, regardless of eventual resolution; exportShareFailed() is the single funnel for every non-cancel outcome (D-01)
+- [Phase ?]: [Phase 3, plan 03-01]: docs/adding-a-collection.md states no field count in prose (03-RESEARCH.md's '9 items; 10 array entries' note was a miscount); the divergence test compares sets, so no number is needed.
+- [Phase ?]: [Phase 3, plan 03-01]: CLAUDE.md's new 'Adding a new tracked thing' section carries only step 1 in this plan; remaining numbered steps deferred to plan 03-03 per the plan's explicit scope boundary.
 
 ### Pending Todos
 
@@ -129,6 +132,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-20T13:13:12.079Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-f3-adding-a-new-tracked-thing-recipe/03-CONTEXT.md
+Last session: 2026-09-21T11:53:52.772Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
