@@ -284,3 +284,14 @@ your collection's section with zero exporter edits (step 6). `sleep` and Phase 3
 both carry a check of the shape "seed one row, build the export, assert the section exists and holds
 that row" — a quick way to catch a `columns[0]` that isn't actually an ISO date, or a `format`
 function that throws, before Ian's next export silently drops your collection's rows.
+
+## Rehearsal record
+
+2026-09-21: walked cold, end to end, for `supplements` — map-shaped (`replace-whole`,
+`explicitFalse:true`), the shape `sleep` never exercised. Ran on a scratch branch, reached a green
+`npm test`, then discarded rather than merged — a shipped `SCHEMA` bump is one-way and irreversible
+on Ian's phone. Found eight gaps; most consequential: a `SCHEMA` bump silently stales the committed
+`merge-golden.json` fixture, the `INTRODUCED_AT` boot table needed the new collection and was never
+named in the recipe, and the hand-written-UI section (generalized from `sleep`) was actively wrong
+for a map. A green suite proves the resulting code, not this prose — the full gap list is in
+`.planning/phases/03-f3-adding-a-new-tracked-thing-recipe/03-05-SUMMARY.md`.
