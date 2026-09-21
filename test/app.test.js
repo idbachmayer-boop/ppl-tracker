@@ -1870,6 +1870,51 @@ console.log('\n── COLLECTIONS sits where module-eval can reach it (REG-02/03
      Object.keys(app.COLLECTIONS));
 }
 
+console.log('\n── the recipe quotes the placement rule verbatim (DOC-02) ──');
+{
+  /* This does not assert the placement rule says any particular thing — that would be the
+     exact-wording trap CLAUDE.md's own firestore.rules note (§ Conventions) already warns against.
+     It asserts only that CLAUDE.md's copy and the file its own marker names are the same text,
+     whitespace-normalized. Either file may be rewritten freely; they may only not drift apart. */
+  const claudeMdPath = APP_PATH.replace(/index\.html$/, 'CLAUDE.md');
+  const repoRoot = path.dirname(APP_PATH);
+  const claudeMdExists = fs.existsSync(claudeMdPath);
+  const claudeMd = claudeMdExists ? fs.readFileSync(claudeMdPath, 'utf8') : '';
+
+  const normWs = s => s.replace(/\s+/g, ' ').trim();
+
+  const markerRe = /<!-- placement-rule: verbatim from (.+?) -->/g;
+  const placementMarkers = [];
+  let m;
+  while((m = markerRe.exec(claudeMd))){
+    const quoteSource = m[1].trim();
+    const after = claudeMd.slice(m.index + m[0].length);
+    const fenceMatch = after.match(/```text\r?\n([\s\S]*?)\r?\n[ \t]*```/);
+    placementMarkers.push({ quoteSource, placementQuote: fenceMatch ? fenceMatch[1] : null });
+  }
+
+  ok('recipe: CLAUDE.md names at least one verbatim placement-rule source',
+     placementMarkers.length > 0 && placementMarkers.every(p => p.placementQuote && normWs(p.placementQuote).length > 0),
+     placementMarkers.map(p => p.quoteSource));
+
+  if(placementMarkers.length > 0 && placementMarkers.every(p => p.placementQuote)){
+    placementMarkers.forEach(p => {
+      const srcPath = path.join(repoRoot, p.quoteSource);
+      const srcExists = fs.existsSync(srcPath);
+      const srcText = srcExists ? fs.readFileSync(srcPath, 'utf8') : '';
+      const contains = srcExists && normWs(srcText).includes(normWs(p.placementQuote));
+      ok('recipe: CLAUDE.md quotes the placement rule verbatim from the source it names',
+         contains,
+         { quoteSource: p.quoteSource, srcExists, quoteStart: normWs(p.placementQuote).slice(0, 80) });
+    });
+
+    const combinedQuote = placementMarkers.map(p => normWs(p.placementQuote)).join(' ');
+    ok('recipe: the quoted placement rule is substantial, not a fragment',
+       combinedQuote.length >= 200 && combinedQuote.includes('MIGRATIONS') && combinedQuote.includes('blank('),
+       combinedQuote.length);
+  }
+}
+
 /* The registry's export metadata (REG-17), the merge-strategy refusal battery (REG-05), the promoted
    key functions' parity with their pre-phase bodies (REG-04), and the hand-written MIGRATIONS
    invariant (REG-11). Built with the object form of COLLECTIONS entries, copying real function

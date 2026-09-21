@@ -68,6 +68,19 @@ Every tracked thing is one `COLLECTIONS` entry — the same registry `blank()`, 
    the existing entries, because entry order fixes validation precedence and merge order — and its
    `label` must be unused by every other collection: the label becomes the export's section heading,
    and a duplicate is refused loudly at boot, never silently merged into that collection.
+
+   This is the rule the boot enforces about where that entry may live — a paraphrase of a
+   temporal-dead-zone rule is how the boot died once already.
+
+   <!-- placement-rule: verbatim from index.html -->
+   ```text
+   Declared before DB boots via load() a few dozen lines down, after SCHEMA/KEY, before MIGRATIONS;
+   every value is a literal or a reference to a hoisted `function` declaration — never a const
+   arrow, never a forward const. blank() may read only `kind` at module-eval time (see the placement
+   comments on migration 13 and migration 17 above, and the one on `let migrationRan` below — this
+   is the same trap). Everything else here (`key`, `sortBy`, `merge`, `label`, `columns`, `format`)
+   is read later, by code that runs after boot, never during it.
+   ```
 2. Bump `SCHEMA` and add a `MIGRATIONS` entry — see the **Schema** bullet under Conventions above. An
    existing device's stored blob does not gain the new key until `_schema` advances past the new
    number; `blank()` only helps a fresh boot.
