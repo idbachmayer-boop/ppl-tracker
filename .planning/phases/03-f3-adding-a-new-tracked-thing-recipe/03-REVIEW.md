@@ -142,3 +142,9 @@ fixture if broader coverage is wanted later.
 _Reviewed: 2026-09-21T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+## Resolution (2026-09-21)
+
+- **CR-01 — fixed** in `ac7420a`: consumers now read from `recipeProbe.*`; mutation-checked (a name special-case injected into `blank()` turns the check red). Suite: 748 passed, 0 failed.
+- **WR-01 — open (advisory):** the probe is injected first in `COLLECTIONS`, not last as the recipe prescribes. No current order-dependence found.
+- **IN-01 — open (info).**
