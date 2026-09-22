@@ -31,6 +31,7 @@ every other feature can fail before that one does.
 - ✓ Lawn scheduler with weather-driven mow forecasting — 12 log entries in 47 days, genuine regular use — existing
 - ✓ **F1 — the `COLLECTIONS` registry**: `blank()`, `mergeDB()`, the `liveX()` filters, `validateBackup()` and the export columns all derive from one declaration; each replaced function kept renamed and differential-tested against it, including over Ian's real exported backup — Validated in Phase 1: F1 — The COLLECTIONS Registry
 - ✓ **`sleep`, the eleventh collection**, added as one `COLLECTIONS` entry plus its Care → Sleep log/list/delete screen — Validated in Phase 1: F1 — The COLLECTIONS Registry
+- ✓ **F3 — the "adding a new tracked thing" recipe**: six numbered steps in `CLAUDE.md` plus `docs/adding-a-collection.md`. Tests fail if the doc drifts from the registry contract or from the placement rule's source. Rehearsed cold for a map-shaped `supplements` collection, which found 8 gaps, all closed. — Validated in Phase 3: F3 — Adding a New Tracked Thing Recipe
 - ✓ A test suite that blocks the deploy — 226 checks at initialization, 623 after Phase 1 (653 with the local-only real backup present), including a smoke check on every screen — existing
 
 ### Active
@@ -38,7 +39,6 @@ every other feature can fail before that one does.
 <!-- This milestone. Hypotheses until shipped. -->
 
 - [ ] **A clean "export for Claude"** as Markdown tables, derived from the same declaration rather than hand-written as a second serialiser
-- [ ] **F3 — an "adding a new tracked thing" checklist** in `CLAUDE.md`, written against the declaration F1 creates
 - [ ] **Stop syncing the in-progress workout** — make `draft` device-local
 - [ ] **F2 — event delegation** replacing the inline `onclick` attributes, which unlocks a CSP and closes the escaping holes
 - [ ] **F4 — `.gitattributes`**, in its own commit, never bundled
@@ -107,6 +107,8 @@ deployed.
 | `.gitattributes` lands in its own commit, alone | `* -text` produces a 4,131-line diff on `index.html`; bundling it would hide a real change inside a reformat | — Pending |
 | `draft` stops syncing and becomes device-local | Ian would never finish a workout on another device, so the draft has no reason to cross the wire; removing it deletes a whole bug family | — Pending |
 | Keep the ten renamed `_legacy` functions after the real-data differential passed | Deletion is allowed but not urgent; Ian wants SCHEMA 18 to run on the phone for a few days first. 540 committed goldens keep the differential alive once they go | — Pending (Ian, 2026-09-14) |
+| The recipe's placement rule quotes the `index.html` `COLLECTIONS` comment verbatim (placement sentences only), pinned by a containment test | It's the only wording that is literally accurate ("after SCHEMA/KEY"), and it lives next to the code it describes, so it can't drift silently | ✓ Good — Ian chose it 2026-09-21 |
+| Dry Run B's evidence is the written record, not a preserved scratch-branch diff | The branch carried a real `SCHEMA` bump that must never reach `main`; the gap log carries the useful evidence | ✓ Good — Ian accepted it in UAT 2026-09-22 |
 | Leave sync, features, capacity, auth and layout alone | Each was put to Ian on 2026-09-09 and answered; see Out of Scope | ✓ Good |
 
 ## Evolution
@@ -127,4 +129,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-14 after Phase 1: F1 — The COLLECTIONS Registry*
+*Last updated: 2026-09-22 after Phase 3: F3 — Adding a New Tracked Thing Recipe*

@@ -1,17 +1,20 @@
 ---
 phase: 03-f3-adding-a-new-tracked-thing-recipe
 verified: 2026-09-21T00:00:00Z
-status: human_needed
+status: passed
 score: 8/8 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
+
   - test: "Read CLAUDE.md § Adding a new tracked thing top to bottom, then skim docs/adding-a-collection.md, against the gap log in 03-05-SUMMARY.md (deferred from 03-05-PLAN.md Task 2's end-of-phase human-check)."
     expected: "Every gap classified missing/wrong/outside-knowledge is visibly closed in one of the two files, or listed with a reason. The spine still reads like the rest of CLAUDE.md (terse, bold-lead-in) and is still short enough to want loaded into every session."
     why_human: "Whether a gap is actually closed for a cold reader is a comprehension judgment. Automated checks can prove the field lists agree and the quote is verbatim; they cannot prove a step is now understandable to a human."
+
   - test: "Read docs/adding-a-collection.md § Rehearsal record, and decide whether the narrative record is sufficient evidence that the recipe was rehearsed, or whether the scratch-branch diff should have been preserved instead (deferred from 03-05-PLAN.md Task 3's end-of-phase human-check; RESEARCH.md Open Questions Q1)."
     expected: "A decision on the evidence question. Note: the scratch branch (scratch/dry-run-b-supplements) was force-deleted per the plan's mandatory teardown, so if a preserved diff is wanted, it would need to be reconstructed from git reflog before this worktree garbage-collects, or redone in a future rehearsal."
     why_human: "Whether a narrative record is sufficient evidence of rehearsal, versus preserving a diff, is a documentation-completeness judgment about future value, not a technical one — the plan explicitly deferred it to Ian rather than deciding it."
+
   - test: "Confirm WR-01 (Dry Run A's recipeProbeMap is injected as the first COLLECTIONS entry via string-prepend, not appended last as CLAUDE.md step 1 prescribes for a real collection) is an acceptable, permanent deviation between the probe mechanism and the recipe it rehearses."
     expected: "Either accept WR-01 as-is (no live bug found; the probe's purpose is exercising map-only branches, not placement-order sensitivity — already covered separately by the pre-existing 'COLLECTIONS sits where module-eval can reach it' and 'entries are declared in the pre-phase order' checks), or open a follow-up to reorder the injection to match the recipe."
     why_human: "This is a judgment call about whether an advisory code-review finding, left open by the reviewer and by the phase's own resolution note, is worth a follow-up — not something a re-read of the diff resolves on its own."

@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 03
-current_phase_name: f3-adding-a-new-tracked-thing-recipe
-status: verifying
+current_phase: 4
+current_phase_name: Draft Goes Device-Local
+status: planning
 stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-09-21T12:37:23.197Z"
-last_activity: 2026-09-21
-last_activity_desc: Phase 03 execution started
+last_updated: "2026-09-22T12:05:56.577Z"
+last_activity: 2026-09-22
+last_activity_desc: Phase 03 complete, transitioned to Phase 4
 progress:
   total_phases: 3
   completed_phases: 3
@@ -20,17 +20,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-10)
+See: .planning/PROJECT.md (updated 2026-09-22)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 03 — f3-adding-a-new-tracked-thing-recipe
+**Current focus:** Phase 4 — Draft Goes Device-Local
 
 ## Current Position
 
-Phase: 03 (f3-adding-a-new-tracked-thing-recipe) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-09-21 — Phase 03 execution started
+Phase: 4 — Draft Goes Device-Local
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-22 — Phase 03 complete, transitioned to Phase 4
 
 Progress: [██████████] 100%
 
@@ -38,7 +38,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 10
+- Total plans completed: 15
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -48,6 +48,7 @@ Progress: [██████████] 100%
 |-------|-------|-------|----------|
 | 01 | 7 | - | - |
 | 02 | 3 | - | - |
+| 03 | 5 | - | - |
 
 **Recent Trend:**
 
