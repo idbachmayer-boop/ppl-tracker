@@ -2723,6 +2723,140 @@ asyncBlock('DRAFT sign-in and live listener', async () => {
   ok("DRAFT-01: mergeDB leaves both inputs' draft objects unmutated", mutated.length === 0, mutated);
 }
 
+/* Every shape a remote `draft` field can arrive in: what older builds wrote, what a hand-edited or
+   damaged blob can hold, and the field missing altogether (the factory returns undefined, meaning
+   "delete the key"). Each factory returns a fresh value. Kept at block scope: later DRAFT blocks
+   reuse it. */
+const DRAFT_SHAPES = [
+  ['well-formed',          () => draftFor(app, 'PULL 1')],
+  ['no stairs',            () => { const d = draftFor(app, 'PULL 1'); delete d.stairs; return d; }],
+  ['unknown workout',      () => Object.assign(draftFor(app, 'PULL 1'), { workout: 'GONE' })],
+  ['entries is a string',  () => Object.assign(draftFor(app, 'PULL 1'), { entries: 'x' })],
+  ['a string',             () => 'x'],
+  ['a number',             () => 42],
+  ['an empty array',       () => []],
+  ['an empty object',      () => ({})],
+  ['null',                 () => null],
+  ['absent',               () => undefined],
+];
+{
+  /* Both mergeDB branches (gen equal → recency; gen higher or lower → wholesale replace), both tie
+     rules, the remote newer and older, and a local side holding a draft, null, or no key at all
+     (EDGE DRAFT-01/empty: absence and null are treated the same on the way out). */
+  const LOCAL_DRAFTS = [['a draft', () => draftFor(app, 'PUSH 1')], ['null', () => null], ['no key', () => undefined]];
+  const withDraft = (db, v) => { if(v === undefined) delete db.draft; else db.draft = v; return db; };
+  let firstBad = null, runs = 0;
+  DRAFT_SHAPES.forEach(([shape, remoteDraft]) => {
+    [['gen equal', 1], ['remote gen higher', 2], ['remote gen lower', 0]].forEach(([genLabel, rGen]) => {
+      [false, true].forEach(localWins => {
+        [['remote newer', 5000], ['remote older', 500]].forEach(([ageLabel, rU]) => {
+          LOCAL_DRAFTS.forEach(([localLabel, localDraft]) => {
+            if(firstBad) return;
+            const remote = withDraft(Object.assign(populatedLegacyDB('shape-r', 100), { gen: rGen, updatedAt: rU }), remoteDraft());
+            const local  = withDraft(Object.assign(populatedLegacyDB('shape-l', 200), { gen: 1, updatedAt: 1000 }), localDraft());
+            let out, threw = null;
+            try { out = app.mergeDB(remote, local, localWins); } catch(e){ threw = e.message; }
+            runs++;
+            if(threw || !out || 'draft' in out){
+              firstBad = { shape, gen: genLabel, localWins, age: ageLabel, local: localLabel, threw, draft: out && out.draft };
+            }
+          });
+        });
+      });
+    });
+  });
+  ok('DRAFT-01: mergeDB never returns a draft, for any remote shape, either branch, either tie rule',
+     !firstBad && runs === DRAFT_SHAPES.length * 3 * 2 * 2 * 3, firstBad || { runs });
+}
+{
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+  const before = canon(a.DB.draft);
+  a.snapshotNow('draft-check');
+  let ring = [];
+  try { ring = JSON.parse(a.__sandbox.localStorage.getItem('ppl_tracker_snaps_v1')) || []; } catch(e){}
+  const entry = ring.find(s => s.label === 'draft-check');
+  const blob = entry ? JSON.parse(entry.blob) : null;
+  ok('DRAFT-01: the local snapshot ring stores no draft',
+     !!blob && !('draft' in blob) && canon(a.DB.draft) === before,
+     { found: !!entry, draft: blob && blob.draft && blob.draft.workout, inMemory: a.DB.draft && a.DB.draft.workout });
+}
+asyncBlock('DRAFT cloud version', async () => {
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  try{
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+    const cloud = fakeCloud(a, null, { signedIn: true });
+    a.cloudVersion('weigh-in');
+    await new Promise(resolve => setImmediate(resolve));
+    const v = cloud.versions.find(x => x.label === 'weigh-in');
+    const blob = v ? JSON.parse(v.blob) : null;
+    ok('DRAFT-01: a cloud version written mid-workout stores no draft',
+       !!blob && !('draft' in blob) && !!a.DB.draft,
+       { versions: cloud.versions.length, draft: blob && blob.draft && blob.draft.workout });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+{
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+  const blobs = [];
+  a.__sandbox.Blob = function(parts, opts){ this.parts = parts; this.type = opts && opts.type; blobs.push(this); };
+  a.__sandbox.document.createElement = () => ({ href: '', download: '', click(){} });
+  a.exportData();
+  let parsed = null;
+  try { parsed = JSON.parse(blobs[blobs.length - 1].parts.join('')); } catch(e){}
+  ok('DRAFT-01: the downloaded JSON backup has no draft',
+     !!parsed && !('draft' in parsed) && Array.isArray(parsed.sessions) && parsed.sessions.length > 0
+       && !!a.DB.draft && a.DB.draft.workout === 'PUSH 1',
+     { parsed: !!parsed, draft: parsed && parsed.draft && parsed.draft.workout, inMemory: a.DB.draft && a.DB.draft.workout });
+}
+asyncBlock('DRAFT finish', async () => {
+  const a = loadApp(APP_PATH);
+  const spy = spyPushes(a);
+  try{
+    const d = populatedDB(a);
+    d.draft = fullDraft(a, 'PUSH 1');
+    d.draft.entries[0].sets[0] = { w: '135', r: '8', skipped: false };
+    d.updatedAt = 1000;
+    a.DB = d;
+    const knownIds = new Set(d.sessions.map(s => s.id));
+    /* The cloud still holds a legacy copy of this same workout, stamped NEWER than anything this
+       device writes — the shape that used to resurrect a finished workout (EDGE DRAFT-04/ordering). */
+    const remote = populatedDB(a); remote.draft = draftFor(a, 'PUSH 1'); remote.updatedAt = Date.now() + 60000;
+    const cloud = fakeCloud(a, remote, { signedIn: true });
+
+    a.finishWorkout();
+    const pushesAfterFinish = spy.n, draftAfterFinish = a.DB.draft;
+    const wv = cloud.versions.find(v => v.label === 'workout');
+    const wvBlob = wv ? JSON.parse(wv.blob) : null;
+    ok('DRAFT-04: finishing writes a workout version with no draft key',
+       !!wvBlob && !('draft' in wvBlob), { versions: cloud.versions.map(v => v.label), draft: wvBlob && wvBlob.draft });
+
+    await a.pushNow(true);   // the spy replaced the debounced push, so stand in for its timer
+    const last = cloud.writes.length ? JSON.parse(cloud.writes[cloud.writes.length - 1].blob) : null;
+    const sess = last && (last.sessions || []).find(s => s.workout === 'PUSH 1' && s.date === today && !knownIds.has(s.id));
+    ok('DRAFT-04: finishing pushes the session with no draft key',
+       pushesAfterFinish >= 1 && draftAfterFinish === null && !!last && !('draft' in last) && !!sess,
+       { pushesAfterFinish, draftAfterFinish, writes: cloud.writes.length, status: a.SYNC.status,
+         draft: last && last.draft, session: !!sess });
+    ok('DRAFT-04: the post-push reconciliation cannot bring the finished draft back',
+       a.DB.draft === null, a.DB.draft && a.DB.draft.workout);
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+{
+  const a = loadApp(APP_PATH);
+  const spy = spyPushes(a);
+  const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.updatedAt = 1000;
+  a.DB = d; a.saveLocal();
+  a.discardWorkout();   // the harness confirm() returns true
+  const stored = a.__stored();
+  ok('DRAFT-04: discarding stores null locally with no updatedAt bump and no push',
+     spy.n === 0 && a.DB.updatedAt === 1000 && !!stored && stored.draft === null && a.DB.draft === null,
+     { pushes: spy.n, updatedAt: a.DB.updatedAt, stored: stored && stored.draft });
+}
+
 /* The escaping convention, checked on the one string in the seed that is trying to break out. */
 {
   const appEl = uiFull.__sandbox.document.getElementById('app');

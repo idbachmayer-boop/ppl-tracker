@@ -782,8 +782,9 @@ function snapSummary(d){
   return { sessions:ss.length, weights:ws.length, cardio:(d.cardio||[]).length, latest:dates[dates.length-1]||null };
 }
 function loadSnaps(){ try{ const a=JSON.parse(localStorage.getItem(SNAP_KEY)); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
-/* Strip wx (7-9KB of weather cache, pure derived data) so snapshots stay small. */
-function snapPayload(d){ const c=Object.assign({},d); delete c.wx; return c; }
+/* Strip wx (7-9KB of weather cache, derived) so snapshots stay small, and the in-progress draft
+   (device-local, D-04/D-07). Feeds both the local ring and the cloud versions write. */
+function snapPayload(d){ const c=Object.assign({},d); delete c.wx; delete c.draft; return c; }
 function snapshotNow(label, dataOverride){
   if(snapRingDisabled) return false;
   try{
@@ -2045,7 +2046,7 @@ function finishWorkout(){
   goSub('train','history');
 }
 function sortSessions(){ DB.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : a.date.localeCompare(b.date)); }
-function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; collapsedEx.clear(); save(); goSub('train','log'); } }
+function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; collapsedEx.clear(); saveLocal(); goSub('train','log'); } }
 
 /* ───────────────────────── HISTORY ───────────────────────── */
 let openHist = -1, showBackdate = false, reviewWeekOffset = 0;
@@ -3384,7 +3385,7 @@ function viewData(){
 function setUnit(u){ DB.unit=u; save(); render(); }
 function setRoutineMode(m){ DB.routineMode=m; save(); render(); }
 function exportData(){
-  const blob = new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
+  const blob = new Blob([JSON.stringify(stripDraft(Object.assign({},DB)),null,2)],{type:'application/json'}); // the draft is device-local (D-06)
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=`ppl-backup-${todayISO()}.json`; a.click();
   DB.lastBackupAt=Date.now(); DB.backupSnoozeAt=null; save();
