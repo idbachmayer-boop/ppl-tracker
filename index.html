@@ -654,8 +654,11 @@ function renameLoggedExercise(d, map){
    runs at module-eval time (see load() below), so anything declared further down is in the temporal
    dead zone and would take the whole boot with it. */
 function normalizeDraft(d){
-  const k = d && d.draft;
-  if(!k || typeof k!=='object') return d;
+  if(!d || d.draft==null) return d;
+  const k = d.draft;
+  // A stored non-object ("x", 42, true) would crash the Log tab, and since the draft stopped crossing
+  // the wire no newer cloud write can clear it any more (WR-02). Null it here instead.
+  if(typeof k!=='object'){ d.draft = null; return d; }
   if(!PROGRAM[k.workout] || !Array.isArray(k.entries)){ d.draft = null; return d; }
   if(!k.stairs || typeof k.stairs!=='object') k.stairs = { level:'', seconds:'', skipped:false, reason:'' };
   if(!k.extras || typeof k.extras!=='object') k.extras = {};

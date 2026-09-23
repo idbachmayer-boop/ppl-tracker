@@ -3218,6 +3218,28 @@ asyncBlock('DRAFT old cloud doc through the cloud-copy choice', async () => {
   } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
 });
 
+/* WR-02: a malformed draft already STORED on this device (left by an older build) must not take the
+   Log tab down. No merge can clear it any more, so the boot has to. */
+{
+  let firstBad = null, runs = 0;
+  const LOCAL_SHAPES = DRAFT_SHAPES.concat([['true', () => true], ['false', () => false], ['empty string', () => '']]);
+  for(const [shape, make] of LOCAL_SHAPES){
+    const seedApp = loadApp(APP_PATH);
+    const blob = seedApp.__stored() || JSON.parse(JSON.stringify(seedApp.DB));
+    const d = make(); if(d === undefined) delete blob.draft; else blob.draft = d;
+    let a = null, threw = null, todayThrew = null;
+    try{ a = loadApp(APP_PATH, blob); }catch(e){ threw = e.message; }
+    if(a){ try{ a.viewToday(); }catch(e){ todayThrew = e.message; } }
+    const logOk = !!a && logTabDraws(a);
+    const draftOk = !!a && (a.DB.draft == null || typeof a.DB.draft === 'object');
+    if(!firstBad && (threw || todayThrew || !logOk || !draftOk))
+      firstBad = { shape, threw, todayThrew, logOk, draft: a && a.DB.draft };
+    runs++;
+  }
+  ok('WR-02: the Log tab draws when this device boots from any malformed stored draft',
+     !firstBad && runs === LOCAL_SHAPES.length, firstBad || { runs });
+}
+
 /* ── DRAFT: every draft edit stays on this device and survives a reopen (Phase 4, DRAFT-05/D-09) ──
    Every tap mid-workout used to call save(), which bumps updatedAt and schedules a push. The push is
    harmless now that the wire strips the draft, but the bump is not: it made a device that merely

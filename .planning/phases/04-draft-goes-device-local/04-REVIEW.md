@@ -80,6 +80,8 @@ Add a regression check that counts `fetch` calls: with a harness `fetch` that re
 
 ### WR-02: A truthy non-object local draft crashes the Log tab, and no sync can clear it any more
 
+**Resolved (2026-09-23):** `normalizeDraft` now nulls any non-object stored draft; test `WR-02: the Log tab draws when this device boots from any malformed stored draft` covers every DRAFT_SHAPES entry plus true/false/empty string.
+
 **File:** `index.html:656-659` (`normalizeDraft`)
 **Issue:** `normalizeDraft` returns early on `typeof k!=='object'`, so a stored draft of `"x"`, `42` or `true` survives `normalize()`. `DB.draft` is truthy, so Train → Log routes to `viewActive()`. `PROGRAM[undefined].group` throws there, and the Log tab shows "Something broke on this screen". The Discard button lives inside `viewActive()`, so it can't be reached. Today still shows a "Workout in progress" card, and its Resume button leads to the crashed tab.
 
