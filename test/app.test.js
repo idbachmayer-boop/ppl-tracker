@@ -22,6 +22,18 @@ const ok = (name, cond, extra) => { if(cond){ pass++; console.log('  PASS  ' + n
    per Ian's 2026-09-11 decision) must read as a loud, separate line and its own count — never
    silently folded into "0 failed" or counted toward "passed". */
 const skipLine = msg => { skip++; console.log('  SKIP  ' + msg); };
+/* Async checks (the sync paths are async: onSignedIn, pushNow's transaction). Each block is queued
+   here and starts only after the whole synchronous suite has run, so its output lands after the
+   last synchronous line. The tail of this file waits for every one to settle before it prints the
+   summary or exits. A block that throws or hangs past 10 seconds is a FAIL, never a silent skip. */
+const pendingAsync = [];
+function asyncBlock(label, fn){
+  pendingAsync.push(new Promise(resolve => setImmediate(resolve)).then(() => {
+    let timer = null;
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timed out after 10s')), 10000); });
+    return Promise.race([Promise.resolve().then(fn), timeout]).finally(() => clearTimeout(timer));
+  }).catch(e => { ok(label + ': async block did not finish', false, String(e && e.stack || e)); }));
+}
 const REAL_PATH = path.join(__dirname, 'local', 'real-db-snapshot.json');
 
 /* Golden hashes of every synthetic differential case's LEGACY output (REG-13's permanent form,
@@ -846,7 +858,8 @@ LEGACY_LISTS.forEach(name => {
   const olderWithDraft = Object.assign(app.blank(), { draft: validDraft, updatedAt: 100 });
   const newerNullDraft = Object.assign(app.blank(), { draft: null, updatedAt: 900 });
   const out = sameMerge("a finished workout's null draft beats a stale draft", newerNullDraft, olderWithDraft, false);
-  ok("merge incident: a finished workout's null draft beats a stale draft", out.draft === null, out.draft);
+  // The safety property still holds, by a stronger mechanism: no draft leaves the merge at all (D-04).
+  ok("merge incident: a finished workout's null draft beats a stale draft", !('draft' in out), out.draft);
 }
 {
   // "the weather cache never syncs": neither side's wx may reach the output.
@@ -903,7 +916,10 @@ LEGACY_LISTS.forEach(name => {
 
 /* The gen-mismatch block copied verbatim from mergeDB itself (not mergeDB_legacy, which says
    blank_legacy) BEFORE Task 2's edit — the pre-phase text this phase's own diff must leave
-   untouched, whitespace aside. */
+   untouched, whitespace aside.
+   Phase 4 adds exactly one statement to it, `delete win.draft;`: D-04 names this branch explicitly
+   (an Erase or Import→Replace must not carry a draft across the wire either). REG-10's property —
+   an early return before any per-collection merge — is still asserted by the ordering check below. */
 const GEN_BLOCK = `const rG = +r.gen || 0, lG = +l.gen || 0;
   if(rG !== lG){
     const win = Object.assign({}, blank(), lG > rG ? l : r);
@@ -911,13 +927,14 @@ const GEN_BLOCK = `const rG = +r.gen || 0, lG = +l.gen || 0;
     win.updatedAt = Math.max(+r.updatedAt||0, +l.updatedAt||0);
     win._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
     delete win.wx;
+    delete win.draft;
     return win;
   }`;
 
 console.log('\n── mergeDB() is derived from COLLECTIONS (REG-09/REG-10/REG-05) ──');
 {
   const collapse = s => s.replace(/\s+/g, ' ').trim();
-  ok('merge: the gen-mismatch block is byte-for-byte the pre-phase block',
+  ok('merge: the gen-mismatch block is the pre-phase block plus the Phase 4 draft strip',
      collapse(app.mergeDB.toString()).includes(collapse(GEN_BLOCK)));
 }
 {
@@ -2535,8 +2552,9 @@ const uiDraft = loadApp(APP_PATH);
    blind, because startWorkout() always builds all three — but a draft synced from a device on an
    older schema, or restored from a hand-edited backup, can be short a field. mergeDB already nulled
    a draft whose `workout` was unknown for this exact reason; it was one field short, and the screen
-   it takes out is the Log tab. normalizeDraft() now repairs what it can and nulls the rest, on both
-   the boot path and the merge path (mergeDB's output does not pass back through normalize). */
+   it takes out is the Log tab. normalizeDraft() repairs what it can and nulls the rest on the boot
+   path; since Phase 4 the merge path no longer repairs a draft, it removes it — the merge never
+   returns a draft at all, so nothing short a field can arrive that way. */
 console.log('\n── a malformed draft must not take out the Log tab ──');
 {
   const a = loadApp(APP_PATH);
@@ -2562,20 +2580,147 @@ console.log('\n── a malformed draft must not take out the Log tab ──');
   ok('  …same for a draft with no entries list', a.normalize(withDraft(k=>{ delete k.entries; })).draft === null);
   ok('a null draft stays null', a.normalize(populatedDB(a)).draft === null);
 
-  /* The merge path repairs too — mergeDB's output never passes back through normalize(). */
-  ok('the sync merge repairs a malformed draft as well', (()=>{
-    const remote = populatedDB(a); remote.draft = draftFor(a,'PUSH 1'); delete remote.draft.stairs;
-    remote.updatedAt = Date.now();
-    const local = populatedDB(a); local.updatedAt = Date.now() - 60000;
-    const out = a.mergeDB(remote, local, false);
-    return out.draft && out.draft.workout === 'PUSH 1' && !!out.draft.stairs;
+  /* The merge path removes instead of repairing: a newer remote draft, short a field or naming a
+     workout that no longer exists, never comes out of mergeDB at all (D-04). */
+  ok('the sync merge never returns a draft, whatever the remote holds', (()=>{
+    const bad = [];
+    [['no stairs', k=>{ delete k.stairs; }], ['unknown workout', k=>{ k.workout = 'GONE'; }]].forEach(([label, mutate]) => {
+      const remote = populatedDB(a); remote.draft = draftFor(a,'PUSH 1'); mutate(remote.draft);
+      remote.updatedAt = Date.now();
+      const local = populatedDB(a); local.updatedAt = Date.now() - 60000;
+      if('draft' in a.mergeDB(remote, local, false)) bad.push(label);
+    });
+    return bad.length === 0;
   })());
-  ok('  …and still drops one with an unknown workout (the 2026-07-25 guard)', (()=>{
-    const remote = populatedDB(a); remote.draft = draftFor(a,'PUSH 1'); remote.draft.workout = 'GONE';
-    remote.updatedAt = Date.now();
-    const local = populatedDB(a); local.updatedAt = Date.now() - 60000;
-    return a.mergeDB(remote, local, false).draft === null;
-  })());
+}
+
+/* ── helpers for the DRAFT blocks below ──
+   fullDraft() is the draft startWorkout() builds, extras included. draftFor() leaves `extras` empty,
+   and viewActive() → ensureExtras() heals a missing accessory into DB.draft IN MEMORY without storing
+   it, so after any render that reaches the Log tab the in-memory draft and its stored copy differ by
+   that accessory — a deep-equality check would fail for the wrong reason. Use fullDraft() for every
+   LOCAL draft; remote drafts may stay draftFor(), since they are stripped anyway. */
+function fullDraft(a, workout){
+  const d = draftFor(a, workout);
+  d.extras = a.__sandbox.blankExtras(workout);
+  return d;
+}
+/* Replaces the debounced push with a counter. save() looks schedulePush up on the vm global object
+   at call time, so the override is what it calls; saveLocal() never calls it at all. */
+function spyPushes(a){
+  const spy = { n: 0 };
+  a.__sandbox.schedulePush = () => { spy.n++; };
+  return spy;
+}
+/* A fake Firestore just deep enough for onSignedIn(), startLiveSync(), pushNow()'s transaction and
+   cloudVersion(). The remote blob is held as the JSON STRING the real doc stores, so every read
+   parses a fresh copy and nothing a test holds can alias it. `writes` records every tx.set() doc
+   (the thing pushNow() actually sends); `versions` records every versions-subcollection add().
+   `fire(db)` replays a live-listener tick carrying `db`. With opts.signedIn it also wires SYNC as a
+   reconciled, signed-in session so pushNow() and cloudVersion() run without going through sign-in.
+   Every caller clears SYNC.docRef and SYNC.user before it returns. */
+function fakeCloud(a, remoteDB, opts){
+  opts = opts || {};
+  let remote = remoteDB == null ? null : JSON.stringify(remoteDB);
+  const writes = [], versions = [];
+  let listener = null;
+  const snapOf = () => ({ exists: remote !== null, data(){ return { blob: remote }; } });
+  const versionsCol = {
+    add: async doc => { versions.push(doc); return { id: 'v' + versions.length }; },
+    orderBy(){ return versionsCol; },
+    limit(){ return versionsCol; },
+    get: async () => ({ docs: opts.versionDocs || [] }),
+  };
+  const docRef = {
+    get: async () => snapOf(),                       // ignores {source:'server'}: there is only one copy
+    onSnapshot(cb){ listener = cb; return () => {}; },
+    collection(){ return versionsCol; },
+  };
+  a.fbDb = {
+    runTransaction: async fn => fn({
+      get: async () => snapOf(),
+      set: (ref, doc) => { writes.push(doc); remote = doc.blob; },
+    }),
+    collection(){ return { doc(){ return docRef; } }; },
+  };
+  if(opts.signedIn){ a.SYNC.docRef = docRef; a.SYNC.reconciled = true; a.SYNC.user = { uid: 'draft-test' }; }
+  return {
+    writes, versions, docRef,
+    fire(db){
+      if(!listener) throw new Error('no live listener was installed');
+      listener({ exists: true, data(){ return { blob: JSON.stringify(db) }; } });
+    },
+    setRemote(db){ remote = db == null ? null : JSON.stringify(db); },
+  };
+}
+
+/* ── DRAFT: the in-progress workout stays on this device (Phase 4, D-04/D-05/D-09) ──
+   The draft used to sync like any other field, and the merge picked it by recency. That is how a
+   stale device could put an old workout back on Ian's phone mid-set, and how a malformed draft from
+   an older build could reach the Log tab. From Phase 4 it lives only on the device that started it:
+   typing a rep persists locally with no push, no merged blob carries it, and nothing arriving from
+   the cloud can replace it. These drive the real paths — setVal(), onSignedIn(), the live listener,
+   pushNow()'s transaction — never a hand-rolled imitation of them. */
+console.log('\n── DRAFT: the in-progress workout stays on this device ──');
+{
+  const a = loadApp(APP_PATH);
+  const spy = spyPushes(a);
+  const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.updatedAt = 1000;
+  a.DB = d;
+  a.setVal(0, 0, 'r', '8');
+  const stored = a.__stored();
+  const storedR = stored && stored.draft && stored.draft.entries[0].sets[0].r;
+  ok('DRAFT tracer: a typed rep is stored on this device with no updatedAt bump and no push',
+     a.DB.updatedAt === 1000 && storedR === '8' && spy.n === 0,
+     { updatedAt: a.DB.updatedAt, storedR, pushes: spy.n });
+}
+asyncBlock('DRAFT sign-in and live listener', async () => {
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  try{
+    const local = populatedDB(a);
+    local.draft = fullDraft(a, 'PUSH 1');
+    local.draft.entries[0].sets[0] = { w: '135', r: '8', skipped: false };
+    local.updatedAt = 1000;
+    a.DB = local; a.saveLocal();
+    const before = canon(a.DB.draft);
+
+    /* No ppl_synced_uid yet and local has sessions, so this is the first-link branch; the stubbed
+       prompt() returns '' and the app reads that as "merge both". The cloud's draft is NEWER. */
+    const remote = populatedDB(a); remote.draft = draftFor(a, 'PULL 1'); remote.updatedAt = 5000;
+    const cloud = fakeCloud(a, remote);
+    await a.onSignedIn({ uid: 'draft-test' });
+    const last = cloud.writes.length ? JSON.parse(cloud.writes[cloud.writes.length - 1].blob) : null;
+    ok('DRAFT-01: the sign-in push writes a blob with no draft key',
+       !!last && !('draft' in last),
+       { writes: cloud.writes.length, status: a.SYNC.status, draft: last && last.draft && last.draft.workout });
+    ok("DRAFT-02: a newer cloud draft does not replace this device's draft at sign-in",
+       canon(a.DB.draft) === before, a.DB.draft && a.DB.draft.workout);
+
+    const tick = populatedDB(a); tick.draft = draftFor(a, 'LEGS 1'); tick.updatedAt = 9000;
+    cloud.fire(tick);
+    const stored = a.__stored();
+    ok("DRAFT-02: the live listener leaves this device's draft untouched",
+       canon(a.DB.draft) === before && !!stored && canon(stored.draft) === before,
+       { inMemory: a.DB.draft && a.DB.draft.workout, stored: stored && stored.draft && stored.draft.workout });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+{
+  /* The merge used to repair the NEWER side's draft in place — the output's draft was that input's
+     own object — so merging mutated whichever blob the caller handed in. Both directions. */
+  const a = loadApp(APP_PATH);
+  const mutated = [];
+  [false, true].forEach(localNewer => {
+    const remote = populatedDB(a); remote.draft = draftFor(a, 'PUSH 1'); delete remote.draft.stairs;
+    const local  = populatedDB(a); local.draft  = draftFor(a, 'PULL 1'); delete local.draft.stairs;
+    remote.updatedAt = localNewer ? 1000 : 5000;
+    local.updatedAt  = localNewer ? 5000 : 1000;
+    const rBefore = canon(remote.draft), lBefore = canon(local.draft);
+    a.mergeDB(remote, local, false);
+    if(canon(remote.draft) !== rBefore) mutated.push((localNewer ? 'local newer' : 'remote newer') + ': remote draft');
+    if(canon(local.draft)  !== lBefore) mutated.push((localNewer ? 'local newer' : 'remote newer') + ': local draft');
+  });
+  ok("DRAFT-01: mergeDB leaves both inputs' draft objects unmutated", mutated.length === 0, mutated);
 }
 
 /* The escaping convention, checked on the one string in the seed that is trying to break out. */
@@ -3499,15 +3644,19 @@ function shareEnv(a, opts){
   ok('registry: never mutated by boot, merge or render (REG-01)', diffNames.length === 0, diffNames);
 }
 
-if(WRITE){
-  const dir = path.dirname(GOLDEN_PATH);
-  if(!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const sorted = {};
-  Object.keys(GOLDEN_OUT).sort().forEach(k => { sorted[k] = GOLDEN_OUT[k]; });
-  const json = JSON.stringify(sorted, null, 2).replace(/\r\n/g, '\n') + '\n';
-  fs.writeFileSync(GOLDEN_PATH, json);
-  console.log(`\nWrote ${Object.keys(sorted).length} golden hashes to ${GOLDEN_PATH}`);
-}
+/* Every async block must settle before the summary prints or the process exits; asyncBlock()
+   already turns a throw or a timeout into a FAIL, so Promise.all here never rejects. */
+Promise.all(pendingAsync).then(() => {
+  if(WRITE){
+    const dir = path.dirname(GOLDEN_PATH);
+    if(!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const sorted = {};
+    Object.keys(GOLDEN_OUT).sort().forEach(k => { sorted[k] = GOLDEN_OUT[k]; });
+    const json = JSON.stringify(sorted, null, 2).replace(/\r\n/g, '\n') + '\n';
+    fs.writeFileSync(GOLDEN_PATH, json);
+    console.log(`\nWrote ${Object.keys(sorted).length} golden hashes to ${GOLDEN_PATH}`);
+  }
 
-console.log(`\n${pass} passed, ${fail} failed, ${skip} skipped`);
-process.exit(fail ? 1 : 0);
+  console.log(`\n${pass} passed, ${fail} failed, ${skip} skipped`);
+  process.exit(fail ? 1 : 0);
+});

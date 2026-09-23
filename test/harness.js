@@ -77,7 +77,12 @@ function loadApp(htmlPath, seed, opts){
     },
     navigator: { serviceWorker:{ register(){ return Promise.resolve(); } }, geolocation:{ getCurrentPosition(){} } },
     location: { reload(){}, href:'http://localhost/' },
-    fetch: () => Promise.reject(new Error('no network in the harness')),
+    /* No network: a request never settles. It used to reject at once, which was harmless only while
+       the suite exited before any promise ran. Once async checks let the event loop turn, a rejecting
+       fetch spins forever on any instance left on the Lawn tab with a stale weather cache:
+       fetchWeather() → fails → render() → maybeFetchWeather() → fetchWeather() → … all in
+       microtasks, so no timer, no timeout and no exit ever runs again. */
+    fetch: () => new Promise(() => {}),
     setTimeout, clearTimeout, setInterval, clearInterval,
     requestAnimationFrame: () => 0,
     getComputedStyle: () => ({ getPropertyValue: () => '' }),
@@ -123,10 +128,17 @@ function loadApp(htmlPath, seed, opts){
     'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections', 'ensureCollectionDefaults',
     'sleepUid', 'addSleep', 'removeSleep', 'viewSleep',
     'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown', 'exportData', 'exportShareFailed',
+    /* Sync and the in-progress draft (Phase 4). SYNC is a const object: exporting the reference is
+       enough, because tests only mutate its properties. fbDb is a `let`, so it gets an accessor
+       below instead. */
+    'SYNC', 'pushNow', 'startLiveSync', 'onSignedIn', 'adoptMerged', 'keepLocalDraft', 'stripDraft',
+    'saveLocal', 'snapshotNow', 'cloudVersion',
+    'setVal', 'finishWorkout', 'discardWorkout',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
-    get DB(){ return DB; }, set DB(v){ DB = v; }
+    get DB(){ return DB; }, set DB(v){ DB = v; },
+    get fbDb(){ return fbDb; }, set fbDb(v){ fbDb = v; }
   })`, sandbox);
   api.__sandbox = sandbox;
   api.__src = code;

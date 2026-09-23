@@ -643,12 +643,12 @@ function renameLoggedExercise(d, map){
   return d;
 }
 /* The draft is the one object the views walk BLIND — viewActive reads .entries, .stairs and .extras
-   without checking any of them, because startWorkout() always builds all three. Anything that did
-   NOT come from startWorkout() can be short a field: a draft synced from a device on an older
-   schema, or a hand-edited backup. mergeDB already nulls a draft whose `workout` is unknown, for
-   exactly this reason ("would crash viewActive's PROGRAM[name] lookup") — it was just one field
-   short, and a draft missing `stairs` takes out the Log tab, which is the screen Ian is standing in
-   front of at the rack.
+   without checking any of them, because startWorkout() always builds all three. Since Phase 4 the
+   draft is device-local: it only ever comes from this device's own storage. The merge never returns
+   one, and imports, restores and cloud choices never plant one. But the stored copy can still be
+   short a field — a blob written by an older build of this app on this same device — and a draft
+   missing `stairs` takes out the Log tab, which is the screen Ian is standing in front of at the rack.
+   So normalize() still repairs a short local draft on every call (boot, adopt, import, restore).
    Repair what is safely repairable; null the draft only when the workout itself is unusable — a
    crashing Log tab loses the workout anyway. Deliberately no function calls in here: normalize()
    runs at module-eval time (see load() below), so anything declared further down is in the temporal
@@ -661,6 +661,20 @@ function normalizeDraft(d){
   if(!k.extras || typeof k.extras!=='object') k.extras = {};
   if(typeof k.sessionNote!=='string') k.sessionNote = '';
   return d;
+}
+/* The draft never crosses the wire (D-04). stripDraft() removes it from foreign data — a backup, a
+   snapshot, a cloud blob — before that data goes anywhere. keepLocalDraft() puts THIS device's
+   in-progress draft onto whatever is about to become DB, so no sync, restore or import can replace
+   or clear the workout in progress (D-05). Both read or shape DB, which is in its temporal dead zone
+   during `let DB = load()`: never call either from normalize(), load() or a MIGRATIONS entry. */
+function stripDraft(x){
+  if(x && typeof x==='object') delete x.draft;
+  return x;
+}
+function keepLocalDraft(next){
+  if(!next || typeof next!=='object') return next;
+  next.draft = DB.draft===undefined ? null : DB.draft;
+  return next;
 }
 
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
@@ -1904,7 +1918,7 @@ function pickEx(i, sel){
   }
   e.name = sel.value; e.exId = exEnsure(sel.value); save(); render();
 }
-function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; if(f==='r' && v!=='') restCtx=restTargetForSlot(i); save(); /* live save, no re-render to keep focus */ }
+function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; if(f==='r' && v!=='') restCtx=restTargetForSlot(i); saveLocal(); /* live save, no re-render to keep focus */ }
 function setNote(i,v){ DB.draft.entries[i].note=v; save(); }
 function setSessionNote(v){ DB.draft.sessionNote=v; save(); }
 /* Roll the WEIGHT down into still-empty sets below. Fired on `change` (after the full
@@ -4140,6 +4154,7 @@ function mergeDB(remote, local, localWins){
     win.updatedAt = Math.max(+r.updatedAt||0, +l.updatedAt||0);
     win._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
     delete win.wx;
+    delete win.draft;
     return win;
   }
   const rU = +r.updatedAt || 0, lU = +l.updatedAt || 0;
@@ -4147,20 +4162,15 @@ function mergeDB(remote, local, localWins){
   const newer = localNewer ? l : r, older = localNewer ? r : l;
   const out = Object.assign({}, blank(), older, newer); // start from newer's scalars, guarantee all blank() keys
   mergeCollections(r, l, localNewer, out);
-  /* draft: already set correctly by Object.assign(newer) above — same recency rule as every other
-     field. BUG FIXED HERE (2026-07-25): this used to be `localDraft || remoteDraft || null`, which
-     picked whichever side had ANY non-null draft, ignoring which side was actually newer. Once a
-     stale non-null draft existed anywhere (a device's memory, or the cloud doc from before a
-     workout was finished), it won FOREVER — finishing/discarding sets draft:null, but null could
-     never beat a stale non-null value, so the old workout kept getting resurrected on every merge
-     and re-pushed via the live listener, looping endlessly across every device. The merged output
-     does NOT pass back through normalize(), so the draft is repaired here too — a draft short a
-     field crashes viewActive exactly like an unknown workout name does. */
-  normalizeDraft(out);
+  /* draft: device-local (D-04), removed from every merge result below. The 2026-07-25 loop — a stale
+     draft resurrected on every merge and re-pushed by the live listener — cannot recur, because no
+     draft crosses the wire at all; adoptMerged() puts this device's own draft back. The frozen
+     mergeDB_legacy below still documents the old recency rule. */
   // ── invariants ──
   out._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
   out.updatedAt = Math.max(rU, lU);
   delete out.wx; // weather is derived cache — excluded from sync entirely (see saveLocal)
+  delete out.draft;
   return out;
 }
 /* FROZEN pre-registry merge for the REG-13 differential. Do not edit. Deleted in a later commit (REG-14). */
@@ -4278,8 +4288,11 @@ function adoptMerged(merged, label){
     /* `merged` never carries wx (stripped from every synced blob) but DB almost always does, so
        comparing them directly was ALWAYS unequal — the "nothing changed" guard below never fired
        in practice, causing a render + "Synced from another device" toast on nearly every listener
-       tick even when no real content had changed. Compare apples-to-apples by reattaching wx first. */
-    const withWx = Object.assign({}, merged); if(wx!==undefined) withWx.wx = wx;
+       tick even when no real content had changed. Compare apples-to-apples by reattaching wx first.
+       The in-progress draft is reattached for the same reason, and a stronger one: it is
+       device-local (D-04/D-05), so nothing arriving from the cloud may replace or clear it. Both
+       reattaches must come before the equality check, or every listener tick reads as a change. */
+    const withWx = keepLocalDraft(Object.assign({}, merged)); if(wx!==undefined) withWx.wx = wx;
     if(JSON.stringify(withWx)===JSON.stringify(DB)) return false;   // nothing changed; don't churn the UI
     snapshotNow(label||'before-sync');
     DB = normalize(withWx);
