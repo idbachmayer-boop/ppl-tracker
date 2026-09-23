@@ -1,8 +1,8 @@
 ---
 phase: 04-draft-goes-device-local
 verified: 2026-09-23T12:30:00Z
-status: human_needed
-score: 34/35 must-haves verified
+status: passed
+score: 35/35 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
@@ -13,6 +13,8 @@ human_verification:
     expected: "Either accept the residual risk (such a value can only be pre-Phase-4 residue: a malformed cloud draft adopted by an older build, or an old hand-edited backup import), or land the one-line normalizeDraft fix plus a boot-from-stored-blob test for every DRAFT_SHAPES value before merge."
     why_human: "DRAFT-03 is met as written (it is about a cloud document), so this is not a gap against the contract. But Phase 4 removed the only automatic recovery path for this state, and whether that trade is acceptable is a product call."
 ---
+
+> **Human verification resolved 2026-09-23:** Ian ran the two-device check and it passed. WR-02 was fixed before shipping (commit e50bb0b).
 
 # Phase 4: Draft Goes Device-Local Verification Report
 
