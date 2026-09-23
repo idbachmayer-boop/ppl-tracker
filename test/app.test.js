@@ -669,10 +669,16 @@ function clone(x){ return x === null || x === undefined ? x : JSON.parse(JSON.st
 /* canon(out) after dropping every key that is a COLLECTIONS name NOT in LEGACY_COLLECTIONS. A
    collection declared after this phase's baseline is exempt, because mergeDB_legacy carries it
    wholesale (via blank_legacy()'s Object.assign) instead of unioning it — comparing it would only
-   prove blank_legacy() and blank() disagree, which REG-06's own differential already covers. */
+   prove blank_legacy() and blank() disagree, which REG-06's own differential already covers.
+
+   The `draft` key is dropped too. From Phase 4 the in-progress workout is device-local: the live
+   mergeDB() never returns a draft, while the frozen mergeDB_legacy still carries one by recency.
+   That divergence is intended, so the comparison leaves the draft out and the DRAFT block further
+   down asserts the live behaviour directly. */
 function legacyView(out){
   const copy = Object.assign({}, out);
   Object.keys(app.COLLECTIONS).forEach(name => { if(LEGACY_COLLECTIONS.indexOf(name) < 0) delete copy[name]; });
+  delete copy.draft;
   return canon(copy);
 }
 
