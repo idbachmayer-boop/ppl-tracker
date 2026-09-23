@@ -136,6 +136,8 @@ function loadApp(htmlPath, seed, opts){
     'setVal', 'finishWorkout', 'discardWorkout',
     /* Every other path that replaces DB wholesale (Phase 4, plan 04-02). */
     'importMerge', 'importReplace', 'restoreSnapshot', 'restoreCloudVersion', 'loadCloudVersions', 'wipe',
+    /* Which build a device is running (Settings → This version). */
+    'BUILD', 'buildLabel',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

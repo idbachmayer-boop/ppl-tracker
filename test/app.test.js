@@ -3240,6 +3240,43 @@ asyncBlock('DRAFT old cloud doc through the cloud-copy choice', async () => {
      !firstBad && runs === LOCAL_SHAPES.length, firstBad || { runs });
 }
 
+/* ── Build stamp: Settings says which build this device is running ──
+   The deploy job replaces the placeholder in the published copy. These checks keep the placeholder
+   stampable (exactly one, in the BUILD literal), keep the deploy step aimed at it, and boot a copy
+   stamped the way the deploy stamps it. */
+console.log('\n── Build stamp ──');
+{
+  const src = fs.readFileSync(APP_PATH, 'utf8');
+  const hits = src.split('__BUILD_STAMP__').length - 1;
+  ok('BUILD: the placeholder appears exactly once, as the BUILD literal',
+     hits === 1 && /const BUILD = '__BUILD_STAMP__';/.test(src), { hits });
+  const yml = fs.readFileSync(path.join(path.dirname(APP_PATH), '.github', 'workflows', 'deploy.yml'), 'utf8');
+  const deployJob = yml.slice(yml.indexOf('\n  deploy:'));
+  ok('BUILD: the deploy job stamps the placeholder before uploading the site',
+     deployJob.indexOf('__BUILD_STAMP__') > 0 && deployJob.indexOf('__BUILD_STAMP__') < deployJob.indexOf('upload-pages-artifact'));
+
+  const a = loadApp(APP_PATH);
+  ok('BUILD: an unstamped copy says it is local, never a deploy',
+     a.BUILD === '__BUILD_STAMP__' && a.buildLabel(a.BUILD) === 'Local copy, not a deployed build', a.buildLabel(a.BUILD));
+  const lbl = a.buildLabel('2026-09-23T19:05:00Z e50bb0b');
+  ok('BUILD: a stamp reads as a local date, time and short commit',
+     lbl === 'Updated Sep 23, 2026, 2:05 PM · e50bb0b', lbl);
+  ok('BUILD: a malformed stamp falls back to the local label',
+     ['', null, 'garbage', 'not-a-date e50bb0b', '2026-09-23T19:05:00Z <b>x</b>'].every(s => a.buildLabel(s) === 'Local copy, not a deployed build'));
+
+  /* Replay the deploy: stamp a temp copy exactly as the workflow's sed does, then boot it. */
+  const os = require('os');
+  const tmp = path.join(os.tmpdir(), `ppl-stamped-${process.pid}.html`);
+  fs.writeFileSync(tmp, src.replace("'__BUILD_STAMP__'", "'2026-09-23T19:05:00Z e50bb0b'"));
+  let html = '', threw = null;
+  try{ html = loadApp(tmp).viewData(); }catch(e){ threw = e.message; }
+  finally { try{ fs.unlinkSync(tmp); }catch(e){} }
+  ok('BUILD: a stamped copy boots and Settings shows its version',
+     !threw && html.includes('Updated Sep 23, 2026, 2:05 PM · e50bb0b') && html.includes('This version'), threw);
+  ok('BUILD: an unstamped copy shows the local label in Settings',
+     a.viewData().includes('Local copy, not a deployed build'));
+}
+
 /* ── DRAFT: every draft edit stays on this device and survives a reopen (Phase 4, DRAFT-05/D-09) ──
    Every tap mid-workout used to call save(), which bumps updatedAt and schedules a push. The push is
    harmless now that the wire strips the draft, but the bump is not: it made a device that merely

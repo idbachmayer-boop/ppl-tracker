@@ -472,6 +472,11 @@ const GUIDE = [
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
 const SCHEMA = 18;
+/* Which build is this? The deploy job swaps the placeholder below for "<ISO time> <short sha>" in the
+   published copy only, so Settings can say which version a device is actually running — a phone
+   still on a stale build has cost real confusion before. The placeholder must appear exactly once
+   in this file (a test enforces it); an unstamped copy is a local one, never a deploy. */
+const BUILD = '__BUILD_STAMP__';
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -2543,6 +2548,15 @@ function setPetName(v){ DB.petName = (v||'').trim() || 'Freddie'; save(); }
 /* Offline support, stated rather than assumed. The previous worker never registered and nothing
    said so — the app claimed offline capability it did not have for six weeks. If it breaks again
    it will be visible here rather than discovered in a dead spot at the gym. */
+/* "Updated Sep 23, 2026, 2:05 PM · e50bb0b" in this device's own time zone, or a plain statement that
+   this copy was never deployed. Takes the stamp as an argument so tests can check both cases. */
+function buildLabel(stamp){
+  const m = /^(\S+) ([0-9a-f]{7,40})$/.exec(String(stamp == null ? '' : stamp));
+  const t = m ? new Date(m[1]) : null;
+  if(!m || isNaN(t)) return 'Local copy, not a deployed build';
+  const when = t.toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
+  return `Updated ${when} · ${m[2].slice(0,7)}`;
+}
 function offlineCardHTML(){
   const s = window.SW_STATE || { supported:false, ready:false, error:'not initialised' };
   if(s.ready) return `<div class="card"><div style="font-weight:700;font-size:14px">${ph('check-circle','lead')}Offline ready</div>
@@ -3347,6 +3361,9 @@ function viewData(){
     </div>
       <p class="muted" style="font-size:12px">4-Day adds a specialized 4th day each week — pick Chest & Triceps, Back, Shoulders, Biceps, or Legs fresh each time it comes up.</p>
     </div>
+    <h2>This version</h2>
+    <div class="card"><div style="font-weight:700;font-size:14px">${esc(buildLabel(BUILD))}</div>
+      <p class="muted" style="line-height:1.5;margin-top:4px">Compare this across devices. An older date here means this device hasn't picked up the latest update yet. Close the app fully and reopen it.</p></div>
     <h2>Offline</h2>
     ${offlineCardHTML()}
     <h2>Exercises</h2>
