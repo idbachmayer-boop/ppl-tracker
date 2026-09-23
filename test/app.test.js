@@ -3035,6 +3035,189 @@ function dbAssignLines(src){
      { scanned: lines.length, offenders, exceptions, syntheticCaught: synthetic.length === 1 });
 }
 
+/* ── DRAFT: no cloud document can plant, clear or crash the workout in progress (Phase 4, DRAFT-02/03) ──
+   Whatever the cloud doc holds — a legacy draft written by an older build, a malformed one, an Erase
+   from another device, or the whole doc chosen at first link — this device's own draft is what
+   remains, and the Log tab still draws. Each scenario is a fresh instance driven through the real
+   onSignedIn(), live listener and pushNow(). */
+console.log('\n── DRAFT: no cloud document can plant, clear or crash the workout in progress ──');
+/* The existing drawsLog() pattern, generalized to any instance: drive the real router to the Log tab
+   and read the container. render() never throws by design, so the tell is the error card's wording. */
+function logTabDraws(a){
+  const appEl = a.__sandbox.document.getElementById('app');
+  appEl.innerHTML = '';
+  try { a.go('train'); a.setSub('log'); } catch(e){ return false; }
+  return !/Something broke on this screen/.test(appEl.innerHTML || '');
+}
+/* A cloud doc whose sessions are all different rows from populatedDB()'s, so an adopted cloud copy is
+   distinguishable from a merge. */
+function cloudOnlyDB(a, draft){
+  const d = populatedDB(a);
+  delete d.wx;
+  d.sessions = d.sessions.map(s => Object.assign({}, s, { id: 'cloud-' + s.id }));
+  if(draft === undefined) delete d.draft; else d.draft = draft;
+  d.updatedAt = 5000;
+  return d;
+}
+const lastWrite = cloud => cloud.writes.length ? JSON.parse(cloud.writes[cloud.writes.length - 1].blob) : null;
+/* First link on a device holding data, with the stubbed prompt() answering C, "use the cloud copy only". */
+async function signInChoosingCloud(a, localDraft, remote){
+  const local = populatedDB(a); local.draft = localDraft; local.updatedAt = 1000;
+  a.DB = local; a.saveLocal();
+  a.__sandbox.prompt = () => 'C';
+  const cloud = fakeCloud(a, remote);
+  await a.onSignedIn({ uid: 'draft-test' });
+  return cloud;
+}
+asyncBlock('DRAFT first boot with a legacy cloud draft', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    /* Already linked, so sign-in takes the ordinary merge branch — what every device does on the first
+       boot after this update. */
+    a.__sandbox.localStorage.setItem('ppl_synced_uid', 'draft-test');
+    const local = populatedDB(a); local.draft = null; local.updatedAt = 1000;
+    a.DB = local; a.saveLocal();
+    const remote = populatedDB(a); delete remote.wx; remote.draft = draftFor(app, 'PULL 1'); remote.updatedAt = 5000;
+    const cloud = fakeCloud(a, remote);
+    await a.onSignedIn({ uid: 'draft-test' });
+    const todayHtml = a.viewToday();
+    ok('DRAFT-02: a device with no draft shows no Workout in progress card after syncing a cloud draft',
+       a.DB.draft === null && !/Workout in progress/.test(todayHtml),
+       { draft: a.DB.draft && a.DB.draft.workout, card: /Workout in progress/.test(todayHtml) });
+    const last = lastWrite(cloud);
+    ok('DRAFT-02: the first ordinary write removes the legacy draft from the cloud doc',
+       !!last && !('draft' in last), { writes: cloud.writes.length, status: a.SYNC.status, draft: last && last.draft });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+asyncBlock('DRAFT cloud-copy choice', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    const mine = fullDraft(a, 'PUSH 1');
+    const before = canon(mine);
+    const remote = cloudOnlyDB(a, draftFor(app, 'PULL 1'));
+    const localIds = populatedDB(a).sessions.map(s => s.id), cloudIds = remote.sessions.map(s => s.id);
+    await signInChoosingCloud(a, mine, remote);
+    const ids = new Set(a.DB.sessions.map(s => s.id));
+    const adopted = cloudIds.every(id => ids.has(id)) && localIds.every(id => !ids.has(id));
+    ok("DRAFT-02: Use the cloud copy only adopts the cloud's data and keeps this device's draft",
+       adopted && canon(a.DB.draft) === before,
+       { adopted, ids: [...ids], draft: a.DB.draft && a.DB.draft.workout });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+  const b = loadApp(APP_PATH); spyPushes(b);
+  try{
+    await signInChoosingCloud(b, null, cloudOnlyDB(b, draftFor(app, 'PULL 1')));
+    ok('DRAFT-02: Use the cloud copy only on a device with no draft plants none',
+       b.DB.draft === null, b.DB.draft && b.DB.draft.workout);
+  } finally { b.SYNC.docRef = null; b.SYNC.user = null; }
+});
+asyncBlock('DRAFT remote Erase', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    const local = populatedDB(a); local.gen = 0; local.draft = fullDraft(a, 'PUSH 1'); local.updatedAt = 1000;
+    a.DB = local; a.saveLocal();
+    const before = canon(a.DB.draft);
+    const cloud = fakeCloud(a, null, { signedIn: true });
+    a.startLiveSync();
+    const erased = a.blank(); delete erased.wx; erased.gen = 1; erased.updatedAt = 5000;
+    cloud.fire(erased);
+    ok("DRAFT-02: a remote Erase keeps this device's draft",
+       a.DB.gen === 1 && a.liveSessions().length === 0 && canon(a.DB.draft) === before,
+       { gen: a.DB.gen, live: a.liveSessions().length, draft: a.DB.draft && a.DB.draft.workout });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+asyncBlock('DRAFT same workout, same date', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    const local = populatedDB(a);
+    local.draft = fullDraft(a, 'PUSH 1');
+    local.draft.entries[0].sets[0] = { w: '135', r: '8', skipped: false };
+    local.draft.sessionNote = 'local note';
+    local.draft.stairs.seconds = '300';
+    local.updatedAt = 1000;
+    a.DB = local; a.saveLocal();
+    const before = canon(a.DB.draft);
+    const cloud = fakeCloud(a, null, { signedIn: true });
+    a.startLiveSync();
+    const remote = populatedDB(a); delete remote.wx;
+    remote.draft = draftFor(app, 'PUSH 1');
+    remote.draft.entries[0].sets[0] = { w: '225', r: '3', skipped: false };
+    remote.draft.entries[1].sets.push({ w: '50', r: '12', skipped: false });
+    remote.draft.sessionNote = 'cloud note';
+    remote.draft.stairs.seconds = '900';
+    remote.updatedAt = 5000;
+    cloud.fire(remote);
+    ok("DRAFT-02: a cloud draft for the same workout and date is never merged into this device's",
+       canon(a.DB.draft) === before,
+       { set: a.DB.draft && a.DB.draft.entries[0].sets[0], note: a.DB.draft && a.DB.draft.sessionNote,
+         stairs: a.DB.draft && a.DB.draft.stairs.seconds });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+/* Every non-null shape a cloud draft can arrive in, on a device with no draft and on one mid-workout. */
+const MALFORMED_CLOUD = DRAFT_SHAPES.filter(([shape]) => shape !== 'null' && shape !== 'absent');
+asyncBlock('DRAFT malformed cloud drafts through the live listener', async () => {
+  let drawFail = null, draftFail = null, runs = 0;
+  for(const [shape, make] of MALFORMED_CLOUD){
+    for(const [device, mineOf] of [['no draft', () => null], ['mid-workout', a => fullDraft(a, 'PUSH 1')]]){
+      const a = loadApp(APP_PATH); spyPushes(a);
+      try{
+        const local = populatedDB(a); local.draft = mineOf(a); local.updatedAt = 1000;
+        a.DB = local; a.saveLocal();
+        const before = canon(a.DB.draft);
+        const cloud = fakeCloud(a, null, { signedIn: true });
+        a.startLiveSync();
+        const remote = populatedDB(a); delete remote.wx; remote.draft = make(); remote.updatedAt = 5000;
+        let threw = null;
+        try { cloud.fire(remote); } catch(e){ threw = e.message; }
+        if(!draftFail && (threw || canon(a.DB.draft) !== before))
+          draftFail = { shape, device, threw, draft: a.DB.draft === undefined ? 'undefined' : a.DB.draft };
+        let todayThrew = null;
+        try { a.viewToday(); } catch(e){ todayThrew = e.message; }
+        const logOk = logTabDraws(a);
+        if(!drawFail && (!logOk || todayThrew)) drawFail = { shape, device, logOk, todayThrew };
+        runs++;
+      } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+    }
+  }
+  ok('DRAFT-03: the Log tab draws for every malformed cloud draft',
+     !drawFail && runs === MALFORMED_CLOUD.length * 2, drawFail || { runs });
+  ok("DRAFT-03: this device's own draft is what remains after a malformed cloud draft arrives",
+     !draftFail && runs === MALFORMED_CLOUD.length * 2, draftFail || { runs });
+});
+asyncBlock('DRAFT malformed cloud drafts through the cloud-copy choice', async () => {
+  let firstBad = null, runs = 0;
+  for(const [shape, make] of MALFORMED_CLOUD){
+    const a = loadApp(APP_PATH); spyPushes(a);
+    try{
+      const mine = fullDraft(a, 'PUSH 1');
+      const before = canon(mine);
+      await signInChoosingCloud(a, mine, cloudOnlyDB(a, make()));
+      const same = canon(a.DB.draft) === before;
+      const adopted = a.DB.sessions.some(s => String(s.id).startsWith('cloud-'));
+      const logOk = logTabDraws(a);
+      if(!firstBad && (!same || !adopted || !logOk))
+        firstBad = { shape, same, adopted, logOk, status: a.SYNC.status, draft: a.DB.draft && a.DB.draft.workout };
+      runs++;
+    } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+  }
+  ok('DRAFT-03: the cloud-copy choice survives every malformed cloud draft',
+     !firstBad && runs === MALFORMED_CLOUD.length, firstBad || { runs });
+});
+asyncBlock('DRAFT old cloud doc through the cloud-copy choice', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    const remote = oldDocWithDraftOnlyLift(a);
+    remote.sessions = remote.sessions.map(s => Object.assign({}, s, { id: 'cloud-' + s.id }));
+    remote.updatedAt = 5000;
+    const cloud = await signInChoosingCloud(a, fullDraft(a, 'PUSH 1'), remote);
+    const last = lastWrite(cloud);
+    ok("DRAFT-02: an old cloud doc's draft adds no exercise-registry row through the cloud-copy choice",
+       !hasDraftOnlyLift(a.DB.exercises) && !!last && !hasDraftOnlyLift(last.exercises)
+         && a.DB.sessions.some(s => String(s.id).startsWith('cloud-')),
+       { inMemory: hasDraftOnlyLift(a.DB.exercises), written: !!last && hasDraftOnlyLift(last.exercises),
+         writes: cloud.writes.length, status: a.SYNC.status });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+
 /* The escaping convention, checked on the one string in the seed that is trying to break out. */
 {
   const appEl = uiFull.__sandbox.document.getElementById('app');

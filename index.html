@@ -4348,7 +4348,9 @@ async function onSignedIn(user){
       snapshotNow('before-first-link');
       const choice = prompt('This device and the cloud both have data.\n\nType:\n  M = merge both (recommended)\n  C = use the cloud copy only\n  D = use this device only', 'M');
       const c = (choice||'M').trim().toUpperCase()[0];
-      if(c==='C'){ adoptMerged(Object.assign(normalize(remoteDB),{wx:DB.wx}), 'chose-cloud'); }
+      /* The cloud's draft never enters normalize(): on an old doc, migration 17 would register its
+         exercise names as registry rows that then sync. adoptMerged() keeps this device's draft. */
+      if(c==='C'){ adoptMerged(Object.assign(normalize(stripDraft(remoteDB)),{wx:DB.wx}), 'chose-cloud'); }
       else if(c==='D'){ /* keep local as-is */ }
       else { adoptMerged(mergeDB(remoteDB, DB), 'first-link-merge'); }
     } else if(remoteDB){
