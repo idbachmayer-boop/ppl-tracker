@@ -4399,8 +4399,8 @@ async function pushNow(silent){
     });
     if(tooNew){ flagNeedsUpdate(); return; }
     SYNC.pending=false;
-    /* DB may have moved on while the round trip was in flight (setVal saves on every keystroke),
-       so fold the result back in with LOCAL winning ties, and re-push if that differs. */
+    /* DB may have moved on while the round trip was in flight (a weigh-in logged while the push
+       was out, say), so fold the result back in with LOCAL winning ties, and re-push if that differs. */
     if(merged){
       const reconciled = mergeDB(merged, DB, true);
       adoptMerged(reconciled, 'after-push-merge');
@@ -4442,7 +4442,7 @@ function cloudVersion(label){
   if(!SYNC.docRef || !SYNC.reconciled) return;
   const now = Date.now();
   const checkpoint = label==='workout' || label==='weigh-in' || label==='import' || label==='before-restore';
-  if(!checkpoint && now-lastVersionAt < VERSION_MIN_GAP) return;   // setVal saves every keystroke — don't write 100 versions/session
+  if(!checkpoint && now-lastVersionAt < VERSION_MIN_GAP) return;   // pushes can come every few seconds — don't write 100 versions/session
   lastVersionAt = now;
   const payload = snapPayload(DB);
   try{

@@ -130,7 +130,8 @@ Generalized from `sleep`'s pattern — five pieces, always named the same way:
 
 - an **id helper** producing a collision-free row id;
 - an **add function** that reads the form, validates and clamps the input, calls `touch()` on the
-  row, then `save()` — `save()` is correct here; `saveLocal()` is for derived caches only, and
+  row, then `save()` — `save()` is correct here; `saveLocal()` is only for device-local state (derived caches like
+  the weather, and the in-progress draft), and
   `CLAUDE.md` records what happened when the weather cache used `save()` by mistake;
 - a **remove function** that soft-deletes via `softDelete()` — never splice the row out of the
   array, the union merge would resurrect it from the cloud forever;

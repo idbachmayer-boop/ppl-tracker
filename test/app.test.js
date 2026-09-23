@@ -3338,6 +3338,15 @@ const DRAFT_ONLY_MUTATORS = [
      !!rd && canon(rd) === canon(a.DB.draft) && rd.editRef === 's1',
      threw ? String(threw) : { editRef: rd && rd.editRef, same: !!rd && canon(rd) === canon(a.DB.draft) });
 }
+{
+  /* CLAUDE.md is where the next agent learns this rule. It must keep naming the two helpers the
+     tripwire and the allowlist enforce, and they must still exist. Names only, never the wording. */
+  const claudeMdPath = APP_PATH.replace(/index\.html$/, 'CLAUDE.md');
+  const claudeMd = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
+  const named = ['keepLocalDraft', 'stripDraft'].map(n => ({ n, inDoc: claudeMd.includes(n), isFn: typeof app[n] === 'function' }));
+  ok('DRAFT rule: CLAUDE.md names the helpers the tests enforce, and both exist in index.html',
+     named.every(x => x.inDoc && x.isFn), named);
+}
 asyncBlock('DRAFT a brand-new exercise picked mid-workout', async () => {
   const a = loadApp(APP_PATH);
   const spy = spyPushes(a);

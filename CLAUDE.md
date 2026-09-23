@@ -39,6 +39,16 @@ rows: stamp `mtime`, save immediately, and add a test that replays a stale-devic
 **Derived data uses `saveLocal()`.** `save()` bumps `updatedAt` and triggers a push. The weather cache
 using `save()` is what let a stale device look "newest" merely by being opened.
 
+**The in-progress workout never leaves the device.** On 2026-07-25 a stale draft looped between
+devices, and in September 2026 a malformed one from an older build took out the Log tab; the workout
+Ian is mid-set on must not depend on another device. `mergeDB()` removes `draft` from every merge
+result, and `snapPayload()` and `exportData()` leave it out. Every path that replaces `DB` keeps this
+device's draft through `keepLocalDraft()` and drops a foreign one with `stripDraft()` before
+`normalize()`. Draft edits persist with `saveLocal()`. The exceptions are `pickEx`, `exPick` and
+`finishWorkout`, which still `save()` because they write synced data (a new exercise-registry row, or
+the finished session). A test fails when a new statement replaces `DB` without the helper, or when a
+new draft function calls `save()`.
+
 ## Conventions
 
 - **Escaping:** every user-controlled string rendered into HTML goes through `esc()`. Two holes to
