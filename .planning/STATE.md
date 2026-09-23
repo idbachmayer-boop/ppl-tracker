@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 04
 current_phase_name: draft-goes-device-local
-status: executing
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-09-23T11:27:28.681Z"
+status: verifying
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-09-23T11:32:53.761Z"
 last_activity: 2026-09-22
 last_activity_desc: Phase 03 complete, transitioned to Phase 4
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 18
-  completed_plans: 17
+  completed_plans: 18
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 
 Phase: 04 (draft-goes-device-local) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-22 — Phase 04 execution started
 
-Progress: [█████████░] 94%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [█████████░] 94%
 | Phase 03 P05 | ~20min | 3 tasks | 2 files |
 | Phase 04 P01 | 17min | 2 tasks | 5 files |
 | Phase 04 P02 | 97min | 2 tasks | 3 files |
+| Phase 04 P03 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -126,6 +127,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 4, plan 04-01]: the draft is removed from every mergeDB result and reattached from this device in adoptMerged(); snapshots, cloud versions and backups exclude it
 - [Phase ?]: [Phase 4, plan 04-01]: test harness fetch never settles, because a rejecting fetch spun an endless Lawn-tab weather retry in microtasks once async checks existed
 - [Phase ?]: 04-02: every site turning foreign data into DB reads keepLocalDraft(normalize(stripDraft(raw))); a dbAssignLines tripwire fails the suite on any unsanctioned DB assignment
+- [Phase ?]: 04-03: every draft-only function uses saveLocal(); only pickEx, exPick and finishWorkout still save() from a draft path, pinned by the DRAFT_PUSHERS allowlist
 
 ### Pending Todos
 
@@ -150,6 +152,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-23T11:27:28.661Z
-Stopped at: Completed 04-02-PLAN.md
+Last session: 2026-09-23T11:32:53.742Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None

@@ -66,7 +66,7 @@ Clean data out of the app and into Claude Desktop.
 - [x] **DRAFT-02**: A stale cloud document still carrying a legacy `draft` field cannot reintroduce one onto a device
 - [x] **DRAFT-03**: The Log tab renders correctly when a cloud document carries a malformed legacy `draft`
 - [x] **DRAFT-04**: Finishing or discarding a workout no longer writes draft state across the wire
-- [ ] **DRAFT-05**: Ian's in-progress workout survives closing and reopening the app on the same device
+- [x] **DRAFT-05**: Ian's in-progress workout survives closing and reopening the app on the same device
 
 ### Delegation (DELEG)
 
@@ -140,7 +140,7 @@ Populated during roadmap creation.
 | SLEEP-01 … SLEEP-06 | Phase 1 | Complete |
 | EXP-01 … EXP-08 | Phase 2 | Complete |
 | DOC-01 … DOC-04 | Phase 3 | Complete |
-| DRAFT-01 … DRAFT-05 | Phase 4 | Pending |
+| DRAFT-01 … DRAFT-05 | Phase 4 | Complete |
 | DELEG-01 … DELEG-07 | Phase 5 | Pending |
 | REPO-01 … REPO-02 | Phase 6 | Pending |
 | CSP-01 … CSP-07 | Phase 7 | Pending |
