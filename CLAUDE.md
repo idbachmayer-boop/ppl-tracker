@@ -39,6 +39,16 @@ rows: stamp `mtime`, save immediately, and add a test that replays a stale-devic
 **Derived data uses `saveLocal()`.** `save()` bumps `updatedAt` and triggers a push. The weather cache
 using `save()` is what let a stale device look "newest" merely by being opened.
 
+**The in-progress workout never leaves the device.** On 2026-07-25 a stale draft looped between
+devices, and in September 2026 a malformed one from an older build took out the Log tab; the workout
+Ian is mid-set on must not depend on another device. `mergeDB()` removes `draft` from every merge
+result, and `snapPayload()` and `exportData()` leave it out. Every path that replaces `DB` keeps this
+device's draft through `keepLocalDraft()` and drops a foreign one with `stripDraft()` before
+`normalize()`. Draft edits persist with `saveLocal()`. The exceptions are `pickEx`, `exPick` and
+`finishWorkout`, which still `save()` because they write synced data (a new exercise-registry row, or
+the finished session). A test fails when a new statement replaces `DB` without the helper, or when a
+new draft function calls `save()`.
+
 ## Conventions
 
 - **Escaping:** every user-controlled string rendered into HTML goes through `esc()`. Two holes to
@@ -58,6 +68,60 @@ using `save()` is what let a stale device look "newest" merely by being opened.
 - **Theme:** "Nocturne". Colours come from the `:root` custom properties; don't hard-code hex.
 - **Schema:** bump `SCHEMA` and add an entry to `MIGRATIONS`. Migrations must be idempotent and must
   never downgrade `_schema`.
+
+## Adding a new tracked thing
+
+Every tracked thing is one `COLLECTIONS` entry — the same registry `blank()`, `mergeDB()`, the
+`liveX()` filters and `validateBackup()` already derive from.
+
+1. Add exactly one entry to `COLLECTIONS` in `index.html`. It goes **last** — never inserted among
+   the existing entries, because entry order fixes validation precedence and merge order — and its
+   `label` must be unused by every other collection: the label becomes the export's section heading,
+   and a duplicate is refused loudly at boot, never silently merged into that collection. Whichever
+   collection was previously last likely has its own "I am the last entry" test — retarget it to yours.
+
+   This is the rule the boot enforces about where that entry may live — a paraphrase of a
+   temporal-dead-zone rule is how the boot died once already.
+
+   <!-- placement-rule: verbatim from index.html -->
+   ```text
+   Declared before DB boots via load() a few dozen lines down, after SCHEMA/KEY, before MIGRATIONS;
+   every value is a literal or a reference to a hoisted `function` declaration — never a const
+   arrow, never a forward const. blank() may read only `kind` at module-eval time (see the placement
+   comments on migration 13 and migration 17 above, and the one on `let migrationRan` below — this
+   is the same trap). Everything else here (`key`, `sortBy`, `merge`, `label`, `columns`, `format`)
+   is read later, by code that runs after boot, never during it.
+   ```
+2. Bump `SCHEMA` and add a `MIGRATIONS` entry — see the **Schema** bullet under Conventions above. An
+   existing device's stored blob does not gain the new key until `_schema` advances past the new
+   number; `blank()` only helps a fresh boot. It also stales `test/fixtures/merge-golden.json` — see
+   `docs/adding-a-collection.md` § "Registry validity" to regenerate it.
+3. If the collection is logged or viewed, write its UI by hand. This step is never derived from the
+   registry — it is the one step the declaration cannot do for you. See `docs/adding-a-collection.md`
+   § "The hand-written UI" for the worked pattern.
+4. Add the tests this collection must ship with:
+   - registry validity — the shipped registry still has no problems;
+   - migration correctness, only if the collection needs a non-empty default — the migration stays
+     idempotent and never downgrades `_schema`;
+   - **a stale-device merge replay** — a deleted row must not be resurrected by an older device, and
+     replaying the stale device again must keep it deleted;
+   - for a map collection, an explicit-`false` replay — a day storing `false` must survive the merge,
+     and an absent key must not be resurrected from the older side;
+   - `validateBackup()` shape — a damaged section is refused, an older backup without the section is
+     accepted;
+   - UI behaviour, only if a UI was written — form validation, escaping, soft delete, and the router
+     exposing the screen;
+   - a declaration-alone structural proof — no derived consumer's source mentions the collection by
+     name.
+
+   Like the `firestore.rules` checks under Conventions, these assert the property, never the wording.
+5. Run `npm test`. `collectionProblems()` validates the registry at module-eval time, so a broken
+   declaration throws at boot and a red suite names which rule was broken.
+6. Do not touch the exporter. `buildMarkdownExport()` derives every section from `COLLECTIONS`, so a
+   new collection exports itself — no export step is needed.
+
+See `docs/adding-a-collection.md` for the worked example: an annotated entry, the field-by-field
+contract, the hand-written UI pattern, and the test walkthrough.
 
 ## After shipping
 

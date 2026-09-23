@@ -26,9 +26,9 @@ have already caused real, unrecoverable data loss in this app.
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: F1 — The COLLECTIONS Registry** - One declared registry replaces the five places a collection's merge/delete/sort rule could be silently forgotten; adding `sleep` in one line is the proof. (completed 2026-09-14)
-- [ ] **Phase 2: Export for Claude** - A Markdown export of live data, derived from the same registry and the same views, ready to paste into a Claude conversation.
-- [ ] **Phase 3: F3 — Adding a New Tracked Thing (Recipe)** - `CLAUDE.md` gets a numbered recipe for the next collection after `sleep`, written against the shipped registry.
-- [ ] **Phase 4: Draft Goes Device-Local** - The in-progress workout stops crossing the wire, closing a whole bug family at the source.
+- [x] **Phase 2: Export for Claude** - A Markdown export of live data, derived from the same registry and the same views, ready to paste into a Claude conversation. (completed 2026-09-18)
+- [x] **Phase 3: F3 — Adding a New Tracked Thing (Recipe)** - `CLAUDE.md` gets a numbered recipe for the next collection after `sleep`, written against the shipped registry. (completed 2026-09-22)
+- [x] **Phase 4: Draft Goes Device-Local** - The in-progress workout stops crossing the wire, closing a whole bug family at the source. (completed 2026-09-23)
 - [ ] **Phase 5: F2 — Event Delegation** - All 172 inline handler attributes become delegated listeners, which is what makes a real CSP possible.
 - [ ] **Phase 6: F4 — .gitattributes** - Git stores `index.html`'s bytes exactly, landed alone so the whole-file diff hides nothing.
 - [ ] **Phase 7: Content Security Policy** - A hash-based CSP ships without silently breaking the only off-device backup.
@@ -117,11 +117,25 @@ Plans:
   2. The recipe states the module-eval-time placement rule verbatim (declare before `let DB = load()`; literals or hoisted-function references only) and lists the tests a new collection must ship with, including the stale-device merge replay (DOC-02, DOC-03).
   3. Following the recipe end to end, on paper or a scratch branch, for a collection other than `sleep` produces the correct result with no step missing, wrong, or requiring outside knowledge (DOC-04).
 
-**Plans**: TBD
+**Plans**: 5/5 plans executed
 
 Plans:
+**Wave 1**
 
-- [ ] 03-01: TBD
+- [x] 03-01-PLAN.md — Tracer: the companion doc's registry-contract blocks, the `CLAUDE.md` section and step 1, and the test that turns red when the recipe and `collectionProblems()`'s `ALLOWED` list disagree (DOC-01, DOC-03)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 03-02-PLAN.md — Dry run A: a map-shaped probe injected via the harness's existing `opts.transform`, proving every derived consumer picks it up and the explicit-`false` merge trap holds (DOC-04)
+- [x] 03-03-PLAN.md — The six-step spine, the required-test categories including the stale-device merge replay, and the worked `sleep` example with the safe-id gate (DOC-01, DOC-03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 03-04-PLAN.md — Checkpoint: which of the repo's three wordings of the placement rule is canonical; then the verbatim quote pinned to its source, plus the copy-paste entry round-tripped through the live validator (DOC-02, DOC-03)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 03-05-PLAN.md — Dry run B: walk the recipe cold for `supplements` on a scratch branch, fold every gap back in, discard the branch (DOC-04, DOC-01)
 
 ### Phase 4: Draft Goes Device-Local
 
@@ -135,11 +149,20 @@ Plans:
   3. The Log tab renders without error when the cloud document's legacy `draft` field is malformed or absent (DRAFT-03).
   4. Closing and reopening the app on the same device preserves the in-progress workout exactly as it was left (DRAFT-05).
 
-**Plans**: TBD
+**Plans**: 3/3 plans executed
 
 Plans:
+**Wave 1**
 
-- [ ] 04-01: TBD
+- [x] 04-01-PLAN.md — Tracer: a rep typed mid-workout stays on the device, the push through the real transaction carries no draft, and a newer cloud draft cannot replace it; then snapshots, cloud versions, the JSON backup, finish and discard proven draft-free (DRAFT-01, DRAFT-02 partial, DRAFT-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 04-02-PLAN.md — Every inbound path keeps this device's draft: import Merge/Replace (extracted helpers), both restores, the cloud-copy choice, remote Erase, a malformed-cloud-draft battery, and a tripwire on every statement that replaces `DB` (DRAFT-02, DRAFT-03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 04-03-PLAN.md — The remaining 23 draft functions persist locally with no push, close-and-reopen replays, the rule written into `CLAUDE.md`, and the end-of-phase two-device check (DRAFT-05)
 
 ### Phase 5: F2 — Event Delegation
 
@@ -206,9 +229,9 @@ Phase 5 completes.
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. F1 — The COLLECTIONS Registry | 7/7 | Complete    | 2026-09-14 |
-| 2. Export for Claude | 3/3 | In Progress|  |
-| 3. F3 — Adding a New Tracked Thing (Recipe) | 0/TBD | Not started | - |
-| 4. Draft Goes Device-Local | 0/TBD | Not started | - |
+| 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
+| 3. F3 — Adding a New Tracked Thing (Recipe) | 5/5 | Complete    | 2026-09-22 |
+| 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
 | 5. F2 — Event Delegation | 0/TBD | Not started | - |
 | 6. F4 — .gitattributes | 0/TBD | Not started | - |
 | 7. Content Security Policy | 0/TBD | Not started | - |

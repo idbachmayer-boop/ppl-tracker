@@ -2,35 +2,35 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 02
-current_phase_name: export-for-claude
-status: "Phase 02 shipped — PR #6"
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-09-18T09:40:37.578Z"
-last_activity: 2026-09-18
+current_phase: 5
+current_phase_name: F2 — Event Delegation
+status: planning
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-09-23T12:04:14.814Z"
+last_activity: 2026-09-23
+last_activity_desc: Phase 04 complete, transitioned to Phase 5
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 10
-  completed_plans: 10
-last_activity_desc: Phase 02 execution started
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 18
+  completed_plans: 18
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-10)
+See: .planning/PROJECT.md (updated 2026-09-22)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 02 — export-for-claude
+**Current focus:** Phase 04 — draft-goes-device-local
 
 ## Current Position
 
-Phase: 02 (export-for-claude) — EXECUTING
-Plan: 3 of 3
-Status: Phase 02 shipped — PR #6
-Last activity: 2026-09-18
+Phase: 5 — F2 — Event Delegation
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-23 — Phase 04 complete, transitioned to Phase 5
 
 Progress: [██████████] 100%
 
@@ -38,7 +38,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 7
+- Total plans completed: 18
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -47,6 +47,9 @@ Progress: [██████████] 100%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 7 | - | - |
+| 02 | 3 | - | - |
+| 03 | 5 | - | - |
+| 04 | 3 | - | - |
 
 **Recent Trend:**
 
@@ -67,6 +70,14 @@ Progress: [██████████] 100%
 | Phase 02 P01 | 22min | 2 tasks | 3 files |
 | Phase 02 P02 | ~3min (commit-to-commit) | 2 tasks | 2 files |
 | Phase 02 P03 | ~5.5min (commit-to-commit) | 2 tasks | 3 files |
+| Phase 03 P01 | ~15min | 2 tasks | 3 files |
+| Phase 03 P02 | ~10min | 2 tasks | 1 files |
+| Phase 03 P03 | ~9min | 3 tasks | 2 files |
+| Phase 03 P04 | ~15min | 2 tasks | 2 files |
+| Phase 03 P05 | ~20min | 3 tasks | 2 files |
+| Phase 04 P01 | 17min | 2 tasks | 5 files |
+| Phase 04 P02 | 97min | 2 tasks | 3 files |
+| Phase 04 P03 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -104,6 +115,20 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 2, plan 02-02]: COLLECTIONS.cardio's columns array is reformatted across multiple lines (unlike every other one-line entry) so each zeroIsMissing:true declaration is independently greppable
 - [Phase ?]: [Phase 2, plan 02-03]: buildMarkdownExport() computes every section's {spec,rows} exactly once; both the header's date-range/row-count line and the tables read from that same array (EXP-08 concurrency)
 - [Phase ?]: [Phase 2, plan 02-03]: exportMarkdown() returns 'share' as soon as navigator.share() is called, regardless of eventual resolution; exportShareFailed() is the single funnel for every non-cancel outcome (D-01)
+- [Phase ?]: [Phase 3, plan 03-01]: docs/adding-a-collection.md states no field count in prose (03-RESEARCH.md's '9 items; 10 array entries' note was a miscount); the divergence test compares sets, so no number is needed.
+- [Phase ?]: [Phase 3, plan 03-01]: CLAUDE.md's new 'Adding a new tracked thing' section carries only step 1 in this plan; remaining numbered steps deferred to plan 03-03 per the plan's explicit scope boundary.
+- [Phase ?]: [Phase 3, plan 03-02]: recipeProbeMap is its own independent Dry Run A probe (separate transform/line/instance from SLEEP-05's probe/probeList/probeMap), preserving SLEEP-05's own 'two lines added' reconstruction assertion.
+- [Phase ?]: [Phase 3, plan 03-02]: Dry Run A's mergeDB() fixtures vary a top-level updatedAt, not a per-day mtime, matching how mergeDateMap()'s replace-whole branch is actually driven; DOC-04's data-layer half is proven, Dry Run B (plan 03-05) covers the remaining UI step.
+- [Phase ?]: [Phase 3, plan 03-03]: CLAUDE.md's step 4 required-test categories and docs/adding-a-collection.md's test-walkthrough subheadings are matched one-for-one, in order, so the spine and companion doc cannot silently drift into different category counts.
+- [Phase ?]: [Phase 3, plan 03-03]: the copy-paste example registry entry uses placeholder label 'REPLACE ME' rather than a plausible real collection name, to avoid implying a decision Ian hasn't made.
+- [Phase ?]: [Phase 3, plan 03-04]: Task 1 decision (Ian, 2026-09-21) — option-a: CLAUDE.md quotes index.html's own COLLECTIONS registry comment block verbatim (source path index.html), trimmed to the placement/TDZ sentences only; no looseness note needed since option-a already reads 'after SCHEMA/KEY'.
+- [Phase ?]: [Phase 3, plan 03-04]: docBlock() generalized to take a fence language tag rather than adding a second fenced-block extractor for the js-fenced copy-paste registry entry.
+- [Phase ?]: [Phase 3, plan 03-05]: Dry Run B's cold walk found 8 recipe gaps — most consequential: bumping SCHEMA silently stales the committed merge-golden.json fixture and the INTRODUCED_AT boot table, and the hand-written-UI pattern (generalized from sleep) was wrong for a map collection. All closed in CLAUDE.md/docs/adding-a-collection.md; npm test stayed at the 748/0/2 baseline throughout.
+- [Phase ?]: [Phase 3, plan 03-05]: RESEARCH.md Q1 (preserve scratch-branch diff vs. narrative record) left at its default — narrative record — per the plan; surfaced for Ian rather than decided silently.
+- [Phase ?]: [Phase 4, plan 04-01]: the draft is removed from every mergeDB result and reattached from this device in adoptMerged(); snapshots, cloud versions and backups exclude it
+- [Phase ?]: [Phase 4, plan 04-01]: test harness fetch never settles, because a rejecting fetch spun an endless Lawn-tab weather retry in microtasks once async checks existed
+- [Phase ?]: 04-02: every site turning foreign data into DB reads keepLocalDraft(normalize(stripDraft(raw))); a dbAssignLines tripwire fails the suite on any unsanctioned DB assignment
+- [Phase ?]: 04-03: every draft-only function uses saveLocal(); only pickEx, exPick and finishWorkout still save() from a draft path, pinned by the DRAFT_PUSHERS allowlist
 
 ### Pending Todos
 
@@ -128,6 +153,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-17T13:21:42.323Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-09-23T11:32:53.742Z
+Stopped at: Completed 04-03-PLAN.md
 Resume file: None

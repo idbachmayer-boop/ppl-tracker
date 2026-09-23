@@ -22,6 +22,18 @@ const ok = (name, cond, extra) => { if(cond){ pass++; console.log('  PASS  ' + n
    per Ian's 2026-09-11 decision) must read as a loud, separate line and its own count — never
    silently folded into "0 failed" or counted toward "passed". */
 const skipLine = msg => { skip++; console.log('  SKIP  ' + msg); };
+/* Async checks (the sync paths are async: onSignedIn, pushNow's transaction). Each block is queued
+   here and starts only after the whole synchronous suite has run, so its output lands after the
+   last synchronous line. The tail of this file waits for every one to settle before it prints the
+   summary or exits. A block that throws or hangs past 10 seconds is a FAIL, never a silent skip. */
+const pendingAsync = [];
+function asyncBlock(label, fn){
+  pendingAsync.push(new Promise(resolve => setImmediate(resolve)).then(() => {
+    let timer = null;
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timed out after 10s')), 10000); });
+    return Promise.race([Promise.resolve().then(fn), timeout]).finally(() => clearTimeout(timer));
+  }).catch(e => { ok(label + ': async block did not finish', false, String(e && e.stack || e)); }));
+}
 const REAL_PATH = path.join(__dirname, 'local', 'real-db-snapshot.json');
 
 /* Golden hashes of every synthetic differential case's LEGACY output (REG-13's permanent form,
@@ -669,10 +681,16 @@ function clone(x){ return x === null || x === undefined ? x : JSON.parse(JSON.st
 /* canon(out) after dropping every key that is a COLLECTIONS name NOT in LEGACY_COLLECTIONS. A
    collection declared after this phase's baseline is exempt, because mergeDB_legacy carries it
    wholesale (via blank_legacy()'s Object.assign) instead of unioning it — comparing it would only
-   prove blank_legacy() and blank() disagree, which REG-06's own differential already covers. */
+   prove blank_legacy() and blank() disagree, which REG-06's own differential already covers.
+
+   The `draft` key is dropped too. From Phase 4 the in-progress workout is device-local: the live
+   mergeDB() never returns a draft, while the frozen mergeDB_legacy still carries one by recency.
+   That divergence is intended, so the comparison leaves the draft out and the DRAFT block further
+   down asserts the live behaviour directly. */
 function legacyView(out){
   const copy = Object.assign({}, out);
   Object.keys(app.COLLECTIONS).forEach(name => { if(LEGACY_COLLECTIONS.indexOf(name) < 0) delete copy[name]; });
+  delete copy.draft;
   return canon(copy);
 }
 
@@ -840,7 +858,8 @@ LEGACY_LISTS.forEach(name => {
   const olderWithDraft = Object.assign(app.blank(), { draft: validDraft, updatedAt: 100 });
   const newerNullDraft = Object.assign(app.blank(), { draft: null, updatedAt: 900 });
   const out = sameMerge("a finished workout's null draft beats a stale draft", newerNullDraft, olderWithDraft, false);
-  ok("merge incident: a finished workout's null draft beats a stale draft", out.draft === null, out.draft);
+  // The safety property still holds, by a stronger mechanism: no draft leaves the merge at all (D-04).
+  ok("merge incident: a finished workout's null draft beats a stale draft", !('draft' in out), out.draft);
 }
 {
   // "the weather cache never syncs": neither side's wx may reach the output.
@@ -897,7 +916,10 @@ LEGACY_LISTS.forEach(name => {
 
 /* The gen-mismatch block copied verbatim from mergeDB itself (not mergeDB_legacy, which says
    blank_legacy) BEFORE Task 2's edit — the pre-phase text this phase's own diff must leave
-   untouched, whitespace aside. */
+   untouched, whitespace aside.
+   Phase 4 adds exactly one statement to it, `delete win.draft;`: D-04 names this branch explicitly
+   (an Erase or Import→Replace must not carry a draft across the wire either). REG-10's property —
+   an early return before any per-collection merge — is still asserted by the ordering check below. */
 const GEN_BLOCK = `const rG = +r.gen || 0, lG = +l.gen || 0;
   if(rG !== lG){
     const win = Object.assign({}, blank(), lG > rG ? l : r);
@@ -905,13 +927,14 @@ const GEN_BLOCK = `const rG = +r.gen || 0, lG = +l.gen || 0;
     win.updatedAt = Math.max(+r.updatedAt||0, +l.updatedAt||0);
     win._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
     delete win.wx;
+    delete win.draft;
     return win;
   }`;
 
 console.log('\n── mergeDB() is derived from COLLECTIONS (REG-09/REG-10/REG-05) ──');
 {
   const collapse = s => s.replace(/\s+/g, ' ').trim();
-  ok('merge: the gen-mismatch block is byte-for-byte the pre-phase block',
+  ok('merge: the gen-mismatch block is the pre-phase block plus the Phase 4 draft strip',
      collapse(app.mergeDB.toString()).includes(collapse(GEN_BLOCK)));
 }
 {
@@ -1598,6 +1621,107 @@ ok("SLEEP-04: viewSleep reads through liveOf('sleep')", app.viewSleep.toString()
      { lastKey: keys[keys.length-1], sleepLineCount: sleepLineMatches.length });
 }
 
+console.log('\n── DRY-RUN-A: a map-shaped collection declared in one line is picked up everywhere (DOC-04) ──');
+/* DOC-04's data-layer rehearsal for the "adding a new tracked thing" recipe (CLAUDE.md /
+   docs/adding-a-collection.md), proven for a collection that is NOT sleep. sleep is list-shaped, so
+   SLEEP-05 above never exercised merge:'replace-whole', explicitFalse, or the six map-only branches
+   of collectionProblems() — exactly the ones mobilityLog got wrong in production. This block injects
+   a single map-shaped registry line the same way SLEEP-05 does (test/harness.js's opts.transform, no
+   change to the harness or to index.html) and machine-proves the recipe's data-layer half end to end
+   for it. */
+const RECIPE_PROBE_MAP_LINE = "  recipeProbeMap:{ kind:'map', merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Recipe probe map', columns:[{field:'date',label:'date'},{field:'item',label:'item'}], format:dayFlagRows },";
+const recipeProbeTransform = code => code.replace('const COLLECTIONS = {', 'const COLLECTIONS = {\n' + RECIPE_PROBE_MAP_LINE);
+const recipeProbe = loadApp(APP_PATH, null, { transform: recipeProbeTransform });
+
+{
+  const lineDiff = recipeProbe.__src.split('\n').length - app.__src.split('\n').length;
+  const reconstructed = recipeProbe.__src.replace('\n' + RECIPE_PROBE_MAP_LINE, '');
+  ok('DRY-RUN-A: the recipe probe transform applied (one line added, nothing else changed)',
+     recipeProbe.__src !== app.__src && lineDiff === 1 && reconstructed === app.__src,
+     { lineDiff, reconstructedMatchesApp: reconstructed === app.__src });
+}
+
+ok('DRY-RUN-A: the declaration is valid', recipeProbe.collectionProblems(recipeProbe.COLLECTIONS).length === 0, recipeProbe.collectionProblems(recipeProbe.COLLECTIONS));
+
+{
+  const blankProbe = recipeProbe.blank();
+  ok('DRY-RUN-A: blank() creates the recipe probe empty',
+     typeof blankProbe.recipeProbeMap === 'object' && !Array.isArray(blankProbe.recipeProbeMap) && Object.keys(blankProbe.recipeProbeMap).length === 0 &&
+     typeof recipeProbe.DB.recipeProbeMap === 'object' && !Array.isArray(recipeProbe.DB.recipeProbeMap) && Object.keys(recipeProbe.DB.recipeProbeMap).length === 0,
+     { blankMap: blankProbe.recipeProbeMap, dbMap: recipeProbe.DB.recipeProbeMap });
+}
+
+{
+  let threw = null;
+  try { recipeProbe.liveOf('recipeProbeMap'); } catch(e){ threw = e; }
+  ok('DRY-RUN-A: liveOf refuses a map collection by name',
+     !!threw && /recipeProbeMap/.test(threw.message), threw && threw.message);
+}
+
+{
+  const base = recipeProbe.blank();
+  const withoutProbe = JSON.parse(JSON.stringify(base));
+  delete withoutProbe.recipeProbeMap;
+  const badMap = JSON.parse(JSON.stringify(base)); badMap.recipeProbeMap = [];
+  const r1 = recipeProbe.validateBackup(withoutProbe), r2 = recipeProbe.validateBackup(badMap);
+  ok("DRY-RUN-A: validateBackup checks the recipe probe's shape",
+     r1 === null && r2 === 'The recipeProbeMap section is damaged.',
+     { r1, r2 });
+}
+
+{
+  const day = '2026-08-01';
+  const A = Object.assign(recipeProbe.blank(), { updatedAt:100, recipeProbeMap: { [day]: { a:'old' } } });
+  const B = Object.assign(recipeProbe.blank(), { updatedAt:900, recipeProbeMap: { [day]: { b:'new' } } });
+  const out1 = recipeProbe.mergeDB(clone(A), clone(B), false);
+  const out2 = recipeProbe.mergeDB(clone(B), clone(A), false);
+  ok('DRY-RUN-A: mergeDB replaces the whole day from the newer side',
+     JSON.stringify(out1.recipeProbeMap[day]) === JSON.stringify({ b:'new' }) && JSON.stringify(out2.recipeProbeMap[day]) === JSON.stringify({ b:'new' }),
+     { out1: out1.recipeProbeMap[day], out2: out2.recipeProbeMap[day] });
+}
+
+{
+  const day = '2026-08-01';
+  const olderTrue = Object.assign(recipeProbe.blank(), { updatedAt:100, recipeProbeMap: { [day]: { flag:true } } });
+  const newerFalse = Object.assign(recipeProbe.blank(), { updatedAt:900, recipeProbeMap: { [day]: { flag:false } } });
+  const falseOut1 = recipeProbe.mergeDB(clone(olderTrue), clone(newerFalse), false);
+  const falseOut2 = recipeProbe.mergeDB(clone(newerFalse), clone(olderTrue), false);
+
+  const olderHasKey = Object.assign(recipeProbe.blank(), { updatedAt:100, recipeProbeMap: { [day]: { flag:true } } });
+  const newerOmits  = Object.assign(recipeProbe.blank(), { updatedAt:900, recipeProbeMap: { [day]: { other:true } } });
+  const absentOut1 = recipeProbe.mergeDB(clone(olderHasKey), clone(newerOmits), false);
+  const absentOut2 = recipeProbe.mergeDB(clone(newerOmits), clone(olderHasKey), false);
+
+  ok('DRY-RUN-A: an explicit false survives the merge, and absence does not mean off',
+     JSON.stringify(falseOut1.recipeProbeMap[day]) === JSON.stringify({ flag:false }) &&
+     JSON.stringify(falseOut2.recipeProbeMap[day]) === JSON.stringify({ flag:false }) &&
+     JSON.stringify(absentOut1.recipeProbeMap[day]) === JSON.stringify({ other:true }) &&
+     JSON.stringify(absentOut2.recipeProbeMap[day]) === JSON.stringify({ other:true }),
+     { falseOut1: falseOut1.recipeProbeMap[day], falseOut2: falseOut2.recipeProbeMap[day], absentOut1: absentOut1.recipeProbeMap[day], absentOut2: absentOut2.recipeProbeMap[day] });
+}
+
+{
+  recipeProbe.DB = Object.assign(recipeProbe.blank(), { recipeProbeMap: { '2026-08-03': { flag:true } } });
+  const sections = mdSections(recipeProbe.buildMarkdownExport());
+  const sec = sections['Recipe probe map'];
+  ok('DRY-RUN-A: the recipe probe exports its own section with no exporter edit',
+     !!sec && !sec.empty && sec.rows.length === 1 && sec.rows[0][0] === '2026-08-03',
+     sec);
+}
+
+{
+  const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const consumers = { blank: recipeProbe.blank, liveOf: recipeProbe.liveOf, validateBackup: recipeProbe.validateBackup, mergeCollections: recipeProbe.mergeCollections, mergeDB: recipeProbe.mergeDB, exportRows: recipeProbe.exportRows, buildMarkdownExport: recipeProbe.buildMarkdownExport };
+  const hits = Object.keys(consumers).filter(name => stripComments(consumers[name].toString()).indexOf('recipeProbeMap') >= 0);
+  ok('DRY-RUN-A: no derived consumer mentions recipeProbeMap', hits.length === 0, hits);
+}
+
+/* Dry Run A proves the recipe's data-layer half exhaustively for a map-shaped collection: a valid
+   declaration, blank(), liveOf() refusal, validateBackup()'s shape check, mergeDB()'s replace-whole
+   trap (including the explicit-false rule), and the export — all reached from one injected line with
+   no change to any derived consumer. It cannot reach the hand-written logging/viewing UI step the
+   recipe also describes; that is Dry Run B's job (plan 03-05). */
+
 /* Identity. Ian's Aug 10 export had 37 spellings for ~30 movements — "Seated Fly" and "Seated Flys"
    were two lifts with two PR histories, and "Deficit Sumo Squat" missed the program's own 12–15
    range because the override is keyed by the canonical spelling. */
@@ -1767,6 +1891,51 @@ console.log('\n── COLLECTIONS sits where module-eval can reach it (REG-02/03
   ok('registry: entries are declared in the pre-phase order',
      JSON.stringify(Object.keys(app.COLLECTIONS).slice(0, 10)) === JSON.stringify(['sessions','weights','petWeights','cardio','ideas','todos','hobbyLog','journal','mobilityLog','lawnLog']),
      Object.keys(app.COLLECTIONS));
+}
+
+console.log('\n── the recipe quotes the placement rule verbatim (DOC-02) ──');
+{
+  /* This does not assert the placement rule says any particular thing — that would be the
+     exact-wording trap CLAUDE.md's own firestore.rules note (§ Conventions) already warns against.
+     It asserts only that CLAUDE.md's copy and the file its own marker names are the same text,
+     whitespace-normalized. Either file may be rewritten freely; they may only not drift apart. */
+  const claudeMdPath = APP_PATH.replace(/index\.html$/, 'CLAUDE.md');
+  const repoRoot = path.dirname(APP_PATH);
+  const claudeMdExists = fs.existsSync(claudeMdPath);
+  const claudeMd = claudeMdExists ? fs.readFileSync(claudeMdPath, 'utf8') : '';
+
+  const normWs = s => s.replace(/\s+/g, ' ').trim();
+
+  const markerRe = /<!-- placement-rule: verbatim from (.+?) -->/g;
+  const placementMarkers = [];
+  let m;
+  while((m = markerRe.exec(claudeMd))){
+    const quoteSource = m[1].trim();
+    const after = claudeMd.slice(m.index + m[0].length);
+    const fenceMatch = after.match(/```text\r?\n([\s\S]*?)\r?\n[ \t]*```/);
+    placementMarkers.push({ quoteSource, placementQuote: fenceMatch ? fenceMatch[1] : null });
+  }
+
+  ok('recipe: CLAUDE.md names at least one verbatim placement-rule source',
+     placementMarkers.length > 0 && placementMarkers.every(p => p.placementQuote && normWs(p.placementQuote).length > 0),
+     placementMarkers.map(p => p.quoteSource));
+
+  if(placementMarkers.length > 0 && placementMarkers.every(p => p.placementQuote)){
+    placementMarkers.forEach(p => {
+      const srcPath = path.join(repoRoot, p.quoteSource);
+      const srcExists = fs.existsSync(srcPath);
+      const srcText = srcExists ? fs.readFileSync(srcPath, 'utf8') : '';
+      const contains = srcExists && normWs(srcText).includes(normWs(p.placementQuote));
+      ok('recipe: CLAUDE.md quotes the placement rule verbatim from the source it names',
+         contains,
+         { quoteSource: p.quoteSource, srcExists, quoteStart: normWs(p.placementQuote).slice(0, 80) });
+    });
+
+    const combinedQuote = placementMarkers.map(p => normWs(p.placementQuote)).join(' ');
+    ok('recipe: the quoted placement rule is substantial, not a fragment',
+       combinedQuote.length >= 200 && combinedQuote.includes('MIGRATIONS') && combinedQuote.includes('blank('),
+       combinedQuote.length);
+  }
 }
 
 /* The registry's export metadata (REG-17), the merge-strategy refusal battery (REG-05), the promoted
@@ -2008,6 +2177,165 @@ console.log('\n── the registry refuses what would lose data (REG-05/REG-04/R
      JSON.stringify(migKeys) === JSON.stringify(expectedMigKeys), migKeys);
 }
 
+console.log('\n── the recipe and the registry cannot silently diverge (DOC-03) ──');
+{
+  /* This block compares VALUES — a key set extracted from the companion doc against the key set
+     collectionProblems() actually enforces — never prose. CLAUDE.md § Conventions already records
+     why that matters: pinning the firestore.rules tests to exact wording broke them the moment the
+     file matched what was actually deployed. Assert the property, never the wording. */
+  const recipeDocPath = APP_PATH.replace(/index\.html$/, 'docs/adding-a-collection.md');
+  const recipeDocExists = fs.existsSync(recipeDocPath);
+  const recipeDoc = recipeDocExists ? fs.readFileSync(recipeDocPath, 'utf8') : '';
+
+  /* `lang` picks the fence tag to look for. json (the default) parses the captured text as JSON,
+     matching every pre-existing call site below unchanged; any other tag returns the raw captured
+     text, which is what a `js` object-literal fixture (not valid JSON — unquoted keys, a bare
+     function-reference value) needs. This is the file's only fenced-block extractor (Task 3, DOC-03/DOC-02). */
+  function docBlock(doc, marker, lang){
+    lang = lang || 'json';
+    const idx = doc.indexOf(marker);
+    if(idx < 0) return null;
+    const after = doc.slice(idx + marker.length);
+    const re = new RegExp('```' + lang + '\\r?\\n([\\s\\S]*?)\\r?\\n```');
+    const m = after.match(re);
+    if(!m) return null;
+    if(lang === 'json'){
+      try { return JSON.parse(m[1]); } catch(e){ return null; }
+    }
+    return m[1];
+  }
+
+  const docSpecKeysRaw = docBlock(recipeDoc, '<!-- registry-contract: spec keys -->');
+  const docColumnKeysRaw = docBlock(recipeDoc, '<!-- registry-contract: column keys -->');
+  const docSpecKeys = Array.isArray(docSpecKeysRaw) ? docSpecKeysRaw : [];
+  const docColumnKeys = Array.isArray(docColumnKeysRaw) ? docColumnKeysRaw : [];
+
+  const docBlocksOk = recipeDocExists
+    && Array.isArray(docSpecKeysRaw) && docSpecKeysRaw.length > 0
+    && Array.isArray(docColumnKeysRaw) && docColumnKeysRaw.length > 0;
+  ok('recipe: docs/adding-a-collection.md exists and holds both registry-contract blocks',
+     docBlocksOk, { recipeDocExists, docSpecKeysRaw, docColumnKeysRaw });
+
+  /* Extracted straight out of index.html's own collectionProblems() — never transcribed from a
+     planning document — so a restructure of the validator itself is what this anchor is guarding. */
+  const allowedMatch = app.__src.match(/const ALLOWED = \[([^\]]*)\]/);
+  const liveAllowed = allowedMatch
+    ? allowedMatch[1].split(',').map(s => s.trim().replace(/^'|'$/g, '')).filter(Boolean)
+    : [];
+  ok('recipe: the live ALLOWED array anchor is found and yields more than one name',
+     !!allowedMatch && liveAllowed.length > 1, liveAllowed);
+
+  const columnKeyLine = app.__src.split('\n').find(l => l.includes('has unknown key'));
+  const liveColumnKeys = columnKeyLine
+    ? [...columnKeyLine.matchAll(/k!==\s*'([^']+)'/g)].map(m => m[1])
+    : [];
+  ok('recipe: the live column-key anchor is found and yields more than one name',
+     !!columnKeyLine && liveColumnKeys.length > 1, liveColumnKeys);
+
+  const sortedUnique = arr => JSON.stringify(Array.from(new Set(arr)).sort());
+
+  if(docBlocksOk){
+    ok('recipe: the documented spec-key list matches the live ALLOWED list',
+       sortedUnique(docSpecKeys) === sortedUnique(liveAllowed),
+       { docSpecKeys: Array.from(new Set(docSpecKeys)).sort(), liveAllowed: Array.from(new Set(liveAllowed)).sort() });
+
+    ok('recipe: the documented column-key list matches the live column contract',
+       sortedUnique(docColumnKeys) === sortedUnique(liveColumnKeys),
+       { docColumnKeys: Array.from(new Set(docColumnKeys)).sort(), liveColumnKeys: Array.from(new Set(liveColumnKeys)).sort() });
+
+    ok('recipe: the comparison is not vacuous — an extra field breaks it',
+       sortedUnique(docSpecKeys.concat(['zzNotAField'])) !== sortedUnique(liveAllowed));
+
+    /* Task 2: close the coverage and encoding gaps around the divergence check above. */
+
+    // ── every key a live COLLECTIONS entry actually uses is named in the companion doc ──
+    const usedSpecKeys = new Set();
+    const usedColumnKeys = new Set();
+    Object.keys(app.COLLECTIONS).forEach(name => {
+      const spec = app.COLLECTIONS[name];
+      Object.keys(spec).forEach(k => usedSpecKeys.add(k));
+      (Array.isArray(spec.columns) ? spec.columns : []).forEach(col => {
+        Object.keys(col).forEach(k => usedColumnKeys.add(k));
+      });
+    });
+    const docSpecKeySet = new Set(docSpecKeys);
+    const docColumnKeySet = new Set(docColumnKeys);
+    const undocumentedSpecKeys = Array.from(usedSpecKeys).filter(k => !docSpecKeySet.has(k));
+    const undocumentedColumnKeys = Array.from(usedColumnKeys).filter(k => !docColumnKeySet.has(k));
+    ok('recipe: every key used by a live COLLECTIONS entry is documented',
+       undocumentedSpecKeys.length === 0 && undocumentedColumnKeys.length === 0,
+       { undocumentedSpecKeys, undocumentedColumnKeys });
+
+    // ── behavioural cross-check: anchor the source-text extraction to live validator behaviour ──
+    const validListSpec = () => ({ kind:'list', key:'id', merge:'union', soft:true, required:false, label:'Thing', columns:[{field:'date',label:'date'}] });
+
+    const specKeyFalselyRefused = [];
+    docSpecKeys.forEach(name => {
+      const spec = validListSpec(); spec[name] = 'dummy';
+      const problems = app.collectionProblems({ thing: spec });
+      if(problems.some(p => p.includes('unknown field "' + name + '"'))) specKeyFalselyRefused.push(name);
+    });
+    const zzSpec = validListSpec(); zzSpec.zzNotAField = 'dummy';
+    const zzSpecProblems = app.collectionProblems({ thing: zzSpec });
+    const zzSpecRefused = zzSpecProblems.some(p => p.includes('unknown field "zzNotAField"'));
+    ok('recipe: every documented spec key is accepted by collectionProblems, and a sentinel key is refused',
+       specKeyFalselyRefused.length === 0 && zzSpecRefused,
+       { specKeyFalselyRefused, zzSpecRefused });
+
+    const columnKeyFalselyRefused = [];
+    docColumnKeys.forEach(name => {
+      const spec = validListSpec(); spec.columns = [Object.assign({field:'date', label:'date'}, {[name]: 'dummy'})];
+      const problems = app.collectionProblems({ thing: spec });
+      if(problems.some(p => p.includes('has unknown key "' + name + '"'))) columnKeyFalselyRefused.push(name);
+    });
+    const zzColSpec = validListSpec(); zzColSpec.columns = [{field:'date', label:'date', zzNotAColumnKey:'dummy'}];
+    const zzColProblems = app.collectionProblems({ thing: zzColSpec });
+    const zzColRefused = zzColProblems.some(p => p.includes('has unknown key "zzNotAColumnKey"'));
+    ok('recipe: every documented column key is accepted by collectionProblems, and a sentinel column key is refused',
+       columnKeyFalselyRefused.length === 0 && zzColRefused,
+       { columnKeyFalselyRefused, zzColRefused });
+
+    // ── encoding guard: a typographic quote or invisible character breaks the extractor unseen ──
+    const ASCII_IDENT_RE = /^[A-Za-z][A-Za-z0-9]*$/;
+    const nonAsciiNames = docSpecKeys.concat(docColumnKeys).filter(n => !ASCII_IDENT_RE.test(n));
+    ok('recipe: the documented key names are plain ASCII identifiers',
+       nonAsciiNames.length === 0, nonAsciiNames);
+
+    // ── the copy-paste example entry round-trips through the live validator (DOC-03, Task 3) ──
+    const exampleEntrySrc = docBlock(recipeDoc, '<!-- registry-contract: example entry -->', 'js');
+    ok('recipe: docs/adding-a-collection.md holds the example-entry fenced block',
+       typeof exampleEntrySrc === 'string' && exampleEntrySrc.trim().length > 0, exampleEntrySrc);
+
+    let exampleEntry = null, exampleEntryError = null;
+    if(typeof exampleEntrySrc === 'string'){
+      try {
+        // Only `dayFlagRows` is injected — any other identifier the fixture references throws here,
+        // which is the point: the fixture is meant to be paste-able against the real file, and this
+        // is what proves it references nothing else.
+        exampleEntry = new Function('dayFlagRows', 'return (' + exampleEntrySrc + ');')(app.dayFlagRows);
+      } catch(e){ exampleEntryError = e.message; }
+    }
+    ok('recipe: the copy-paste entry evaluates with only dayFlagRows injected',
+       exampleEntry !== null && exampleEntryError === null, exampleEntryError);
+
+    if(exampleEntry){
+      const roundTripProblems = app.collectionProblems({ exampleEntry: exampleEntry });
+      ok('recipe: the companion doc\'s copy-paste entry still passes the live validator',
+         Array.isArray(roundTripProblems) && roundTripProblems.length === 0, roundTripProblems);
+
+      ok('recipe: the copy-paste entry is map-shaped and exercises the explicitFalse branch',
+         exampleEntry.kind === 'map' && exampleEntry.merge === 'replace-whole' && exampleEntry.explicitFalse === true,
+         { kind: exampleEntry.kind, merge: exampleEntry.merge, explicitFalse: exampleEntry.explicitFalse });
+
+      const missingFormat = Object.assign({}, exampleEntry);
+      delete missingFormat.format;
+      const missingFormatProblems = app.collectionProblems({ exampleEntry: missingFormat });
+      ok('recipe: the round-trip is not vacuous — dropping format from the copy is refused',
+         Array.isArray(missingFormatProblems) && missingFormatProblems.length > 0, missingFormatProblems);
+    }
+  }
+}
+
 console.log('\n── an older build must not write over a migrated one ──');
 ok('a remote from a newer schema is refused', app.remoteTooNew({ _schema: app.SCHEMA + 1 }) === true);
 ok('the same schema is fine', app.remoteTooNew({ _schema: app.SCHEMA }) === false);
@@ -2224,8 +2552,9 @@ const uiDraft = loadApp(APP_PATH);
    blind, because startWorkout() always builds all three — but a draft synced from a device on an
    older schema, or restored from a hand-edited backup, can be short a field. mergeDB already nulled
    a draft whose `workout` was unknown for this exact reason; it was one field short, and the screen
-   it takes out is the Log tab. normalizeDraft() now repairs what it can and nulls the rest, on both
-   the boot path and the merge path (mergeDB's output does not pass back through normalize). */
+   it takes out is the Log tab. normalizeDraft() repairs what it can and nulls the rest on the boot
+   path; since Phase 4 the merge path no longer repairs a draft, it removes it — the merge never
+   returns a draft at all, so nothing short a field can arrive that way. */
 console.log('\n── a malformed draft must not take out the Log tab ──');
 {
   const a = loadApp(APP_PATH);
@@ -2251,21 +2580,879 @@ console.log('\n── a malformed draft must not take out the Log tab ──');
   ok('  …same for a draft with no entries list', a.normalize(withDraft(k=>{ delete k.entries; })).draft === null);
   ok('a null draft stays null', a.normalize(populatedDB(a)).draft === null);
 
-  /* The merge path repairs too — mergeDB's output never passes back through normalize(). */
-  ok('the sync merge repairs a malformed draft as well', (()=>{
-    const remote = populatedDB(a); remote.draft = draftFor(a,'PUSH 1'); delete remote.draft.stairs;
-    remote.updatedAt = Date.now();
-    const local = populatedDB(a); local.updatedAt = Date.now() - 60000;
-    const out = a.mergeDB(remote, local, false);
-    return out.draft && out.draft.workout === 'PUSH 1' && !!out.draft.stairs;
-  })());
-  ok('  …and still drops one with an unknown workout (the 2026-07-25 guard)', (()=>{
-    const remote = populatedDB(a); remote.draft = draftFor(a,'PUSH 1'); remote.draft.workout = 'GONE';
-    remote.updatedAt = Date.now();
-    const local = populatedDB(a); local.updatedAt = Date.now() - 60000;
-    return a.mergeDB(remote, local, false).draft === null;
+  /* The merge path removes instead of repairing: a newer remote draft, short a field or naming a
+     workout that no longer exists, never comes out of mergeDB at all (D-04). */
+  ok('the sync merge never returns a draft, whatever the remote holds', (()=>{
+    const bad = [];
+    [['no stairs', k=>{ delete k.stairs; }], ['unknown workout', k=>{ k.workout = 'GONE'; }]].forEach(([label, mutate]) => {
+      const remote = populatedDB(a); remote.draft = draftFor(a,'PUSH 1'); mutate(remote.draft);
+      remote.updatedAt = Date.now();
+      const local = populatedDB(a); local.updatedAt = Date.now() - 60000;
+      if('draft' in a.mergeDB(remote, local, false)) bad.push(label);
+    });
+    return bad.length === 0;
   })());
 }
+
+/* ── helpers for the DRAFT blocks below ──
+   fullDraft() is the draft startWorkout() builds, extras included. draftFor() leaves `extras` empty,
+   and viewActive() → ensureExtras() heals a missing accessory into DB.draft IN MEMORY without storing
+   it, so after any render that reaches the Log tab the in-memory draft and its stored copy differ by
+   that accessory — a deep-equality check would fail for the wrong reason. Use fullDraft() for every
+   LOCAL draft; remote drafts may stay draftFor(), since they are stripped anyway. */
+function fullDraft(a, workout){
+  const d = draftFor(a, workout);
+  d.extras = a.__sandbox.blankExtras(workout);
+  return d;
+}
+/* Replaces the debounced push with a counter. save() looks schedulePush up on the vm global object
+   at call time, so the override is what it calls; saveLocal() never calls it at all. */
+function spyPushes(a){
+  const spy = { n: 0 };
+  a.__sandbox.schedulePush = () => { spy.n++; };
+  return spy;
+}
+/* A fake Firestore just deep enough for onSignedIn(), startLiveSync(), pushNow()'s transaction and
+   cloudVersion(). The remote blob is held as the JSON STRING the real doc stores, so every read
+   parses a fresh copy and nothing a test holds can alias it. `writes` records every tx.set() doc
+   (the thing pushNow() actually sends); `versions` records every versions-subcollection add().
+   `fire(db)` replays a live-listener tick carrying `db`. With opts.signedIn it also wires SYNC as a
+   reconciled, signed-in session so pushNow() and cloudVersion() run without going through sign-in.
+   Every caller clears SYNC.docRef and SYNC.user before it returns. */
+function fakeCloud(a, remoteDB, opts){
+  opts = opts || {};
+  let remote = remoteDB == null ? null : JSON.stringify(remoteDB);
+  const writes = [], versions = [];
+  let listener = null;
+  const snapOf = () => ({ exists: remote !== null, data(){ return { blob: remote }; } });
+  const versionsCol = {
+    add: async doc => { versions.push(doc); return { id: 'v' + versions.length }; },
+    orderBy(){ return versionsCol; },
+    limit(){ return versionsCol; },
+    get: async () => ({ docs: opts.versionDocs || [] }),
+  };
+  const docRef = {
+    get: async () => snapOf(),                       // ignores {source:'server'}: there is only one copy
+    onSnapshot(cb){ listener = cb; return () => {}; },
+    collection(){ return versionsCol; },
+  };
+  a.fbDb = {
+    runTransaction: async fn => fn({
+      get: async () => snapOf(),
+      set: (ref, doc) => { writes.push(doc); remote = doc.blob; },
+    }),
+    collection(){ return { doc(){ return docRef; } }; },
+  };
+  if(opts.signedIn){ a.SYNC.docRef = docRef; a.SYNC.reconciled = true; a.SYNC.user = { uid: 'draft-test' }; }
+  return {
+    writes, versions, docRef,
+    fire(db){
+      if(!listener) throw new Error('no live listener was installed');
+      listener({ exists: true, data(){ return { blob: JSON.stringify(db) }; } });
+    },
+    setRemote(db){ remote = db == null ? null : JSON.stringify(db); },
+  };
+}
+
+/* ── DRAFT: the in-progress workout stays on this device (Phase 4, D-04/D-05/D-09) ──
+   The draft used to sync like any other field, and the merge picked it by recency. That is how a
+   stale device could put an old workout back on Ian's phone mid-set, and how a malformed draft from
+   an older build could reach the Log tab. From Phase 4 it lives only on the device that started it:
+   typing a rep persists locally with no push, no merged blob carries it, and nothing arriving from
+   the cloud can replace it. These drive the real paths — setVal(), onSignedIn(), the live listener,
+   pushNow()'s transaction — never a hand-rolled imitation of them. */
+console.log('\n── DRAFT: the in-progress workout stays on this device ──');
+{
+  const a = loadApp(APP_PATH);
+  const spy = spyPushes(a);
+  const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.updatedAt = 1000;
+  a.DB = d;
+  a.setVal(0, 0, 'r', '8');
+  const stored = a.__stored();
+  const storedR = stored && stored.draft && stored.draft.entries[0].sets[0].r;
+  ok('DRAFT tracer: a typed rep is stored on this device with no updatedAt bump and no push',
+     a.DB.updatedAt === 1000 && storedR === '8' && spy.n === 0,
+     { updatedAt: a.DB.updatedAt, storedR, pushes: spy.n });
+}
+asyncBlock('DRAFT sign-in and live listener', async () => {
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  try{
+    const local = populatedDB(a);
+    local.draft = fullDraft(a, 'PUSH 1');
+    local.draft.entries[0].sets[0] = { w: '135', r: '8', skipped: false };
+    local.updatedAt = 1000;
+    a.DB = local; a.saveLocal();
+    const before = canon(a.DB.draft);
+
+    /* No ppl_synced_uid yet and local has sessions, so this is the first-link branch; the stubbed
+       prompt() returns '' and the app reads that as "merge both". The cloud's draft is NEWER. */
+    const remote = populatedDB(a); remote.draft = draftFor(a, 'PULL 1'); remote.updatedAt = 5000;
+    const cloud = fakeCloud(a, remote);
+    await a.onSignedIn({ uid: 'draft-test' });
+    const last = cloud.writes.length ? JSON.parse(cloud.writes[cloud.writes.length - 1].blob) : null;
+    ok('DRAFT-01: the sign-in push writes a blob with no draft key',
+       !!last && !('draft' in last),
+       { writes: cloud.writes.length, status: a.SYNC.status, draft: last && last.draft && last.draft.workout });
+    ok("DRAFT-02: a newer cloud draft does not replace this device's draft at sign-in",
+       canon(a.DB.draft) === before, a.DB.draft && a.DB.draft.workout);
+
+    const tick = populatedDB(a); tick.draft = draftFor(a, 'LEGS 1'); tick.updatedAt = 9000;
+    cloud.fire(tick);
+    const stored = a.__stored();
+    ok("DRAFT-02: the live listener leaves this device's draft untouched",
+       canon(a.DB.draft) === before && !!stored && canon(stored.draft) === before,
+       { inMemory: a.DB.draft && a.DB.draft.workout, stored: stored && stored.draft && stored.draft.workout });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+{
+  /* The merge used to repair the NEWER side's draft in place — the output's draft was that input's
+     own object — so merging mutated whichever blob the caller handed in. Both directions. */
+  const a = loadApp(APP_PATH);
+  const mutated = [];
+  [false, true].forEach(localNewer => {
+    const remote = populatedDB(a); remote.draft = draftFor(a, 'PUSH 1'); delete remote.draft.stairs;
+    const local  = populatedDB(a); local.draft  = draftFor(a, 'PULL 1'); delete local.draft.stairs;
+    remote.updatedAt = localNewer ? 1000 : 5000;
+    local.updatedAt  = localNewer ? 5000 : 1000;
+    const rBefore = canon(remote.draft), lBefore = canon(local.draft);
+    a.mergeDB(remote, local, false);
+    if(canon(remote.draft) !== rBefore) mutated.push((localNewer ? 'local newer' : 'remote newer') + ': remote draft');
+    if(canon(local.draft)  !== lBefore) mutated.push((localNewer ? 'local newer' : 'remote newer') + ': local draft');
+  });
+  ok("DRAFT-01: mergeDB leaves both inputs' draft objects unmutated", mutated.length === 0, mutated);
+}
+
+/* Every shape a remote `draft` field can arrive in: what older builds wrote, what a hand-edited or
+   damaged blob can hold, and the field missing altogether (the factory returns undefined, meaning
+   "delete the key"). Each factory returns a fresh value. Kept at block scope: later DRAFT blocks
+   reuse it. */
+const DRAFT_SHAPES = [
+  ['well-formed',          () => draftFor(app, 'PULL 1')],
+  ['no stairs',            () => { const d = draftFor(app, 'PULL 1'); delete d.stairs; return d; }],
+  ['unknown workout',      () => Object.assign(draftFor(app, 'PULL 1'), { workout: 'GONE' })],
+  ['entries is a string',  () => Object.assign(draftFor(app, 'PULL 1'), { entries: 'x' })],
+  ['a string',             () => 'x'],
+  ['a number',             () => 42],
+  ['an empty array',       () => []],
+  ['an empty object',      () => ({})],
+  ['null',                 () => null],
+  ['absent',               () => undefined],
+];
+{
+  /* Both mergeDB branches (gen equal → recency; gen higher or lower → wholesale replace), both tie
+     rules, the remote newer and older, and a local side holding a draft, null, or no key at all
+     (EDGE DRAFT-01/empty: absence and null are treated the same on the way out). */
+  const LOCAL_DRAFTS = [['a draft', () => draftFor(app, 'PUSH 1')], ['null', () => null], ['no key', () => undefined]];
+  const withDraft = (db, v) => { if(v === undefined) delete db.draft; else db.draft = v; return db; };
+  let firstBad = null, runs = 0;
+  DRAFT_SHAPES.forEach(([shape, remoteDraft]) => {
+    [['gen equal', 1], ['remote gen higher', 2], ['remote gen lower', 0]].forEach(([genLabel, rGen]) => {
+      [false, true].forEach(localWins => {
+        [['remote newer', 5000], ['remote older', 500]].forEach(([ageLabel, rU]) => {
+          LOCAL_DRAFTS.forEach(([localLabel, localDraft]) => {
+            if(firstBad) return;
+            const remote = withDraft(Object.assign(populatedLegacyDB('shape-r', 100), { gen: rGen, updatedAt: rU }), remoteDraft());
+            const local  = withDraft(Object.assign(populatedLegacyDB('shape-l', 200), { gen: 1, updatedAt: 1000 }), localDraft());
+            let out, threw = null;
+            try { out = app.mergeDB(remote, local, localWins); } catch(e){ threw = e.message; }
+            runs++;
+            if(threw || !out || 'draft' in out){
+              firstBad = { shape, gen: genLabel, localWins, age: ageLabel, local: localLabel, threw, draft: out && out.draft };
+            }
+          });
+        });
+      });
+    });
+  });
+  ok('DRAFT-01: mergeDB never returns a draft, for any remote shape, either branch, either tie rule',
+     !firstBad && runs === DRAFT_SHAPES.length * 3 * 2 * 2 * 3, firstBad || { runs });
+}
+{
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+  const before = canon(a.DB.draft);
+  a.snapshotNow('draft-check');
+  let ring = [];
+  try { ring = JSON.parse(a.__sandbox.localStorage.getItem('ppl_tracker_snaps_v1')) || []; } catch(e){}
+  const entry = ring.find(s => s.label === 'draft-check');
+  const blob = entry ? JSON.parse(entry.blob) : null;
+  ok('DRAFT-01: the local snapshot ring stores no draft',
+     !!blob && !('draft' in blob) && canon(a.DB.draft) === before,
+     { found: !!entry, draft: blob && blob.draft && blob.draft.workout, inMemory: a.DB.draft && a.DB.draft.workout });
+}
+asyncBlock('DRAFT cloud version', async () => {
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  try{
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+    const cloud = fakeCloud(a, null, { signedIn: true });
+    a.cloudVersion('weigh-in');
+    await new Promise(resolve => setImmediate(resolve));
+    const v = cloud.versions.find(x => x.label === 'weigh-in');
+    const blob = v ? JSON.parse(v.blob) : null;
+    ok('DRAFT-01: a cloud version written mid-workout stores no draft',
+       !!blob && !('draft' in blob) && !!a.DB.draft,
+       { versions: cloud.versions.length, draft: blob && blob.draft && blob.draft.workout });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+{
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+  const blobs = [];
+  a.__sandbox.Blob = function(parts, opts){ this.parts = parts; this.type = opts && opts.type; blobs.push(this); };
+  a.__sandbox.document.createElement = () => ({ href: '', download: '', click(){} });
+  a.exportData();
+  let parsed = null;
+  try { parsed = JSON.parse(blobs[blobs.length - 1].parts.join('')); } catch(e){}
+  ok('DRAFT-01: the downloaded JSON backup has no draft',
+     !!parsed && !('draft' in parsed) && Array.isArray(parsed.sessions) && parsed.sessions.length > 0
+       && !!a.DB.draft && a.DB.draft.workout === 'PUSH 1',
+     { parsed: !!parsed, draft: parsed && parsed.draft && parsed.draft.workout, inMemory: a.DB.draft && a.DB.draft.workout });
+}
+asyncBlock('DRAFT finish', async () => {
+  const a = loadApp(APP_PATH);
+  const spy = spyPushes(a);
+  try{
+    const d = populatedDB(a);
+    d.draft = fullDraft(a, 'PUSH 1');
+    d.draft.entries[0].sets[0] = { w: '135', r: '8', skipped: false };
+    d.updatedAt = 1000;
+    a.DB = d;
+    const knownIds = new Set(d.sessions.map(s => s.id));
+    /* The cloud still holds a legacy copy of this same workout, stamped NEWER than anything this
+       device writes — the shape that used to resurrect a finished workout (EDGE DRAFT-04/ordering). */
+    const remote = populatedDB(a); remote.draft = draftFor(a, 'PUSH 1'); remote.updatedAt = Date.now() + 60000;
+    const cloud = fakeCloud(a, remote, { signedIn: true });
+
+    a.finishWorkout();
+    const pushesAfterFinish = spy.n, draftAfterFinish = a.DB.draft;
+    const wv = cloud.versions.find(v => v.label === 'workout');
+    const wvBlob = wv ? JSON.parse(wv.blob) : null;
+    ok('DRAFT-04: finishing writes a workout version with no draft key',
+       !!wvBlob && !('draft' in wvBlob), { versions: cloud.versions.map(v => v.label), draft: wvBlob && wvBlob.draft });
+
+    await a.pushNow(true);   // the spy replaced the debounced push, so stand in for its timer
+    const last = cloud.writes.length ? JSON.parse(cloud.writes[cloud.writes.length - 1].blob) : null;
+    const sess = last && (last.sessions || []).find(s => s.workout === 'PUSH 1' && s.date === today && !knownIds.has(s.id));
+    ok('DRAFT-04: finishing pushes the session with no draft key',
+       pushesAfterFinish >= 1 && draftAfterFinish === null && !!last && !('draft' in last) && !!sess,
+       { pushesAfterFinish, draftAfterFinish, writes: cloud.writes.length, status: a.SYNC.status,
+         draft: last && last.draft, session: !!sess });
+    ok('DRAFT-04: the post-push reconciliation cannot bring the finished draft back',
+       a.DB.draft === null, a.DB.draft && a.DB.draft.workout);
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+{
+  const a = loadApp(APP_PATH);
+  const spy = spyPushes(a);
+  const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.updatedAt = 1000;
+  a.DB = d; a.saveLocal();
+  a.discardWorkout();   // the harness confirm() returns true
+  const stored = a.__stored();
+  ok('DRAFT-04: discarding stores null locally with no updatedAt bump and no push',
+     spy.n === 0 && a.DB.updatedAt === 1000 && !!stored && stored.draft === null && a.DB.draft === null,
+     { pushes: spy.n, updatedAt: a.DB.updatedAt, stored: stored && stored.draft });
+}
+
+/* ── DRAFT: restoring, importing and erasing handle the draft deliberately (Phase 4, D-06/D-07/D-08) ──
+   Five places turn foreign data into DB without going through the sync merge: Import Merge, Import
+   Replace, restoring a local snapshot, restoring a cloud version, and the "use the cloud copy only"
+   choice at first link. Every one of them must keep the workout in progress, and none may let the
+   foreign draft reach normalize(), where migration 17 would register its exercise names as synced
+   registry rows. Only a local Erase all data clears the draft, because that is what Ian asked for. */
+console.log('\n── DRAFT: restoring, importing and erasing handle the draft deliberately ──');
+/* A blob the way an older build wrote it: a full database that carries its own in-progress draft. */
+function legacyDraftDB(a){
+  const d = populatedDB(a);
+  delete d.wx;
+  d.draft = draftFor(a, 'LEGS 1');
+  return d;
+}
+/* A backup or cloud doc from before the exercise registry: `_schema` 16, no `exercises` list, and a
+   draft whose only entry names a lift found nowhere else. Normalizing it runs migration 17, which
+   stamps the draft's entries too, so an unstripped draft founds a registry row that then syncs. */
+function oldDocWithDraftOnlyLift(a){
+  const d = legacyDraftDB(a);
+  delete d.exercises;
+  d._schema = 16;
+  d.draft.entries = [{ name: 'Draft Only Lift', deload: false, sets: [{ w: '100', r: '5', skipped: false }] }];
+  return d;
+}
+const hasDraftOnlyLift = list => (Array.isArray(list) ? list : []).some(r => r && r.name === 'Draft Only Lift');
+/* Runs a check whose subject may not exist yet (a helper this plan extracts), so a missing function
+   reads as a FAIL with its message rather than a crash that stops the suite. */
+const attempt = fn => { try { return fn(); } catch(e){ return { threw: e.message }; } };
+{
+  const r = attempt(() => {
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.updatedAt = 1000; delete d.lastBackupAt;
+    a.DB = d;
+    const before = canon(a.DB.draft);
+    const backup = legacyDraftDB(a);
+    backup.sessions.push({ id:'imp1', workout:'PULL 1', date:dayOff(-1), endedAt:9, extras:{},
+      entries:[{ name:'Lat pulldown', sets:[{ w:'120', r:'10', skipped:false }] }] });
+    a.importMerge(backup);
+    return { same: canon(a.DB.draft) === before, imported: a.DB.sessions.some(s => s.id === 'imp1'),
+             updatedAt: a.DB.updatedAt, lastBackupAt: a.DB.lastBackupAt, draft: a.DB.draft && a.DB.draft.workout };
+  });
+  ok("D-06: Import Merge ignores the file's draft and keeps this device's",
+     r.same && r.imported && r.updatedAt !== 1000 && typeof r.lastBackupAt === 'number', r);
+}
+{
+  const r = attempt(() => {
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = null; a.DB = d;
+    a.importMerge(legacyDraftDB(a));
+    return { draft: a.DB.draft };
+  });
+  ok('D-06: Import Merge on a device with no draft plants none', r.draft === null, r);
+}
+{
+  const r = attempt(() => {
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.gen = 3; a.DB = d;
+    const before = canon(a.DB.draft);
+    const backup = legacyDraftDB(a);
+    backup.sessions = backup.sessions.slice(0, 2).map(s => Object.assign({}, s, { id: 'rep-' + s.id }));
+    const ids = backup.sessions.map(s => s.id);
+    a.importReplace(backup);
+    return { gen: a.DB.gen, ids: a.DB.sessions.map(s => s.id), want: ids, same: canon(a.DB.draft) === before,
+             draft: a.DB.draft && a.DB.draft.workout };
+  });
+  ok("D-06: Import Replace ignores the file's draft and keeps this device's",
+     r.gen === 4 && JSON.stringify(r.ids) === JSON.stringify(r.want) && r.same, r);
+}
+{
+  const r = attempt(() => {
+    const src = loadApp(APP_PATH); spyPushes(src);
+    const s = populatedDB(src); s.draft = fullDraft(src, 'PULL 1'); src.DB = s;
+    const blobs = [];
+    src.__sandbox.Blob = function(parts){ this.parts = parts; blobs.push(this); };
+    src.__sandbox.document.createElement = () => ({ href: '', download: '', click(){} });
+    src.exportData();
+    const text = blobs[blobs.length - 1].parts.join('');
+    const dst = loadApp(APP_PATH); spyPushes(dst);
+    const d = populatedDB(dst); d.sessions = []; d.draft = fullDraft(dst, 'PUSH 1'); dst.DB = d;
+    const before = canon(dst.DB.draft);
+    dst.importReplace(JSON.parse(text));
+    return { same: canon(dst.DB.draft) === before, sessions: dst.DB.sessions.length, draft: dst.DB.draft && dst.DB.draft.workout };
+  });
+  ok("D-06: an exported backup re-imported with Replace keeps the importing device's draft",
+     r.same && r.sessions > 0, r);
+}
+{
+  const r = attempt(() => {
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+    const before = canon(a.DB.draft);
+    const older = legacyDraftDB(a); older.weights = older.weights.slice(0, 1);
+    a.__sandbox.localStorage.setItem('ppl_tracker_snaps_v1', JSON.stringify([
+      { at: Date.now() - 3600000, label: 'older', blob: JSON.stringify(older), summary: { sessions: older.sessions.length, weights: 1 } },
+    ]));
+    a.restoreSnapshot(0);
+    return { weights: a.DB.weights.length, same: canon(a.DB.draft) === before, draft: a.DB.draft === undefined ? 'undefined' : (a.DB.draft && a.DB.draft.workout) };
+  });
+  ok('D-07: restoring a local snapshot keeps the workout in progress', r.weights === 1 && r.same, r);
+}
+asyncBlock('DRAFT restore a cloud version', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+    const before = canon(a.DB.draft);
+    const older = legacyDraftDB(a); older.weights = older.weights.slice(0, 1);
+    const doc = { id: 'v1', data(){ return { blob: JSON.stringify(older), label: 'push', at: Date.now() - 3600000,
+                                             summary: { sessions: older.sessions.length, weights: 1 } }; } };
+    fakeCloud(a, null, { signedIn: true, versionDocs: [doc] });
+    a.loadCloudVersions();
+    await new Promise(resolve => setTimeout(resolve, 0));   // the fake get() resolves on the next turn
+    a.restoreCloudVersion('v1');
+    ok('DRAFT-02: restoring a cloud version keeps the workout in progress',
+       a.DB.weights.length === 1 && canon(a.DB.draft) === before,
+       { weights: a.DB.weights.length, draft: a.DB.draft === undefined ? 'undefined' : (a.DB.draft && a.DB.draft.workout) });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+{
+  const r = attempt(() => {
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.gen = 2; a.DB = d; a.saveLocal();
+    a.wipe();   // the harness confirm() returns true
+    const stored = a.__stored();
+    return { draft: a.DB.draft, stored: stored && stored.draft, gen: a.DB.gen };
+  });
+  ok('D-08: a local Erase clears the draft', r.draft === null && r.stored === null && r.gen === 3, r);
+}
+{
+  const r = attempt(() => {
+    const out = {};
+    /* Replace: the device's own draft is kept, and the file's never reaches the migrations. */
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+    a.importReplace(oldDocWithDraftOnlyLift(a));
+    out.replace = hasDraftOnlyLift(a.DB.exercises);
+    /* Merge: the backup must be NEWER. `exercises` is not a COLLECTIONS entry, so mergeDB() takes it
+       whole from the newer side; an older backup's registry would be thrown away and the check would
+       pass for the wrong reason. */
+    const b = loadApp(APP_PATH); spyPushes(b);
+    const e = populatedDB(b); e.draft = fullDraft(b, 'PUSH 1'); e.updatedAt = 1000; b.DB = e;
+    const backup = oldDocWithDraftOnlyLift(b); backup.updatedAt = Date.now() + 60000;
+    b.importMerge(backup);
+    out.merge = hasDraftOnlyLift(b.DB.exercises);
+    out.mergeRegistry = (b.DB.exercises || []).length;
+    return out;
+  });
+  ok("D-06: an old backup's draft adds no exercise-registry row on import",
+     r.replace === false && r.merge === false && r.mergeRegistry > 0, r);
+}
+/* THE RULE (CLAUDE.md, "the draft is device-local"): every statement that replaces DB wholesale
+   puts this device's draft back with keepLocalDraft(). Five such sites were found by hand, and the
+   research missed two of them, so hand-finding is not enough. This scans the app source for every
+   assignment to DB itself and fails, naming the line, on any that neither calls keepLocalDraft() nor
+   is one of three sanctioned exceptions: the boot load, the local Erase (D-08, clears by design), and
+   adoptMerged()'s own line (its input was built by keepLocalDraft() a few lines up). */
+const DB_ASSIGN = /(^|[^\w.$])DB\s*=(?!=)/;
+function dbAssignLines(src){
+  const stripComments = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  return stripComments(src).split('\n').map(l => l.trim()).filter(l => DB_ASSIGN.test(l));
+}
+{
+  const lines = dbAssignLines(app.__src);
+  const wipeSrc = String(app.wipe), adoptSrc = String(app.adoptMerged);
+  const sanctioned = l => l.includes('keepLocalDraft(') || l === 'let DB = load();'
+    || (!!app.wipe && wipeSrc.includes(l)) || (!!app.adoptMerged && adoptSrc.includes(l));
+  const offenders = lines.filter(l => !sanctioned(l));
+  const exceptions = {
+    boot:  lines.some(l => l === 'let DB = load();'),
+    erase: !!app.wipe && lines.some(l => wipeSrc.includes(l)),
+    adopt: !!app.adoptMerged && lines.some(l => adoptSrc.includes(l) && !l.includes('keepLocalDraft(')),
+  };
+  const synthetic = ['DB = normalize(raw);'].filter(l => DB_ASSIGN.test(l) && !sanctioned(l));
+  ok("DRAFT-02: every statement that replaces DB keeps this device's draft",
+     lines.length >= 7 && offenders.length === 0 && exceptions.boot && exceptions.erase && exceptions.adopt
+       && synthetic.length === 1,
+     { scanned: lines.length, offenders, exceptions, syntheticCaught: synthetic.length === 1 });
+}
+
+/* ── DRAFT: no cloud document can plant, clear or crash the workout in progress (Phase 4, DRAFT-02/03) ──
+   Whatever the cloud doc holds — a legacy draft written by an older build, a malformed one, an Erase
+   from another device, or the whole doc chosen at first link — this device's own draft is what
+   remains, and the Log tab still draws. Each scenario is a fresh instance driven through the real
+   onSignedIn(), live listener and pushNow(). */
+console.log('\n── DRAFT: no cloud document can plant, clear or crash the workout in progress ──');
+/* The existing drawsLog() pattern, generalized to any instance: drive the real router to the Log tab
+   and read the container. render() never throws by design, so the tell is the error card's wording. */
+function logTabDraws(a){
+  const appEl = a.__sandbox.document.getElementById('app');
+  appEl.innerHTML = '';
+  try { a.go('train'); a.setSub('log'); } catch(e){ return false; }
+  return !/Something broke on this screen/.test(appEl.innerHTML || '');
+}
+/* A cloud doc whose sessions are all different rows from populatedDB()'s, so an adopted cloud copy is
+   distinguishable from a merge. */
+function cloudOnlyDB(a, draft){
+  const d = populatedDB(a);
+  delete d.wx;
+  d.sessions = d.sessions.map(s => Object.assign({}, s, { id: 'cloud-' + s.id }));
+  if(draft === undefined) delete d.draft; else d.draft = draft;
+  d.updatedAt = 5000;
+  return d;
+}
+const lastWrite = cloud => cloud.writes.length ? JSON.parse(cloud.writes[cloud.writes.length - 1].blob) : null;
+/* First link on a device holding data, with the stubbed prompt() answering C, "use the cloud copy only". */
+async function signInChoosingCloud(a, localDraft, remote){
+  const local = populatedDB(a); local.draft = localDraft; local.updatedAt = 1000;
+  a.DB = local; a.saveLocal();
+  a.__sandbox.prompt = () => 'C';
+  const cloud = fakeCloud(a, remote);
+  await a.onSignedIn({ uid: 'draft-test' });
+  return cloud;
+}
+asyncBlock('DRAFT first boot with a legacy cloud draft', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    /* Already linked, so sign-in takes the ordinary merge branch — what every device does on the first
+       boot after this update. */
+    a.__sandbox.localStorage.setItem('ppl_synced_uid', 'draft-test');
+    const local = populatedDB(a); local.draft = null; local.updatedAt = 1000;
+    a.DB = local; a.saveLocal();
+    const remote = populatedDB(a); delete remote.wx; remote.draft = draftFor(app, 'PULL 1'); remote.updatedAt = 5000;
+    const cloud = fakeCloud(a, remote);
+    await a.onSignedIn({ uid: 'draft-test' });
+    const todayHtml = a.viewToday();
+    ok('DRAFT-02: a device with no draft shows no Workout in progress card after syncing a cloud draft',
+       a.DB.draft === null && !/Workout in progress/.test(todayHtml),
+       { draft: a.DB.draft && a.DB.draft.workout, card: /Workout in progress/.test(todayHtml) });
+    const last = lastWrite(cloud);
+    ok('DRAFT-02: the first ordinary write removes the legacy draft from the cloud doc',
+       !!last && !('draft' in last), { writes: cloud.writes.length, status: a.SYNC.status, draft: last && last.draft });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+asyncBlock('DRAFT cloud-copy choice', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    const mine = fullDraft(a, 'PUSH 1');
+    const before = canon(mine);
+    const remote = cloudOnlyDB(a, draftFor(app, 'PULL 1'));
+    const localIds = populatedDB(a).sessions.map(s => s.id), cloudIds = remote.sessions.map(s => s.id);
+    await signInChoosingCloud(a, mine, remote);
+    const ids = new Set(a.DB.sessions.map(s => s.id));
+    const adopted = cloudIds.every(id => ids.has(id)) && localIds.every(id => !ids.has(id));
+    ok("DRAFT-02: Use the cloud copy only adopts the cloud's data and keeps this device's draft",
+       adopted && canon(a.DB.draft) === before,
+       { adopted, ids: [...ids], draft: a.DB.draft && a.DB.draft.workout });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+  const b = loadApp(APP_PATH); spyPushes(b);
+  try{
+    await signInChoosingCloud(b, null, cloudOnlyDB(b, draftFor(app, 'PULL 1')));
+    ok('DRAFT-02: Use the cloud copy only on a device with no draft plants none',
+       b.DB.draft === null, b.DB.draft && b.DB.draft.workout);
+  } finally { b.SYNC.docRef = null; b.SYNC.user = null; }
+});
+asyncBlock('DRAFT remote Erase', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    const local = populatedDB(a); local.gen = 0; local.draft = fullDraft(a, 'PUSH 1'); local.updatedAt = 1000;
+    a.DB = local; a.saveLocal();
+    const before = canon(a.DB.draft);
+    const cloud = fakeCloud(a, null, { signedIn: true });
+    a.startLiveSync();
+    const erased = a.blank(); delete erased.wx; erased.gen = 1; erased.updatedAt = 5000;
+    cloud.fire(erased);
+    ok("DRAFT-02: a remote Erase keeps this device's draft",
+       a.DB.gen === 1 && a.liveSessions().length === 0 && canon(a.DB.draft) === before,
+       { gen: a.DB.gen, live: a.liveSessions().length, draft: a.DB.draft && a.DB.draft.workout });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+asyncBlock('DRAFT same workout, same date', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    const local = populatedDB(a);
+    local.draft = fullDraft(a, 'PUSH 1');
+    local.draft.entries[0].sets[0] = { w: '135', r: '8', skipped: false };
+    local.draft.sessionNote = 'local note';
+    local.draft.stairs.seconds = '300';
+    local.updatedAt = 1000;
+    a.DB = local; a.saveLocal();
+    const before = canon(a.DB.draft);
+    const cloud = fakeCloud(a, null, { signedIn: true });
+    a.startLiveSync();
+    const remote = populatedDB(a); delete remote.wx;
+    remote.draft = draftFor(app, 'PUSH 1');
+    remote.draft.entries[0].sets[0] = { w: '225', r: '3', skipped: false };
+    remote.draft.entries[1].sets.push({ w: '50', r: '12', skipped: false });
+    remote.draft.sessionNote = 'cloud note';
+    remote.draft.stairs.seconds = '900';
+    remote.updatedAt = 5000;
+    cloud.fire(remote);
+    ok("DRAFT-02: a cloud draft for the same workout and date is never merged into this device's",
+       canon(a.DB.draft) === before,
+       { set: a.DB.draft && a.DB.draft.entries[0].sets[0], note: a.DB.draft && a.DB.draft.sessionNote,
+         stairs: a.DB.draft && a.DB.draft.stairs.seconds });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+/* Every non-null shape a cloud draft can arrive in, on a device with no draft and on one mid-workout. */
+const MALFORMED_CLOUD = DRAFT_SHAPES.filter(([shape]) => shape !== 'null' && shape !== 'absent');
+asyncBlock('DRAFT malformed cloud drafts through the live listener', async () => {
+  let drawFail = null, draftFail = null, runs = 0;
+  for(const [shape, make] of MALFORMED_CLOUD){
+    for(const [device, mineOf] of [['no draft', () => null], ['mid-workout', a => fullDraft(a, 'PUSH 1')]]){
+      const a = loadApp(APP_PATH); spyPushes(a);
+      try{
+        const local = populatedDB(a); local.draft = mineOf(a); local.updatedAt = 1000;
+        a.DB = local; a.saveLocal();
+        const before = canon(a.DB.draft);
+        const cloud = fakeCloud(a, null, { signedIn: true });
+        a.startLiveSync();
+        const remote = populatedDB(a); delete remote.wx; remote.draft = make(); remote.updatedAt = 5000;
+        let threw = null;
+        try { cloud.fire(remote); } catch(e){ threw = e.message; }
+        if(!draftFail && (threw || canon(a.DB.draft) !== before))
+          draftFail = { shape, device, threw, draft: a.DB.draft === undefined ? 'undefined' : a.DB.draft };
+        let todayThrew = null;
+        try { a.viewToday(); } catch(e){ todayThrew = e.message; }
+        const logOk = logTabDraws(a);
+        if(!drawFail && (!logOk || todayThrew)) drawFail = { shape, device, logOk, todayThrew };
+        runs++;
+      } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+    }
+  }
+  ok('DRAFT-03: the Log tab draws for every malformed cloud draft',
+     !drawFail && runs === MALFORMED_CLOUD.length * 2, drawFail || { runs });
+  ok("DRAFT-03: this device's own draft is what remains after a malformed cloud draft arrives",
+     !draftFail && runs === MALFORMED_CLOUD.length * 2, draftFail || { runs });
+});
+asyncBlock('DRAFT malformed cloud drafts through the cloud-copy choice', async () => {
+  let firstBad = null, runs = 0;
+  for(const [shape, make] of MALFORMED_CLOUD){
+    const a = loadApp(APP_PATH); spyPushes(a);
+    try{
+      const mine = fullDraft(a, 'PUSH 1');
+      const before = canon(mine);
+      await signInChoosingCloud(a, mine, cloudOnlyDB(a, make()));
+      const same = canon(a.DB.draft) === before;
+      const adopted = a.DB.sessions.some(s => String(s.id).startsWith('cloud-'));
+      const logOk = logTabDraws(a);
+      if(!firstBad && (!same || !adopted || !logOk))
+        firstBad = { shape, same, adopted, logOk, status: a.SYNC.status, draft: a.DB.draft && a.DB.draft.workout };
+      runs++;
+    } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+  }
+  ok('DRAFT-03: the cloud-copy choice survives every malformed cloud draft',
+     !firstBad && runs === MALFORMED_CLOUD.length, firstBad || { runs });
+});
+asyncBlock('DRAFT old cloud doc through the cloud-copy choice', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    const remote = oldDocWithDraftOnlyLift(a);
+    remote.sessions = remote.sessions.map(s => Object.assign({}, s, { id: 'cloud-' + s.id }));
+    remote.updatedAt = 5000;
+    const cloud = await signInChoosingCloud(a, fullDraft(a, 'PUSH 1'), remote);
+    const last = lastWrite(cloud);
+    ok("DRAFT-02: an old cloud doc's draft adds no exercise-registry row through the cloud-copy choice",
+       !hasDraftOnlyLift(a.DB.exercises) && !!last && !hasDraftOnlyLift(last.exercises)
+         && a.DB.sessions.some(s => String(s.id).startsWith('cloud-')),
+       { inMemory: hasDraftOnlyLift(a.DB.exercises), written: !!last && hasDraftOnlyLift(last.exercises),
+         writes: cloud.writes.length, status: a.SYNC.status });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+
+/* WR-02: a malformed draft already STORED on this device (left by an older build) must not take the
+   Log tab down. No merge can clear it any more, so the boot has to. */
+{
+  let firstBad = null, runs = 0;
+  const LOCAL_SHAPES = DRAFT_SHAPES.concat([['true', () => true], ['false', () => false], ['empty string', () => '']]);
+  for(const [shape, make] of LOCAL_SHAPES){
+    const seedApp = loadApp(APP_PATH);
+    const blob = seedApp.__stored() || JSON.parse(JSON.stringify(seedApp.DB));
+    const d = make(); if(d === undefined) delete blob.draft; else blob.draft = d;
+    let a = null, threw = null, todayThrew = null;
+    try{ a = loadApp(APP_PATH, blob); }catch(e){ threw = e.message; }
+    if(a){ try{ a.viewToday(); }catch(e){ todayThrew = e.message; } }
+    const logOk = !!a && logTabDraws(a);
+    const draftOk = !!a && (a.DB.draft == null || typeof a.DB.draft === 'object');
+    if(!firstBad && (threw || todayThrew || !logOk || !draftOk))
+      firstBad = { shape, threw, todayThrew, logOk, draft: a && a.DB.draft };
+    runs++;
+  }
+  ok('WR-02: the Log tab draws when this device boots from any malformed stored draft',
+     !firstBad && runs === LOCAL_SHAPES.length, firstBad || { runs });
+}
+
+/* ── Build stamp: Settings says which build this device is running ──
+   The deploy job replaces the placeholder in the published copy. These checks keep the placeholder
+   stampable (exactly one, in the BUILD literal), keep the deploy step aimed at it, and boot a copy
+   stamped the way the deploy stamps it. */
+console.log('\n── Build stamp ──');
+{
+  const src = fs.readFileSync(APP_PATH, 'utf8');
+  const hits = src.split('__BUILD_STAMP__').length - 1;
+  ok('BUILD: the placeholder appears exactly once, as the BUILD literal',
+     hits === 1 && /const BUILD = '__BUILD_STAMP__';/.test(src), { hits });
+  const yml = fs.readFileSync(path.join(path.dirname(APP_PATH), '.github', 'workflows', 'deploy.yml'), 'utf8');
+  const deployJob = yml.slice(yml.indexOf('\n  deploy:'));
+  ok('BUILD: the deploy job stamps the placeholder before uploading the site',
+     deployJob.indexOf('__BUILD_STAMP__') > 0 && deployJob.indexOf('__BUILD_STAMP__') < deployJob.indexOf('upload-pages-artifact'));
+
+  const a = loadApp(APP_PATH);
+  ok('BUILD: an unstamped copy says it is local, never a deploy',
+     a.BUILD === '__BUILD_STAMP__' && a.buildLabel(a.BUILD) === 'Local copy, not a deployed build', a.buildLabel(a.BUILD));
+  const lbl = a.buildLabel('2026-09-23T19:05:00Z e50bb0b');
+  ok('BUILD: a stamp reads as a local date, time and short commit',
+     lbl === 'Updated Sep 23, 2026, 2:05 PM · e50bb0b', lbl);
+  ok('BUILD: a malformed stamp falls back to the local label',
+     ['', null, 'garbage', 'not-a-date e50bb0b', '2026-09-23T19:05:00Z <b>x</b>'].every(s => a.buildLabel(s) === 'Local copy, not a deployed build'));
+
+  /* Replay the deploy: stamp a temp copy exactly as the workflow's sed does, then boot it. */
+  const os = require('os');
+  const tmp = path.join(os.tmpdir(), `ppl-stamped-${process.pid}.html`);
+  fs.writeFileSync(tmp, src.replace("'__BUILD_STAMP__'", "'2026-09-23T19:05:00Z e50bb0b'"));
+  let html = '', threw = null;
+  try{ html = loadApp(tmp).viewData(); }catch(e){ threw = e.message; }
+  finally { try{ fs.unlinkSync(tmp); }catch(e){} }
+  ok('BUILD: a stamped copy boots and Settings shows its version',
+     !threw && html.includes('Updated Sep 23, 2026, 2:05 PM · e50bb0b') && html.includes('This version'), threw);
+  ok('BUILD: an unstamped copy shows the local label in Settings',
+     a.viewData().includes('Local copy, not a deployed build'));
+}
+
+/* ── DRAFT: every draft edit stays on this device and survives a reopen (Phase 4, DRAFT-05/D-09) ──
+   Every tap mid-workout used to call save(), which bumps updatedAt and schedules a push. The push is
+   harmless now that the wire strips the draft, but the bump is not: it made a device that merely
+   had a workout open look newest to the merge (the weather-cache lesson in CLAUDE.md). From here a
+   draft edit is stored with saveLocal() only. Three draft functions still push, each because it
+   writes synced data: pickEx and exPick can found an exercise-registry row, and finishWorkout
+   lands the session. The structural check below names any new function that reads DB.draft and
+   calls save(), so a fourth pusher is a decision someone has to make out loud. */
+console.log('\n── DRAFT: every draft edit stays on this device and survives a reopen ──');
+const DRAFT_PUSHERS = ['exPick', 'finishWorkout', 'pickEx'];
+/* [name, setup(DB), args(DB), changed(DB)]. Every row starts from populatedDB + fullDraft('PUSH 1')
+   with updatedAt 1000 and a fresh push spy; setup adjusts that state before the call. */
+const DRAFT_ONLY_MUTATORS = [
+  ['setVal',           null, () => [0,0,'r','8'],       db => db.draft.entries[0].sets[0].r === '8'],
+  ['setNote',          null, () => [0,'felt good'],     db => db.draft.entries[0].note === 'felt good'],
+  ['setSessionNote',   null, () => ['solid'],           db => db.draft.sessionNote === 'solid'],
+  ['setDraftDate',     null, () => ['2026-08-01'],      db => db.draft.date === '2026-08-01'],
+  ['setDraftDur',      null, () => ['45'],              db => db.draft.durationMin === '45'],
+  ['rollWeight',       null, () => [0,0,'100'],         db => db.draft.entries[0].sets[0].w === '100'],
+  ['addSet',           null, () => [0],                 db => db.draft.entries[0].sets.length === 2],
+  ['rmSet',            db => { db.draft.entries[0].sets.push({ w:'', r:'', skipped:false }); },
+                             () => [0,1],             db => db.draft.entries[0].sets.length === 1],
+  ['skipSet',          null, () => [0,0],               db => db.draft.entries[0].sets[0].skipped === true],
+  ['unskipSet',        db => { db.draft.entries[0].sets[0].skipped = true; },
+                             () => [0,0],             db => db.draft.entries[0].sets[0].skipped === false],
+  ['deloadExercise',   null, () => [0],                 db => db.draft.entries[0].deload === true],
+  ['undeloadExercise', db => { db.draft.entries[0].deload = true; },
+                             () => [0],               db => db.draft.entries[0].deload === false],
+  ['stairVal',         null, () => ['level','5'],       db => db.draft.stairs.level === '5'],
+  ['stairTimeSet',     null, () => ['m','2'],           db => db.draft.stairs.seconds === '120'],
+  /* The else branch: the top-of-range branch draws confetti on a canvas the harness stubs as null. */
+  ['repCheck',         db => { const st = db.draft.entries[0].sets[0]; st.r = '1'; st._cel = true; },
+                             () => [0,0],             db => db.draft.entries[0].sets[0]._cel === false],
+  ['skipStairs',       null, () => [],                  db => db.draft.stairs.skipped === true],
+  ['unskipStairs',     db => { db.draft.stairs.skipped = true; },
+                             () => [],                db => db.draft.stairs.skipped === false],
+  ['exSet',            null, () => ['abs',0,'r','12'],  db => db.draft.extras.abs.sets[0].r === '12'],
+  ['exRoll',           null, () => ['abs',0,'40'],      db => db.draft.extras.abs.sets.length === 3 && db.draft.extras.abs.sets.every(s => s.w === '40')],
+  ['exAddSet',         null, () => ['abs'],             db => db.draft.extras.abs.sets.length === 4],
+  ['exRmSet',          null, () => ['abs',1],           db => db.draft.extras.abs.sets.length === 2],
+  ['startWorkout',     db => { db.draft = null; },
+                             () => ['PULL 1'],        db => !!db.draft && db.draft.workout === 'PULL 1'],
+  ['startBackdate',    db => { db.draft = null; },
+                             () => ['PULL 1'],        db => !!db.draft && db.draft.historical === true],
+  /* s1's fixture extras are empty, which the Log tab would heal in memory without storing. */
+  ['editSession',      (db, a) => { db.draft = null; db.sessions.find(s => s.id === 's1').extras = a.__sandbox.blankExtras('PUSH 1'); },
+                             db => [db.sessions.findIndex(s => s.id === 's1')],
+                                                      db => !!db.draft && db.draft.editRef === 's1'],
+  ['discardWorkout',   null, () => [],                  db => db.draft === null],
+];
+{
+  const a = loadApp(APP_PATH);
+  const failing = [];
+  DRAFT_ONLY_MUTATORS.forEach(([name, setup, args, changed]) => {
+    const db = populatedDB(a); db.draft = fullDraft(a, 'PUSH 1'); db.updatedAt = 1000;
+    if(setup) setup(db, a);
+    a.DB = db;
+    const spy = spyPushes(a);
+    a.__sandbox.localStorage.removeItem('ppl_tracker_v1');   // a row that stores nothing reads as a mismatch
+    const fn = a.__sandbox[name];
+    if(typeof fn !== 'function'){ failing.push({ name, reason: 'not a function' }); return; }
+    try{ fn.apply(null, args(a.DB)); }
+    catch(e){ failing.push({ name, reason: 'threw: ' + (e && e.message) }); return; }
+    const stored = a.__stored();
+    const why = [];
+    if(spy.n !== 0) why.push('pushes: ' + spy.n);
+    if(a.DB.updatedAt !== 1000) why.push('updatedAt: ' + a.DB.updatedAt);
+    if(!stored || canon(stored.draft) !== canon(a.DB.draft)) why.push('stored draft differs');
+    if(!changed(a.DB)) why.push('no visible change');
+    if(why.length) failing.push({ name, reason: why.join(', ') });
+  });
+  ok('DRAFT-05: every draft-only edit is stored on this device with no updatedAt bump and no push',
+     failing.length === 0 && DRAFT_ONLY_MUTATORS.length === 25, failing);
+
+  /* Every function the script declares, whose comment-stripped source reads DB.draft and calls bare
+     save() (saveLocal() does not match). A new one fails here by name. */
+  const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const pushers = Object.keys(a.__sandbox).filter(k => {
+    const f = a.__sandbox[k];
+    if(typeof f !== 'function') return false;
+    const src = stripComments(Function.prototype.toString.call(f));
+    return /\bDB\.draft\b/.test(src) && /(?<![\w.$])save\(\)/.test(src);
+  }).sort();
+  ok('DRAFT-05: only pickEx, exPick and finishWorkout still push from a draft function',
+     canon(pushers) === canon(DRAFT_PUSHERS), pushers);
+}
+{
+  /* Close and reopen: a scripted run of edits, then a fresh boot from the stored blob alone. */
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  const d = populatedDB(a); d.draft = null; a.DB = d;
+  a.__sandbox.startWorkout('PUSH 1');
+  a.setVal(0, 0, 'w', '135');
+  a.setVal(0, 0, 'r', '8');
+  a.__sandbox.addSet(0);
+  a.__sandbox.stairVal('level', '6');
+  let reopened = null, threw = null;
+  try{ reopened = loadApp(APP_PATH, a.__stored()); }catch(e){ threw = e; }
+  const same = !!reopened && !!a.DB.draft && canon(reopened.DB.draft) === canon(a.DB.draft);
+  ok('DRAFT-05: closing and reopening the app restores the draft exactly',
+     same && a.DB.draft.entries[0].sets[0].r === '8' && a.DB.draft.stairs.level === '6',
+     threw ? String(threw) : { before: a.DB.draft && a.DB.draft.entries[0], after: reopened && reopened.DB.draft && reopened.DB.draft.entries[0] });
+}
+{
+  /* A past session reopened for editing: re-saving must still replace the original, so editRef has
+     to come back with the draft. */
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  const d = populatedDB(a); d.draft = null;
+  const idx = d.sessions.findIndex(s => s.id === 's1');
+  d.sessions[idx].extras = a.__sandbox.blankExtras('PUSH 1');
+  a.DB = d;
+  a.__sandbox.editSession(idx);
+  let reopened = null, threw = null;
+  try{ reopened = loadApp(APP_PATH, a.__stored()); }catch(e){ threw = e; }
+  const rd = reopened && reopened.DB.draft;
+  ok('DRAFT-05: a draft reopened for editing survives close and reopen with its editRef',
+     !!rd && canon(rd) === canon(a.DB.draft) && rd.editRef === 's1',
+     threw ? String(threw) : { editRef: rd && rd.editRef, same: !!rd && canon(rd) === canon(a.DB.draft) });
+}
+{
+  /* CLAUDE.md is where the next agent learns this rule. It must keep naming the two helpers the
+     tripwire and the allowlist enforce, and they must still exist. Names only, never the wording. */
+  const claudeMdPath = APP_PATH.replace(/index\.html$/, 'CLAUDE.md');
+  const claudeMd = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
+  const named = ['keepLocalDraft', 'stripDraft'].map(n => ({ n, inDoc: claudeMd.includes(n), isFn: typeof app[n] === 'function' }));
+  ok('DRAFT rule: CLAUDE.md names the helpers the tests enforce, and both exist in index.html',
+     named.every(x => x.inDoc && x.isFn), named);
+}
+asyncBlock('DRAFT a brand-new exercise picked mid-workout', async () => {
+  const a = loadApp(APP_PATH);
+  const spy = spyPushes(a);
+  try{
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.updatedAt = 1000; a.DB = d;
+    const hasZercher = rows => (rows || []).some(r => r && r.name === 'Zercher carry');
+    a.__sandbox.pickEx(0, { value: 'Zercher carry' });
+    const local = { row: hasZercher(a.DB.exercises), pushes: spy.n, updatedAt: a.DB.updatedAt };
+    /* The cloud is OLDER than the frozen clock: `exercises` is not a COLLECTIONS entry, so mergeDB()
+       takes the whole registry from the newer side. */
+    const remote = populatedDB(a); remote.updatedAt = 1000;
+    const cloud = fakeCloud(a, remote, { signedIn: true });
+    await a.pushNow(true);
+    const last = cloud.writes.length ? JSON.parse(cloud.writes[cloud.writes.length - 1].blob) : null;
+    ok('DRAFT-05: picking a brand-new exercise mid-workout still pushes the new registry row',
+       local.row && local.pushes === 1 && local.updatedAt !== 1000
+         && !!last && hasZercher(last.exercises) && !('draft' in last),
+       Object.assign(local, { writes: cloud.writes.length, written: !!last && hasZercher(last.exercises),
+         draftKey: !!last && ('draft' in last), status: a.SYNC.status }));
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+asyncBlock('DRAFT a draft through a sync adoption and a reopen', async () => {
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  try{
+    const local = populatedDB(a);
+    local.draft = fullDraft(a, 'PUSH 1');
+    local.draft.entries[0].sets[0] = { w: '135', r: '8', skipped: false };
+    local.updatedAt = 1000;
+    a.DB = local; a.saveLocal();
+    const before = canon(a.DB.draft);
+    const cloud = fakeCloud(a, null, { signedIn: true });
+    a.startLiveSync();
+    /* A newer cloud doc from a device still on the old build: its own sessions, and its draft. */
+    const tick = populatedDB(a);
+    tick.sessions = tick.sessions.map(s => Object.assign({}, s, { id: 'cloud-' + s.id }));
+    tick.draft = draftFor(a, 'LEGS 1'); tick.updatedAt = 9000;
+    cloud.fire(tick);
+    let reopened = null, threw = null;
+    try{ reopened = loadApp(APP_PATH, a.__stored()); }catch(e){ threw = e; }
+    const rd = reopened && reopened.DB.draft;
+    const cloudSessions = !!reopened && reopened.DB.sessions.some(s => String(s.id).startsWith('cloud-'));
+    ok('DRAFT-05: a draft survives a sync adoption and then a reopen',
+       !!rd && canon(rd) === before && canon(a.DB.draft) === before && cloudSessions,
+       threw ? String(threw) : { draft: rd && rd.workout, same: !!rd && canon(rd) === before, cloudSessions });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
 
 /* The escaping convention, checked on the one string in the seed that is trying to break out. */
 {
@@ -3188,15 +4375,19 @@ function shareEnv(a, opts){
   ok('registry: never mutated by boot, merge or render (REG-01)', diffNames.length === 0, diffNames);
 }
 
-if(WRITE){
-  const dir = path.dirname(GOLDEN_PATH);
-  if(!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const sorted = {};
-  Object.keys(GOLDEN_OUT).sort().forEach(k => { sorted[k] = GOLDEN_OUT[k]; });
-  const json = JSON.stringify(sorted, null, 2).replace(/\r\n/g, '\n') + '\n';
-  fs.writeFileSync(GOLDEN_PATH, json);
-  console.log(`\nWrote ${Object.keys(sorted).length} golden hashes to ${GOLDEN_PATH}`);
-}
+/* Every async block must settle before the summary prints or the process exits; asyncBlock()
+   already turns a throw or a timeout into a FAIL, so Promise.all here never rejects. */
+Promise.all(pendingAsync).then(() => {
+  if(WRITE){
+    const dir = path.dirname(GOLDEN_PATH);
+    if(!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const sorted = {};
+    Object.keys(GOLDEN_OUT).sort().forEach(k => { sorted[k] = GOLDEN_OUT[k]; });
+    const json = JSON.stringify(sorted, null, 2).replace(/\r\n/g, '\n') + '\n';
+    fs.writeFileSync(GOLDEN_PATH, json);
+    console.log(`\nWrote ${Object.keys(sorted).length} golden hashes to ${GOLDEN_PATH}`);
+  }
 
-console.log(`\n${pass} passed, ${fail} failed, ${skip} skipped`);
-process.exit(fail ? 1 : 0);
+  console.log(`\n${pass} passed, ${fail} failed, ${skip} skipped`);
+  process.exit(fail ? 1 : 0);
+});

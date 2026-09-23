@@ -45,6 +45,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      # Stamp the published copy with its deploy time and commit, shown in Settings → This version.
+      # Only this job's checkout is changed; the repo keeps the placeholder. Fails loudly unless the
+      # placeholder appears exactly once, so a stamp can't silently miss or hit the wrong text.
+      - name: Stamp build
+        run: |
+          test "$(grep -c "'__BUILD_STAMP__'" index.html)" = 1
+          sed -i "s/'__BUILD_STAMP__'/'$(date -u +%Y-%m-%dT%H:%M:%SZ) ${GITHUB_SHA::7}'/" index.html
+          grep -q "^const BUILD = '[0-9T:Z-]* [0-9a-f]\{7\}';" index.html
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload site artifact

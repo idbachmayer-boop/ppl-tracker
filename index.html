@@ -472,6 +472,11 @@ const GUIDE = [
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
 const SCHEMA = 18;
+/* Which build is this? The deploy job swaps the placeholder below for "<ISO time> <short sha>" in the
+   published copy only, so Settings can say which version a device is actually running — a phone
+   still on a stale build has cost real confusion before. The placeholder must appear exactly once
+   in this file (a test enforces it); an unstamped copy is a local one, never a deploy. */
+const BUILD = '__BUILD_STAMP__';
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];
@@ -643,24 +648,41 @@ function renameLoggedExercise(d, map){
   return d;
 }
 /* The draft is the one object the views walk BLIND — viewActive reads .entries, .stairs and .extras
-   without checking any of them, because startWorkout() always builds all three. Anything that did
-   NOT come from startWorkout() can be short a field: a draft synced from a device on an older
-   schema, or a hand-edited backup. mergeDB already nulls a draft whose `workout` is unknown, for
-   exactly this reason ("would crash viewActive's PROGRAM[name] lookup") — it was just one field
-   short, and a draft missing `stairs` takes out the Log tab, which is the screen Ian is standing in
-   front of at the rack.
+   without checking any of them, because startWorkout() always builds all three. Since Phase 4 the
+   draft is device-local: it only ever comes from this device's own storage. The merge never returns
+   one, and imports, restores and cloud choices never plant one. But the stored copy can still be
+   short a field — a blob written by an older build of this app on this same device — and a draft
+   missing `stairs` takes out the Log tab, which is the screen Ian is standing in front of at the rack.
+   So normalize() still repairs a short local draft on every call (boot, adopt, import, restore).
    Repair what is safely repairable; null the draft only when the workout itself is unusable — a
    crashing Log tab loses the workout anyway. Deliberately no function calls in here: normalize()
    runs at module-eval time (see load() below), so anything declared further down is in the temporal
    dead zone and would take the whole boot with it. */
 function normalizeDraft(d){
-  const k = d && d.draft;
-  if(!k || typeof k!=='object') return d;
+  if(!d || d.draft==null) return d;
+  const k = d.draft;
+  // A stored non-object ("x", 42, true) would crash the Log tab, and since the draft stopped crossing
+  // the wire no newer cloud write can clear it any more (WR-02). Null it here instead.
+  if(typeof k!=='object'){ d.draft = null; return d; }
   if(!PROGRAM[k.workout] || !Array.isArray(k.entries)){ d.draft = null; return d; }
   if(!k.stairs || typeof k.stairs!=='object') k.stairs = { level:'', seconds:'', skipped:false, reason:'' };
   if(!k.extras || typeof k.extras!=='object') k.extras = {};
   if(typeof k.sessionNote!=='string') k.sessionNote = '';
   return d;
+}
+/* The draft never crosses the wire (D-04). stripDraft() removes it from foreign data — a backup, a
+   snapshot, a cloud blob — before that data goes anywhere. keepLocalDraft() puts THIS device's
+   in-progress draft onto whatever is about to become DB, so no sync, restore or import can replace
+   or clear the workout in progress (D-05). Both read or shape DB, which is in its temporal dead zone
+   during `let DB = load()`: never call either from normalize(), load() or a MIGRATIONS entry. */
+function stripDraft(x){
+  if(x && typeof x==='object') delete x.draft;
+  return x;
+}
+function keepLocalDraft(next){
+  if(!next || typeof next!=='object') return next;
+  next.draft = DB.draft===undefined ? null : DB.draft;
+  return next;
 }
 
 /* The ONE place raw data becomes valid app data. Both load() and importData() go through here. */
@@ -768,8 +790,9 @@ function snapSummary(d){
   return { sessions:ss.length, weights:ws.length, cardio:(d.cardio||[]).length, latest:dates[dates.length-1]||null };
 }
 function loadSnaps(){ try{ const a=JSON.parse(localStorage.getItem(SNAP_KEY)); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
-/* Strip wx (7-9KB of weather cache, pure derived data) so snapshots stay small. */
-function snapPayload(d){ const c=Object.assign({},d); delete c.wx; return c; }
+/* Strip wx (7-9KB of weather cache, derived) so snapshots stay small, and the in-progress draft
+   (device-local, D-04/D-07). Feeds both the local ring and the cloud versions write. */
+function snapPayload(d){ const c=Object.assign({},d); delete c.wx; delete c.draft; return c; }
 function snapshotNow(label, dataOverride){
   if(snapRingDisabled) return false;
   try{
@@ -1133,9 +1156,9 @@ function deloadExercise(i){
   let lastW=0; if(ref){ const real=ref.entry.sets.filter(x=>!x.skipped && x.r!==''); lastW=Math.max(0, ...real.map(x=> x.w===''?0:+x.w)); }
   const dw = lastW>0 ? String(round5(lastW*0.9)) : '';
   e.deload=true; e.sets.forEach(st=>{ if(!st.skipped) st.w=dw; });
-  save(); render();
+  saveLocal(); render();
 }
-function undeloadExercise(i){ DB.draft.entries[i].deload=false; save(); render(); }
+function undeloadExercise(i){ DB.draft.entries[i].deload=false; saveLocal(); render(); }
 /* Strength is tracked PER EXERCISE (not pooled by muscle) so the trend reflects one
    movement — "DB bench" rising — instead of jumping between bench/incline/fly. */
 /* All logged exercises in a session = main entries + abs/forearms accessories. */
@@ -1720,7 +1743,7 @@ function startWorkout(name){
     };
     const ls = lastRealStairs();
     if(ls){ DB.draft.stairs.seconds = String((+ls.st.seconds)+15); DB.draft.stairs.level = String(ls.st.level||''); }
-    save();
+    saveLocal();
   }
   goSub('train','log');
 }
@@ -1738,7 +1761,7 @@ function startBackdate(name){
     entries: PROGRAM[name].slots.map((s,i)=>{ const ref=lastRealEntry(name,i); return { name: ref?ref.entry.name:s.examples[0], note:'', sets: Array.from({length:s.sets},()=>({w:'',r:'',skipped:false,reason:''})) }; }),
     stairs:{ level:'', seconds:'', skipped:false, reason:'' }, extras: blankExtras(name), sessionNote:'' };
   const ls=lastRealStairs(); if(ls){ DB.draft.stairs.seconds=String((+ls.st.seconds)+15); DB.draft.stairs.level=String(ls.st.level||''); }
-  showBackdate=false; save();
+  showBackdate=false; saveLocal();
   goSub('train','log');
 }
 
@@ -1881,8 +1904,8 @@ function viewActive(){
     <button class="btn btn-block" style="margin-top:6px" onclick="finishWorkout()">${DB.draft.historical?'Save past workout':'Finish & save workout'}</button>
     <button class="btn btn-danger btn-block" style="margin-top:10px" onclick="discardWorkout()">Discard</button>`;
 }
-function setDraftDate(v){ DB.draft.date=v; save(); }
-function setDraftDur(v){ DB.draft.durationMin=v; save(); }
+function setDraftDate(v){ DB.draft.date=v; saveLocal(); }
+function setDraftDur(v){ DB.draft.durationMin=v; saveLocal(); }
 
 /* Typing a name that's one letter off an existing one is how "Seated Fly" and "Seated Flys" became
    two lifts with two PR histories. Offer the match before it happens; "keep it separate" is always
@@ -1904,9 +1927,9 @@ function pickEx(i, sel){
   }
   e.name = sel.value; e.exId = exEnsure(sel.value); save(); render();
 }
-function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; if(f==='r' && v!=='') restCtx=restTargetForSlot(i); save(); /* live save, no re-render to keep focus */ }
-function setNote(i,v){ DB.draft.entries[i].note=v; save(); }
-function setSessionNote(v){ DB.draft.sessionNote=v; save(); }
+function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; if(f==='r' && v!=='') restCtx=restTargetForSlot(i); saveLocal(); /* live save, no re-render to keep focus */ }
+function setNote(i,v){ DB.draft.entries[i].note=v; saveLocal(); }
+function setSessionNote(v){ DB.draft.sessionNote=v; saveLocal(); }
 /* Roll the WEIGHT down into still-empty sets below. Fired on `change` (after the full
    number is entered), weight only — reps are never rolled. Filled cells stay untouched. */
 function rollWeight(i,k,value){
@@ -1918,30 +1941,30 @@ function rollWeight(i,k,value){
       if(sets[j].w===''){ sets[j].w=value; const el=document.getElementById(`w-${i}-${j}`); if(el) el.value=value; }
     }
   }
-  save();
+  saveLocal();
 }
-function addSet(i){ DB.draft.entries[i].sets.push({w:'',r:'',skipped:false,reason:''}); save(); render(); }
-function rmSet(i,k){ if(DB.draft.entries[i].sets.length<=1)return; DB.draft.entries[i].sets.splice(k,1); save(); render(); }
+function addSet(i){ DB.draft.entries[i].sets.push({w:'',r:'',skipped:false,reason:''}); saveLocal(); render(); }
+function rmSet(i,k){ if(DB.draft.entries[i].sets.length<=1)return; DB.draft.entries[i].sets.splice(k,1); saveLocal(); render(); }
 function skipSet(i,k){
   const reason = prompt(`Why skipping set ${k+1}? (optional)`, '');
   if(reason===null) return;
   const st = DB.draft.entries[i].sets[k]; st.skipped=true; st.reason=reason.trim(); st.w=''; st.r='';
-  save(); render();
+  saveLocal(); render();
 }
-function unskipSet(i,k){ const st=DB.draft.entries[i].sets[k]; st.skipped=false; st.reason=''; save(); render(); }
-function stairVal(f,v){ DB.draft.stairs[f]=v; save(); }
+function unskipSet(i,k){ const st=DB.draft.entries[i].sets[k]; st.skipped=false; st.reason=''; saveLocal(); render(); }
+function stairVal(f,v){ DB.draft.stairs[f]=v; saveLocal(); }
 function stairTimeSet(part,v){
   const cur=+(DB.draft.stairs.seconds||0); let m=Math.floor(cur/60), s=cur%60;
   if(part==='m') m=Math.max(0,parseInt(v)||0); else s=Math.max(0,parseInt(v)||0);
-  DB.draft.stairs.seconds=String(m*60+s); save();
+  DB.draft.stairs.seconds=String(m*60+s); saveLocal();
 }
 /* Fire confetti when a set reaches the top of its rep range (the "level up" signal). */
 function repCheck(i,k){
   const set=DB.draft.entries[i].sets[k]; if(set.skipped) return;
   const rng=effRange(PROGRAM[DB.draft.workout].slots[i], DB.draft.entries[i].name);
   if(set.r!==''){ restCtx=restTargetFor(rng.hi); sw.acc=0; sw.start=Date.now(); sw.running=true; updateStopwatch(); } // committing a set starts the rest clock for that exercise
-  if(set.r!=='' && +set.r>=rng.hi){ if(!set._cel){ set._cel=true; save(); confettiBurst(); toast('💥 Top of the range!'); } }
-  else if(set._cel){ set._cel=false; save(); }
+  if(set.r!=='' && +set.r>=rng.hi){ if(!set._cel){ set._cel=true; saveLocal(); confettiBurst(); toast('💥 Top of the range!'); } }
+  else if(set._cel){ set._cel=false; saveLocal(); }
 }
 function confettiBurst(){
   const canvas=document.createElement('canvas');
@@ -1959,8 +1982,8 @@ function confettiBurst(){
     if(alive && t<220) requestAnimationFrame(frame); else canvas.remove();
   })();
 }
-function skipStairs(){ const reason=prompt('Why skipping the stair stepper? (optional)',''); if(reason===null)return; DB.draft.stairs.skipped=true; DB.draft.stairs.reason=reason.trim(); save(); render(); }
-function unskipStairs(){ DB.draft.stairs.skipped=false; DB.draft.stairs.reason=''; save(); render(); }
+function skipStairs(){ const reason=prompt('Why skipping the stair stepper? (optional)',''); if(reason===null)return; DB.draft.stairs.skipped=true; DB.draft.stairs.reason=reason.trim(); saveLocal(); render(); }
+function unskipStairs(){ DB.draft.stairs.skipped=false; DB.draft.stairs.reason=''; saveLocal(); render(); }
 function toggleWarm(i){
   const box = document.getElementById('warm-'+i); box.classList.toggle('hidden');
   if(box.classList.contains('hidden')) return;
@@ -2031,7 +2054,7 @@ function finishWorkout(){
   goSub('train','history');
 }
 function sortSessions(){ DB.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : a.date.localeCompare(b.date)); }
-function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; collapsedEx.clear(); save(); goSub('train','log'); } }
+function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; collapsedEx.clear(); saveLocal(); goSub('train','log'); } }
 
 /* ───────────────────────── HISTORY ───────────────────────── */
 let openHist = -1, showBackdate = false, reviewWeekOffset = 0;
@@ -2218,7 +2241,7 @@ function editSession(idx){
     extras: s.extras ? JSON.parse(JSON.stringify(s.extras)) : blankExtras(s.workout),
     sessionNote: s.note || ''
   };
-  save(); openHist=-1; toast('Editing — re-save to update this entry'); goSub('train','log');
+  saveLocal(); openHist=-1; toast('Editing — re-save to update this entry'); goSub('train','log');
 }
 
 /* ───────────────────────── WEIGHT ───────────────────────── */
@@ -2525,6 +2548,15 @@ function setPetName(v){ DB.petName = (v||'').trim() || 'Freddie'; save(); }
 /* Offline support, stated rather than assumed. The previous worker never registered and nothing
    said so — the app claimed offline capability it did not have for six weeks. If it breaks again
    it will be visible here rather than discovered in a dead spot at the gym. */
+/* "Updated Sep 23, 2026, 2:05 PM · e50bb0b" in this device's own time zone, or a plain statement that
+   this copy was never deployed. Takes the stamp as an argument so tests can check both cases. */
+function buildLabel(stamp){
+  const m = /^(\S+) ([0-9a-f]{7,40})$/.exec(String(stamp == null ? '' : stamp));
+  const t = m ? new Date(m[1]) : null;
+  if(!m || isNaN(t)) return 'Local copy, not a deployed build';
+  const when = t.toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
+  return `Updated ${when} · ${m[2].slice(0,7)}`;
+}
 function offlineCardHTML(){
   const s = window.SW_STATE || { supported:false, ready:false, error:'not initialised' };
   if(s.ready) return `<div class="card"><div style="font-weight:700;font-size:14px">${ph('check-circle','lead')}Offline ready</div>
@@ -2720,10 +2752,10 @@ function exPick(which, sel){
   }
   e.name = sel.value; e.exId = exEnsure(sel.value); save();
 }
-function exSet(which,k,f,v){ DB.draft.extras[which].sets[k][f]=v; save(); }
-function exRoll(which,k,v){ const sets=DB.draft.extras[which].sets; sets[k].w=v; if(v!==''){ for(let j=k+1;j<sets.length;j++){ if(sets[j].w===''){ sets[j].w=v; const el=document.getElementById(`ex-${which}-w-${j}`); if(el) el.value=v; } } } save(); }
-function exAddSet(which){ DB.draft.extras[which].sets.push({w:'',r:'',skipped:false}); save(); render(); }
-function exRmSet(which,k){ const s=DB.draft.extras[which].sets; if(s.length<=1) return; s.splice(k,1); save(); render(); }
+function exSet(which,k,f,v){ DB.draft.extras[which].sets[k][f]=v; saveLocal(); }
+function exRoll(which,k,v){ const sets=DB.draft.extras[which].sets; sets[k].w=v; if(v!==''){ for(let j=k+1;j<sets.length;j++){ if(sets[j].w===''){ sets[j].w=v; const el=document.getElementById(`ex-${which}-w-${j}`); if(el) el.value=v; } } } saveLocal(); }
+function exAddSet(which){ DB.draft.extras[which].sets.push({w:'',r:'',skipped:false}); saveLocal(); render(); }
+function exRmSet(which,k){ const s=DB.draft.extras[which].sets; if(s.length<=1) return; s.splice(k,1); saveLocal(); render(); }
 /* Mobility is a DAILY log (DB.mobilityLog[date]), not per-session — APT work is daily. */
 function mobToday(){ const t=todayISO(); return (DB.mobilityLog && DB.mobilityLog[t]) || {}; }
 /* Unchecking writes an explicit false rather than deleting the key: sync merges by date, and
@@ -3329,6 +3361,9 @@ function viewData(){
     </div>
       <p class="muted" style="font-size:12px">4-Day adds a specialized 4th day each week — pick Chest & Triceps, Back, Shoulders, Biceps, or Legs fresh each time it comes up.</p>
     </div>
+    <h2>This version</h2>
+    <div class="card"><div style="font-weight:700;font-size:14px">${esc(buildLabel(BUILD))}</div>
+      <p class="muted" style="line-height:1.5;margin-top:4px">Compare this across devices. An older date here means this device hasn't picked up the latest update yet. Close the app fully and reopen it.</p></div>
     <h2>Offline</h2>
     ${offlineCardHTML()}
     <h2>Exercises</h2>
@@ -3370,7 +3405,7 @@ function viewData(){
 function setUnit(u){ DB.unit=u; save(); render(); }
 function setRoutineMode(m){ DB.routineMode=m; save(); render(); }
 function exportData(){
-  const blob = new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
+  const blob = new Blob([JSON.stringify(stripDraft(Object.assign({},DB)),null,2)],{type:'application/json'}); // the draft is device-local (D-06)
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
   a.download=`ppl-backup-${todayISO()}.json`; a.click();
   DB.lastBackupAt=Date.now(); DB.backupSnoozeAt=null; save();
@@ -3582,19 +3617,27 @@ function importData(inp){
     const bad = validateBackup(raw);
     if(bad){ alert('Nothing was imported.\n\n'+bad); inp.value=''; return; }
     const merge = confirm('Merge this backup with your current data?\n\nOK = MERGE (keeps both, nothing lost — recommended)\nCancel = choose replace instead');
-    if(merge){
-      snapshotNow('before-import');
-      const wx=DB.wx; DB=mergeDB(normalize(raw), DB, true); if(wx!==undefined) DB.wx=wx; DB.updatedAt=Date.now();
-      DB.lastBackupAt=Date.now(); save(); cloudVersion('import'); toast('Backup merged ✓'); render(); return;
-    }
+    if(merge){ importMerge(raw); toast('Backup merged ✓'); render(); return; }
     if(confirm('Replace ALL current data with this backup?\n\nYour current data is snapshotted first (Settings → Version history), so this is undoable.')){
-      snapshotNow('before-import');
-      const g=(+DB.gen||0)+1;   // gen++ so the merge replaces wholesale instead of unioning the old rows back
-      const wx=DB.wx; DB=normalize(raw); if(wx!==undefined) DB.wx=wx; DB.gen=g; DB.updatedAt=Date.now();
-      DB.lastBackupAt=Date.now(); save(); cloudVersion('import'); toast('Backup restored'); render(); } }
+      importReplace(raw); toast('Backup restored'); render(); } }
     catch(e){ alert('Nothing was imported.\n\nThis file isn’t readable as JSON — it may be truncated or not a backup at all.'); }
     finally{ inp.value=''; } };   // let the same file be picked again after a failure
   r.readAsText(f);
+}
+/* The data half of importData(), split out so the tests run the same code the button does. The
+   file's draft is dropped before normalize() (it must never reach the migrations), and this device's
+   draft is kept (D-06, D-08). */
+function importMerge(raw){
+  snapshotNow('before-import');
+  const wx=DB.wx; DB=keepLocalDraft(mergeDB(normalize(stripDraft(raw)), DB, true)); if(wx!==undefined) DB.wx=wx; DB.updatedAt=Date.now();
+  DB.lastBackupAt=Date.now(); save(); cloudVersion('import');
+}
+/* Same rule as importMerge(): the file's draft never reaches normalize(); this device's is kept. */
+function importReplace(raw){
+  snapshotNow('before-import');
+  const g=(+DB.gen||0)+1;   // gen++ so the merge replaces wholesale instead of unioning the old rows back
+  const wx=DB.wx; DB=keepLocalDraft(normalize(stripDraft(raw))); if(wx!==undefined) DB.wx=wx; DB.gen=g; DB.updatedAt=Date.now();
+  DB.lastBackupAt=Date.now(); save(); cloudVersion('import');
 }
 /* gen++ makes this a WHOLESALE replace at merge time. Without it, save()'s push would union every
    erased row straight back from the cloud and the erase would silently undo itself. */
@@ -4140,6 +4183,7 @@ function mergeDB(remote, local, localWins){
     win.updatedAt = Math.max(+r.updatedAt||0, +l.updatedAt||0);
     win._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
     delete win.wx;
+    delete win.draft;
     return win;
   }
   const rU = +r.updatedAt || 0, lU = +l.updatedAt || 0;
@@ -4147,20 +4191,15 @@ function mergeDB(remote, local, localWins){
   const newer = localNewer ? l : r, older = localNewer ? r : l;
   const out = Object.assign({}, blank(), older, newer); // start from newer's scalars, guarantee all blank() keys
   mergeCollections(r, l, localNewer, out);
-  /* draft: already set correctly by Object.assign(newer) above — same recency rule as every other
-     field. BUG FIXED HERE (2026-07-25): this used to be `localDraft || remoteDraft || null`, which
-     picked whichever side had ANY non-null draft, ignoring which side was actually newer. Once a
-     stale non-null draft existed anywhere (a device's memory, or the cloud doc from before a
-     workout was finished), it won FOREVER — finishing/discarding sets draft:null, but null could
-     never beat a stale non-null value, so the old workout kept getting resurrected on every merge
-     and re-pushed via the live listener, looping endlessly across every device. The merged output
-     does NOT pass back through normalize(), so the draft is repaired here too — a draft short a
-     field crashes viewActive exactly like an unknown workout name does. */
-  normalizeDraft(out);
+  /* draft: device-local (D-04), removed from every merge result below. The 2026-07-25 loop — a stale
+     draft resurrected on every merge and re-pushed by the live listener — cannot recur, because no
+     draft crosses the wire at all; adoptMerged() puts this device's own draft back. The frozen
+     mergeDB_legacy below still documents the old recency rule. */
   // ── invariants ──
   out._schema = Math.max(+r._schema||0, +l._schema||0, SCHEMA);
   out.updatedAt = Math.max(rU, lU);
   delete out.wx; // weather is derived cache — excluded from sync entirely (see saveLocal)
+  delete out.draft;
   return out;
 }
 /* FROZEN pre-registry merge for the REG-13 differential. Do not edit. Deleted in a later commit (REG-14). */
@@ -4278,8 +4317,11 @@ function adoptMerged(merged, label){
     /* `merged` never carries wx (stripped from every synced blob) but DB almost always does, so
        comparing them directly was ALWAYS unequal — the "nothing changed" guard below never fired
        in practice, causing a render + "Synced from another device" toast on nearly every listener
-       tick even when no real content had changed. Compare apples-to-apples by reattaching wx first. */
-    const withWx = Object.assign({}, merged); if(wx!==undefined) withWx.wx = wx;
+       tick even when no real content had changed. Compare apples-to-apples by reattaching wx first.
+       The in-progress draft is reattached for the same reason, and a stronger one: it is
+       device-local (D-04/D-05), so nothing arriving from the cloud may replace or clear it. Both
+       reattaches must come before the equality check, or every listener tick reads as a change. */
+    const withWx = keepLocalDraft(Object.assign({}, merged)); if(wx!==undefined) withWx.wx = wx;
     if(JSON.stringify(withWx)===JSON.stringify(DB)) return false;   // nothing changed; don't churn the UI
     snapshotNow(label||'before-sync');
     DB = normalize(withWx);
@@ -4326,7 +4368,9 @@ async function onSignedIn(user){
       snapshotNow('before-first-link');
       const choice = prompt('This device and the cloud both have data.\n\nType:\n  M = merge both (recommended)\n  C = use the cloud copy only\n  D = use this device only', 'M');
       const c = (choice||'M').trim().toUpperCase()[0];
-      if(c==='C'){ adoptMerged(Object.assign(normalize(remoteDB),{wx:DB.wx}), 'chose-cloud'); }
+      /* The cloud's draft never enters normalize(): on an old doc, migration 17 would register its
+         exercise names as registry rows that then sync. adoptMerged() keeps this device's draft. */
+      if(c==='C'){ adoptMerged(Object.assign(normalize(stripDraft(remoteDB)),{wx:DB.wx}), 'chose-cloud'); }
       else if(c==='D'){ /* keep local as-is */ }
       else { adoptMerged(mergeDB(remoteDB, DB), 'first-link-merge'); }
     } else if(remoteDB){
@@ -4375,8 +4419,8 @@ async function pushNow(silent){
     });
     if(tooNew){ flagNeedsUpdate(); return; }
     SYNC.pending=false;
-    /* DB may have moved on while the round trip was in flight (setVal saves on every keystroke),
-       so fold the result back in with LOCAL winning ties, and re-push if that differs. */
+    /* DB may have moved on while the round trip was in flight (a weigh-in logged while the push
+       was out, say), so fold the result back in with LOCAL winning ties, and re-push if that differs. */
     if(merged){
       const reconciled = mergeDB(merged, DB, true);
       adoptMerged(reconciled, 'after-push-merge');
@@ -4418,7 +4462,7 @@ function cloudVersion(label){
   if(!SYNC.docRef || !SYNC.reconciled) return;
   const now = Date.now();
   const checkpoint = label==='workout' || label==='weigh-in' || label==='import' || label==='before-restore';
-  if(!checkpoint && now-lastVersionAt < VERSION_MIN_GAP) return;   // setVal saves every keystroke — don't write 100 versions/session
+  if(!checkpoint && now-lastVersionAt < VERSION_MIN_GAP) return;   // pushes can come every few seconds — don't write 100 versions/session
   lastVersionAt = now;
   const payload = snapPayload(DB);
   try{
@@ -4456,7 +4500,9 @@ function restoreSnapshot(idx){
   snapshotNow('before-restore');
   try{
     const raw = JSON.parse(s.blob), wx = DB.wx;
-    DB = normalize(raw); if(wx!==undefined) DB.wx = wx;
+    /* A snapshot written before Phase 4 can still hold a draft. Drop it before normalize() and keep
+       the workout in progress on this device (D-07). */
+    DB = keepLocalDraft(normalize(stripDraft(raw))); if(wx!==undefined) DB.wx = wx;
     DB.updatedAt = Date.now();                                  // this restore is the newest intent
     save(); cloudVersion('before-restore'); toast('Restored ✓'); render();
   }catch(e){ alert('That snapshot could not be read.'); }
@@ -4468,7 +4514,8 @@ function restoreCloudVersion(id){
   snapshotNow('before-restore');
   try{
     const raw = JSON.parse(v.blob), wx = DB.wx;
-    DB = normalize(raw); if(wx!==undefined) DB.wx = wx;
+    /* A cloud version written before Phase 4 can still hold a draft: same rule as restoreSnapshot(). */
+    DB = keepLocalDraft(normalize(stripDraft(raw))); if(wx!==undefined) DB.wx = wx;
     DB.updatedAt = Date.now();
     save(); toast('Restored from cloud ✓'); render();
   }catch(e){ alert('That version could not be read.'); }

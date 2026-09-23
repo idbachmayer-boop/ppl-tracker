@@ -55,18 +55,18 @@ Clean data out of the app and into Claude Desktop.
 
 ### Documentation (DOC)
 
-- [ ] **DOC-01**: `CLAUDE.md` gains a numbered "adding a new tracked thing" recipe, written against the shipped `COLLECTIONS` declaration
-- [ ] **DOC-02**: The recipe states the module-eval-time placement rule and what may appear as a value in `COLLECTIONS`
-- [ ] **DOC-03**: The recipe names the tests a new collection must ship with, including the stale-device merge replay
-- [ ] **DOC-04**: The recipe is verified by following it end to end for a collection that is not `sleep`, on paper or in a scratch branch
+- [x] **DOC-01**: `CLAUDE.md` gains a numbered "adding a new tracked thing" recipe, written against the shipped `COLLECTIONS` declaration
+- [x] **DOC-02**: The recipe states the module-eval-time placement rule and what may appear as a value in `COLLECTIONS`
+- [x] **DOC-03**: The recipe names the tests a new collection must ship with, including the stale-device merge replay
+- [x] **DOC-04**: The recipe is verified by following it end to end for a collection that is not `sleep`, on paper or in a scratch branch
 
 ### Draft (DRAFT)
 
-- [ ] **DRAFT-01**: The in-progress workout `draft` is excluded from cloud sync, following the pattern already used for the `wx` weather cache
-- [ ] **DRAFT-02**: A stale cloud document still carrying a legacy `draft` field cannot reintroduce one onto a device
-- [ ] **DRAFT-03**: The Log tab renders correctly when a cloud document carries a malformed legacy `draft`
-- [ ] **DRAFT-04**: Finishing or discarding a workout no longer writes draft state across the wire
-- [ ] **DRAFT-05**: Ian's in-progress workout survives closing and reopening the app on the same device
+- [x] **DRAFT-01**: The in-progress workout `draft` is excluded from cloud sync, following the pattern already used for the `wx` weather cache
+- [x] **DRAFT-02**: A stale cloud document still carrying a legacy `draft` field cannot reintroduce one onto a device
+- [x] **DRAFT-03**: The Log tab renders correctly when a cloud document carries a malformed legacy `draft`
+- [x] **DRAFT-04**: Finishing or discarding a workout no longer writes draft state across the wire
+- [x] **DRAFT-05**: Ian's in-progress workout survives closing and reopening the app on the same device
 
 ### Delegation (DELEG)
 
@@ -136,11 +136,11 @@ Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REG-01 … REG-17 | Phase 1 | Pending |
-| SLEEP-01 … SLEEP-06 | Phase 1 | Pending |
+| REG-01 … REG-17 | Phase 1 | Complete |
+| SLEEP-01 … SLEEP-06 | Phase 1 | Complete |
 | EXP-01 … EXP-08 | Phase 2 | Complete |
-| DOC-01 … DOC-04 | Phase 3 | Pending |
-| DRAFT-01 … DRAFT-05 | Phase 4 | Pending |
+| DOC-01 … DOC-04 | Phase 3 | Complete |
+| DRAFT-01 … DRAFT-05 | Phase 4 | Complete |
 | DELEG-01 … DELEG-07 | Phase 5 | Pending |
 | REPO-01 … REPO-02 | Phase 6 | Pending |
 | CSP-01 … CSP-07 | Phase 7 | Pending |
