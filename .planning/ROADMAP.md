@@ -149,7 +149,7 @@ Plans:
   3. The Log tab renders without error when the cloud document's legacy `draft` field is malformed or absent (DRAFT-03).
   4. Closing and reopening the app on the same device preserves the in-progress workout exactly as it was left (DRAFT-05).
 
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 **Wave 1**
@@ -158,7 +158,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 04-02-PLAN.md — Every inbound path keeps this device's draft: import Merge/Replace (extracted helpers), both restores, the cloud-copy choice, remote Erase, a malformed-cloud-draft battery, and a tripwire on every statement that replaces `DB` (DRAFT-02, DRAFT-03)
+- [x] 04-02-PLAN.md — Every inbound path keeps this device's draft: import Merge/Replace (extracted helpers), both restores, the cloud-copy choice, remote Erase, a malformed-cloud-draft battery, and a tripwire on every statement that replaces `DB` (DRAFT-02, DRAFT-03)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -231,7 +231,7 @@ Phase 5 completes.
 | 1. F1 — The COLLECTIONS Registry | 7/7 | Complete    | 2026-09-14 |
 | 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 5/5 | Complete    | 2026-09-22 |
-| 4. Draft Goes Device-Local | 1/3 | In Progress|  |
+| 4. Draft Goes Device-Local | 2/3 | In Progress|  |
 | 5. F2 — Event Delegation | 0/TBD | Not started | - |
 | 6. F4 — .gitattributes | 0/TBD | Not started | - |
 | 7. Content Security Policy | 0/TBD | Not started | - |

@@ -63,8 +63,8 @@ Clean data out of the app and into Claude Desktop.
 ### Draft (DRAFT)
 
 - [x] **DRAFT-01**: The in-progress workout `draft` is excluded from cloud sync, following the pattern already used for the `wx` weather cache
-- [ ] **DRAFT-02**: A stale cloud document still carrying a legacy `draft` field cannot reintroduce one onto a device
-- [ ] **DRAFT-03**: The Log tab renders correctly when a cloud document carries a malformed legacy `draft`
+- [x] **DRAFT-02**: A stale cloud document still carrying a legacy `draft` field cannot reintroduce one onto a device
+- [x] **DRAFT-03**: The Log tab renders correctly when a cloud document carries a malformed legacy `draft`
 - [x] **DRAFT-04**: Finishing or discarding a workout no longer writes draft state across the wire
 - [ ] **DRAFT-05**: Ian's in-progress workout survives closing and reopening the app on the same device
 

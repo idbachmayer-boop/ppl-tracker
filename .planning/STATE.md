@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 04
 current_phase_name: draft-goes-device-local
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-09-23T09:47:45.799Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-09-23T11:27:28.681Z"
 last_activity: 2026-09-22
 last_activity_desc: Phase 03 complete, transitioned to Phase 4
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 18
-  completed_plans: 16
+  completed_plans: 17
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 ## Current Position
 
 Phase: 04 (draft-goes-device-local) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-09-22 — Phase 04 execution started
 
-Progress: [█████████░] 89%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ Progress: [█████████░] 89%
 | Phase 03 P04 | ~15min | 2 tasks | 2 files |
 | Phase 03 P05 | ~20min | 3 tasks | 2 files |
 | Phase 04 P01 | 17min | 2 tasks | 5 files |
+| Phase 04 P02 | 97min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -124,6 +125,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 3, plan 03-05]: RESEARCH.md Q1 (preserve scratch-branch diff vs. narrative record) left at its default — narrative record — per the plan; surfaced for Ian rather than decided silently.
 - [Phase ?]: [Phase 4, plan 04-01]: the draft is removed from every mergeDB result and reattached from this device in adoptMerged(); snapshots, cloud versions and backups exclude it
 - [Phase ?]: [Phase 4, plan 04-01]: test harness fetch never settles, because a rejecting fetch spun an endless Lawn-tab weather retry in microtasks once async checks existed
+- [Phase ?]: 04-02: every site turning foreign data into DB reads keepLocalDraft(normalize(stripDraft(raw))); a dbAssignLines tripwire fails the suite on any unsanctioned DB assignment
 
 ### Pending Todos
 
@@ -148,6 +150,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-23T09:47:45.756Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-09-23T11:27:28.661Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
