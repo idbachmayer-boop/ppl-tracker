@@ -3597,19 +3597,27 @@ function importData(inp){
     const bad = validateBackup(raw);
     if(bad){ alert('Nothing was imported.\n\n'+bad); inp.value=''; return; }
     const merge = confirm('Merge this backup with your current data?\n\nOK = MERGE (keeps both, nothing lost — recommended)\nCancel = choose replace instead');
-    if(merge){
-      snapshotNow('before-import');
-      const wx=DB.wx; DB=mergeDB(normalize(raw), DB, true); if(wx!==undefined) DB.wx=wx; DB.updatedAt=Date.now();
-      DB.lastBackupAt=Date.now(); save(); cloudVersion('import'); toast('Backup merged ✓'); render(); return;
-    }
+    if(merge){ importMerge(raw); toast('Backup merged ✓'); render(); return; }
     if(confirm('Replace ALL current data with this backup?\n\nYour current data is snapshotted first (Settings → Version history), so this is undoable.')){
-      snapshotNow('before-import');
-      const g=(+DB.gen||0)+1;   // gen++ so the merge replaces wholesale instead of unioning the old rows back
-      const wx=DB.wx; DB=normalize(raw); if(wx!==undefined) DB.wx=wx; DB.gen=g; DB.updatedAt=Date.now();
-      DB.lastBackupAt=Date.now(); save(); cloudVersion('import'); toast('Backup restored'); render(); } }
+      importReplace(raw); toast('Backup restored'); render(); } }
     catch(e){ alert('Nothing was imported.\n\nThis file isn’t readable as JSON — it may be truncated or not a backup at all.'); }
     finally{ inp.value=''; } };   // let the same file be picked again after a failure
   r.readAsText(f);
+}
+/* The data half of importData(), split out so the tests run the same code the button does. The
+   file's draft is dropped before normalize() (it must never reach the migrations), and this device's
+   draft is kept (D-06, D-08). */
+function importMerge(raw){
+  snapshotNow('before-import');
+  const wx=DB.wx; DB=keepLocalDraft(mergeDB(normalize(stripDraft(raw)), DB, true)); if(wx!==undefined) DB.wx=wx; DB.updatedAt=Date.now();
+  DB.lastBackupAt=Date.now(); save(); cloudVersion('import');
+}
+/* Same rule as importMerge(): the file's draft never reaches normalize(); this device's is kept. */
+function importReplace(raw){
+  snapshotNow('before-import');
+  const g=(+DB.gen||0)+1;   // gen++ so the merge replaces wholesale instead of unioning the old rows back
+  const wx=DB.wx; DB=keepLocalDraft(normalize(stripDraft(raw))); if(wx!==undefined) DB.wx=wx; DB.gen=g; DB.updatedAt=Date.now();
+  DB.lastBackupAt=Date.now(); save(); cloudVersion('import');
 }
 /* gen++ makes this a WHOLESALE replace at merge time. Without it, save()'s push would union every
    erased row straight back from the cloud and the erase would silently undo itself. */
@@ -4470,7 +4478,9 @@ function restoreSnapshot(idx){
   snapshotNow('before-restore');
   try{
     const raw = JSON.parse(s.blob), wx = DB.wx;
-    DB = normalize(raw); if(wx!==undefined) DB.wx = wx;
+    /* A snapshot written before Phase 4 can still hold a draft. Drop it before normalize() and keep
+       the workout in progress on this device (D-07). */
+    DB = keepLocalDraft(normalize(stripDraft(raw))); if(wx!==undefined) DB.wx = wx;
     DB.updatedAt = Date.now();                                  // this restore is the newest intent
     save(); cloudVersion('before-restore'); toast('Restored ✓'); render();
   }catch(e){ alert('That snapshot could not be read.'); }
@@ -4482,7 +4492,8 @@ function restoreCloudVersion(id){
   snapshotNow('before-restore');
   try{
     const raw = JSON.parse(v.blob), wx = DB.wx;
-    DB = normalize(raw); if(wx!==undefined) DB.wx = wx;
+    /* A cloud version written before Phase 4 can still hold a draft: same rule as restoreSnapshot(). */
+    DB = keepLocalDraft(normalize(stripDraft(raw))); if(wx!==undefined) DB.wx = wx;
     DB.updatedAt = Date.now();
     save(); toast('Restored from cloud ✓'); render();
   }catch(e){ alert('That version could not be read.'); }

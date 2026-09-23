@@ -134,6 +134,8 @@ function loadApp(htmlPath, seed, opts){
     'SYNC', 'pushNow', 'startLiveSync', 'onSignedIn', 'adoptMerged', 'keepLocalDraft', 'stripDraft',
     'saveLocal', 'snapshotNow', 'cloudVersion',
     'setVal', 'finishWorkout', 'discardWorkout',
+    /* Every other path that replaces DB wholesale (Phase 4, plan 04-02). */
+    'importMerge', 'importReplace', 'restoreSnapshot', 'restoreCloudVersion', 'loadCloudVersions', 'wipe',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

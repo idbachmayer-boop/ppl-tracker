@@ -2857,6 +2857,184 @@ asyncBlock('DRAFT finish', async () => {
      { pushes: spy.n, updatedAt: a.DB.updatedAt, stored: stored && stored.draft });
 }
 
+/* ── DRAFT: restoring, importing and erasing handle the draft deliberately (Phase 4, D-06/D-07/D-08) ──
+   Five places turn foreign data into DB without going through the sync merge: Import Merge, Import
+   Replace, restoring a local snapshot, restoring a cloud version, and the "use the cloud copy only"
+   choice at first link. Every one of them must keep the workout in progress, and none may let the
+   foreign draft reach normalize(), where migration 17 would register its exercise names as synced
+   registry rows. Only a local Erase all data clears the draft, because that is what Ian asked for. */
+console.log('\n── DRAFT: restoring, importing and erasing handle the draft deliberately ──');
+/* A blob the way an older build wrote it: a full database that carries its own in-progress draft. */
+function legacyDraftDB(a){
+  const d = populatedDB(a);
+  delete d.wx;
+  d.draft = draftFor(a, 'LEGS 1');
+  return d;
+}
+/* A backup or cloud doc from before the exercise registry: `_schema` 16, no `exercises` list, and a
+   draft whose only entry names a lift found nowhere else. Normalizing it runs migration 17, which
+   stamps the draft's entries too, so an unstripped draft founds a registry row that then syncs. */
+function oldDocWithDraftOnlyLift(a){
+  const d = legacyDraftDB(a);
+  delete d.exercises;
+  d._schema = 16;
+  d.draft.entries = [{ name: 'Draft Only Lift', deload: false, sets: [{ w: '100', r: '5', skipped: false }] }];
+  return d;
+}
+const hasDraftOnlyLift = list => (Array.isArray(list) ? list : []).some(r => r && r.name === 'Draft Only Lift');
+/* Runs a check whose subject may not exist yet (a helper this plan extracts), so a missing function
+   reads as a FAIL with its message rather than a crash that stops the suite. */
+const attempt = fn => { try { return fn(); } catch(e){ return { threw: e.message }; } };
+{
+  const r = attempt(() => {
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.updatedAt = 1000; delete d.lastBackupAt;
+    a.DB = d;
+    const before = canon(a.DB.draft);
+    const backup = legacyDraftDB(a);
+    backup.sessions.push({ id:'imp1', workout:'PULL 1', date:dayOff(-1), endedAt:9, extras:{},
+      entries:[{ name:'Lat pulldown', sets:[{ w:'120', r:'10', skipped:false }] }] });
+    a.importMerge(backup);
+    return { same: canon(a.DB.draft) === before, imported: a.DB.sessions.some(s => s.id === 'imp1'),
+             updatedAt: a.DB.updatedAt, lastBackupAt: a.DB.lastBackupAt, draft: a.DB.draft && a.DB.draft.workout };
+  });
+  ok("D-06: Import Merge ignores the file's draft and keeps this device's",
+     r.same && r.imported && r.updatedAt !== 1000 && typeof r.lastBackupAt === 'number', r);
+}
+{
+  const r = attempt(() => {
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = null; a.DB = d;
+    a.importMerge(legacyDraftDB(a));
+    return { draft: a.DB.draft };
+  });
+  ok('D-06: Import Merge on a device with no draft plants none', r.draft === null, r);
+}
+{
+  const r = attempt(() => {
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.gen = 3; a.DB = d;
+    const before = canon(a.DB.draft);
+    const backup = legacyDraftDB(a);
+    backup.sessions = backup.sessions.slice(0, 2).map(s => Object.assign({}, s, { id: 'rep-' + s.id }));
+    const ids = backup.sessions.map(s => s.id);
+    a.importReplace(backup);
+    return { gen: a.DB.gen, ids: a.DB.sessions.map(s => s.id), want: ids, same: canon(a.DB.draft) === before,
+             draft: a.DB.draft && a.DB.draft.workout };
+  });
+  ok("D-06: Import Replace ignores the file's draft and keeps this device's",
+     r.gen === 4 && JSON.stringify(r.ids) === JSON.stringify(r.want) && r.same, r);
+}
+{
+  const r = attempt(() => {
+    const src = loadApp(APP_PATH); spyPushes(src);
+    const s = populatedDB(src); s.draft = fullDraft(src, 'PULL 1'); src.DB = s;
+    const blobs = [];
+    src.__sandbox.Blob = function(parts){ this.parts = parts; blobs.push(this); };
+    src.__sandbox.document.createElement = () => ({ href: '', download: '', click(){} });
+    src.exportData();
+    const text = blobs[blobs.length - 1].parts.join('');
+    const dst = loadApp(APP_PATH); spyPushes(dst);
+    const d = populatedDB(dst); d.sessions = []; d.draft = fullDraft(dst, 'PUSH 1'); dst.DB = d;
+    const before = canon(dst.DB.draft);
+    dst.importReplace(JSON.parse(text));
+    return { same: canon(dst.DB.draft) === before, sessions: dst.DB.sessions.length, draft: dst.DB.draft && dst.DB.draft.workout };
+  });
+  ok("D-06: an exported backup re-imported with Replace keeps the importing device's draft",
+     r.same && r.sessions > 0, r);
+}
+{
+  const r = attempt(() => {
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+    const before = canon(a.DB.draft);
+    const older = legacyDraftDB(a); older.weights = older.weights.slice(0, 1);
+    a.__sandbox.localStorage.setItem('ppl_tracker_snaps_v1', JSON.stringify([
+      { at: Date.now() - 3600000, label: 'older', blob: JSON.stringify(older), summary: { sessions: older.sessions.length, weights: 1 } },
+    ]));
+    a.restoreSnapshot(0);
+    return { weights: a.DB.weights.length, same: canon(a.DB.draft) === before, draft: a.DB.draft === undefined ? 'undefined' : (a.DB.draft && a.DB.draft.workout) };
+  });
+  ok('D-07: restoring a local snapshot keeps the workout in progress', r.weights === 1 && r.same, r);
+}
+asyncBlock('DRAFT restore a cloud version', async () => {
+  const a = loadApp(APP_PATH); spyPushes(a);
+  try{
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+    const before = canon(a.DB.draft);
+    const older = legacyDraftDB(a); older.weights = older.weights.slice(0, 1);
+    const doc = { id: 'v1', data(){ return { blob: JSON.stringify(older), label: 'push', at: Date.now() - 3600000,
+                                             summary: { sessions: older.sessions.length, weights: 1 } }; } };
+    fakeCloud(a, null, { signedIn: true, versionDocs: [doc] });
+    a.loadCloudVersions();
+    await new Promise(resolve => setTimeout(resolve, 0));   // the fake get() resolves on the next turn
+    a.restoreCloudVersion('v1');
+    ok('DRAFT-02: restoring a cloud version keeps the workout in progress',
+       a.DB.weights.length === 1 && canon(a.DB.draft) === before,
+       { weights: a.DB.weights.length, draft: a.DB.draft === undefined ? 'undefined' : (a.DB.draft && a.DB.draft.workout) });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+{
+  const r = attempt(() => {
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.gen = 2; a.DB = d; a.saveLocal();
+    a.wipe();   // the harness confirm() returns true
+    const stored = a.__stored();
+    return { draft: a.DB.draft, stored: stored && stored.draft, gen: a.DB.gen };
+  });
+  ok('D-08: a local Erase clears the draft', r.draft === null && r.stored === null && r.gen === 3, r);
+}
+{
+  const r = attempt(() => {
+    const out = {};
+    /* Replace: the device's own draft is kept, and the file's never reaches the migrations. */
+    const a = loadApp(APP_PATH); spyPushes(a);
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
+    a.importReplace(oldDocWithDraftOnlyLift(a));
+    out.replace = hasDraftOnlyLift(a.DB.exercises);
+    /* Merge: the backup must be NEWER. `exercises` is not a COLLECTIONS entry, so mergeDB() takes it
+       whole from the newer side; an older backup's registry would be thrown away and the check would
+       pass for the wrong reason. */
+    const b = loadApp(APP_PATH); spyPushes(b);
+    const e = populatedDB(b); e.draft = fullDraft(b, 'PUSH 1'); e.updatedAt = 1000; b.DB = e;
+    const backup = oldDocWithDraftOnlyLift(b); backup.updatedAt = Date.now() + 60000;
+    b.importMerge(backup);
+    out.merge = hasDraftOnlyLift(b.DB.exercises);
+    out.mergeRegistry = (b.DB.exercises || []).length;
+    return out;
+  });
+  ok("D-06: an old backup's draft adds no exercise-registry row on import",
+     r.replace === false && r.merge === false && r.mergeRegistry > 0, r);
+}
+/* THE RULE (CLAUDE.md, "the draft is device-local"): every statement that replaces DB wholesale
+   puts this device's draft back with keepLocalDraft(). Five such sites were found by hand, and the
+   research missed two of them, so hand-finding is not enough. This scans the app source for every
+   assignment to DB itself and fails, naming the line, on any that neither calls keepLocalDraft() nor
+   is one of three sanctioned exceptions: the boot load, the local Erase (D-08, clears by design), and
+   adoptMerged()'s own line (its input was built by keepLocalDraft() a few lines up). */
+const DB_ASSIGN = /(^|[^\w.$])DB\s*=(?!=)/;
+function dbAssignLines(src){
+  const stripComments = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  return stripComments(src).split('\n').map(l => l.trim()).filter(l => DB_ASSIGN.test(l));
+}
+{
+  const lines = dbAssignLines(app.__src);
+  const wipeSrc = String(app.wipe), adoptSrc = String(app.adoptMerged);
+  const sanctioned = l => l.includes('keepLocalDraft(') || l === 'let DB = load();'
+    || (!!app.wipe && wipeSrc.includes(l)) || (!!app.adoptMerged && adoptSrc.includes(l));
+  const offenders = lines.filter(l => !sanctioned(l));
+  const exceptions = {
+    boot:  lines.some(l => l === 'let DB = load();'),
+    erase: !!app.wipe && lines.some(l => wipeSrc.includes(l)),
+    adopt: !!app.adoptMerged && lines.some(l => adoptSrc.includes(l) && !l.includes('keepLocalDraft(')),
+  };
+  const synthetic = ['DB = normalize(raw);'].filter(l => DB_ASSIGN.test(l) && !sanctioned(l));
+  ok("DRAFT-02: every statement that replaces DB keeps this device's draft",
+     lines.length >= 7 && offenders.length === 0 && exceptions.boot && exceptions.erase && exceptions.adopt
+       && synthetic.length === 1,
+     { scanned: lines.length, offenders, exceptions, syntheticCaught: synthetic.length === 1 });
+}
+
 /* The escaping convention, checked on the one string in the seed that is trying to break out. */
 {
   const appEl = uiFull.__sandbox.document.getElementById('app');
