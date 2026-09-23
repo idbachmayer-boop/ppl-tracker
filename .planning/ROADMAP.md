@@ -149,12 +149,12 @@ Plans:
   3. The Log tab renders without error when the cloud document's legacy `draft` field is malformed or absent (DRAFT-03).
   4. Closing and reopening the app on the same device preserves the in-progress workout exactly as it was left (DRAFT-05).
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 04-01-PLAN.md — Tracer: a rep typed mid-workout stays on the device, the push through the real transaction carries no draft, and a newer cloud draft cannot replace it; then snapshots, cloud versions, the JSON backup, finish and discard proven draft-free (DRAFT-01, DRAFT-02 partial, DRAFT-04)
+- [x] 04-01-PLAN.md — Tracer: a rep typed mid-workout stays on the device, the push through the real transaction carries no draft, and a newer cloud draft cannot replace it; then snapshots, cloud versions, the JSON backup, finish and discard proven draft-free (DRAFT-01, DRAFT-02 partial, DRAFT-04)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -231,7 +231,7 @@ Phase 5 completes.
 | 1. F1 — The COLLECTIONS Registry | 7/7 | Complete    | 2026-09-14 |
 | 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 5/5 | Complete    | 2026-09-22 |
-| 4. Draft Goes Device-Local | 0/3 | Planned | - |
+| 4. Draft Goes Device-Local | 1/3 | In Progress|  |
 | 5. F2 — Event Delegation | 0/TBD | Not started | - |
 | 6. F4 — .gitattributes | 0/TBD | Not started | - |
 | 7. Content Security Policy | 0/TBD | Not started | - |

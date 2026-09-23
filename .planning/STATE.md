@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 4
-current_phase_name: Draft Goes Device-Local
+current_phase: 04
+current_phase_name: draft-goes-device-local
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-09-22T13:19:30.898Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-09-23T09:47:45.799Z"
 last_activity: 2026-09-22
 last_activity_desc: Phase 03 complete, transitioned to Phase 4
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 18
-  completed_plans: 15
+  completed_plans: 16
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-22)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 4 — Draft Goes Device-Local
+**Current focus:** Phase 04 — draft-goes-device-local
 
 ## Current Position
 
-Phase: 4 — Draft Goes Device-Local
-Plan: Not started
+Phase: 04 (draft-goes-device-local) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-09-22 — Phase 03 complete, transitioned to Phase 4
+Last activity: 2026-09-22 — Phase 04 execution started
 
-Progress: [██████████] 100%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -74,6 +74,7 @@ Progress: [██████████] 100%
 | Phase 03 P03 | ~9min | 3 tasks | 2 files |
 | Phase 03 P04 | ~15min | 2 tasks | 2 files |
 | Phase 03 P05 | ~20min | 3 tasks | 2 files |
+| Phase 04 P01 | 17min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,8 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 3, plan 03-04]: docBlock() generalized to take a fence language tag rather than adding a second fenced-block extractor for the js-fenced copy-paste registry entry.
 - [Phase ?]: [Phase 3, plan 03-05]: Dry Run B's cold walk found 8 recipe gaps — most consequential: bumping SCHEMA silently stales the committed merge-golden.json fixture and the INTRODUCED_AT boot table, and the hand-written-UI pattern (generalized from sleep) was wrong for a map collection. All closed in CLAUDE.md/docs/adding-a-collection.md; npm test stayed at the 748/0/2 baseline throughout.
 - [Phase ?]: [Phase 3, plan 03-05]: RESEARCH.md Q1 (preserve scratch-branch diff vs. narrative record) left at its default — narrative record — per the plan; surfaced for Ian rather than decided silently.
+- [Phase ?]: [Phase 4, plan 04-01]: the draft is removed from every mergeDB result and reattached from this device in adoptMerged(); snapshots, cloud versions and backups exclude it
+- [Phase ?]: [Phase 4, plan 04-01]: test harness fetch never settles, because a rejecting fetch spun an endless Lawn-tab weather retry in microtasks once async checks existed
 
 ### Pending Todos
 
@@ -145,6 +148,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-22T12:21:39.471Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-draft-goes-device-local/04-CONTEXT.md
+Last session: 2026-09-23T09:47:45.756Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None
