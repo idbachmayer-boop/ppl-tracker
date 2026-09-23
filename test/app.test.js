@@ -3218,6 +3218,174 @@ asyncBlock('DRAFT old cloud doc through the cloud-copy choice', async () => {
   } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
 });
 
+/* ── DRAFT: every draft edit stays on this device and survives a reopen (Phase 4, DRAFT-05/D-09) ──
+   Every tap mid-workout used to call save(), which bumps updatedAt and schedules a push. The push is
+   harmless now that the wire strips the draft, but the bump is not: it made a device that merely
+   had a workout open look newest to the merge (the weather-cache lesson in CLAUDE.md). From here a
+   draft edit is stored with saveLocal() only. Three draft functions still push, each because it
+   writes synced data: pickEx and exPick can found an exercise-registry row, and finishWorkout
+   lands the session. The structural check below names any new function that reads DB.draft and
+   calls save(), so a fourth pusher is a decision someone has to make out loud. */
+console.log('\n── DRAFT: every draft edit stays on this device and survives a reopen ──');
+const DRAFT_PUSHERS = ['exPick', 'finishWorkout', 'pickEx'];
+/* [name, setup(DB), args(DB), changed(DB)]. Every row starts from populatedDB + fullDraft('PUSH 1')
+   with updatedAt 1000 and a fresh push spy; setup adjusts that state before the call. */
+const DRAFT_ONLY_MUTATORS = [
+  ['setVal',           null, () => [0,0,'r','8'],       db => db.draft.entries[0].sets[0].r === '8'],
+  ['setNote',          null, () => [0,'felt good'],     db => db.draft.entries[0].note === 'felt good'],
+  ['setSessionNote',   null, () => ['solid'],           db => db.draft.sessionNote === 'solid'],
+  ['setDraftDate',     null, () => ['2026-08-01'],      db => db.draft.date === '2026-08-01'],
+  ['setDraftDur',      null, () => ['45'],              db => db.draft.durationMin === '45'],
+  ['rollWeight',       null, () => [0,0,'100'],         db => db.draft.entries[0].sets[0].w === '100'],
+  ['addSet',           null, () => [0],                 db => db.draft.entries[0].sets.length === 2],
+  ['rmSet',            db => { db.draft.entries[0].sets.push({ w:'', r:'', skipped:false }); },
+                             () => [0,1],             db => db.draft.entries[0].sets.length === 1],
+  ['skipSet',          null, () => [0,0],               db => db.draft.entries[0].sets[0].skipped === true],
+  ['unskipSet',        db => { db.draft.entries[0].sets[0].skipped = true; },
+                             () => [0,0],             db => db.draft.entries[0].sets[0].skipped === false],
+  ['deloadExercise',   null, () => [0],                 db => db.draft.entries[0].deload === true],
+  ['undeloadExercise', db => { db.draft.entries[0].deload = true; },
+                             () => [0],               db => db.draft.entries[0].deload === false],
+  ['stairVal',         null, () => ['level','5'],       db => db.draft.stairs.level === '5'],
+  ['stairTimeSet',     null, () => ['m','2'],           db => db.draft.stairs.seconds === '120'],
+  /* The else branch: the top-of-range branch draws confetti on a canvas the harness stubs as null. */
+  ['repCheck',         db => { const st = db.draft.entries[0].sets[0]; st.r = '1'; st._cel = true; },
+                             () => [0,0],             db => db.draft.entries[0].sets[0]._cel === false],
+  ['skipStairs',       null, () => [],                  db => db.draft.stairs.skipped === true],
+  ['unskipStairs',     db => { db.draft.stairs.skipped = true; },
+                             () => [],                db => db.draft.stairs.skipped === false],
+  ['exSet',            null, () => ['abs',0,'r','12'],  db => db.draft.extras.abs.sets[0].r === '12'],
+  ['exRoll',           null, () => ['abs',0,'40'],      db => db.draft.extras.abs.sets.length === 3 && db.draft.extras.abs.sets.every(s => s.w === '40')],
+  ['exAddSet',         null, () => ['abs'],             db => db.draft.extras.abs.sets.length === 4],
+  ['exRmSet',          null, () => ['abs',1],           db => db.draft.extras.abs.sets.length === 2],
+  ['startWorkout',     db => { db.draft = null; },
+                             () => ['PULL 1'],        db => !!db.draft && db.draft.workout === 'PULL 1'],
+  ['startBackdate',    db => { db.draft = null; },
+                             () => ['PULL 1'],        db => !!db.draft && db.draft.historical === true],
+  /* s1's fixture extras are empty, which the Log tab would heal in memory without storing. */
+  ['editSession',      (db, a) => { db.draft = null; db.sessions.find(s => s.id === 's1').extras = a.__sandbox.blankExtras('PUSH 1'); },
+                             db => [db.sessions.findIndex(s => s.id === 's1')],
+                                                      db => !!db.draft && db.draft.editRef === 's1'],
+  ['discardWorkout',   null, () => [],                  db => db.draft === null],
+];
+{
+  const a = loadApp(APP_PATH);
+  const failing = [];
+  DRAFT_ONLY_MUTATORS.forEach(([name, setup, args, changed]) => {
+    const db = populatedDB(a); db.draft = fullDraft(a, 'PUSH 1'); db.updatedAt = 1000;
+    if(setup) setup(db, a);
+    a.DB = db;
+    const spy = spyPushes(a);
+    a.__sandbox.localStorage.removeItem('ppl_tracker_v1');   // a row that stores nothing reads as a mismatch
+    const fn = a.__sandbox[name];
+    if(typeof fn !== 'function'){ failing.push({ name, reason: 'not a function' }); return; }
+    try{ fn.apply(null, args(a.DB)); }
+    catch(e){ failing.push({ name, reason: 'threw: ' + (e && e.message) }); return; }
+    const stored = a.__stored();
+    const why = [];
+    if(spy.n !== 0) why.push('pushes: ' + spy.n);
+    if(a.DB.updatedAt !== 1000) why.push('updatedAt: ' + a.DB.updatedAt);
+    if(!stored || canon(stored.draft) !== canon(a.DB.draft)) why.push('stored draft differs');
+    if(!changed(a.DB)) why.push('no visible change');
+    if(why.length) failing.push({ name, reason: why.join(', ') });
+  });
+  ok('DRAFT-05: every draft-only edit is stored on this device with no updatedAt bump and no push',
+     failing.length === 0 && DRAFT_ONLY_MUTATORS.length === 25, failing);
+
+  /* Every function the script declares, whose comment-stripped source reads DB.draft and calls bare
+     save() (saveLocal() does not match). A new one fails here by name. */
+  const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const pushers = Object.keys(a.__sandbox).filter(k => {
+    const f = a.__sandbox[k];
+    if(typeof f !== 'function') return false;
+    const src = stripComments(Function.prototype.toString.call(f));
+    return /\bDB\.draft\b/.test(src) && /(?<![\w.$])save\(\)/.test(src);
+  }).sort();
+  ok('DRAFT-05: only pickEx, exPick and finishWorkout still push from a draft function',
+     canon(pushers) === canon(DRAFT_PUSHERS), pushers);
+}
+{
+  /* Close and reopen: a scripted run of edits, then a fresh boot from the stored blob alone. */
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  const d = populatedDB(a); d.draft = null; a.DB = d;
+  a.__sandbox.startWorkout('PUSH 1');
+  a.setVal(0, 0, 'w', '135');
+  a.setVal(0, 0, 'r', '8');
+  a.__sandbox.addSet(0);
+  a.__sandbox.stairVal('level', '6');
+  let reopened = null, threw = null;
+  try{ reopened = loadApp(APP_PATH, a.__stored()); }catch(e){ threw = e; }
+  const same = !!reopened && !!a.DB.draft && canon(reopened.DB.draft) === canon(a.DB.draft);
+  ok('DRAFT-05: closing and reopening the app restores the draft exactly',
+     same && a.DB.draft.entries[0].sets[0].r === '8' && a.DB.draft.stairs.level === '6',
+     threw ? String(threw) : { before: a.DB.draft && a.DB.draft.entries[0], after: reopened && reopened.DB.draft && reopened.DB.draft.entries[0] });
+}
+{
+  /* A past session reopened for editing: re-saving must still replace the original, so editRef has
+     to come back with the draft. */
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  const d = populatedDB(a); d.draft = null;
+  const idx = d.sessions.findIndex(s => s.id === 's1');
+  d.sessions[idx].extras = a.__sandbox.blankExtras('PUSH 1');
+  a.DB = d;
+  a.__sandbox.editSession(idx);
+  let reopened = null, threw = null;
+  try{ reopened = loadApp(APP_PATH, a.__stored()); }catch(e){ threw = e; }
+  const rd = reopened && reopened.DB.draft;
+  ok('DRAFT-05: a draft reopened for editing survives close and reopen with its editRef',
+     !!rd && canon(rd) === canon(a.DB.draft) && rd.editRef === 's1',
+     threw ? String(threw) : { editRef: rd && rd.editRef, same: !!rd && canon(rd) === canon(a.DB.draft) });
+}
+asyncBlock('DRAFT a brand-new exercise picked mid-workout', async () => {
+  const a = loadApp(APP_PATH);
+  const spy = spyPushes(a);
+  try{
+    const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); d.updatedAt = 1000; a.DB = d;
+    const hasZercher = rows => (rows || []).some(r => r && r.name === 'Zercher carry');
+    a.__sandbox.pickEx(0, { value: 'Zercher carry' });
+    const local = { row: hasZercher(a.DB.exercises), pushes: spy.n, updatedAt: a.DB.updatedAt };
+    /* The cloud is OLDER than the frozen clock: `exercises` is not a COLLECTIONS entry, so mergeDB()
+       takes the whole registry from the newer side. */
+    const remote = populatedDB(a); remote.updatedAt = 1000;
+    const cloud = fakeCloud(a, remote, { signedIn: true });
+    await a.pushNow(true);
+    const last = cloud.writes.length ? JSON.parse(cloud.writes[cloud.writes.length - 1].blob) : null;
+    ok('DRAFT-05: picking a brand-new exercise mid-workout still pushes the new registry row',
+       local.row && local.pushes === 1 && local.updatedAt !== 1000
+         && !!last && hasZercher(last.exercises) && !('draft' in last),
+       Object.assign(local, { writes: cloud.writes.length, written: !!last && hasZercher(last.exercises),
+         draftKey: !!last && ('draft' in last), status: a.SYNC.status }));
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+asyncBlock('DRAFT a draft through a sync adoption and a reopen', async () => {
+  const a = loadApp(APP_PATH);
+  spyPushes(a);
+  try{
+    const local = populatedDB(a);
+    local.draft = fullDraft(a, 'PUSH 1');
+    local.draft.entries[0].sets[0] = { w: '135', r: '8', skipped: false };
+    local.updatedAt = 1000;
+    a.DB = local; a.saveLocal();
+    const before = canon(a.DB.draft);
+    const cloud = fakeCloud(a, null, { signedIn: true });
+    a.startLiveSync();
+    /* A newer cloud doc from a device still on the old build: its own sessions, and its draft. */
+    const tick = populatedDB(a);
+    tick.sessions = tick.sessions.map(s => Object.assign({}, s, { id: 'cloud-' + s.id }));
+    tick.draft = draftFor(a, 'LEGS 1'); tick.updatedAt = 9000;
+    cloud.fire(tick);
+    let reopened = null, threw = null;
+    try{ reopened = loadApp(APP_PATH, a.__stored()); }catch(e){ threw = e; }
+    const rd = reopened && reopened.DB.draft;
+    const cloudSessions = !!reopened && reopened.DB.sessions.some(s => String(s.id).startsWith('cloud-'));
+    ok('DRAFT-05: a draft survives a sync adoption and then a reopen',
+       !!rd && canon(rd) === before && canon(a.DB.draft) === before && cloudSessions,
+       threw ? String(threw) : { draft: rd && rd.workout, same: !!rd && canon(rd) === before, cloudSessions });
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+
 /* The escaping convention, checked on the one string in the seed that is trying to break out. */
 {
   const appEl = uiFull.__sandbox.document.getElementById('app');

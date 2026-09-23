@@ -1148,9 +1148,9 @@ function deloadExercise(i){
   let lastW=0; if(ref){ const real=ref.entry.sets.filter(x=>!x.skipped && x.r!==''); lastW=Math.max(0, ...real.map(x=> x.w===''?0:+x.w)); }
   const dw = lastW>0 ? String(round5(lastW*0.9)) : '';
   e.deload=true; e.sets.forEach(st=>{ if(!st.skipped) st.w=dw; });
-  save(); render();
+  saveLocal(); render();
 }
-function undeloadExercise(i){ DB.draft.entries[i].deload=false; save(); render(); }
+function undeloadExercise(i){ DB.draft.entries[i].deload=false; saveLocal(); render(); }
 /* Strength is tracked PER EXERCISE (not pooled by muscle) so the trend reflects one
    movement — "DB bench" rising — instead of jumping between bench/incline/fly. */
 /* All logged exercises in a session = main entries + abs/forearms accessories. */
@@ -1735,7 +1735,7 @@ function startWorkout(name){
     };
     const ls = lastRealStairs();
     if(ls){ DB.draft.stairs.seconds = String((+ls.st.seconds)+15); DB.draft.stairs.level = String(ls.st.level||''); }
-    save();
+    saveLocal();
   }
   goSub('train','log');
 }
@@ -1753,7 +1753,7 @@ function startBackdate(name){
     entries: PROGRAM[name].slots.map((s,i)=>{ const ref=lastRealEntry(name,i); return { name: ref?ref.entry.name:s.examples[0], note:'', sets: Array.from({length:s.sets},()=>({w:'',r:'',skipped:false,reason:''})) }; }),
     stairs:{ level:'', seconds:'', skipped:false, reason:'' }, extras: blankExtras(name), sessionNote:'' };
   const ls=lastRealStairs(); if(ls){ DB.draft.stairs.seconds=String((+ls.st.seconds)+15); DB.draft.stairs.level=String(ls.st.level||''); }
-  showBackdate=false; save();
+  showBackdate=false; saveLocal();
   goSub('train','log');
 }
 
@@ -1896,8 +1896,8 @@ function viewActive(){
     <button class="btn btn-block" style="margin-top:6px" onclick="finishWorkout()">${DB.draft.historical?'Save past workout':'Finish & save workout'}</button>
     <button class="btn btn-danger btn-block" style="margin-top:10px" onclick="discardWorkout()">Discard</button>`;
 }
-function setDraftDate(v){ DB.draft.date=v; save(); }
-function setDraftDur(v){ DB.draft.durationMin=v; save(); }
+function setDraftDate(v){ DB.draft.date=v; saveLocal(); }
+function setDraftDur(v){ DB.draft.durationMin=v; saveLocal(); }
 
 /* Typing a name that's one letter off an existing one is how "Seated Fly" and "Seated Flys" became
    two lifts with two PR histories. Offer the match before it happens; "keep it separate" is always
@@ -1920,8 +1920,8 @@ function pickEx(i, sel){
   e.name = sel.value; e.exId = exEnsure(sel.value); save(); render();
 }
 function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; if(f==='r' && v!=='') restCtx=restTargetForSlot(i); saveLocal(); /* live save, no re-render to keep focus */ }
-function setNote(i,v){ DB.draft.entries[i].note=v; save(); }
-function setSessionNote(v){ DB.draft.sessionNote=v; save(); }
+function setNote(i,v){ DB.draft.entries[i].note=v; saveLocal(); }
+function setSessionNote(v){ DB.draft.sessionNote=v; saveLocal(); }
 /* Roll the WEIGHT down into still-empty sets below. Fired on `change` (after the full
    number is entered), weight only — reps are never rolled. Filled cells stay untouched. */
 function rollWeight(i,k,value){
@@ -1933,30 +1933,30 @@ function rollWeight(i,k,value){
       if(sets[j].w===''){ sets[j].w=value; const el=document.getElementById(`w-${i}-${j}`); if(el) el.value=value; }
     }
   }
-  save();
+  saveLocal();
 }
-function addSet(i){ DB.draft.entries[i].sets.push({w:'',r:'',skipped:false,reason:''}); save(); render(); }
-function rmSet(i,k){ if(DB.draft.entries[i].sets.length<=1)return; DB.draft.entries[i].sets.splice(k,1); save(); render(); }
+function addSet(i){ DB.draft.entries[i].sets.push({w:'',r:'',skipped:false,reason:''}); saveLocal(); render(); }
+function rmSet(i,k){ if(DB.draft.entries[i].sets.length<=1)return; DB.draft.entries[i].sets.splice(k,1); saveLocal(); render(); }
 function skipSet(i,k){
   const reason = prompt(`Why skipping set ${k+1}? (optional)`, '');
   if(reason===null) return;
   const st = DB.draft.entries[i].sets[k]; st.skipped=true; st.reason=reason.trim(); st.w=''; st.r='';
-  save(); render();
+  saveLocal(); render();
 }
-function unskipSet(i,k){ const st=DB.draft.entries[i].sets[k]; st.skipped=false; st.reason=''; save(); render(); }
-function stairVal(f,v){ DB.draft.stairs[f]=v; save(); }
+function unskipSet(i,k){ const st=DB.draft.entries[i].sets[k]; st.skipped=false; st.reason=''; saveLocal(); render(); }
+function stairVal(f,v){ DB.draft.stairs[f]=v; saveLocal(); }
 function stairTimeSet(part,v){
   const cur=+(DB.draft.stairs.seconds||0); let m=Math.floor(cur/60), s=cur%60;
   if(part==='m') m=Math.max(0,parseInt(v)||0); else s=Math.max(0,parseInt(v)||0);
-  DB.draft.stairs.seconds=String(m*60+s); save();
+  DB.draft.stairs.seconds=String(m*60+s); saveLocal();
 }
 /* Fire confetti when a set reaches the top of its rep range (the "level up" signal). */
 function repCheck(i,k){
   const set=DB.draft.entries[i].sets[k]; if(set.skipped) return;
   const rng=effRange(PROGRAM[DB.draft.workout].slots[i], DB.draft.entries[i].name);
   if(set.r!==''){ restCtx=restTargetFor(rng.hi); sw.acc=0; sw.start=Date.now(); sw.running=true; updateStopwatch(); } // committing a set starts the rest clock for that exercise
-  if(set.r!=='' && +set.r>=rng.hi){ if(!set._cel){ set._cel=true; save(); confettiBurst(); toast('💥 Top of the range!'); } }
-  else if(set._cel){ set._cel=false; save(); }
+  if(set.r!=='' && +set.r>=rng.hi){ if(!set._cel){ set._cel=true; saveLocal(); confettiBurst(); toast('💥 Top of the range!'); } }
+  else if(set._cel){ set._cel=false; saveLocal(); }
 }
 function confettiBurst(){
   const canvas=document.createElement('canvas');
@@ -1974,8 +1974,8 @@ function confettiBurst(){
     if(alive && t<220) requestAnimationFrame(frame); else canvas.remove();
   })();
 }
-function skipStairs(){ const reason=prompt('Why skipping the stair stepper? (optional)',''); if(reason===null)return; DB.draft.stairs.skipped=true; DB.draft.stairs.reason=reason.trim(); save(); render(); }
-function unskipStairs(){ DB.draft.stairs.skipped=false; DB.draft.stairs.reason=''; save(); render(); }
+function skipStairs(){ const reason=prompt('Why skipping the stair stepper? (optional)',''); if(reason===null)return; DB.draft.stairs.skipped=true; DB.draft.stairs.reason=reason.trim(); saveLocal(); render(); }
+function unskipStairs(){ DB.draft.stairs.skipped=false; DB.draft.stairs.reason=''; saveLocal(); render(); }
 function toggleWarm(i){
   const box = document.getElementById('warm-'+i); box.classList.toggle('hidden');
   if(box.classList.contains('hidden')) return;
@@ -2233,7 +2233,7 @@ function editSession(idx){
     extras: s.extras ? JSON.parse(JSON.stringify(s.extras)) : blankExtras(s.workout),
     sessionNote: s.note || ''
   };
-  save(); openHist=-1; toast('Editing — re-save to update this entry'); goSub('train','log');
+  saveLocal(); openHist=-1; toast('Editing — re-save to update this entry'); goSub('train','log');
 }
 
 /* ───────────────────────── WEIGHT ───────────────────────── */
@@ -2735,10 +2735,10 @@ function exPick(which, sel){
   }
   e.name = sel.value; e.exId = exEnsure(sel.value); save();
 }
-function exSet(which,k,f,v){ DB.draft.extras[which].sets[k][f]=v; save(); }
-function exRoll(which,k,v){ const sets=DB.draft.extras[which].sets; sets[k].w=v; if(v!==''){ for(let j=k+1;j<sets.length;j++){ if(sets[j].w===''){ sets[j].w=v; const el=document.getElementById(`ex-${which}-w-${j}`); if(el) el.value=v; } } } save(); }
-function exAddSet(which){ DB.draft.extras[which].sets.push({w:'',r:'',skipped:false}); save(); render(); }
-function exRmSet(which,k){ const s=DB.draft.extras[which].sets; if(s.length<=1) return; s.splice(k,1); save(); render(); }
+function exSet(which,k,f,v){ DB.draft.extras[which].sets[k][f]=v; saveLocal(); }
+function exRoll(which,k,v){ const sets=DB.draft.extras[which].sets; sets[k].w=v; if(v!==''){ for(let j=k+1;j<sets.length;j++){ if(sets[j].w===''){ sets[j].w=v; const el=document.getElementById(`ex-${which}-w-${j}`); if(el) el.value=v; } } } saveLocal(); }
+function exAddSet(which){ DB.draft.extras[which].sets.push({w:'',r:'',skipped:false}); saveLocal(); render(); }
+function exRmSet(which,k){ const s=DB.draft.extras[which].sets; if(s.length<=1) return; s.splice(k,1); saveLocal(); render(); }
 /* Mobility is a DAILY log (DB.mobilityLog[date]), not per-session — APT work is daily. */
 function mobToday(){ const t=todayISO(); return (DB.mobilityLog && DB.mobilityLog[t]) || {}; }
 /* Unchecking writes an explicit false rather than deleting the key: sync merges by date, and
