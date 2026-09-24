@@ -177,12 +177,33 @@ Plans:
   4. Every converted control is still operable by keyboard, not only by pointer or click (DELEG-06).
   5. The Log tab — the screen Ian is standing in front of mid-workout — is manually verified end to end and behaves identically to before the conversion (DELEG-07).
 
-**Plans**: TBD
+**Plans**: 6 plans
 **UI hint**: yes
 
 Plans:
+**Wave 1**
 
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md — Tracer: capture the inline-handler inventory before any change, then a tap on a tab goes through one delegated dispatcher; the rest of the app shell, the completeness ratchet, the registry guards and the keyboard reset (DELEG-01, DELEG-03, DELEG-05; DELEG-02/04/06 infrastructure)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 05-02-PLAN.md — Settings and the Ideas sheet: hostile idea, exercise and cloud-version ids travel as escaped data, the backdrop stays the one reviewed non-button, and the export test asserts its property (DELEG-02, DELEG-04, DELEG-06)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 05-03-PLAN.md — Care (Skin, Lawn, Sleep): Enter-to-search through the registry, the lawn card on Today and Care as a button, and the four text-pinned lawn/sleep checks retargeted (DELEG-02, DELEG-04, DELEG-06)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 05-04-PLAN.md — Train without the Log tab (History, Progress, Cardio): offsets, ranges and row indexes arrive as numbers, and the week-review links become buttons (DELEG-02, DELEG-04, DELEG-06)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 05-05-PLAN.md — Today: Enter-to-log and the Log button each log once, the Chart chains become one action, and the shortcut cards and headers become buttons (DELEG-02, DELEG-04, DELEG-06)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 05-06-PLAN.md — The Log tab last and alone: `swGuard` kept, set-row values escaped, the draft rule untouched; no inline handler left; docs teach the pattern; keyboard pass and phone checklist queued as the end-of-phase gate (DELEG-02, DELEG-04, DELEG-06, DELEG-07)
 
 ### Phase 6: F4 — .gitattributes
 

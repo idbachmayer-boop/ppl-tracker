@@ -90,3 +90,9 @@ to match.
 ## Deferred Ideas
 - Inline `style=` / `javascript:` removal and other CSP prerequisites belong to Phase 7.
 </deferred>
+
+## Addendum (2026-09-24, after research)
+- **D-08:** The keyboard set is 20 (16 div, 1 span, 3 `<a onclick>` without href). 19 become `<button>`. The Ideas modal backdrop stays non-focusable: its Close button is its keyboard path, and there is no Escape handler.
+- **D-09:** Escape `value="${…}"` attributes on every line this phase rewrites (CLAUDE.md). A file-wide attribute sweep stays deferred to VAL-02.
+- **D-10:** Split the Care and Train (non-Log) batches into separate plans.
+- **D-11:** Inner `<div>`s inside converted buttons become `<span>` with block display, so the look is unchanged and the HTML valid.

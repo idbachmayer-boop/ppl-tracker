@@ -817,7 +817,7 @@ Pre-flight: deploy, then on the phone open Settings → **This version** and con
 | A4 | A synchronous delegated handler keeps transient user activation for clipboard/share/file-picker | Pitfall 12 | Medium. A broken import or Strava upload would be noticed only on a device. Include "Import backup opens the picker" and "Copy all ideas" in the P2 manual check |
 | A5 | Android Gboard reports `e.key === 'Enter'` on number and text inputs, same as today | Pattern 3 | None new. Semantics are copied verbatim from today's inline check |
 
-## Open Questions
+## Open Questions (RESOLVED — Q1–Q4 by CONTEXT D-08..D-11 addendum 2026-09-24; Q5 by plan 05-01 count fix)
 
 1. **Does the modal backdrop count under D-04?**
    - What we know: D-04 says convert the 17 to `<button>`, or fall back to `role=button`. The backdrop can legally be neither (interactive descendants), and it already has a keyboard path: the Close button.
