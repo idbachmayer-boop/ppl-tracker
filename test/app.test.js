@@ -3531,10 +3531,16 @@ X.__sandbox.Blob = function(parts, opts){ this.parts = parts; this.type = opts &
   // Claude button's own opening tag. A second one would mean another button sits in between.
   const between = jsonBtnEnd >= 0 && claudeIdx >= 0 ? html.slice(jsonBtnEnd, claudeIdx) : '';
   const buttonTagsBetween = (between.match(/<button/g) || []).length;
-  const onclickCount = (X.__src.match(/onclick="exportMarkdown\(\)"/g) || []).length;
+  /* Exactly one Settings control runs exportMarkdown, whatever the markup calls it (Phase 5 moved
+     the call from an inline handler to a delegated action, Pitfall 8). */
+  const xActions = X.ACTIONS || {};
+  const exportControls = controlsIn(html).filter(c => {
+    const own = Object.prototype.hasOwnProperty.call(xActions, c.data.action) && xActions[c.data.action];
+    return !!own && typeof own.click === 'function' && Function.prototype.toString.call(own.click).includes('exportMarkdown(');
+  }).length;
   ok('export: Settings shows Export for Claude (.md) directly below Export backup (.json) (D-02)',
-     jsonIdx >= 0 && claudeIdx > jsonIdx && importIdx > claudeIdx && buttonTagsBetween === 1 && onclickCount === 1,
-     { jsonIdx, claudeIdx, importIdx, buttonTagsBetween, onclickCount });
+     jsonIdx >= 0 && claudeIdx > jsonIdx && importIdx > claudeIdx && buttonTagsBetween === 1 && exportControls === 1,
+     { jsonIdx, claudeIdx, importIdx, buttonTagsBetween, exportControls });
 }
 
 let exportResult;
@@ -5057,6 +5063,99 @@ const f2IdeasList = a => a.__sandbox.document.getElementById('ideas-list').inner
      !threw && !!save && !!cancel && save.data.id === 'i2' && cancel.data.id === 'i2'
        && !!i2 && i2.text === 'reworded' && !!i1 && i1.text === 'first',
      { threw, save, cancel, text: i2 && i2.text });
+}
+
+/* D-02: the old two-statement handler (`setPetName(this.value);render()`) is one action that runs
+   the whole chain, in order, once per change. */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  const order = [];
+  let threw = null, cs = [], events = [];
+  try {
+    cs = controlsIn(a.viewData()).filter(x => x.data.action === 'setPetName');
+    events = a.ACTIONS && a.ACTIONS.setPetName ? Object.keys(a.ACTIONS.setPetName) : [];
+    a.__sandbox.setPetName = (...args) => { order.push(['setPetName', args]); };
+    a.__sandbox.render = (...args) => { order.push(['render', args]); };
+    if(cs[0]){
+      fireAction(a, 'input', fakeEl(cs[0].data, { value: 'Mochi' }));
+      fireAction(a, 'change', fakeEl(cs[0].data, { value: 'Mochi' }));
+    }
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the pet name saves and redraws on change through one action (D-02 chain)',
+     !threw && cs.length === 1 && cs[0].tag === 'input' && JSON.stringify(events) === '["change"]'
+       && JSON.stringify(order) === JSON.stringify([['setPetName', ['Mochi']], ['render', []]]),
+     { threw, found: cs.length, events, order });
+}
+/* Import is two controls: a button that opens the picker by clicking the hidden file input (inside
+   the tap, so the tap's user activation carries over, Pitfall 12), and the input, whose change runs
+   the import. The picker's synthesized click on the input also reaches the dispatcher, and must do
+   nothing (Pitfall 2). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  let threw = null, pick = null, imp = null, opened = 0, afterPick = null, afterChange = null, sameEl = false;
+  const imports = spyOn(a, 'importData');
+  a.__sandbox.document.getElementById('imp').click = () => { opened++; };
+  try {
+    const cs = controlsIn(a.viewData());
+    pick = cs.find(x => x.data.action === 'pickImportFile') || null;
+    imp = cs.find(x => x.data.action === 'importData') || null;
+    if(pick) fireAction(a, 'click', fakeEl(pick.data));
+    afterPick = { opened, imports: imports.length };
+    if(imp){
+      const input = fakeEl(imp.data);
+      fireAction(a, 'change', input);
+      afterChange = imports.length;
+      sameEl = !!imports[0] && imports[0].length === 1 && imports[0][0] === input;
+      fireAction(a, 'click', input);
+    }
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: Import backup opens the file picker, and choosing a file runs importData once',
+     !threw && !!pick && pick.tag === 'button' && !!imp && imp.tag === 'input' && imp.type === 'file'
+       && afterPick.opened === 1 && afterPick.imports === 0 && afterChange === 1 && sameEl && imports.length === 1 && opened === 1,
+     { threw, pick, imp, afterPick, afterChange, sameEl, imports: imports.length, opened });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  const cs = () => controlsIn(a.viewData());
+  let threw = null, kg = null, d3 = null, rm = null;
+  const hobbies = (a.DB.hobbies || []).slice(), prod = JSON.stringify(a.DB.productivity || []);
+  try {
+    kg = cs().find(x => x.data.action === 'setUnit' && x.data.unit === 'kg') || null;
+    if(kg) fireAction(a, 'click', fakeEl(kg.data));
+    d3 = cs().find(x => x.data.action === 'setRoutineMode' && x.data.mode === '3day') || null;
+    if(d3) fireAction(a, 'click', fakeEl(d3.data));
+    rm = cs().find(x => x.data.action === 'removeItem' && x.data.cat === 'hobby') || null;
+    if(rm) fireAction(a, 'click', fakeEl(rm.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: units, routine and list edits route through the dispatcher',
+     !threw && hobbies.length >= 2 && !!kg && a.DB.unit === 'kg' && !!d3 && a.DB.routineMode === '3day'
+       && !!rm && JSON.stringify(a.DB.hobbies) === JSON.stringify(hobbies.slice(1)) && JSON.stringify(a.DB.productivity || []) === prod,
+     { threw, unit: a.DB.unit, routineMode: a.DB.routineMode, removeControl: rm, hobbiesBefore: hobbies.length, hobbiesAfter: (a.DB.hobbies || []).length });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  /* Shaped as exEnsure() writes a row, and used by one session, because the card lists only
+     exercises that have been logged. */
+  a.DB.exercises = [a.touch({ id: HOSTILE, name: 'Hostile press', aliases: ['hostile press'] })];
+  a.DB.sessions = [{ id:'s1', workout:'PUSH 1', date: today, endedAt:1, extras:{}, mtime:1,
+                     entries:[{ name:'Hostile press', exId: HOSTILE, sets:[{ w:'100', r:'5', skipped:false }] }] }];
+  const prompts = [];
+  a.__sandbox.prompt = (...args) => { prompts.push(args); return ''; };
+  let threw = null, html = '', ctl = null;
+  try {
+    html = a.viewData();
+    ctl = controlsIn(html).find(x => x.data.action === 'renameExercise') || null;
+    if(ctl) fireAction(a, 'click', fakeEl(ctl.data));
+  } catch(e){ threw = e.message; }
+  /* renameExercise prompts with a fixed message and the row's current name as the default. */
+  ok('D-03: a hostile exercise id round-trips through data-id',
+     !threw && html.includes('Hostile press') && !html.includes('<b>') && !!ctl && ctl.data.id === HOSTILE
+       && prompts.length === 1 && prompts[0].some(x => String(x).includes('Hostile press')) && a.DB.exercises[0].name === 'Hostile press',
+     { threw, rawB: html.includes('<b>'), control: ctl, prompts });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

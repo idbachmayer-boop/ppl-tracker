@@ -2593,12 +2593,12 @@ function exercisesCardHTML(){
       <select id="ex-merge-from" style="flex:1;min-width:130px">${opts}</select>
       <span class="muted" style="align-self:center;font-size:12px">into</span>
       <select id="ex-merge-into" style="flex:1;min-width:130px">${opts}</select>
-      <button class="btn btn-sm" onclick="doExMerge()">Merge</button>
+      <button class="btn btn-sm" data-action="doExMerge">Merge</button>
     </div>
     ${rows.map(r=>`<div class="hist-item">
       <span style="min-width:0"><strong style="font-size:13px">${esc(r.name)}</strong>
         <span class="muted" style="font-size:11px">· ${r.n} session${r.n===1?'':'s'}</span></span>
-      <button class="btn btn-sm btn-ghost" onclick="renameExercise('${esc(r.id)}')">${ph('pencil-simple')}Rename</button>
+      <button class="btn btn-sm btn-ghost" data-action="renameExercise" data-id="${esc(r.id)}">${ph('pencil-simple')}Rename</button>
     </div>`).join('')}
   </div>`;
 }
@@ -3356,13 +3356,13 @@ function viewData(){
     <h1>Settings</h1>
     <h2>Units</h2>
     <div class="card"><div class="seg" style="margin:0">
-      <button class="${DB.unit==='lb'?'active':''}" onclick="setUnit('lb')">lb</button>
-      <button class="${DB.unit==='kg'?'active':''}" onclick="setUnit('kg')">kg</button>
+      <button class="${DB.unit==='lb'?'active':''}" data-action="setUnit" data-unit="lb">lb</button>
+      <button class="${DB.unit==='kg'?'active':''}" data-action="setUnit" data-unit="kg">kg</button>
     </div></div>
     <h2>Routine</h2>
     <div class="card"><div class="seg" style="margin:0 0 10px">
-      <button class="${(DB.routineMode||'4day')==='3day'?'active':''}" onclick="setRoutineMode('3day')">3-Day PPL</button>
-      <button class="${(DB.routineMode||'4day')==='4day'?'active':''}" onclick="setRoutineMode('4day')">4-Day PPL</button>
+      <button class="${(DB.routineMode||'4day')==='3day'?'active':''}" data-action="setRoutineMode" data-mode="3day">3-Day PPL</button>
+      <button class="${(DB.routineMode||'4day')==='4day'?'active':''}" data-action="setRoutineMode" data-mode="4day">4-Day PPL</button>
     </div>
       <p class="muted" style="font-size:12px">4-Day adds a specialized 4th day each week — pick Chest & Triceps, Back, Shoulders, Biceps, or Legs fresh each time it comes up.</p>
     </div>
@@ -3376,7 +3376,7 @@ function viewData(){
     <h2>Pet</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Name on the daily pet weigh-in — shown on the Today card and the Progress sub-tab.</p>
-      <input id="petname-input" value="${esc(petName())}" placeholder="Freddie" onchange="setPetName(this.value);render()">
+      <input id="petname-input" value="${esc(petName())}" placeholder="Freddie" data-action="setPetName">
     </div>
     <h2>Cloud Sync</h2>
     ${syncCardHTML()}
@@ -3386,26 +3386,26 @@ function viewData(){
     <h2>Hobbies</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Fun things the Today tab rotates through.</p>
-      ${(DB.hobbies||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeItem('hobby',${i})">${ph('x')}</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
-      <div class="row" style="margin-top:12px"><input id="hobby-input" placeholder="Add a hobby…" style="flex:1"><button class="btn" onclick="addItem('hobby')">Add</button></div>
+      ${(DB.hobbies||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" data-action="removeItem" data-cat="hobby" data-i="${esc(i)}">${ph('x')}</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
+      <div class="row" style="margin-top:12px"><input id="hobby-input" placeholder="Add a hobby…" style="flex:1"><button class="btn" data-action="addItem" data-cat="hobby">Add</button></div>
     </div>
     <h2>Productivity</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Chores and house-keeping the Today tab rotates through.</p>
-      ${(DB.productivity||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeItem('productivity',${i})">${ph('x')}</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
-      <div class="row" style="margin-top:12px"><input id="productivity-input" placeholder="Add a chore…" style="flex:1"><button class="btn" onclick="addItem('productivity')">Add</button></div>
+      ${(DB.productivity||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" data-action="removeItem" data-cat="productivity" data-i="${esc(i)}">${ph('x')}</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
+      <div class="row" style="margin-top:12px"><input id="productivity-input" placeholder="Add a chore…" style="flex:1"><button class="btn" data-action="addItem" data-cat="productivity">Add</button></div>
     </div>
     <h2>Backup</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:12px">A downloadable copy of your data — handy as an extra safety net even with Cloud Sync on.</p>
-      <button class="btn btn-block" onclick="exportData()">${ph('download-simple')}Export backup (.json)</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="exportMarkdown()">${ph('arrow-square-out')}Export for Claude (.md)</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="document.getElementById('imp').click()">${ph('upload-simple')}Import backup</button>
-      <input type="file" id="imp" accept="application/json" class="hidden" onchange="importData(this)">
+      <button class="btn btn-block" data-action="exportData">${ph('download-simple')}Export backup (.json)</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" data-action="exportMarkdown">${ph('arrow-square-out')}Export for Claude (.md)</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" data-action="pickImportFile">${ph('upload-simple')}Import backup</button>
+      <input type="file" id="imp" accept="application/json" class="hidden" data-action="importData">
     </div>
     <h2>Stats</h2>
     <div class="card"><p class="muted">${liveSessions().length} workouts · ${liveWeights().length} weigh-ins logged</p></div>
-    <div class="card"><button class="btn btn-danger btn-block" onclick="wipe()">Erase all data</button></div>`;
+    <div class="card"><button class="btn btn-danger btn-block" data-action="wipe">Erase all data</button></div>`;
 }
 function setUnit(u){ DB.unit=u; save(); render(); }
 function setRoutineMode(m){ DB.routineMode=m; save(); render(); }
@@ -4741,6 +4741,22 @@ const ACTIONS = {
   toggleIdeaDone: { change: el => toggleIdeaDone(el.dataset.id) },
   startEditIdea:  { click: el => startEditIdea(el.dataset.id) },
   removeIdea:     { click: el => removeIdea(el.dataset.id) },
+  /* Settings. The pet name's old two-statement handler is one action that runs the whole chain
+     (D-02). Import is two controls: the button opens the picker by clicking the hidden file input
+     inside the tap, so the tap's user activation carries over, and the input's change runs the
+     import. The picker's own synthesized click on the input reaches this dispatcher too, and
+     importData has no click handler, so it does nothing. */
+  setUnit:        { click: el => setUnit(el.dataset.unit) },
+  setRoutineMode: { click: el => setRoutineMode(el.dataset.mode) },
+  setPetName:     { change: el => { setPetName(el.value); render(); } },
+  removeItem:     { click: el => removeItem(el.dataset.cat, +el.dataset.i) },
+  addItem:        { click: el => addItem(el.dataset.cat) },
+  exportMarkdown: { click: () => exportMarkdown() },
+  pickImportFile: { click: () => document.getElementById('imp').click() },
+  importData:     { change: el => importData(el) },
+  wipe:           { click: () => wipe() },
+  doExMerge:      { click: () => doExMerge() },
+  renameExercise: { click: el => renameExercise(el.dataset.id) },
 };
 document.addEventListener('click', dispatchAction, { passive: false });
 document.addEventListener('change', dispatchAction, { passive: false });

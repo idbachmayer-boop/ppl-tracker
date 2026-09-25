@@ -1201,7 +1201,7 @@
   "calls": [
    "doExMerge"
   ],
-  "action": null
+  "action": "doExMerge"
  },
  {
   "fn": "exercisesCardHTML",
@@ -1212,7 +1212,7 @@
   "calls": [
    "renameExercise"
   ],
-  "action": null
+  "action": "renameExercise"
  },
  {
   "fn": "accItem",
@@ -1520,7 +1520,7 @@
   "calls": [
    "setUnit"
   ],
-  "action": null
+  "action": "setUnit"
  },
  {
   "fn": "viewData",
@@ -1531,7 +1531,7 @@
   "calls": [
    "setUnit"
   ],
-  "action": null
+  "action": "setUnit"
  },
  {
   "fn": "viewData",
@@ -1542,7 +1542,7 @@
   "calls": [
    "setRoutineMode"
   ],
-  "action": null
+  "action": "setRoutineMode"
  },
  {
   "fn": "viewData",
@@ -1553,7 +1553,7 @@
   "calls": [
    "setRoutineMode"
   ],
-  "action": null
+  "action": "setRoutineMode"
  },
  {
   "fn": "viewData",
@@ -1565,7 +1565,7 @@
    "setPetName",
    "render"
   ],
-  "action": null
+  "action": "setPetName"
  },
  {
   "fn": "viewData",
@@ -1576,7 +1576,7 @@
   "calls": [
    "removeItem"
   ],
-  "action": null
+  "action": "removeItem"
  },
  {
   "fn": "viewData",
@@ -1587,7 +1587,7 @@
   "calls": [
    "addItem"
   ],
-  "action": null
+  "action": "addItem"
  },
  {
   "fn": "viewData",
@@ -1598,7 +1598,7 @@
   "calls": [
    "removeItem"
   ],
-  "action": null
+  "action": "removeItem"
  },
  {
   "fn": "viewData",
@@ -1609,7 +1609,7 @@
   "calls": [
    "addItem"
   ],
-  "action": null
+  "action": "addItem"
  },
  {
   "fn": "viewData",
@@ -1620,7 +1620,7 @@
   "calls": [
    "exportData"
   ],
-  "action": null
+  "action": "exportData"
  },
  {
   "fn": "viewData",
@@ -1631,7 +1631,7 @@
   "calls": [
    "exportMarkdown"
   ],
-  "action": null
+  "action": "exportMarkdown"
  },
  {
   "fn": "viewData",
@@ -1643,7 +1643,7 @@
    "document.getElementById",
    "click"
   ],
-  "action": null
+  "action": "pickImportFile"
  },
  {
   "fn": "viewData",
@@ -1654,7 +1654,7 @@
   "calls": [
    "importData"
   ],
-  "action": null
+  "action": "importData"
  },
  {
   "fn": "viewData",
@@ -1665,7 +1665,7 @@
   "calls": [
    "wipe"
   ],
-  "action": null
+  "action": "wipe"
  },
  {
   "fn": "viewCardio",
