@@ -6669,6 +6669,34 @@ function f2Log(seed){
        && names(r.ssk).every(n => n === 'SPECIALIZED') && JSON.stringify(sSkips) === JSON.stringify(names(r.ssk).map(n => [n])),
      { threw, r, starts, skips, sStarts, sSkips });
 }
+/* The two documents the next agent learns from. CLAUDE.md must name the registry, the attribute and
+   the dispatcher the suite enforces, and each must exist in index.html: names only, never wording
+   (observation 18: two files agreeing on a name is a value comparison). The collection recipe is the
+   page a new collection's UI is copied from, so it must prescribe the delegated pattern and carry no
+   inline on-event attribute anywhere, scanned with the same scanner that guards index.html. */
+{
+  const claudeMdPath = APP_PATH.replace(/index\.html$/, 'CLAUDE.md');
+  const claudeMd = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
+  const named = ['ACTIONS', 'data-action', 'dispatchAction'].map(n => ({ n, inDoc: claudeMd.includes(n) }));
+  const live = { ACTIONS: !!f2app.ACTIONS && typeof f2app.ACTIONS === 'object', dispatchAction: typeof f2app.dispatchAction === 'function',
+                 dataAction: F2_RAW.includes('data-action="') };
+  ok('F2 rule: CLAUDE.md names the registry the suite enforces, and it exists in index.html',
+     named.every(x => x.inDoc) && Object.values(live).every(Boolean), { named, live });
+}
+{
+  const recipePath = APP_PATH.replace(/index\.html$/, 'docs/adding-a-collection.md');
+  const recipe = fs.existsSync(recipePath) ? fs.readFileSync(recipePath, 'utf8') : '';
+  const scan = typeof scanInlineHandlers === 'function' ? scanInlineHandlers : null;
+  /* The scanner wants whitespace before `on`; in Markdown the attribute usually follows a backtick or a
+     bracket, so a space goes in front of every `on<letters>=` that is not inside a longer word. */
+  const loosen = t => String(t).replace(/(?<![\w$-])(?=on[A-Za-z]+\s*=)/g, ' ');
+  const rows = scan ? scan(loosen(recipe)) : null;
+  const synthetic = scan ? scan(loosen('a checkbox `onchange="toggleX(i)"`')).length === 1 && scan(loosen('(onclick="x()")')).length === 1
+    && scan(loosen('button``data-action="x" and the phrase "on-event" and "reason="')).length === 0 : false;
+  ok('F2 rule: the collection recipe prescribes no inline on-event attribute',
+     recipe.length > 0 && Array.isArray(rows) && rows.length === 0 && recipe.includes('data-action') && synthetic,
+     { rows: (rows || []).slice(0, 5).map(r => r.event + '=' + r.was), mentionsDataAction: recipe.includes('data-action'), synthetic });
+}
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against

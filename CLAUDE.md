@@ -52,11 +52,22 @@ new draft function calls `save()`.
 ## Conventions
 
 - **Escaping:** every user-controlled string rendered into HTML goes through `esc()`. Two holes to
-  know about: `esc()` does **not** escape `'`, so never put a user string inside an inline handler's
-  quotes; and values interpolated into an **attribute** (`value="${st.w}"` in the set rows) are not
-  escaped at all. `validateBackup()` checks the *shape* of an imported file, never the types inside
-  it, so a hand-edited backup can put anything in a set's `w`. Escape attributes too when you touch
-  them.
+  know about: `esc()` does **not** escape `'`, so user data goes only into double-quoted attributes,
+  and never into JavaScript source text; and a value interpolated into an **attribute** is escaped
+  only where someone put the `esc()` there. The template lines Phase 5 rewrote escape their attribute
+  values, the Log tab's set rows included; the file-wide sweep of every other attribute is VAL-02
+  (v2). `validateBackup()` checks the *shape* of an imported file, never the types inside it, so a
+  hand-edited backup can put anything in a set's `w`. Escape attributes too when you touch them.
+- **Event handlers:** markup never calls a function by name. A control carries
+  `data-action="name"` and its arguments as `data-*` attributes, each value through `esc()`.
+  `ACTIONS` in `index.html` maps a name to one thin wrapper per event type, and `dispatchAction` is
+  the only listener: one per event on `document`, never passive, so the stopwatch's `preventDefault`
+  still keeps the keyboard up. A wrapper decodes its `data-*` (indexes with a unary plus, because
+  `dataset` values are strings) and calls the existing function with its existing arguments; that
+  function owns `save()` or `saveLocal()`, which is how the draft rule above keeps holding. The suite
+  refuses a new inline on-event attribute, an action name built at runtime, and a wrapper that
+  touches `DB` or persists. Never stop propagation: with one listener per event, a stopper anywhere
+  silently kills every control above it.
 - **Security rules live in `firestore.rules`**, in this repo — not only in the Firebase console.
   **Reconciled 2026-09-10: the file matches what is deployed.** Keep it that way — change the console
   and the file in the same sitting, in either direction. A rules file that has silently drifted is

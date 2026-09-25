@@ -140,12 +140,25 @@ Generalized from `sleep`'s pattern — five pieces, always named the same way:
 - **router wiring** — the tab's `sub` array gains an entry and its `view:` dispatcher gains a
   branch.
 
+**The delete button names an action; it never calls a function.** It renders
+`<button class="x-set" data-action="removeX" data-id="${esc(id)}">`, and the view adds one entry
+to `ACTIONS` in `index.html`:
+
+```js
+removeX: { click: el => removeX(el.dataset.id) },
+```
+
+The wrapper only decodes the id and calls `removeX`, which owns the soft delete and the `save()`.
+It never reads `DB` and never persists, and the suite refuses one that does (`CLAUDE.md` §
+Conventions, **Event handlers**).
+
 **Render the delete button only when the row id matches a safe-id pattern.** `sleep` uses
-`/^[A-Za-z0-9_-]+$/` — letters, digits, underscore and hyphen — before rendering
-`onclick="removeX('${id}')"` at all. The reason is in `CLAUDE.md` § Conventions: `esc()` does not
-escape `'`, and a value interpolated into an attribute is not escaped at all, so an id placed inside
-an inline handler's quotes can break out of the attribute. A naively copied delete button is the
-single most likely place a future collection reintroduces that hole.
+`/^[A-Za-z0-9_-]+$/` — letters, digits, underscore and hyphen — before rendering the button at all.
+The id now travels as escaped data in a double-quoted attribute, so it cannot break out of the
+attribute: `esc()` turns a `"` into `&quot;`, and nothing is ever read back as script. The safe-id
+gate stays anyway, as defence in depth, and `sleep` keeps it. An id from sync or an imported backup
+is never type-checked (`validateBackup()` checks shape only), and a naively copied delete button is
+the single most likely place a future collection would otherwise lean on escaping alone.
 
 ### Map-shaped, whole-day-replace (the `mobilityLog` pattern)
 
@@ -161,14 +174,17 @@ None of the five pieces above transfer — a map collection has no row id, no pe
   entry (`collectionProblems()` refuses `true`), so there is nothing to soft-delete. This is the
   literal mechanism behind "absence never means off";
 - a **view function** that reads through the today-reader and renders one row per item, each backed
-  by a checkbox `onchange="toggleX(i)"` — no delete button, so the safe-id gate above doesn't apply
-  either.
+  by a checkbox carrying `data-action="toggleX" data-i="${esc(i)}"`, with a `change`-only entry in
+  `ACTIONS`: `toggleX: { change: el => toggleX(+el.dataset.i) }`. The unary plus matters, because
+  `dataset` values are strings. The action goes on the checkbox, never on a `<label>` around it: a
+  label forwards a tap to its checkbox as a second click, and `change` fires once per tick. No delete
+  button, so the safe-id gate above doesn't apply either.
 
 Router wiring is identical to the list-shaped pattern above.
 
 One harness mechanic, not an app requirement, and the same for either shape: a new function must be
 added to `test/harness.js`'s exported-names list, or it comes back `undefined` in tests rather than
-throwing.
+throwing. `ACTIONS` is already exported, so a new entry in it needs no harness change.
 
 ## The tests a new collection ships with
 
