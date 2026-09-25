@@ -32,7 +32,7 @@ to match.
   attribute-escaping convention.
 
 ### Keyboard operability
-- **D-04:** The 17 `onclick` handlers on `div`/`span`/`li`/`tr`/`label` convert to real `<button>`
+- **D-04:** The 17 `onclick` handlers on `div`/`span`/`li`/`tr`/`label` (corrected by D-08: the set is 20, namely 16 `div`, 1 `span` and 3 `<a>` without `href`, with no `li`, `tr` or `label`) convert to real `<button>`
   elements, with a CSS reset so they look the same. Where a `<button>` can't legally wrap the content
   (interactive children, table rows), fall back to `role="button"` + `tabindex="0"` + dispatcher
   handling of Enter/Space.

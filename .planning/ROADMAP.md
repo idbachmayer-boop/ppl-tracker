@@ -10,7 +10,7 @@ reason to change. Phase 1 declares `COLLECTIONS` and re-derives `blank()`, the `
 line. Phases 2 and 3 spend that registry: a clean Markdown export for Claude, and a documented recipe
 so the next collection after `sleep` doesn't require re-deriving what Phase 1 worked out. Phases 4 and
 6 are self-contained fixes (device-local draft, `.gitattributes`) that don't touch the registry in
-either direction and can land whenever convenient. Phase 5 replaces all 172 inline event-handler
+either direction and can land whenever convenient. Phase 5 replaces all 175 inline event-handler
 attributes with delegated listeners, which is what makes Phase 7's hash-based Content-Security-Policy
 possible without disabling every clickable control in the app. Phase 1 is the highest-risk phase in
 the milestone — it is the only one that touches the merge, soft-delete and migration code paths that
@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Export for Claude** - A Markdown export of live data, derived from the same registry and the same views, ready to paste into a Claude conversation. (completed 2026-09-18)
 - [x] **Phase 3: F3 — Adding a New Tracked Thing (Recipe)** - `CLAUDE.md` gets a numbered recipe for the next collection after `sleep`, written against the shipped registry. (completed 2026-09-22)
 - [x] **Phase 4: Draft Goes Device-Local** - The in-progress workout stops crossing the wire, closing a whole bug family at the source. (completed 2026-09-23)
-- [ ] **Phase 5: F2 — Event Delegation** - All 172 inline handler attributes become delegated listeners, which is what makes a real CSP possible.
+- [ ] **Phase 5: F2 — Event Delegation** - All 175 inline handler attributes become delegated listeners, which is what makes a real CSP possible.
 - [ ] **Phase 6: F4 — .gitattributes** - Git stores `index.html`'s bytes exactly, landed alone so the whole-file diff hides nothing.
 - [ ] **Phase 7: Content Security Policy** - A hash-based CSP ships without silently breaking the only off-device backup.
 
@@ -166,12 +166,12 @@ Plans:
 
 ### Phase 5: F2 — Event Delegation
 
-**Goal**: All 172 inline handler attributes are replaced by delegated listeners reading `data-*` attributes, so markup no longer calls global functions by name and a Content-Security-Policy can restrict script execution without disabling the app.
+**Goal**: All 175 inline handler attributes are replaced by delegated listeners reading `data-*` attributes, so markup no longer calls global functions by name and a Content-Security-Policy can restrict script execution without disabling the app.
 **Depends on**: Nothing — independent of Phase 1's `COLLECTIONS` registry in both directions.
 **Requirements**: DELEG-01, DELEG-02, DELEG-03, DELEG-04, DELEG-05, DELEG-06, DELEG-07
 **Success Criteria** (what must be TRUE):
 
-  1. A static inventory of all 172 inline handler attributes (140 `onclick`, 14 `onchange`, 13 `oninput`, 3 `onkeydown`, 2 `onpointerdown`) is captured before any are touched, and a static completeness check cross-references that inventory against the delegated dispatcher afterward (DELEG-01, DELEG-03).
+  1. A static inventory of all 175 inline handler attributes (143 `onclick`, 14 `onchange`, 13 `oninput`, 3 `onkeydown`, 2 `onpointerdown`, counted when the inventory was captured) is captured before any are touched, and a static completeness check cross-references that inventory against the delegated dispatcher afterward (DELEG-01, DELEG-03).
   2. Grepping the shipped `index.html` for `on(click|change|input|keydown|pointerdown)=` returns zero matches — no handler is reachable only through a global function called by name from markup (DELEG-02, DELEG-04).
   3. Every `stopPropagation()` call in the file has been found and confirmed not to break delegation (DELEG-05).
   4. Every converted control is still operable by keyboard, not only by pointer or click (DELEG-06).
@@ -224,7 +224,7 @@ Plans:
 ### Phase 7: Content Security Policy
 
 **Goal**: A hash-based Content-Security-Policy ships that blocks arbitrary injected script while explicitly keeping the three Firebase SDK scripts and Firebase's runtime endpoints allowed, so tightening security is never the thing that silently kills the app's only off-device backup.
-**Depends on**: Phase 5 (a hash-based `script-src` cannot coexist with 172 inline handler attributes without `unsafe-inline` or the fragile, Safari-inconsistent `unsafe-hashes`; delegation must land first)
+**Depends on**: Phase 5 (a hash-based `script-src` cannot coexist with 175 inline handler attributes without `unsafe-inline` or the fragile, Safari-inconsistent `unsafe-hashes`; delegation must land first)
 **Requirements**: CSP-01, CSP-02, CSP-03, CSP-04, CSP-05, CSP-06, CSP-07
 **Success Criteria** (what must be TRUE):
 

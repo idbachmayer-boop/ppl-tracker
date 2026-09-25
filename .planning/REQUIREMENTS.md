@@ -70,7 +70,7 @@ Clean data out of the app and into Claude Desktop.
 
 ### Delegation (DELEG)
 
-- [ ] **DELEG-01**: A static inventory of all 172 inline handler attributes is captured before any are changed
+- [ ] **DELEG-01**: A static inventory of all 175 inline handler attributes is captured before any are changed
 - [ ] **DELEG-02**: Inline `onclick`, `onchange`, `oninput`, `onkeydown` and `onpointerdown` attributes are replaced by delegated listeners reading `data-*` attributes
 - [ ] **DELEG-03**: A static completeness check cross-references the pre-change inventory against the dispatcher, so a dropped call site fails the suite rather than the phone
 - [ ] **DELEG-04**: No handler is left reachable only through a global function called by name from markup
