@@ -150,7 +150,9 @@ function loadApp(htmlPath, seed, opts){
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
     get DB(){ return DB; }, set DB(v){ DB = v; },
     get TAB(){ return TAB; },
-    get fbDb(){ return fbDb; }, set fbDb(v){ fbDb = v; }
+    get fbDb(){ return fbDb; }, set fbDb(v){ fbDb = v; },
+    /* cloudVersionList is a let too, so it needs an accessor for the same reason as fbDb. */
+    get cloudVersionList(){ return cloudVersionList; }, set cloudVersionList(v){ cloudVersionList = v; }
   })`, sandbox);
   api.__sandbox = sandbox;
   api.__src = code;

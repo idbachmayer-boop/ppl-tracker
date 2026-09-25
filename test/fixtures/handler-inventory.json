@@ -1764,7 +1764,7 @@
   "calls": [
    "toggleTrash"
   ],
-  "action": null
+  "action": "toggleTrash"
  },
  {
   "fn": "trashCardHTML",
@@ -1775,7 +1775,7 @@
   "calls": [
    "restoreDeleted"
   ],
-  "action": null
+  "action": "restoreDeleted"
  },
  {
   "fn": "trashCardHTML",
@@ -1786,7 +1786,7 @@
   "calls": [
    "toggleTrash"
   ],
-  "action": null
+  "action": "toggleTrash"
  },
  {
   "fn": "versionsCardHTML",
@@ -1798,7 +1798,10 @@
    "restoreSnapshot",
    "restoreCloudVersion"
   ],
-  "actions": []
+  "actions": [
+   "restoreSnapshot",
+   "restoreCloudVersion"
+  ]
  },
  {
   "fn": "versionsCardHTML",
@@ -1809,7 +1812,7 @@
   "calls": [
    "toggleVersions"
   ],
-  "action": null
+  "action": "toggleVersions"
  },
  {
   "fn": "versionsCardHTML",
@@ -1820,7 +1823,7 @@
   "calls": [
    "toggleVersions"
   ],
-  "action": null
+  "action": "toggleVersions"
  },
  {
   "fn": "syncCardHTML",
@@ -1831,7 +1834,7 @@
   "calls": [
    "location.reload"
   ],
-  "action": null
+  "action": "reload"
  },
  {
   "fn": "syncCardHTML",
@@ -1842,7 +1845,7 @@
   "calls": [
    "pushNow"
   ],
-  "action": null
+  "action": "pushNow"
  },
  {
   "fn": "syncCardHTML",
@@ -1853,7 +1856,7 @@
   "calls": [
    "syncSignOut"
   ],
-  "action": null
+  "action": "syncSignOut"
  },
  {
   "fn": "syncCardHTML",
@@ -1864,7 +1867,7 @@
   "calls": [
    "syncSignIn"
   ],
-  "action": null
+  "action": "syncSignIn"
  },
  {
   "fn": "syncCardHTML",
@@ -1875,7 +1878,7 @@
   "calls": [
    "syncSignIn"
   ],
-  "action": null
+  "action": "syncCreateAccount"
  },
  {
   "fn": "renderIdeasList",

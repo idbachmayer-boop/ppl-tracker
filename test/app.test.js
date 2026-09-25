@@ -4644,6 +4644,28 @@ function f2Corpus(){
     } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
     out.push({ label: 'ideas list (one being edited)', html: list() });
   }
+  /* 05-02: Settings with the cards the default states never open. The harness has no Firebase, so
+     the sync card shows its buttons only once `firebase` is stubbed. */
+  {
+    const a = loadApp(APP_PATH);
+    const appHtml = () => a.__sandbox.document.getElementById('app').innerHTML || '';
+    a.__sandbox.firebase = {};
+    a.DB = a.blank();
+    a.DB.weights = [{ date: a.todayISO(), value: 190, deletedAt: Date.now(), mtime: Date.now() }];
+    try {
+      a.go('settings');
+      out.push({ label: 'Settings: sync signed out', html: appHtml() });
+      a.__sandbox.toggleTrash();
+      out.push({ label: 'Settings: trash open (one deleted item)', html: appHtml() });
+      a.__sandbox.toggleTrash();
+      a.snapshotNow('f2');
+      a.SYNC.user = { email: 't@example.com' };
+      a.SYNC.needsUpdate = true;
+      a.cloudVersionList = [{ _id: 'v1', at: Date.now(), label: 'cloud', summary: {} }];
+      a.__sandbox.toggleVersions();
+      out.push({ label: 'Settings: versions open (local + cloud), sync signed in and paused', html: appHtml() });
+    } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
+  }
   f2Corpus.cache = out;
   return out;
 }
@@ -5156,6 +5178,108 @@ const f2IdeasList = a => a.__sandbox.document.getElementById('ideas-list').inner
      !threw && html.includes('Hostile press') && !html.includes('<b>') && !!ctl && ctl.data.id === HOSTILE
        && prompts.length === 1 && prompts[0].some(x => String(x).includes('Hostile press')) && a.DB.exercises[0].name === 'Hostile press',
      { threw, rawB: html.includes('<b>'), control: ctl, prompts });
+}
+
+/* The Recently deleted and Version history headers were clickable divs. As buttons they take focus
+   and toggle on Enter and Space natively; here each must open its card and, re-rendered, close it. */
+const f2AppHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.weights = [{ date: today, value: 190, deletedAt: Date.now(), mtime: Date.now() }];
+  const toggles = (name, note) => {
+    const r = { before: f2AppHtml(a).includes(note) };
+    const c1 = controlsIn(f2AppHtml(a)).find(x => x.data.action === name) || null;
+    r.closedTag = c1 && c1.tag;
+    if(c1) fireAction(a, 'click', fakeEl(c1.data));
+    r.opened = f2AppHtml(a).includes(note);
+    const c2 = controlsIn(f2AppHtml(a)).find(x => x.data.action === name) || null;
+    r.openTag = c2 && c2.tag;
+    if(c2) fireAction(a, 'click', fakeEl(c2.data));
+    r.closed = !f2AppHtml(a).includes(note);
+    r.ok = !r.before && r.closedTag === 'button' && r.opened && r.openTag === 'button' && r.closed;
+    return r;
+  };
+  let threw = null, trash = null, versions = null;
+  try {
+    a.go('settings');
+    trash = toggles('toggleTrash', 'Deleted items stay hidden here for 30 days');
+    versions = toggles('toggleVersions', 'Restoring snapshots your current data first');
+  } catch(e){ threw = e.message; }
+  ok('DELEG-06: Recently deleted and Version history open and close from a button',
+     !threw && !!trash && trash.ok && !!versions && versions.ok, { threw, trash, versions });
+}
+/* dataset values are strings; restoreSnapshot indexes an array and restoreDeleted compares kinds,
+   so each must receive a NUMBER index (Pitfall 1). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.weights = [{ date: dayOff(-1), value: 191, mtime: 1 },
+                  { date: today, value: 190, deletedAt: Date.now(), mtime: Date.now() }];
+  let threw = null, del = null, snap = null, snapped = false;
+  const restoredDel = spyOn(a, 'restoreDeleted'), restoredSnap = spyOn(a, 'restoreSnapshot');
+  try {
+    a.go('settings');
+    a.__sandbox.toggleTrash();
+    del = controlsIn(f2AppHtml(a)).find(x => x.data.action === 'restoreDeleted') || null;
+    if(del) fireAction(a, 'click', fakeEl(del.data));
+    a.__sandbox.toggleTrash();
+    snapped = a.snapshotNow('f2') !== false;
+    a.__sandbox.toggleVersions();
+    snap = controlsIn(f2AppHtml(a)).find(x => x.data.action === 'restoreSnapshot') || null;
+    if(snap) fireAction(a, 'click', fakeEl(snap.data));
+  } catch(e){ threw = e.message; }
+  const d = restoredDel[0] || [], s = restoredSnap[0] || [];
+  ok('DELEG-02: restoring a deleted item and a snapshot pass numeric indexes',
+     !threw && !!del && restoredDel.length === 1 && d.length === 2 && d[0] === 'weight' && typeof d[1] === 'number' && d[1] === 1
+       && snapped && !!snap && restoredSnap.length === 1 && s.length === 1 && typeof s[0] === 'number' && s[0] === 0,
+     { threw, restoredDel, restoredSnap, snapped, del, snap });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  let threw = null, html = '', ctl = null;
+  const restored = spyOn(a, 'restoreCloudVersion');
+  try {
+    a.SYNC.user = { email: 't@example.com' };
+    a.go('settings');
+    a.__sandbox.toggleVersions();
+    a.cloudVersionList = [{ _id: HOSTILE, at: Date.now(), label: 'hostile', summary: {} }];
+    a.render();
+    html = f2AppHtml(a);
+    ctl = controlsIn(html).find(x => x.data.action === 'restoreCloudVersion') || null;
+    if(ctl) fireAction(a, 'click', fakeEl(ctl.data));
+  } catch(e){ threw = e.message; }
+  finally { a.SYNC.user = null; a.cloudVersionList = null; }
+  ok('D-03: a hostile cloud version id round-trips through data-id',
+     !threw && html.includes('hostile') && !html.includes('<b>') && !!ctl && ctl.data.id === HOSTILE
+       && restored.length === 1 && restored[0].length === 1 && restored[0][0] === HOSTILE,
+     { threw, rawB: html.includes('<b>'), control: ctl, restored });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.__sandbox.firebase = {};
+  let threw = null, signedOut = [], signedIn = [], reloads = 0;
+  const signIns = spyOn(a, 'syncSignIn'), pushes = spyOn(a, 'pushNow'), outs = spyOn(a, 'syncSignOut');
+  a.__sandbox.location.reload = () => { reloads++; };
+  const click = (cs, name) => { const c = cs.find(x => x.data.action === name); if(c) fireAction(a, 'click', fakeEl(c.data)); return c ? c.tag : null; };
+  try {
+    a.go('settings');
+    let cs = controlsIn(f2AppHtml(a));
+    signedOut = [click(cs, 'syncSignIn'), click(cs, 'syncCreateAccount')];
+    a.SYNC.user = { email: 't@example.com' };
+    a.SYNC.needsUpdate = true;
+    a.render();
+    cs = controlsIn(f2AppHtml(a));
+    signedIn = [click(cs, 'pushNow'), click(cs, 'syncSignOut'), click(cs, 'reload')];
+  } catch(e){ threw = e.message; }
+  finally { a.SYNC.user = null; a.SYNC.needsUpdate = false; a.__sandbox.firebase = undefined; }
+  ok('DELEG-02: every Cloud Sync button runs its sync call through the dispatcher',
+     !threw && signedOut.concat(signedIn).every(t => t === 'button')
+       && JSON.stringify(signIns) === '[[false],[true]]' && JSON.stringify(pushes) === '[[false]]'
+       && JSON.stringify(outs) === '[[]]' && reloads === 1,
+     { threw, signedOut, signedIn, signIns, pushes, outs, reloads });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

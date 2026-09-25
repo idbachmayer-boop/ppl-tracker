@@ -4553,47 +4553,47 @@ function restoreDeleted(kind, i){
 function trashCardHTML(){
   const items = trashItems();
   if(!trashOpen){
-    return `<div class="card"><div class="row" style="cursor:pointer" onclick="toggleTrash()">
-      <div><div style="font-weight:700;font-size:14px">${ph('trash','lead')}Recently deleted</div>
-      <div class="muted" style="font-size:12px;margin-top:2px">${items.length? items.length+' item'+(items.length!==1?'s':'')+' — restorable for 30 days' : 'Nothing deleted recently'}</div></div>
-      <span class="muted">${ph('caret-down')}</span></div></div>`;
+    return `<div class="card"><button class="row tap" style="cursor:pointer" data-action="toggleTrash">
+      <span style="display:block"><span style="display:block;font-weight:700;font-size:14px">${ph('trash','lead')}Recently deleted</span>
+      <span class="muted" style="display:block;font-size:12px;margin-top:2px">${items.length? items.length+' item'+(items.length!==1?'s':'')+' — restorable for 30 days' : 'Nothing deleted recently'}</span></span>
+      <span class="muted">${ph('caret-down')}</span></button></div>`;
   }
   const rows = items.length ? items.map(o=>`<div class="hist-item" style="cursor:default">
       <div style="min-width:0"><div style="font-weight:600;font-size:13px">${esc(o.label)}</div>
         <div class="muted" style="font-size:11px">deleted ${new Date(o.at).toLocaleString()}</div></div>
-      <button class="btn btn-sm btn-ghost" onclick="restoreDeleted('${o.kind}',${o.i})">Restore</button>
+      <button class="btn btn-sm btn-ghost" data-action="restoreDeleted" data-kind="${esc(o.kind)}" data-i="${esc(o.i)}">Restore</button>
     </div>`).join('') : '<p class="muted" style="font-size:13px">Nothing deleted in the last 30 days.</p>';
   return `<div class="card">
-    <div class="row" style="cursor:pointer;margin-bottom:10px" onclick="toggleTrash()">
-      <div style="font-weight:700;font-size:14px">${ph('trash','lead')}Recently deleted</div><span class="muted">${ph('caret-up')}</span></div>
+    <button class="row tap" style="cursor:pointer;margin-bottom:10px" data-action="toggleTrash">
+      <span style="display:block;font-weight:700;font-size:14px">${ph('trash','lead')}Recently deleted</span><span class="muted">${ph('caret-up')}</span></button>
     ${rows}
     <p class="muted" style="font-size:11px;margin-top:10px">Deleted items stay hidden here for 30 days so a mis-tap is undoable, then their details are cleared.</p>
   </div>`;
 }
 function versionsCardHTML(){
   const snaps = loadSnaps();
-  const row = (when, label, sum, action) => `<div class="hist-item" style="cursor:default">
+  const row = (when, label, sum, act) => `<div class="hist-item" style="cursor:default">
       <div><div style="font-weight:600;font-size:13px">${new Date(when).toLocaleString()}</div>
         <div class="muted" style="font-size:11px">${esc(label||'auto')} · ${sum.sessions||0} workouts · ${sum.weights||0} weigh-ins${sum.latest?' · latest '+sum.latest:''}</div></div>
-      <button class="btn btn-sm btn-ghost" onclick="${action}">Restore</button>
+      <button class="btn btn-sm btn-ghost" ${act}>Restore</button>
     </div>`;
   if(!versionsOpen){
     const n = snaps.length + ((cloudVersionList||[]).length);
-    return `<div class="card"><div class="row" style="cursor:pointer" onclick="toggleVersions()">
-      <div><div style="font-weight:700;font-size:14px">${ph('clock-counter-clockwise','lead')}Version history</div>
-      <div class="muted" style="font-size:12px;margin-top:2px">${snaps.length} on this device${SYNC.user?' + cloud versions':''} — restore a previous state</div></div>
-      <span class="muted">${ph('caret-down')}</span></div></div>`;
+    return `<div class="card"><button class="row tap" style="cursor:pointer" data-action="toggleVersions">
+      <span style="display:block"><span style="display:block;font-weight:700;font-size:14px">${ph('clock-counter-clockwise','lead')}Version history</span>
+      <span class="muted" style="display:block;font-size:12px;margin-top:2px">${snaps.length} on this device${SYNC.user?' + cloud versions':''} — restore a previous state</span></span>
+      <span class="muted">${ph('caret-down')}</span></button></div>`;
   }
-  const localRows = snaps.length ? snaps.map((s,i)=>row(s.at, s.label, s.summary||{}, `restoreSnapshot(${i})`)).join('')
+  const localRows = snaps.length ? snaps.map((s,i)=>row(s.at, s.label, s.summary||{}, `data-action="restoreSnapshot" data-i="${esc(i)}"`)).join('')
                                  : '<p class="muted" style="font-size:13px">No local snapshots yet.</p>';
   let cloudRows;
   if(!SYNC.user) cloudRows = '<p class="muted" style="font-size:13px">Sign in to see cloud versions.</p>';
   else if(versionsLoading) cloudRows = '<p class="muted" style="font-size:13px">Loading…</p>';
   else if(!cloudVersionList || !cloudVersionList.length) cloudRows = `<p class="muted" style="font-size:13px">No cloud versions yet. If this stays empty, the Firestore rules need the <code>versions</code> subcollection allowed (see the app notes).</p>`;
-  else cloudRows = cloudVersionList.map(v=>row(v.at, v.label, v.summary||{}, `restoreCloudVersion('${v._id}')`)).join('');
+  else cloudRows = cloudVersionList.map(v=>row(v.at, v.label, v.summary||{}, `data-action="restoreCloudVersion" data-id="${esc(v._id)}"`)).join('');
   return `<div class="card">
-    <div class="row" style="cursor:pointer;margin-bottom:10px" onclick="toggleVersions()">
-      <div style="font-weight:700;font-size:14px">${ph('clock-counter-clockwise','lead')}Version history</div><span class="muted">${ph('caret-up')}</span></div>
+    <button class="row tap" style="cursor:pointer;margin-bottom:10px" data-action="toggleVersions">
+      <span style="display:block;font-weight:700;font-size:14px">${ph('clock-counter-clockwise','lead')}Version history</span><span class="muted">${ph('caret-up')}</span></button>
     <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">This device</div>
     ${localRows}
     <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 4px">Cloud (all devices)</div>
@@ -4614,23 +4614,23 @@ function syncCardHTML(){
     const stale = SYNC.needsUpdate ? `<div class="card" style="border:1.5px solid var(--warm-bd);background:var(--warm-bg)">
       <div style="font-weight:700;font-size:14px">${ph('warning','lead')}Sync paused — this device is out of date</div>
       <p class="muted" style="line-height:1.5;margin-top:4px">Another device is running a newer version of the app. Fully close and reopen this one to update, and syncing resumes on its own. Your data here is safe in the meantime.</p>
-      <button class="btn btn-block" style="margin-top:10px" onclick="location.reload()">${ph('arrows-clockwise')}Reload now</button>
+      <button class="btn btn-block" style="margin-top:10px" data-action="reload">${ph('arrows-clockwise')}Reload now</button>
     </div>` : '';
     return `${stale}<div class="card">
       <div class="row"><div><div style="font-weight:700">${ph('check-circle','lead')}Connected</div><div class="muted" style="font-size:12px">${esc(SYNC.user.email||'')}</div></div><span class="flag">${SYNC.needsUpdate?'Paused':(SYNC.pending?'Pending':'Sync on')}</span></div>
       <p class="muted" id="sync-last" style="margin:10px 0 4px">${SYNC.lastSyncAt?('Last synced: '+new Date(SYNC.lastSyncAt).toLocaleString()):'Not synced yet'}</p>
       <p class="muted" id="sync-status" style="margin:0 0 12px">${esc(SYNC.status||'')}</p>
-      <button class="btn btn-block" onclick="pushNow(false)">⟳ Check for updates</button>
+      <button class="btn btn-block" data-action="pushNow">⟳ Check for updates</button>
       <p class="muted" style="font-size:11px;margin-top:8px">Safe to tap anytime — it merges both devices and never replaces newer data.</p>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="syncSignOut()">Sign out</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" data-action="syncSignOut">Sign out</button>
     </div>`;
   }
   return `<div class="card">
     <p class="muted" style="margin-bottom:12px">Sign in with the <strong>same email + password on every device</strong> to keep your data in sync. Your data is private to your login.</p>
     <input id="sync-email" type="email" placeholder="Email" autocomplete="username" style="margin-bottom:8px">
     <input id="sync-pass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password" style="margin-bottom:12px">
-    <button class="btn btn-block" onclick="syncSignIn(false)">Sign in</button>
-    <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="syncSignIn(true)">Create account</button>
+    <button class="btn btn-block" data-action="syncSignIn">Sign in</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:10px" data-action="syncCreateAccount">Create account</button>
     <p class="muted" id="sync-status" style="margin-top:10px">${esc(SYNC.status||'')}</p>
   </div>`;
 }
@@ -4757,6 +4757,17 @@ const ACTIONS = {
   wipe:           { click: () => wipe() },
   doExMerge:      { click: () => doExMerge() },
   renameExercise: { click: el => renameExercise(el.dataset.id) },
+  /* Recently deleted, Version history and Cloud Sync. Restores take a NUMBER index or the exact
+     id; the functions they call own the confirm and the snapshot taken first. */
+  toggleTrash:         { click: () => toggleTrash() },
+  restoreDeleted:      { click: el => restoreDeleted(el.dataset.kind, +el.dataset.i) },
+  toggleVersions:      { click: () => toggleVersions() },
+  restoreSnapshot:     { click: el => restoreSnapshot(+el.dataset.i) },
+  restoreCloudVersion: { click: el => restoreCloudVersion(el.dataset.id) },
+  pushNow:             { click: () => pushNow(false) },
+  syncSignOut:         { click: () => syncSignOut() },
+  syncSignIn:          { click: () => syncSignIn(false) },
+  syncCreateAccount:   { click: () => syncSignIn(true) },
 };
 document.addEventListener('click', dispatchAction, { passive: false });
 document.addEventListener('change', dispatchAction, { passive: false });
