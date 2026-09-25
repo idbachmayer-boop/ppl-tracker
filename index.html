@@ -1007,6 +1007,9 @@ const ph = (name, cls) => PH[name]
 function fmtDur(ms){ const t=Math.max(0,Math.floor(ms/1000)); const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60; const pad=n=>String(n).padStart(2,'0'); return h? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`; }
 function fmtClock(ms){ return new Date(ms).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
 /* Format one logged set. Weight of 0 (with reps) = bodyweight → "BW". Blank weight → reps only. */
+/* Plain text, never markup: w and r are stored strings nothing type-checks (a restored backup can hold
+   anything), so every HTML sink wraps the result in esc(). Not escaped here, because the Markdown
+   exporter and setStatus's title escape it themselves and would escape it twice. */
 function fmtSet(w,r){ if(w===''||w==null) return `${r}`; return `${(+w===0?'BW':w)}×${r}`; }
 function fmtMS(total){ total=+total||0; const m=Math.floor(total/60), s=total%60; return `${m}:${String(s).padStart(2,'0')}`; }
 /* Estimated 1-rep max (Epley). BW(0) or blank → 0 (excluded from strength charts). */
@@ -1689,7 +1692,7 @@ function previewRows(name){
         </div>
         <span class="muted" style="white-space:nowrap;font-size:12px">${s.sets}×${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>
       </div>
-      ${lastStr?`<div class="muted" style="font-size:11px;margin-top:3px">Last: ${lastStr}${ref?' · '+fmtDate(ref.date):''}</div>`:''}
+      ${lastStr?`<div class="muted" style="font-size:11px;margin-top:3px">Last: ${esc(lastStr)}${ref?' · '+fmtDate(ref.date):''}</div>`:''}
     </div>`;
   }).join('');
 }
@@ -1801,13 +1804,13 @@ function viewActive(){
     const real = ref ? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
     let lastLine = `<span class="muted">No previous data — set your baseline.</span>`, flag='', noteHint='';
     if(ref){
-      lastLine = `Last time (${fmtDate(ref.date)}): <strong>${real.map(x=> fmtSet(x.w,x.r)).join(',  ')||'—'}</strong>`;
+      lastLine = `Last time (${fmtDate(ref.date)}): <strong>${esc(real.map(x=> fmtSet(x.w,x.r)).join(',  '))||'—'}</strong>`;
       const aw = addWeightInfo(s, ref, entry.name);
       flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${aw.newW} ${DB.unit}`:''}</span>` : '';
       if(ref.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(ref.entry.note)}</div>`;
     } else if(alt){
       const altReal = alt.entry.sets.filter(x=>!x.skipped && x.r!=='');
-      lastLine = `Last time (${fmtDate(alt.date)} · ${esc(alt.workout)}): <strong>${altReal.map(x=> fmtSet(x.w,x.r)).join(',  ')||'—'}</strong>`;
+      lastLine = `Last time (${fmtDate(alt.date)} · ${esc(alt.workout)}): <strong>${esc(altReal.map(x=> fmtSet(x.w,x.r)).join(',  '))||'—'}</strong>`;
       /* Only translate when those reps sit outside this slot's range — that's the case where the
          old load doesn't transfer. Same-range history speaks for itself. Display only, never
          pre-filled: a suggestion shouldn't quietly become a logged number. */
@@ -2098,8 +2101,8 @@ function renderWeekReview(){
     nW += sess.filter(s=>!s.skipped).length; nH += hb.length; if(note && note.trim()) nJ++;
     const tags = [];
     sess.forEach(s=> s.skipped
-      ? tags.push(`<span class="muted" style="font-size:11px">${ph('skip-forward','lead')}skipped ${s.workout}</span>`)
-      : tags.push(`<span class="pill ${accClass(PROGRAM[s.workout]?PROGRAM[s.workout].group:'push')}" style="font-size:9px;padding:2px 7px">${s.workout}</span>`));
+      ? tags.push(`<span class="muted" style="font-size:11px">${ph('skip-forward','lead')}skipped ${esc(s.workout)}</span>`)
+      : tags.push(`<span class="pill ${accClass(PROGRAM[s.workout]?PROGRAM[s.workout].group:'push')}" style="font-size:9px;padding:2px 7px">${esc(s.workout)}</span>`));
     hb.forEach(h=> tags.push(`<span style="font-size:11px">🎲 ${esc(h)}</span>`));
     if(wt) tags.push(`<span style="font-size:11px">⚖️ ${(+wt.value).toFixed(1)}</span>`);
     if(dayComplete(iso)) tags.push(`<span style="font-size:11px">🧎 ${hasMobSession(iso)?'session':mobDoneOn(iso)}</span>`);
@@ -2194,10 +2197,10 @@ function viewHistory(){
       right = `<span class="muted">Skipped ${ph(open?'caret-up':'caret-down')}</span>`;
       if(open) detail = `<div class="hist-detail">${ph('skip-forward','lead')}Day skipped${s.reason?': <em>'+esc(s.reason)+'</em>':''}${editRow}</div>`;
     } else {
-      right = `<span class="muted">${s.durationMin?s.durationMin+' min · ':''}${e_count(s)} sets ${ph(open?'caret-up':'caret-down')}</span>`;
+      right = `<span class="muted">${s.durationMin?esc(String(s.durationMin))+' min · ':''}${e_count(s)} sets ${ph(open?'caret-up':'caret-down')}</span>`;
       if(open){
         /* 🏆 sits on the set that actually set the record, so you can see which one it was. */
-        const setsOf = e => e.sets.map((x,k)=> x.skipped ? '<em>skip</em>' : fmtSet(x.w,x.r) + (prIdx.isPR(s, e, k) ? ' 🏆' : '')).join(', ');
+        const setsOf = e => e.sets.map((x,k)=> x.skipped ? '<em>skip</em>' : esc(fmtSet(x.w,x.r)) + (prIdx.isPR(s, e, k) ? ' 🏆' : '')).join(', ');
         const lines = (s.entries||[]).map(e=>{
           const setStr = setsOf(e);
           return `<strong>${esc(e.name)}</strong> — ${setStr||'—'}${e.deload?' <em>(deload)</em>':''}${e.note?` <span class="muted">· ${esc(e.note)}</span>`:''}`;
@@ -2211,13 +2214,13 @@ function viewHistory(){
         }
         if(dayComplete(s.date)) lines.push(`<strong>🧎 Mobility</strong> — ${hasMobSession(s.date)?'yoga / full session':mobDoneOn(s.date)+' done that day'}`);
         const noteStr = s.note ? `<div style="margin-top:8px;font-size:13px;color:var(--text-2);line-height:1.5;white-space:pre-wrap">📝 ${esc(s.note)}</div>` : '';
-        const timeStr = (s.startedAt&&s.endedAt) ? `<div class="muted" style="margin-top:8px">${fmtClock(s.startedAt)}–${fmtClock(s.endedAt)} · ${s.durationMin} min at the gym</div>` : '';
+        const timeStr = (s.startedAt&&s.endedAt) ? `<div class="muted" style="margin-top:8px">${fmtClock(s.startedAt)}–${fmtClock(s.endedAt)} · ${esc(String(s.durationMin))} min at the gym</div>` : '';
         detail = `<div class="hist-detail">${lines.join('<br>')}${noteStr}${timeStr}${editRow}</div>`;
       }
     }
     return `<div>
       <button class="hist-item tap" data-action="toggleHist" data-idx="${esc(idx)}">
-        <span style="display:block"><span class="pill ${accClass(g)}">${s.workout}</span> <span class="muted" style="margin-left:6px">${fmtDate(s.date)}</span>${prIdx.sessionHasPR(s)?' 🏆':''}</span>
+        <span style="display:block"><span class="pill ${accClass(g)}">${esc(s.workout)}</span> <span class="muted" style="margin-left:6px">${fmtDate(s.date)}</span>${prIdx.sessionHasPR(s)?' 🏆':''}</span>
         ${right}
       </button>${detail}
     </div>`;

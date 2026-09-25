@@ -7118,6 +7118,66 @@ const EVIL = String.fromCharCode(34) + '><img src=x onerror=alert(1)>';
   ok('D-09: a hostile weight unit stays inside every weigh-in placeholder, and Enter still logs from Today',
      !threw && Object.values(r).length === 6 && Object.values(r).every(v => v === true), { threw, r });
 }
+/* WR-02. A merged backup keeps any string in a logged set's w and r, in durationMin and in workout
+   (validateBackup() checks shape, normalize() coerces none of them). fmtSet() returns them as they
+   are, so every place its text is put into markup escapes it. The duration payload closes the History
+   row's button, which would push the rest of the row out of the tap target. */
+const CLOSER = '</button>' + EVIL;
+function f2HostileSession(id, workout, date, name){
+  return { id, workout, date, endedAt: 50, startedAt: 40, durationMin: CLOSER, extras: {},
+    entries: [{ name, sets: [{ w: EVIL, r: EVIL, skipped: false }] }] };
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2History();
+    a.DB.sessions.push(f2HostileSession('hx', EVIL, dayOff(-1), 'Barbell bench press'));
+    a.__sandbox.toggleHist(a.DB.sessions.length - 1);
+    const html = f2AppHtml(a);
+    r.open = html.includes('data-action="changeSessionDate" data-idx="' + (a.DB.sessions.length - 1) + '"');
+    r.img = /<img/i.test(html);
+    r.closer = html.split('&lt;/button&gt;').length - 1;
+    r.escaped = html.split('&quot;&gt;&lt;img').length - 1;
+  } catch(e){ threw = e.message; }
+  ok('D-09: a hostile logged set, duration or workout name renders escaped in History',
+     !threw && r.open && r.img === false && r.closer >= 2 && r.escaped >= 5, { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Log(a => {
+      a.DB.sessions.push(f2HostileSession('px', 'PUSH 1', dayOff(-1), a.PROGRAM['PUSH 1'].slots[0].examples[0]));
+    });
+    a.__sandbox.togglePreview('PUSH 1');
+    const html = f2AppHtml(a);
+    r.open = /Last: /.test(html);
+    r.img = /<img/i.test(html);
+    r.escaped = html.split('&quot;&gt;&lt;img').length - 1;
+  } catch(e){ threw = e.message; }
+  ok("D-09: a hostile logged set renders escaped in the picker preview's last-time line",
+     !threw && r.open && r.img === false && r.escaped >= 2, { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    /* Slot 0 has an exact match in PUSH 1; slot 1's exercise was last done in another workout, so its
+       line takes the "elsewhere" branch. */
+    const a = f2Mid(d => {
+      d.sessions.push(f2HostileSession('ax', 'PUSH 1', dayOff(-1), d.draft.entries[0].name));
+      d.sessions.push(f2HostileSession('bx', 'LEGS 1', dayOff(-1), d.draft.entries[1].name));
+    });
+    const html = a.viewActive();
+    r.exact = /Last time \([^)]*\):/.test(html);
+    r.elsewhere = /Last time \([^)]*· LEGS 1\):/.test(html);
+    r.img = /<img/i.test(html);
+    r.escaped = html.split('&quot;&gt;&lt;img').length - 1;
+  } catch(e){ threw = e.message; }
+  ok("D-09: a hostile logged set renders escaped in the active workout's last-time lines",
+     !threw && r.exact && r.elsewhere && r.img === false && r.escaped >= 4, { threw, r });
+}
 
 /* The phase's two closing properties, stated with no count. Every inventoried call site is an
    action, and nothing in index.html (any event, any quoting, comments included) is an inline

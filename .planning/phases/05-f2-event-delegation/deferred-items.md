@@ -23,6 +23,13 @@ and what would fix it.
 
 ## 2. Logged set values render as HTML text without `esc()` (found in 05-06)
 
+> **Resolved in the Phase 5 code-review fix (WR-02, see `05-REVIEW-FIX.md`).** Every sink now
+> escapes `fmtSet()`'s text: the picker's "Last:" line, both "Last time" branches of `viewActive`,
+> and History's set list. History also escapes `durationMin` (in the row button and the detail
+> line) and the workout name (in the row pill and in the week review's tags). `fmtSet` itself still
+> returns plain text for the Markdown exporter and `setStatus`. The strength-history rows were
+> already safe: they escape `setsStr`. Three checks cover this ("D-09: a hostile logged set …").
+
 - **Where:** `index.html`, every `fmtSet(w, r)` result placed in markup: the picker preview's
   "Last:" line (`previewRows`), the active workout's "Last time" line (both the exact-slot and the
   elsewhere branch of `viewActive`), History's set list (`setsOf` in `viewHistory`) and the strength
