@@ -284,7 +284,10 @@
    "logWeight",
    "logPetWeight"
   ],
-  "actions": []
+  "actions": [
+   "logWeight",
+   "logPetWeight"
+  ]
  },
  {
   "fn": "viewToday",
@@ -296,7 +299,10 @@
    "logWeight",
    "logPetWeight"
   ],
-  "actions": []
+  "actions": [
+   "logWeight",
+   "logPetWeight"
+  ]
  },
  {
   "fn": "viewToday",
@@ -307,7 +313,7 @@
   "calls": [
    "toggleAcc"
   ],
-  "action": null
+  "action": "toggleAcc"
  },
  {
   "fn": "viewToday",
@@ -318,7 +324,7 @@
   "calls": [
    "goSub"
   ],
-  "action": null
+  "action": "openChart"
  },
  {
   "fn": "viewToday",
@@ -329,7 +335,7 @@
   "calls": [
    "goSub"
   ],
-  "action": null
+  "action": "openChart"
  },
  {
   "fn": "viewToday",
@@ -340,7 +346,7 @@
   "calls": [
    "goSub"
   ],
-  "action": null
+  "action": "goSub"
  },
  {
   "fn": "viewToday",
@@ -362,7 +368,7 @@
   "calls": [
    "goSub"
   ],
-  "action": null
+  "action": "goSub"
  },
  {
   "fn": "viewToday",
@@ -373,7 +379,7 @@
   "calls": [
    "toggleAcc"
   ],
-  "action": null
+  "action": "toggleAcc"
  },
  {
   "fn": "viewToday",
@@ -384,7 +390,7 @@
   "calls": [
    "toggleMobSession"
   ],
-  "action": null
+  "action": "toggleMobSession"
  },
  {
   "fn": "viewToday",
@@ -1234,7 +1240,7 @@
   "calls": [
    "toggleMobility"
   ],
-  "action": null
+  "action": "toggleMobility"
  },
  {
   "fn": "extraCard",

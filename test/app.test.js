@@ -4806,6 +4806,18 @@ function f2Corpus(){
       out.push({ label, html: appHtml(a) });
     });
   }
+  /* 05-05: Today's weigh-in card open on a blank DB (both log rows), Today with a lawn location and
+     fresh weather (the weather card), and Today with the mobility card open (its checkboxes). */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    [['Today: blank, weigh-in open (both log rows)', a => { a.DB = a.blank(); a.go('today'); a.toggleAcc('weighin'); }],
+     ['Today: lawn location and weather (weather card)', a => { a.DB = a.blank(); setup(a, {}); a.go('today'); }],
+     ['Today: mobility card open', a => { a.DB = a.blank(); a.go('today'); a.toggleAcc('mob-today'); }]].forEach(([label, drive]) => {
+      const a = loadApp(APP_PATH);
+      try { drive(a); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label, html: appHtml(a) });
+    });
+  }
   f2Corpus.cache = out;
   return out;
 }
@@ -6186,6 +6198,192 @@ function f2SeedSpecialized(a){
   ok("DELEG-06: Today's evening week card is a whole-card button that opens History",
      !threw && r.evening && r.hist.includes('button:card tap') && r.hist.includes('button:tap-inline') && r.hist.length === 2
        && r.tab === 'train' && r.sub === 'history', { threw, r });
+}
+/* A blank DB on Today: nobody has weighed in, and the afternoon card is closed until toggled, which
+   renders both log rows. */
+function f2TodayWeighIn(){
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.go('today');
+  a.toggleAcc('weighin');
+  return a;
+}
+/* Enter-to-log (RESEARCH Pitfall 3). The box's action is keydown-only and forwards Enter to the Log
+   button's click handler; the button has no keydown handler, so Enter on the focused button (whose
+   click the browser synthesizes) cannot log a second time. Fired through the app's own listeners. */
+{
+  const r = {};
+  let threw = null;
+  let calls = [];
+  try {
+    const a = f2TodayWeighIn();
+    calls = spyOn(a, 'logWeight');
+    const cs = controlsIn(f2AppHtml(a));
+    const box = cs.find(c => c.data.action === 'enter' && c.data.enter === 'logWeight') || null;
+    const btn = cs.find(c => c.data.action === 'logWeight') || null;
+    r.box = box && box.tag; r.btn = btn && btn.tag;
+    if(box){
+      const el = fakeEl(box.data, { tagName: 'INPUT' });
+      fireListener(a, 'keydown', el, { key: 'Enter' }); r.enter = calls.length;
+      fireListener(a, 'keydown', el, { key: 'a' });     r.otherKey = calls.length;
+      fireListener(a, 'click', el);                      r.clickBox = calls.length;
+    }
+    if(btn){
+      const el = fakeEl(btn.data, { tagName: 'BUTTON' });
+      fireListener(a, 'click', el);                      r.click = calls.length;
+      fireListener(a, 'keydown', el, { key: 'Enter' }); r.enterOnButton = calls.length;
+    }
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: Enter in the weigh-in box logs once, and the Log button logs once',
+     !threw && r.box === 'input' && r.btn === 'button' && r.enter === 1 && r.otherKey === 1 && r.clickBox === 1
+       && r.click === 2 && r.enterOnButton === 2 && calls.every(c => c.length === 0), { threw, r, calls });
+}
+{
+  const r = {};
+  let threw = null;
+  let calls = [];
+  try {
+    const a = f2TodayWeighIn();
+    calls = spyOn(a, 'logPetWeight');
+    const html = f2AppHtml(a);
+    r.hint = html.includes('&#39;s weight'); r.doubled = html.includes('&amp;#39;');
+    const cs = controlsIn(html);
+    const box = cs.find(c => c.data.action === 'enter' && c.data.enter === 'logPetWeight') || null;
+    const btn = cs.find(c => c.data.action === 'logPetWeight') || null;
+    r.box = box && box.tag; r.btn = btn && btn.tag;
+    if(box) fireListener(a, 'keydown', fakeEl(box.data, { tagName: 'INPUT' }), { key: 'Enter' });
+    r.afterEnter = JSON.stringify(calls);
+    if(btn) fireListener(a, 'click', fakeEl(btn.data, { tagName: 'BUTTON' }));
+    /* T-5-02: the pet name reaches the placeholder through the call site's esc(), once. */
+    a.DB.petName = 'Fr"><b>x';
+    a.render();
+    const hostile = f2AppHtml(a);
+    r.hostileRaw = hostile.includes('<b>x'); r.hostileEsc = hostile.includes('Fr&quot;&gt;&lt;b&gt;x&#39;s weight');
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: Enter in Today's pet weigh-in box passes one argument, as before",
+     !threw && r.hint && !r.doubled && r.box === 'input' && r.btn === 'button'
+       && r.afterEnter === '[["pet-input"]]' && JSON.stringify(calls) === '[["pet-input"],["pet-input"]]'
+       && !r.hostileRaw && r.hostileEsc, { threw, r, calls });
+}
+/* D-02: the old handler was two statements (set the Progress view, then navigate). One action runs
+   the chain. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.go('today');
+    const chart = prog => controlsIn(f2AppHtml(a)).find(c => c.data.action === 'openChart' && c.data.prog === prog) || null;
+    const pet = chart('pet');
+    r.pet = pet && pet.tag;
+    if(pet) fireAction(a, 'click', fakeEl(pet.data));
+    r.petTab = a.TAB; r.petSub = a.subState.train;
+    r.petShown = f2AppHtml(a).includes('id="pet-input"') && !f2AppHtml(a).includes('id="wt-input"');
+    a.go('today');
+    const body = chart('body');
+    r.body = body && body.tag;
+    if(body) fireAction(a, 'click', fakeEl(body.data));
+    r.bodyTab = a.TAB; r.bodySub = a.subState.train;
+    r.bodyShown = f2AppHtml(a).includes('id="wt-input"') && !f2AppHtml(a).includes('id="pet-input"');
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a Chart button sets the Progress view and opens it (D-02 chain)',
+     !threw && r.pet === 'button' && r.petTab === 'train' && r.petSub === 'progress' && r.petShown
+       && r.body === 'button' && r.bodyTab === 'train' && r.bodySub === 'progress' && r.bodyShown, { threw, r });
+}
+/* Pitfall 5: the checkbox sits inside a <label>, and a tap on the label clicks the checkbox. The
+   action is on the checkbox's change alone, so the forwarded click never toggles it a second time.
+   CLAUDE.md: absence never means "off", so un-ticking stores an explicit false. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.go('today');
+    const t = a.todayISO();
+    const head = controlsIn(f2AppHtml(a)).find(c => c.data.action === 'toggleAcc' && c.data.key === 'mob-today') || null;
+    r.head = head && head.tag;
+    r.closed = !controlsIn(f2AppHtml(a)).some(c => c.data.action === 'toggleMobility');
+    if(head) fireAction(a, 'click', fakeEl(head.data));
+    const cs = controlsIn(f2AppHtml(a));
+    const box = cs.find(c => c.data.action === 'toggleMobility') || null;
+    r.box = box && { tag: box.tag, type: box.type, i: box.data.i };
+    r.labels = cs.filter(c => c.tag === 'label').length;
+    r.before = JSON.stringify((a.DB.mobilityLog || {})[t] || null);
+    if(box){
+      const el = fakeEl(box.data);
+      fireAction(a, 'click', el);
+      r.afterClick = JSON.stringify((a.DB.mobilityLog || {})[t] || null);
+      fireAction(a, 'change', el);
+      const m1 = Object.assign({}, a.DB.mobilityLog[t]);
+      r.on = Object.keys(m1).length === 1 && Object.values(m1)[0] === true;
+      fireAction(a, 'change', el);
+      const m2 = a.DB.mobilityLog[t];
+      r.off = Object.keys(m2).length === 1 && Object.values(m2)[0] === false;
+    }
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: a mobility checkbox toggles once per change, never on the label's forwarded click",
+     !threw && r.head === 'button' && r.closed && !!r.box && r.box.tag === 'input' && r.box.type === 'checkbox'
+       && r.labels === 0 && r.afterClick === r.before && r.on && r.off, { threw, r });
+}
+/* The session button: no argument, as before, and the real toggle logs 'yoga' then an explicit
+   false (never a deleted key). */
+{
+  const r = {};
+  let threw = null;
+  let calls = [];
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.go('today');
+    a.toggleAcc('mob-today');
+    const t = a.todayISO();
+    const find = () => controlsIn(f2AppHtml(a)).find(c => c.data.action === 'toggleMobSession') || null;
+    const b1 = find();
+    r.tag = b1 && b1.tag;
+    if(b1) fireAction(a, 'click', fakeEl(b1.data));
+    r.on = a.DB.mobilityLog && a.DB.mobilityLog[t] ? a.DB.mobilityLog[t].__session : undefined;
+    const b2 = find();
+    if(b2) fireAction(a, 'click', fakeEl(b2.data));
+    r.off = a.DB.mobilityLog && a.DB.mobilityLog[t] && '__session' in a.DB.mobilityLog[t] ? a.DB.mobilityLog[t].__session : 'absent';
+    calls = spyOn(a, 'toggleMobSession');
+    const b3 = find();
+    if(b3) fireAction(a, 'click', fakeEl(b3.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the mobility session button toggles through the dispatcher with no argument',
+     !threw && r.tag === 'button' && r.on === 'yoga' && r.off === false && JSON.stringify(calls) === '[[]]', { threw, r, calls });
+}
+/* The shortcut cards and the two headers are real buttons (DELEG-06, D-11). Midday shows the
+   weather and cardio cards; the week card renders only in the evening order. */
+{
+  const r = {};
+  let threw = null;
+  const tap = c => !!c && c.tag === 'button' && c.cls.split(/\s+/).includes('tap');
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    setup(a, {});
+    a.go('today');
+    const html = f2AppHtml(a), cs = controlsIn(html);
+    r.weigh = tap(cs.find(c => c.data.action === 'toggleAcc' && c.data.key === 'weighin'));
+    r.mob = tap(cs.find(c => c.data.action === 'toggleAcc' && c.data.key === 'mob-today'));
+    const lawn = cs.filter(c => c.data.action === 'goSub' && c.data.tab === 'care' && c.data.sub === 'lawn');
+    r.lawn = lawn.length >= 2 && lawn.every(tap);
+    /* the weather card itself: a card button carrying the temperature */
+    r.weather = (html.match(/<button class="card tap"[^>]*data-sub="lawn">[\s\S]*?<\/button>/g) || []).some(s => /°/.test(s) && /Lawn →/.test(s));
+    const cardio = cs.filter(c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'cardio');
+    r.cardio = cardio.length === 1 && cardio.every(tap) && cardio[0].cls.split(/\s+/).includes('card');
+    const b = loadApp(APP_PATH);
+    b.DB = b.blank();
+    f2Evening(b);
+    b.go('today');
+    const week = controlsIn(f2AppHtml(b)).filter(c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'history'
+      && c.cls.split(/\s+/).includes('card'));
+    r.week = week.length === 1 && week.every(tap);
+  } catch(e){ threw = e.message; }
+  ok("DELEG-06: Today's weigh-in and mobility headers and the weather, week and cardio cards are buttons",
+     !threw && r.weigh && r.mob && r.lawn && r.weather && r.cardio && r.week, { threw, r });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
