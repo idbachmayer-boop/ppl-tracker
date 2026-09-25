@@ -1480,7 +1480,11 @@ function weekTally(){
   const hb=liveHobbyLog().filter(h=>+monday(new Date(h.date+'T00:00'))===m).length;
   return `${wk} workout${wk!==1?'s':''} · ${hb} activit${hb!==1?'ies':'y'} · journaled ${journalWeekCount()}/7`;
 }
-const kicker = t => `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${t}</div>`;
+/* kicker(t, 'span') is the same element as a block span, for use inside a converted <button> (a div
+   is not valid there). Without a second argument the markup is exactly what it always was. */
+const kicker = (t, tag) => tag === 'span'
+  ? `<span class="muted" style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${t}</span>`
+  : `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${t}</div>`;
 function viewToday(){
   const nxt = nextWorkout();
   const nxtIsSpecialized = nxt === 'SPECIALIZED';
@@ -2926,9 +2930,9 @@ function changeLawnLoc(){ DB.lawn=null; DB.wx=null; save(); render(); }
 function lawnSetup(){
   return `<h1>Lawn & Weather</h1><p class="subtitle">Set your location once for a local forecast and lawn-care timing.</p>
     <div class="card">
-      <button class="btn btn-block" onclick="useMyLocation()">${ph('map-pin')}Use my current location</button>
+      <button class="btn btn-block" data-action="useMyLocation">${ph('map-pin')}Use my current location</button>
       <p class="muted" style="text-align:center;margin:12px 0 8px">— or —</p>
-      <div class="row"><input id="loc-input" placeholder="City name, e.g. Madison" style="flex:1" onkeydown="if(event.key==='Enter')searchLocation()"><button class="btn" onclick="searchLocation()">Find</button></div>
+      <div class="row"><input id="loc-input" placeholder="City name, e.g. Madison" style="flex:1" data-action="enter" data-enter="searchLocation"><button class="btn" data-action="searchLocation">Find</button></div>
       <p class="muted" id="loc-msg" style="margin-top:10px"></p>
     </div>
     <p class="muted" style="text-align:center;font-size:12px">Weather needs internet. Data from open-meteo.com — free, no account, no tracking.</p>`;
@@ -3222,11 +3226,11 @@ function cLawnCard(full){
       if(f && f.next && f.next.k>0 && f.next.k<=3) due.push(`${ph('calendar-blank','lead')}${mowExpectText(f)}`);
     }
     if(!due.length) return '';
-    return `<div class="card" style="cursor:pointer" onclick="goSub('care','lawn')">
-      <div class="row"><div>${kicker('Lawn · heads up')}
-        ${due.map(d=>`<div style="font-size:13px;line-height:1.5;margin-top:4px">${d}</div>`).join('')}
-      </div><span class="muted">Lawn →</span></div>
-    </div>`;
+    return `<button class="card tap" style="cursor:pointer" data-action="goSub" data-tab="care" data-sub="lawn">
+      <span class="row"><span style="display:block">${kicker('Lawn · heads up', 'span')}
+        ${due.map(d=>`<span style="display:block;font-size:13px;line-height:1.5;margin-top:4px">${d}</span>`).join('')}
+      </span><span class="muted">Lawn →</span></span>
+    </button>`;
   }
   const t=todayISO(), log=(DB.lawnLog||{})[t]||{};
   /* Lead time to prep the mower. Skipped when mowing is already today's job (or already done) —
@@ -3238,15 +3242,15 @@ function cLawnCard(full){
   const anchor=(action)=>`<div class="muted" style="font-size:11px;margin-top:10px">Last done:
       <span class="row" style="display:inline-flex;gap:6px;margin-top:6px;flex-wrap:wrap">
         ${[['Today',0],['Yesterday',1],['2 days ago',2],['3 days ago',3]].map(([l,n])=>
-          `<button class="btn btn-ghost btn-sm" style="min-width:70px" onclick="setLawnDaysAgo('${action}',${n})">${l}</button>`).join('')}
+          `<button class="btn btn-ghost btn-sm" style="min-width:70px" data-action="setLawnDaysAgo" data-which="${esc(action)}" data-n="${esc(n)}">${l}</button>`).join('')}
       </span></div>`;
   /* Full block — the task is due (or the Lawn tab asked for everything). */
   const block=(label,r,which,since,doneLabel,btnLabel,action,cadence)=> `<div style="${sep}">
       <div style="font-size:13px;line-height:1.5">${ph(r.override?'warning':(r.recommend?'check-circle':'pause'),'lead')}<strong>${label}:</strong> ${esc(r.text)}</div>
       <div class="muted" style="font-size:11px;margin-top:3px">${r.unknown?'No history yet':'Last '+since}${cadence?' · '+cadence:''}</div>
       <div class="row" style="gap:8px;margin-top:10px">
-        <button class="btn ${log[which.log]?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('${which.log}')">${log[which.log]?`${ph('check')}${doneLabel}`:btnLabel}</button>
-        <button class="btn btn-ghost btn-sm" onclick="toggleLawnOverride('${which.ov}')">${r.override?`${ph('arrow-u-up-left')}Undo override`:'Override'}</button>
+        <button class="btn ${log[which.log]?'':'btn-ghost'}" style="flex:1" data-action="toggleLawnLog" data-which="${esc(which.log)}">${log[which.log]?`${ph('check')}${doneLabel}`:btnLabel}</button>
+        <button class="btn btn-ghost btn-sm" data-action="toggleLawnOverride" data-which="${esc(which.ov)}">${r.override?`${ph('arrow-u-up-left')}Undo override`:'Override'}</button>
       </div>
       ${r.unknown?anchor(action):''}
     </div>`;
@@ -3265,7 +3269,7 @@ function cLawnCard(full){
     : quiet(label, icon, r, next);
   return `<div class="card">
     ${full ? kicker('Lawn · '+st.season)
-           : `<div class="row" style="cursor:pointer" onclick="goSub('care','lawn')">${kicker('Lawn · '+st.season)}<span class="muted">Lawn →</span></div>`}
+           : `<button class="row tap" style="cursor:pointer" data-action="goSub" data-tab="care" data-sub="lawn">${kicker('Lawn · '+st.season, 'span')}<span class="muted">Lawn →</span></button>`}
     ${row('Watering','💧', st.water, {log:'watered', ov:'water'}, dsWithDate(st.dsWater), 'Watered', 'Mark watered', nextDueDay('water'), 'watered', waterCadence)}
     ${row('Mowing',  '🚜', st.mow,   {log:'mowed',   ov:'mow'},   dsWithDate(st.dsMow),   'Mowed',   'Mark mowed',   mowNext,               'mowed',   'about a week between mows')}
     ${asks?`<div class="muted" style="font-size:11px;margin-top:10px">Further back than 3 days? ${full?'Use the date picker with the history below.':'Care → Lawn has a date picker and a tappable 2-week history.'}</div>`:''}
@@ -3281,7 +3285,7 @@ function lawnHistory(){
   for(let n=0;n<14;n++){
     const d=new Date(); d.setDate(d.getDate()-n);
     const iso=d.toLocaleDateString('en-CA'), e=log[iso]||{};
-    const pill=(on,label,action,ov)=>`<button onclick="toggleLawnLog('${action}','${iso}')" title="${on?'Tap to remove':'Tap to log'}"
+    const pill=(on,label,action,ov)=>`<button data-action="toggleLawnLog" data-which="${esc(action)}" data-iso="${esc(iso)}" title="${on?'Tap to remove':'Tap to log'}"
         style="font-size:11px;font-weight:700;padding:5px 9px;border-radius:999px;cursor:pointer;
         border:1px solid ${on?'var(--accent)':'var(--border-3)'};background:${on?'var(--accent-muted)':'transparent'};
         color:${on?'var(--accent-300)':'var(--muted-2)'}">${label}${on&&ov?' *':''}</button>`;
@@ -3295,17 +3299,17 @@ function lawnHistory(){
     <p class="muted" style="font-size:12px;margin:6px 0 10px">Tap a day to add or correct it — forgot to log Sunday's mow? Fix it here and the schedule catches up. (* = logged against an override.)</p>
     <div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <input type="date" id="lawn-past-date" max="${todayISO()}" style="flex:1;min-width:130px;padding:8px">
-      <button class="btn btn-sm btn-ghost" onclick="logLawnPastDate('watered')">💧 Watered</button>
-      <button class="btn btn-sm btn-ghost" onclick="logLawnPastDate('mowed')">🚜 Mowed</button>
+      <button class="btn btn-sm btn-ghost" data-action="logLawnPastDate" data-which="watered">💧 Watered</button>
+      <button class="btn btn-sm btn-ghost" data-action="logLawnPastDate" data-which="mowed">🚜 Mowed</button>
     </div>
     ${rows.join('')}
   </div>`;
 }
 function viewLawn(){
   if(!DB.lawn || DB.lawn.lat==null) return lawnSetup();
-  const locBar=`<div class="row" style="margin-bottom:14px"><span class="muted">${ph('map-pin','lead')}${esc(DB.lawn.label||'My location')}</span><button class="btn btn-sm btn-ghost" onclick="changeLawnLoc()">Change</button></div>`;
+  const locBar=`<div class="row" style="margin-bottom:14px"><span class="muted">${ph('map-pin','lead')}${esc(DB.lawn.label||'My location')}</span><button class="btn btn-sm btn-ghost" data-action="changeLawnLoc">Change</button></div>`;
   const wx=DB.wx;
-  if(!wx || !wx.data) return `<h1>Lawn & Weather</h1>${locBar}<div class="empty">${weatherFetching?'Loading weather…':'<button class="btn btn-sm" onclick="fetchWeather()">Load weather</button>'}</div>`;
+  if(!wx || !wx.data) return `<h1>Lawn & Weather</h1>${locBar}<div class="empty">${weatherFetching?'Loading weather…':'<button class="btn btn-sm" data-action="fetchWeather">Load weather</button>'}</div>`;
   const d=wx.data, dy=d.daily, cur=d.current_weather, num=v=>(v==null?0:+v);
   const times=dy.time, today=todayISO();
   let ti=times.indexOf(today); if(ti<0) ti=times.length>1?1:0;
@@ -3338,7 +3342,7 @@ function viewLawn(){
       <div class="row"><div>
         <div class="stat-big" style="font-size:30px">${Math.round(num(cur?cur.temperature:HI[ti]))}°<span style="font-size:14px;color:var(--muted-2)">F</span></div>
         <div class="stat-sub">${cw.icon} ${cw.text} · H ${Math.round(num(HI[ti]))}° / L ${Math.round(num(LO[ti]))}°</div>
-      </div><button class="btn btn-sm btn-ghost" onclick="fetchWeather()">${ph('arrows-clockwise')}</button></div>
+      </div><button class="btn btn-sm btn-ghost" data-action="fetchWeather">${ph('arrows-clockwise')}</button></div>
       <div style="display:flex;gap:3px;margin-top:14px;overflow-x:auto">${strip}</div>
     </div>
     ${lawnSeason(new Date()) ? cLawnCard(true) : `<div class="card"><div class="muted" style="font-size:13px">${ph('snowflake','lead')}Off-season (Nov–Mar) — smart watering & mowing scheduling resumes in April. Forecast still available above.</div></div>`}
@@ -4775,6 +4779,24 @@ const ACTIONS = {
   skinSelectDay:   { click: el => skinSelectDay(el.dataset.day) },
   removeSleep:     { click: el => removeSleep(el.dataset.id) },
   addSleep:        { click: () => addSleep() },
+  /* Enter-to-submit. A text field carries data-action="enter" and names the action to run in
+     data-enter; only Enter runs it, and only an OWN registry entry with a click handler. This is the
+     one keydown handler in the registry: Enter on a focused button already fires click natively. */
+  enter: { keydown: (el, e) => { if(e.key !== 'Enter') return; const n = el.dataset.enter;
+    const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+    if(own(ACTIONS, n) && own(ACTIONS[n], 'click')) ACTIONS[n].click(el, e); } },
+  goSub: { click: el => goSub(el.dataset.tab, el.dataset.sub) },
+  /* Care → Lawn, and the lawn card Today also renders. toggleLawnLog logs today when it gets no
+     date, so a card button passes one argument and a history pill passes its own date: never an
+     undefined second argument. */
+  useMyLocation:      { click: () => useMyLocation() },
+  searchLocation:     { click: () => searchLocation() },
+  changeLawnLoc:      { click: () => changeLawnLoc() },
+  fetchWeather:       { click: () => fetchWeather() },
+  setLawnDaysAgo:     { click: el => setLawnDaysAgo(el.dataset.which, +el.dataset.n) },
+  toggleLawnLog:      { click: el => el.dataset.iso ? toggleLawnLog(el.dataset.which, el.dataset.iso) : toggleLawnLog(el.dataset.which) },
+  toggleLawnOverride: { click: el => toggleLawnOverride(el.dataset.which) },
+  logLawnPastDate:    { click: el => logLawnPastDate(el.dataset.which) },
 };
 document.addEventListener('click', dispatchAction, { passive: false });
 document.addEventListener('change', dispatchAction, { passive: false });

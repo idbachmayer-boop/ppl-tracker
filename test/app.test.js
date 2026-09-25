@@ -226,8 +226,13 @@ f = app.mowForecast();
 ok('the forecast still projects, flagged unknown', f.unknown === true && f.days.length === 7 && f.next.k === 0, f && f.next);
 ok('  …one mow day, then a cooldown (not a week of green)', f.days.filter(d=>d.ok).length === 1, f.days.map(d=>d.ok?'mow':d.blocked));
 let card = app.cLawnCard();
+/* The anchor buttons are read as parsed controls (controlsIn, hoisted from the F2 section), never as
+   handler text: "2 days ago" backdates a mow by exactly two days. The buttons render in label order
+   (Today, Yesterday, 2 days ago, 3 days ago), so their day counts must read 0,1,2,3 in that order. */
 ok('the card carries the recommendation AND the anchor buttons',
-   /Mow today/.test(card) && /setLawnDaysAgo\('mowed',2\)/.test(card), card.replace(/<svg[\s\S]*?<\/svg>/g,'').slice(0,200));
+   /Mow today/.test(card) && controlsIn(card).some(c => c.data.action === 'setLawnDaysAgo' && c.data.which === 'mowed' && c.data.n === '2')
+     && controlsIn(card).filter(c => c.data.action === 'setLawnDaysAgo' && c.data.which === 'mowed').map(c => c.data.n).join() === '0,1,2,3',
+   { anchors: controlsIn(card).filter(c => c.data.action === 'setLawnDaysAgo').map(c => c.data), card: card.replace(/<svg[\s\S]*?<\/svg>/g,'').slice(0,200) });
 
 console.log('\n── watering ──');
 setup(app, { mowedDaysAgo: 1, wateredDaysAgo: 7, wx:{ precipByOffset:{ '-5': 1.41 } } });
@@ -274,7 +279,11 @@ ok('a future date is refused', app.setLawnLog(dayOff(1), 'mowed', true) === fals
    a deleted key would read as "never logged" on the other device. */
 ok('un-logging stores an explicit false, not a deletion',
    (app.setLawnLog(dayOff(-3),'watered',true), app.setLawnLog(dayOff(-3),'watered',false), app.DB.lawnLog[dayOff(-3)].watered === false), app.DB.lawnLog[dayOff(-3)]);
-ok('the history lists all 14 days, each tappable', (app.lawnHistory().match(/toggleLawnLog\('watered'/g)||[]).length === 14);
+{
+  /* 14 is the product's two-week window. Each pill logs its OWN date, so the 14 dates are distinct. */
+  const pills = controlsIn(app.lawnHistory()).filter(c => c.data.action === 'toggleLawnLog' && c.data.which === 'watered');
+  ok('the history lists all 14 days, each tappable', pills.length === 14 && new Set(pills.map(c => c.data.iso)).size === 14, pills.map(c => c.data.iso));
+}
 ok('  …plus a picker for older dates', /id="lawn-past-date"/.test(app.lawnHistory()));
 
 console.log('\n── the strip assumes you actually mow on the mow day ──');
@@ -4524,6 +4533,23 @@ ok('DELEG-01: the handler inventory exists and every row names its function, eve
     });
     if(why.length) broken.push({ fn: r.fn, event: r.event, was: r.was, why });
   });
+  /* Per occurrence, not per name: two rows mapped to the same action in one function need two
+     wiring sites, so one surviving sibling cannot hide a dropped control (05-03 mutation pass: the
+     Load weather button lost its data-action while the refresh button kept the name present). */
+  const need = {};
+  F2_INV.forEach(r => {
+    if(!r || typeof r !== 'object') return;
+    f2Names(r).forEach(x => {
+      const attr = r.event === 'keydown' ? `data-enter="${x}"` : `data-action="${x}"`;
+      const k = r.fn + '\u0000' + attr;
+      need[k] = (need[k] || 0) + 1;
+    });
+  });
+  Object.keys(need).forEach(k => {
+    const [fn, attr] = k.split('\u0000');
+    const have = f2Count(f2FnSrc(fn), attr);
+    if(have < need[k]) broken.push({ fn, why: `${attr} wired ${have}x, ${need[k]} inventory rows map to it` });
+  });
   ok('DELEG-03: every inventoried call site is still inline, or is wired to an action that handles its event and keeps every call',
      !F2_INV_ERR && broken.length === 0, broken.slice(0, 5));
 }
@@ -4683,6 +4709,48 @@ function f2Corpus(){
       a.__sandbox.skinTogglePhase(0);
     } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
     out.push({ label: 'Care → Skin: shaving, phase 0 open', html: a.__sandbox.document.getElementById('app').innerHTML || '' });
+  }
+  /* 05-03: the Lawn states the default screens never reach. `lawnAt` places the location and a
+     weather blob for the same spot, so the cache is not stale and no fetch starts. */
+  {
+    const lawnAt = (a, o) => {
+      a.DB = a.blank();
+      a.DB.lawn = { lat: 44.94, lon: -93.36, label: 'St. Louis Park' };
+      a.DB.wx = o.wx === null ? null : Object.assign(makeWx(Object.assign({ todayISO: a.todayISO() }, o.wx || {})), { lat: 44.94, lon: -93.36 });
+      a.DB.lawnLog = {};
+      const day = n => { const d = new Date(a.todayISO() + 'T00:00'); d.setDate(d.getDate() - n); return d.toLocaleDateString('en-CA'); };
+      if(o.mowedDaysAgo != null) (a.DB.lawnLog[day(o.mowedDaysAgo)] = a.DB.lawnLog[day(o.mowedDaysAgo)] || {}).mowed = true;
+      if(o.wateredDaysAgo != null) (a.DB.lawnLog[day(o.wateredDaysAgo)] = a.DB.lawnLog[day(o.wateredDaysAgo)] || {}).watered = true;
+    };
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    {
+      const a = loadApp(APP_PATH);
+      a.DB = a.blank();
+      try { a.go('care'); a.setSub('lawn'); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label: 'Care → Lawn: no location (setup)', html: appHtml(a) });
+    }
+    {
+      /* never watered, so the full card also shows the "Last done" anchor buttons */
+      const a = loadApp(APP_PATH);
+      lawnAt(a, { mowedDaysAgo: 9, wx: {} });
+      try { a.go('care'); a.setSub('lawn'); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label: 'Care → Lawn: location and weather (full card, history, refresh)', html: appHtml(a) });
+    }
+    {
+      /* viewLawn() directly: on the screen, onRender starts a fetch that the harness never settles,
+         and the view then shows "Loading weather…" in place of the button. */
+      const a = loadApp(APP_PATH);
+      lawnAt(a, { wx: null });
+      let html = '';
+      try { html = a.__sandbox.viewLawn(); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label: 'Care → Lawn: location, no weather (Load weather)', html });
+    }
+    {
+      const a = loadApp(APP_PATH);
+      lawnAt(a, { mowedDaysAgo: 5, wateredDaysAgo: 1, wx: { precipByOffset: { 0: 0.6 } } });
+      try { a.go('today'); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label: 'Today: lawn heads-up', html: appHtml(a) });
+    }
   }
   f2Corpus.cache = out;
   return out;
@@ -5352,6 +5420,156 @@ const f2AppHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '
   ok("DELEG-02: Skin's day picker and sub-tabs switch through the dispatcher",
      !threw && r.before != null && !tokens(r.before).includes('active') && tokens(r.after).includes('active')
        && r.tag === 'button' && r.shaving && r.routine, { threw, r });
+}
+/* Enter-to-submit through the registry (RESEARCH Pattern 3, Pitfall 3). The box's action listens to
+   keydown only and forwards Enter to searchLocation's click handler, so Enter searches exactly once,
+   other keys and a click in the box do nothing, and the Find button still searches. Fired through
+   the app's own document listeners, which proves the registration too. */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.lawn = null;
+  const calls = spyOn(a, 'searchLocation');
+  const r = {};
+  let threw = null;
+  try {
+    a.go('care'); a.setSub('lawn');
+    const cs = controlsIn(f2AppHtml(a));
+    const box = cs.find(c => c.data.action === 'enter' && c.data.enter === 'searchLocation') || null;
+    const find = cs.find(c => c.data.action === 'searchLocation') || null;
+    r.box = box && box.tag; r.find = find && find.tag;
+    if(box){
+      const el = fakeEl(box.data, { tagName: 'INPUT' });
+      fireListener(a, 'keydown', el, { key: 'Enter' }); r.enter = calls.length;
+      fireListener(a, 'keydown', el, { key: 'a' });     r.otherKey = calls.length;
+      fireListener(a, 'click', el);                      r.click = calls.length;
+    }
+    if(find) fireListener(a, 'click', fakeEl(find.data));
+    r.button = calls.length;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: Enter in the location box searches once, other keys do nothing, and a click in the box does nothing',
+     !threw && r.box === 'input' && r.find === 'button' && r.enter === 1 && r.otherKey === 1 && r.click === 1 && r.button === 2
+       && calls.every(c => c.length === 0), { threw, r, calls });
+}
+/* T-5-11: data-enter may only name an OWN registry entry. The app's Object.prototype carries a
+   planted click handler for the duration, so an inherited name that slipped past the own-key check
+   would visibly run it. */
+{
+  const a = loadApp(APP_PATH);
+  const proto = a.ACTIONS ? Object.getPrototypeOf(a.ACTIONS) : null;
+  const ran = [];
+  let threw = null;
+  if(proto) proto.click = () => { ran.push('inherited'); };
+  try {
+    ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'nope', 'enter'].forEach(n =>
+      fireAction(a, 'keydown', fakeEl({ action: 'enter', enter: n }), { key: 'Enter' }));
+  } catch(e){ threw = e.message; }
+  finally { if(proto) delete proto.click; }
+  ok('F2: Enter runs only an own registry entry named by data-enter', !!proto && !threw && ran.length === 0, { threw, ran });
+}
+/* The rest of Care → Lawn: each button reaches its function with the arguments the old handler
+   passed, and each of the two weather buttons is wired on its own. */
+{
+  const a = loadApp(APP_PATH);
+  const names = ['useMyLocation', 'changeLawnLoc', 'fetchWeather', 'logLawnPastDate', 'toggleLawnOverride'];
+  const calls = {};
+  names.forEach(n => { calls[n] = spyOn(a, n); });
+  const r = {};
+  let threw = null;
+  const clickAll = (html, pred) => controlsIn(html).filter(pred).map(c => { fireAction(a, 'click', fakeEl(c.data)); return c.tag; });
+  try {
+    a.DB = a.blank();
+    a.DB.lawn = null;
+    r.setup = clickAll(a.__sandbox.viewLawn(), c => c.data.action === 'useMyLocation');
+    setup(a, { mowedDaysAgo: 1, wateredDaysAgo: 7, wx: null });
+    r.load = clickAll(a.__sandbox.viewLawn(), c => c.data.action === 'fetchWeather');
+    setup(a, { mowedDaysAgo: 1, wateredDaysAgo: 7, wx: {} });
+    const full = a.__sandbox.viewLawn();
+    r.refresh = clickAll(full, c => c.data.action === 'fetchWeather');
+    r.change = clickAll(full, c => c.data.action === 'changeLawnLoc');
+    r.picker = clickAll(full, c => c.data.action === 'logLawnPastDate');
+    r.override = clickAll(full, c => c.data.action === 'toggleLawnOverride');
+  } catch(e){ threw = e.message; }
+  const got = {};
+  names.forEach(n => { got[n] = JSON.stringify(calls[n]); });
+  ok('DELEG-02: location, weather, the date picker and overrides run through the dispatcher with their arguments',
+     !threw && [r.setup, r.load, r.refresh, r.change, r.picker, r.override].every(t => t && t.length && t.every(x => x === 'button'))
+       && r.load.length === 1 && r.refresh.length === 1
+       && got.useMyLocation === '[[]]' && got.changeLawnLoc === '[[]]' && got.fetchWeather === '[[],[]]'
+       && got.logLawnPastDate === '[["watered"],["mowed"]]' && got.toggleLawnOverride === '[["water"],["mow"]]',
+     { threw, r, got });
+}
+/* toggleLawnLog(action, iso) logs `iso`, or TODAY when iso is absent. A pill must pass its own date
+   and a card button must pass nothing, never an `undefined` second argument (T-5-12). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  setup(a, { mowedDaysAgo: 1, wateredDaysAgo: 7, wx:{} });
+  const calls = spyOn(a, 'toggleLawnLog');
+  const r = {};
+  let threw = null;
+  try {
+    const pill = controlsIn(a.lawnHistory()).find(c => c.data.action === 'toggleLawnLog' && c.data.which === 'mowed' && c.data.iso === dayOff(-3)) || null;
+    r.pill = pill && pill.data;
+    if(pill) fireAction(a, 'click', fakeEl(pill.data));
+    const btn = controlsIn(a.cLawnCard(true)).find(c => c.data.action === 'toggleLawnLog' && c.data.which === 'watered') || null;
+    r.btn = btn && btn.data;
+    if(btn) fireAction(a, 'click', fakeEl(btn.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a lawn history pill logs its own date, and a lawn card button logs today (arity preserved)',
+     !threw && !!r.pill && !!r.btn && calls.length === 2
+       && calls[0].length === 2 && calls[0][0] === 'mowed' && calls[0][1] === dayOff(-3)
+       && calls[1].length === 1 && calls[1][0] === 'watered', { threw, r, calls });
+}
+/* The heads-up card and the compact card's header were clickable divs. As buttons they take focus
+   and open Care → Lawn on Enter and Space natively (D-11 keeps their content block spans). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  const calls = spyOn(a, 'goSub');
+  const r = {};
+  let threw = null;
+  const opener = html => controlsIn(html).filter(c => c.data.action === 'goSub');
+  try {
+    /* (a) mowing is due today: the compact card shows its header row */
+    setup(a, { mowedDaysAgo: 9, wateredDaysAgo: 1, wx:{ precipByOffset:{ '-2':0.4 } } });
+    r.mowDue = a.lawnStatus().mow.recommend === true;
+    const compactHtml = a.cLawnCard();
+    r.compactIsHeadsUp = /heads up/.test(compactHtml);
+    const compact = opener(compactHtml);
+    r.compact = compact.map(c => ({ tag: c.tag, cls: c.cls, tab: c.data.tab, sub: c.data.sub }));
+    if(compact.length === 1) fireAction(a, 'click', fakeEl(compact[0].data));
+    /* (b) nothing to do today (rain today pulls the mow in to day 2, and watering is recent): the
+       whole card is the heads-up */
+    setup(a, { mowedDaysAgo: 5, wateredDaysAgo: 1, wx:{ precipByOffset:{ 0:0.6 } } });
+    const st = a.lawnStatus(), f = a.mowForecast();
+    r.quietToday = !st.water.recommend && !st.mow.recommend && !st.water.unknown && !st.mow.unknown;
+    r.nextMow = f && f.next && f.next.k;
+    const headsHtml = a.cLawnCard();
+    r.headsUp = /heads up/.test(headsHtml);
+    const heads = opener(headsHtml);
+    r.heads = heads.map(c => ({ tag: c.tag, cls: c.cls, tab: c.data.tab, sub: c.data.sub }));
+    r.wholeCard = /^\s*<button class="card tap"/.test(headsHtml);
+    if(heads.length === 1) fireAction(a, 'click', fakeEl(heads[0].data));
+  } catch(e){ threw = e.message; }
+  const isOpener = list => list.length === 1 && list[0].tag === 'button' && list[0].tab === 'care' && list[0].sub === 'lawn';
+  ok("DELEG-06: the lawn heads-up card and the compact card's header open Care → Lawn from a button",
+     !threw && r.mowDue && !r.compactIsHeadsUp && isOpener(r.compact)
+       && r.quietToday && r.nextMow >= 1 && r.nextMow <= 3 && r.headsUp && isOpener(r.heads) && r.wholeCard
+       && JSON.stringify(calls) === '[["care","lawn"],["care","lawn"]]', { threw, r, calls });
+}
+/* kicker(t) must stay byte-identical (every existing caller); kicker(t, 'span') is the same element
+   as a block span, for use inside a converted button (D-11). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  setup(a, { mowedDaysAgo: 5, wateredDaysAgo: 1, wx:{ precipByOffset:{ 0:0.6 } } });
+  const STYLE = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px';
+  const r = {
+    div: a.viewSleep().includes(`<div class="muted" style="${STYLE}">Last 7 days</div>`),
+    span: a.cLawnCard().includes(`<span class="muted" style="display:block;${STYLE}">Lawn · heads up</span>`),
+  };
+  ok("F2: kicker() without a tag is unchanged, and kicker(t, 'span') is the same element as a block span", r.div && r.span, r);
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
