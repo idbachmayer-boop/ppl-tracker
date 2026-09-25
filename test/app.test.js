@@ -6266,6 +6266,14 @@ function f2TodayWeighIn(){
   a.toggleAcc('weighin');
   return a;
 }
+/* The decoded value of `attr` on the <input> whose id is `id` in rendered `html`, or null. A value
+   that broke out of its quotes ends the start tag early, so what is left no longer carries it. */
+function f2InputAttr(html, id, attr){
+  const tag = String(html || '').match(new RegExp('<input\\b[^>]*\\sid="' + id + '"[^>]*>'));
+  const m = tag ? tag[0].match(new RegExp('\\s' + attr + '="([^"]*)"')) : null;
+  return m ? m[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'").replace(/&amp;/g, '&') : null;
+}
 /* Enter-to-log (RESEARCH Pitfall 3). The box's action is keydown-only and forwards Enter to the Log
    button's click handler; the button has no keydown handler, so Enter on the focused button (whose
    click the browser synthesizes) cannot log a second time. Fired through the app's own listeners. */
@@ -6304,7 +6312,9 @@ function f2TodayWeighIn(){
     const a = f2TodayWeighIn();
     calls = spyOn(a, 'logPetWeight');
     const html = f2AppHtml(a);
-    r.hint = html.includes('&#39;s weight'); r.doubled = html.includes('&amp;#39;');
+    const petHint = name => name + "'s weight (" + a.DB.unit + ')';
+    r.hint = f2InputAttr(html, 'pet-input', 'placeholder') === petHint(a.DB.petName);
+    r.doubled = /&amp;(#39|quot|lt|gt|amp);/.test(html);
     const cs = controlsIn(html);
     const box = cs.find(c => c.data.action === 'enter' && c.data.enter === 'logPetWeight') || null;
     const btn = cs.find(c => c.data.action === 'logPetWeight') || null;
@@ -6312,11 +6322,11 @@ function f2TodayWeighIn(){
     if(box) fireListener(a, 'keydown', fakeEl(box.data, { tagName: 'INPUT' }), { key: 'Enter' });
     r.afterEnter = JSON.stringify(calls);
     if(btn) fireListener(a, 'click', fakeEl(btn.data, { tagName: 'BUTTON' }));
-    /* T-5-02: the pet name reaches the placeholder through the call site's esc(), once. */
+    /* T-5-02: the pet name reaches the placeholder escaped exactly once: it decodes back to itself. */
     a.DB.petName = 'Fr"><b>x';
     a.render();
     const hostile = f2AppHtml(a);
-    r.hostileRaw = hostile.includes('<b>x'); r.hostileEsc = hostile.includes('Fr&quot;&gt;&lt;b&gt;x&#39;s weight');
+    r.hostileRaw = hostile.includes('<b>x'); r.hostileEsc = f2InputAttr(hostile, 'pet-input', 'placeholder') === petHint('Fr"><b>x');
   } catch(e){ threw = e.message; }
   ok("DELEG-02: Enter in Today's pet weigh-in box passes one argument, as before",
      !threw && r.hint && !r.doubled && r.box === 'input' && r.btn === 'button'
@@ -7081,6 +7091,32 @@ const EVIL = String.fromCharCode(34) + '><img src=x onerror=alert(1)>';
     r.escaped = html.split('&quot;&gt;&lt;img').length - 1;
   } catch(e){ threw = e.message; }
   ok('D-09: a hostile accessory value renders escaped', !threw && r.open && r.img === false && r.escaped >= 2, { threw, r });
+}
+
+/* ── Phase 5 code review (05-REVIEW.md) ── */
+/* WR-01. Nothing constrains DB.unit: validateBackup() accepts any value and normalize() keeps it. It
+   lands in the placeholder of every weigh-in box, on Today and on both Progress pages. A hostile unit
+   must stay inside that attribute, and Today's boxes must keep their Enter-to-log action (a break-out
+   pushes data-action out of the tag). */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2TodayWeighIn();
+    a.DB.unit = EVIL;
+    a.render();
+    const holds = (html, id) => (f2InputAttr(html, id, 'placeholder') || '').includes(EVIL);
+    const home = f2AppHtml(a), cs = controlsIn(home);
+    r.todayWt = holds(home, 'wt-input'); r.todayPet = holds(home, 'pet-input');
+    r.enterWt = !!cs.find(c => c.tag === 'input' && c.data.action === 'enter' && c.data.enter === 'logWeight');
+    r.enterPet = !!cs.find(c => c.tag === 'input' && c.data.action === 'enter' && c.data.enter === 'logPetWeight');
+    a.go('train'); a.setSub('progress'); a.__sandbox.progSubTab('body');
+    r.body = holds(f2AppHtml(a), 'wt-input');
+    a.__sandbox.progSubTab('pet');
+    r.pet = holds(f2AppHtml(a), 'pet-input');
+  } catch(e){ threw = e.message; }
+  ok('D-09: a hostile weight unit stays inside every weigh-in placeholder, and Enter still logs from Today',
+     !threw && Object.values(r).length === 6 && Object.values(r).every(v => v === true), { threw, r });
 }
 
 /* The phase's two closing properties, stated with no count. Every inventoried call site is an

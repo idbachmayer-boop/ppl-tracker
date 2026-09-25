@@ -1540,13 +1540,13 @@ function viewToday(){
      Progress page's on purpose — the two views are never in the DOM at once, so logWeight() /
      logPetWeight() work unchanged, falling back to today's date when there's no date field.
      logRow's act.enter / act.click are literal attribute fragments written at the two call sites
-     below. The hint is NOT escaped here: the pet call site passes already-escaped markup (&#39;),
-     so the caller owns the escaping. */
+     below. The hint is escaped here, at the sink, so callers pass plain text: it carries DB.unit,
+     which nothing constrains (a restored backup can hold any string), and the pet name. */
   const pw = latestPetWeight(), petToday = pw && pw.date===todayISO();
   const weighedIn = loggedToday && petToday;   // both of them — the card's job isn't done until it is
   const weighOpen = (part==='morning' && !weighedIn) || accOpen.has('weighin');
   const logRow = (id, act, hint) => `<div class="row" style="gap:8px;margin-top:8px">
-        <input type="number" inputmode="decimal" step="0.1" id="${esc(id)}" placeholder="${hint}" style="flex:1" ${act.enter}>
+        <input type="number" inputmode="decimal" step="0.1" id="${esc(id)}" placeholder="${esc(hint)}" style="flex:1" ${act.enter}>
         <button class="btn btn-sm" ${act.click}>Log</button>
       </div>`;
   const cWeighIn = `<div class="card">
@@ -1568,7 +1568,7 @@ function viewToday(){
           <div class="stat-sub">${pw? (petToday?'logged today':'last '+fmtDate(pw.date)) : 'weigh him on the same scale'}</div></div>
           <button class="btn btn-sm btn-ghost" data-action="openChart" data-prog="pet">Chart</button>
         </div>
-        ${weighOpen && !petToday ? logRow('pet-input', { enter: 'data-action="enter" data-enter="logPetWeight" data-input="pet-input"', click: 'data-action="logPetWeight" data-input="pet-input"' }, `${esc(petName())}&#39;s weight (${DB.unit})`) : ''}
+        ${weighOpen && !petToday ? logRow('pet-input', { enter: 'data-action="enter" data-enter="logPetWeight" data-input="pet-input"', click: 'data-action="logPetWeight" data-input="pet-input"' }, `${petName()}'s weight (${DB.unit})`) : ''}
       </div>
     </div>`;
   const rainAt = rainTiming();
@@ -2296,7 +2296,7 @@ function viewWeight(){
     ${sub}
     <div class="card">
       <div class="row">
-        <input type="number" inputmode="decimal" id="wt-input" placeholder="Weight (${DB.unit})" style="flex:1">
+        <input type="number" inputmode="decimal" id="wt-input" placeholder="Weight (${esc(DB.unit)})" style="flex:1">
         <button class="btn" data-action="logWeight">Log</button>
       </div>
       <div class="row" style="margin-top:8px">
@@ -2322,7 +2322,7 @@ function viewPetWeight(sub){
     ${sub}
     <div class="card">
       <div class="row">
-        <input type="number" inputmode="decimal" step="0.1" id="pet-input" placeholder="${esc(petName())}'s weight (${DB.unit})" style="flex:1">
+        <input type="number" inputmode="decimal" step="0.1" id="pet-input" placeholder="${esc(petName())}'s weight (${esc(DB.unit)})" style="flex:1">
         <button class="btn" data-action="logPetWeight" data-input="pet-input" data-date-el="pet-date">Log</button>
       </div>
       <div class="row" style="margin-top:8px">
