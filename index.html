@@ -4727,7 +4727,10 @@ function dispatchAction(e){
   if(!el || el.disabled) return;
   const name = el.dataset.action;
   if(!Object.prototype.hasOwnProperty.call(ACTIONS, name)) return;
-  const fn = ACTIONS[name][e.type];
+  /* The event's handler must be the action's own too: a plain lookup would reach Object.prototype, so
+     a click on a change-only control could run something inherited. */
+  const spec = ACTIONS[name];
+  const fn = Object.prototype.hasOwnProperty.call(spec, e.type) ? spec[e.type] : null;
   if(typeof fn === 'function') fn(el, e);
 }
 const ACTIONS = {

@@ -5,6 +5,13 @@ and what would fix it.
 
 ## 1. `dispatchAction` looks up the event handler through the prototype chain (found in 05-03)
 
+> **Resolved in the Phase 5 code-review fix (WR-04, see `05-REVIEW-FIX.md`).** `dispatchAction` now
+> reads the handler only when it is an own property of the action. The check "F2: an event handler
+> inherited through Object.prototype never runs…" plants `click` and `change` on the app's
+> `Object.prototype` (and removes them in a `finally`). It then clicks the change-only
+> `toggleIdeaDone` and fires `change` on the click-only `removeIdea`, through the app's own
+> listeners. Neither planted function runs, and both real events still work.
+
 - **Where:** `index.html`, `dispatchAction`: `const fn = ACTIONS[name][e.type];`
 - **What:** the action NAME is checked as an own key of `ACTIONS` (T-5-01), but the handler for
   the event is read with a plain property lookup. If `Object.prototype` ever carried a `click`, a

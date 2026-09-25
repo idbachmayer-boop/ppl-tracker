@@ -7234,6 +7234,33 @@ function f2FlexItemTapProblems(html){
      F2_FLEX_CLASSES.includes('row') && F2_TAP_WIDTH === '100%' && picker.every(Boolean) && bad.length === 0 && Object.values(synthetic).every(Boolean),
      { bad: bad.slice(0, 5), picker, flexClasses: F2_FLEX_CLASSES.length, tapWidth: F2_TAP_WIDTH, synthetic });
 }
+/* WR-04. The dispatcher checks the action NAME as an own key of ACTIONS; the handler for the event
+   must be an own key of that action too. With an event handler planted on the app's own
+   Object.prototype, a click on a change-only control and a change on a click-only control must run
+   nothing, fired through the app's own listeners. The real event still works alongside, so the check
+   is not passing on a dead control. */
+{
+  const a = loadApp(APP_PATH);
+  const proto = a.ACTIONS ? Object.getPrototypeOf(a.ACTIONS) : null;
+  const planted = [];
+  const r = {};
+  let threw = null;
+  const done = spyOn(a, 'toggleIdeaDone'), removed = spyOn(a, 'removeIdea');
+  try {
+    if(proto){ proto.click = () => { planted.push('click'); }; proto.change = () => { planted.push('change'); }; }
+    const tick = fakeEl({ action: 'toggleIdeaDone', id: 'i1' }, { tagName: 'INPUT' });
+    fireListener(a, 'click', tick);
+    fireListener(a, 'change', tick);
+    const rm = fakeEl({ action: 'removeIdea', id: 'i2' }, { tagName: 'BUTTON' });
+    fireListener(a, 'change', rm);
+    fireListener(a, 'click', rm);
+  } catch(e){ threw = e.message; }
+  finally { if(proto){ delete proto.click; delete proto.change; } }
+  r.clean = !proto || (!Object.prototype.hasOwnProperty.call(proto, 'click') && !Object.prototype.hasOwnProperty.call(proto, 'change'));
+  ok('F2: an event handler inherited through Object.prototype never runs, even on a control whose action exists',
+     !threw && !!proto && planted.length === 0 && JSON.stringify(done) === '[["i1"]]' && JSON.stringify(removed) === '[["i2"]]' && r.clean,
+     { threw, planted, done, removed, r });
+}
 
 /* The phase's two closing properties, stated with no count. Every inventoried call site is an
    action, and nothing in index.html (any event, any quoting, comments included) is an inline
