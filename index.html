@@ -2259,17 +2259,17 @@ function progSubTab(t){ progSub=t; render(); }
 function selectExercise(m){ selectedExercise=m; render(); }
 function selectPR(i){ const p=exercisePRs()[i]; if(p) selectExercise(p.id); }
 function rangeSeg(){ return `<div class="seg" style="margin:14px 0 0">
-    <button class="${chartRange===30?'active':''}" onclick="setRange(30)">30d</button>
-    <button class="${chartRange===90?'active':''}" onclick="setRange(90)">90d</button>
-    <button class="${chartRange===365?'active':''}" onclick="setRange(365)">1y</button>
-    <button class="${chartRange===9999?'active':''}" onclick="setRange(9999)">All</button></div>`; }
+    <button class="${chartRange===30?'active':''}" data-action="setRange" data-range="30">30d</button>
+    <button class="${chartRange===90?'active':''}" data-action="setRange" data-range="90">90d</button>
+    <button class="${chartRange===365?'active':''}" data-action="setRange" data-range="365">1y</button>
+    <button class="${chartRange===9999?'active':''}" data-action="setRange" data-range="9999">All</button></div>`; }
 function viewWeight(){
   const sub = `<div class="seg" style="margin-top:14px">
-    <button class="${progSub==='body'?'active':''}" onclick="progSubTab('body')">Weight</button>
-    <button class="${progSub==='strength'?'active':''}" onclick="progSubTab('strength')">Strength</button>
-    <button class="${progSub==='volume'?'active':''}" onclick="progSubTab('volume')">Volume</button>
-    <button class="${progSub==='cardio'?'active':''}" onclick="progSubTab('cardio')">Cardio</button>
-    <button class="${progSub==='pet'?'active':''}" onclick="progSubTab('pet')">${esc(petName())}</button></div>`;
+    <button class="${progSub==='body'?'active':''}" data-action="progSubTab" data-sub="body">Weight</button>
+    <button class="${progSub==='strength'?'active':''}" data-action="progSubTab" data-sub="strength">Strength</button>
+    <button class="${progSub==='volume'?'active':''}" data-action="progSubTab" data-sub="volume">Volume</button>
+    <button class="${progSub==='cardio'?'active':''}" data-action="progSubTab" data-sub="cardio">Cardio</button>
+    <button class="${progSub==='pet'?'active':''}" data-action="progSubTab" data-sub="pet">${esc(petName())}</button></div>`;
   if(progSub==='strength') return viewStrength(sub);
   if(progSub==='volume') return viewVolume(sub);
   if(progSub==='cardio') return viewCardioTrend(sub);
@@ -2294,7 +2294,7 @@ function viewWeight(){
     <div class="card">
       <div class="row">
         <input type="number" inputmode="decimal" id="wt-input" placeholder="Weight (${DB.unit})" style="flex:1">
-        <button class="btn" onclick="logWeight()">Log</button>
+        <button class="btn" data-action="logWeight">Log</button>
       </div>
       <div class="row" style="margin-top:8px">
         <label class="muted" style="font-size:12px;font-weight:600;flex:1">Date <input type="date" id="wt-date" value="${todayISO()}" max="${todayISO()}" style="width:auto;display:inline-block;margin-left:6px;padding:6px 8px"></label>
@@ -2320,7 +2320,7 @@ function viewPetWeight(sub){
     <div class="card">
       <div class="row">
         <input type="number" inputmode="decimal" step="0.1" id="pet-input" placeholder="${esc(petName())}'s weight (${DB.unit})" style="flex:1">
-        <button class="btn" onclick="logPetWeight('pet-input','pet-date')">Log</button>
+        <button class="btn" data-action="logPetWeight" data-input="pet-input" data-date-el="pet-date">Log</button>
       </div>
       <div class="row" style="margin-top:8px">
         <label class="muted" style="font-size:12px;font-weight:600;flex:1">Date <input type="date" id="pet-date" value="${todayISO()}" max="${todayISO()}" style="width:auto;display:inline-block;margin-left:6px;padding:6px 8px"></label>
@@ -2362,7 +2362,7 @@ function viewStrength(sub){
   const opts = loadEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(exLabel(m))}</option>`).join('')
     + bwEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(exLabel(m))} (reps)</option>`).join('');
   /* PRs are heaviest-load-ever now, so show the bar weight and what you hit it for, not an e1RM. */
-  const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.id===selectedExercise?ph('caret-right','lead'):''}${esc(p.name)}</span><span><strong>${p.v} ${DB.unit}</strong> <span class="muted">× ${esc(String(p.r))} · ${fmtDate(p.date)}</span></span></div>`).join('');
+  const prs = exercisePRs().slice(0,12).map((p,i)=>`<button class="hist-item tap" style="cursor:pointer" data-action="selectPR" data-i="${esc(i)}"><span>${p.id===selectedExercise?ph('caret-right','lead'):''}${esc(p.name)}</span><span><strong>${p.v} ${DB.unit}</strong> <span class="muted">× ${esc(String(p.r))} · ${fmtDate(p.date)}</span></span></button>`).join('');
   const hist = exerciseHistory(selectedExercise).slice(0,15);
   const histRows = hist.map(h=>`<div class="hist-item">
       <div style="min-width:0"><div style="font-weight:600;font-size:13px">${fmtDate(h.date)}${h.deload?' <em class="muted" style="font-size:11px">(deload)</em>':''}</div>
@@ -2371,7 +2371,7 @@ function viewStrength(sub){
     </div>`).join('');
   return `<h1>Progress</h1><p class="subtitle">${isReps?'Total reps per session':'Estimated 1-rep max per exercise'}</p>${sub}
     <div class="card">
-      <select onchange="selectExercise(this.value)">${opts}</select>
+      <select data-action="selectExercise">${opts}</select>
       ${rangeSeg()}
     </div>
     <div class="card">
@@ -2434,7 +2434,7 @@ function viewCardioTrend(sub){
 function weightList(){
   return DB.weights.map((w,i)=>({w,i})).filter(o=>isLive(o.w)).reverse().slice(0,12).map(({w,i})=>{
     const idx = i;
-    return `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" onclick="rmWeight(${idx})">${ph('x')}</button></span></div>`;
+    return `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" data-action="rmWeight" data-idx="${esc(idx)}">${ph('x')}</button></span></div>`;
   }).join('');
 }
 /* 7-day rolling average — smooths daily water-weight noise into the real signal.
@@ -2545,7 +2545,7 @@ function petMonthDelta(){
 }
 function petWeightList(){
   return (DB.petWeights||[]).map((w,i)=>({w,i})).filter(o=>isLive(o.w)).reverse().slice(0,12).map(({w,i})=>
-    `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" onclick="rmPetWeight(${i})">${ph('x')}</button></span></div>`
+    `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" data-action="rmPetWeight" data-i="${esc(i)}">${ph('x')}</button></span></div>`
   ).join('');
 }
 function setPetName(v){ DB.petName = (v||'').trim() || 'Freddie'; save(); }
@@ -3857,12 +3857,12 @@ function viewCardio(){
         <div><label>Type</label><select id="imp-type">${CARDIO_TYPES.map(t=>`<option ${t===pendingCardio.type?'selected':''}>${t}</option>`).join('')}</select></div>
       </div>
       <p class="muted" style="margin:10px 0">${fmtMin(pendingCardio.minutes)}${pendingCardio.distanceKm>0?` · ${fmtDist(pendingCardio.distanceKm)}`:''}</p>
-      <div class="row" style="gap:8px"><button class="btn" style="flex:1" onclick="confirmCardioImport()">Save</button><button class="btn btn-ghost" style="flex:1" onclick="discardCardioImport()">Discard</button></div>
+      <div class="row" style="gap:8px"><button class="btn" style="flex:1" data-action="confirmCardioImport">Save</button><button class="btn btn-ghost" style="flex:1" data-action="discardCardioImport">Discard</button></div>
     </div>` : '';
   const rows = list.length ? list.map(c=>`<div class="hist-item" style="cursor:default">
       <div><div style="font-weight:600">${esc(c.type)}${c.source==='strava'?' <span class="range-badge" style="font-size:10px">Strava</span>':''}</div>
         <div class="muted" style="font-size:12px">${fmtDate(c.date)} · ${fmtMin(c.minutes)}${c.distanceKm>0?` · ${fmtDist(c.distanceKm)}`:''}${c.note?' · '+esc(c.note):''}</div></div>
-      <button class="x-set" onclick="removeCardio('${c.id}')" title="delete">${ph('x')}</button>
+      <button class="x-set" data-action="removeCardio" data-id="${esc(c.id)}" title="delete">${ph('x')}</button>
     </div>`).join('') : '<p class="empty">No cardio logged yet. Add one below or import a Strava file.</p>';
   return `<h1>Cardio</h1>
     <div class="card">
@@ -3881,13 +3881,13 @@ function viewCardio(){
         <div><label>Distance (${u})</label><input type="number" inputmode="decimal" id="cardio-dist" placeholder="optional"></div>
       </div>
       <input id="cardio-note" placeholder="Note (optional)" style="margin-top:10px">
-      <button class="btn btn-block" style="margin-top:12px" onclick="addCardio()">Add cardio</button>
+      <button class="btn btn-block" style="margin-top:12px" data-action="addCardio">Add cardio</button>
     </div>
     <h2>Import from Strava</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:12px;line-height:1.5">Upload a <strong>.gpx</strong> or <strong>.tcx</strong> from a Strava activity (activity page → <strong>⋯</strong> → Export), or the <strong>activities.csv</strong> from Strava's bulk “Export your data.” Distance &amp; time are read automatically — confirm the activity type before saving.</p>
-      <button class="btn btn-ghost btn-block" onclick="pickCardioFile()">${ph('upload-simple')}Choose Strava file</button>
-      <input type="file" id="cardio-file" accept=".gpx,.tcx,.csv" class="hidden" onchange="handleCardioFile(this)">
+      <button class="btn btn-ghost btn-block" data-action="pickCardioFile">${ph('upload-simple')}Choose Strava file</button>
+      <input type="file" id="cardio-file" accept=".gpx,.tcx,.csv" class="hidden" data-action="handleCardioFile">
     </div>
     <h2>History</h2>
     <div class="card">${rows}</div>`;
@@ -4816,6 +4816,26 @@ const ACTIONS = {
   editSession:       { click: el => editSession(+el.dataset.idx) },
   deleteSession:     { click: el => deleteSession(+el.dataset.idx) },
   toggleHist:        { click: el => toggleHist(+el.dataset.idx) },
+  /* Train → Progress and Train → Cardio. rangeSeg compares chartRange === 90 and selectPR indexes an
+     array, so the range and every index decode with a unary plus. logPetWeight is shared with Today's
+     weigh-in row: the Log button names both element ids and passes both, and a control with no
+     data-date-el passes the input id alone, never an undefined second argument. The Strava picker
+     clicks the hidden file input inside the tap; the input acts on change alone, so that synthesized
+     click does nothing. */
+  setRange:            { click: el => setRange(+el.dataset.range) },
+  progSubTab:          { click: el => progSubTab(el.dataset.sub) },
+  logWeight:           { click: () => logWeight() },
+  logPetWeight:        { click: el => el.dataset.dateEl ? logPetWeight(el.dataset.input, el.dataset.dateEl) : logPetWeight(el.dataset.input) },
+  selectPR:            { click: el => selectPR(+el.dataset.i) },
+  selectExercise:      { change: el => selectExercise(el.value) },
+  rmWeight:            { click: el => rmWeight(+el.dataset.idx) },
+  rmPetWeight:         { click: el => rmPetWeight(+el.dataset.i) },
+  confirmCardioImport: { click: () => confirmCardioImport() },
+  discardCardioImport: { click: () => discardCardioImport() },
+  removeCardio:        { click: el => removeCardio(el.dataset.id) },
+  addCardio:           { click: () => addCardio() },
+  pickCardioFile:      { click: () => pickCardioFile() },
+  handleCardioFile:    { change: el => handleCardioFile(el) },
 };
 document.addEventListener('click', dispatchAction, { passive: false });
 document.addEventListener('change', dispatchAction, { passive: false });

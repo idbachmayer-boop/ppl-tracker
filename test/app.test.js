@@ -4775,6 +4775,23 @@ function f2Corpus(){
       out.push({ label: 'Train → History: skipped row open, activity panel with one logged activity', html: appHtml(a) });
     }
   }
+  /* 05-04: Train → Progress on the strength and pet subs (populatedDB has pet weights), and Train →
+     Cardio with two logged sessions. The pending-import card needs a parsed Strava file, so its Save
+     and Discard are left to the static checks and the ratchet. */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    ['strength', 'pet'].forEach(sub => {
+      const a = loadApp(APP_PATH);
+      a.DB = populatedDB(a);
+      try { a.go('train'); a.setSub('progress'); a.__sandbox.progSubTab(sub); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label: `Train → Progress: ${sub} sub`, html: appHtml(a) });
+    });
+    const a = loadApp(APP_PATH);
+    a.DB = populatedDB(a);
+    a.DB.cardio.push({ id:'c2', date:dayOff(-2), type:'Walk', minutes:30, distanceKm:1.2, note:'', source:'strava', mtime:1 });
+    try { a.go('train'); a.setSub('cardio'); } catch(e){ /* the checks read whatever rendered */ }
+    out.push({ label: 'Train → Cardio: two logged sessions', html: appHtml(a) });
+  }
   f2Corpus.cache = out;
   return out;
 }
@@ -5810,6 +5827,186 @@ function f2StartTag(html, name){
   } catch(e){ threw = e.message; }
   ok("D-09: a hostile session date stays inside the date input's value attribute",
      !threw && r.open && !r.rawB && r.escaped, { threw, r });
+}
+/* A fresh instance with populatedDB on Train → Progress, on the body sub unless `sub` names another. */
+function f2Progress(sub){
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  a.go('train'); a.setSub('progress');
+  if(sub) a.__sandbox.progSubTab(sub);
+  return a;
+}
+/* setRange stores its argument and rangeSeg compares chartRange === 90, so a string range leaves
+   every segment inactive. */
+{
+  const a = f2Progress();
+  const r = {};
+  let threw = null;
+  const range = html => controlsIn(html).filter(c => c.data.action === 'setRange');
+  try {
+    const before = range(f2AppHtml(a));
+    r.before = before.map(c => c.data.range + ':' + c.cls);
+    const c90 = before.find(c => c.data.range === '90');
+    if(c90) fireAction(a, 'click', fakeEl(c90.data));
+    const after = range(a.__sandbox.viewWeight());
+    r.after = after.map(c => c.data.range + ':' + c.cls);
+    r.tags = after.map(c => c.tag);
+  } catch(e){ threw = e.message; }
+  const active = list => (list || []).filter(x => x.split(':')[1].split(/\s+/).includes('active')).map(x => x.split(':')[0]);
+  ok('DELEG-02: a range button activates its own segment (numeric range)',
+     !threw && r.before.length === 4 && JSON.stringify(active(r.before)) === '["30"]'
+       && JSON.stringify(active(r.after)) === '["90"]' && r.tags.every(t => t === 'button'), { threw, r });
+}
+{
+  const a = f2Progress();
+  const r = {};
+  let threw = null;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  let weights = [], pets = [];
+  try {
+    const subs = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'progSubTab');
+    r.subs = subs.map(c => c.tag + ':' + c.data.sub);
+    const strength = subs.find(c => c.data.sub === 'strength');
+    if(strength) fireAction(a, 'click', fakeEl(strength.data));
+    const s2 = find(c => c.data.action === 'progSubTab' && c.data.sub === 'strength');
+    r.strengthActive = !!s2 && s2.cls.split(/\s+/).includes('active');
+    const body = find(c => c.data.action === 'progSubTab' && c.data.sub === 'body');
+    if(body) fireAction(a, 'click', fakeEl(body.data));
+    weights = spyOn(a, 'logWeight');
+    pets = spyOn(a, 'logPetWeight');
+    const log = find(c => c.data.action === 'logWeight');
+    r.log = log && log.tag;
+    if(log) fireAction(a, 'click', fakeEl(log.data));
+    const pet = find(c => c.data.action === 'progSubTab' && c.data.sub === 'pet');
+    if(pet) fireAction(a, 'click', fakeEl(pet.data));
+    const plog = find(c => c.data.action === 'logPetWeight');
+    r.plog = plog && { tag: plog.tag, data: plog.data };
+    if(plog) fireAction(a, 'click', fakeEl(plog.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the Progress sub-tabs and both Log buttons route through the dispatcher',
+     !threw && r.subs.length === 5 && r.subs.every(x => x.startsWith('button:')) && r.strengthActive
+       && r.log === 'button' && JSON.stringify(weights) === '[[]]'
+       && !!r.plog && r.plog.tag === 'button' && JSON.stringify(pets) === '[["pet-input","pet-date"]]', { threw, r, weights, pets });
+}
+/* logPetWeight(elId, dateElId) is shared with Today's weigh-in row (plan 05-05), whose control names
+   only its input. A control with no data-date-el must pass exactly one argument, never an undefined
+   second one. Today is not converted yet, so the element here is a stand-in with that shape. */
+{
+  const a = loadApp(APP_PATH);
+  const calls = spyOn(a, 'logPetWeight');
+  let threw = null;
+  try {
+    fireAction(a, 'click', fakeEl({ action: 'logPetWeight', input: 'today-pet' }));
+    fireAction(a, 'click', fakeEl({ action: 'logPetWeight', input: 'pet-input', dateEl: 'pet-date' }));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the shared logPetWeight action passes one argument when the control names no date element',
+     !threw && calls.length === 2 && calls[0].length === 1 && calls[0][0] === 'today-pet'
+       && JSON.stringify(calls[1]) === '["pet-input","pet-date"]', { threw, calls });
+}
+{
+  const a = f2Progress('strength');
+  const r = {};
+  let threw = null;
+  const sels = spyOn(a, 'selectExercise');
+  let prs = [];
+  try {
+    const html = f2AppHtml(a);
+    const cs = controlsIn(html);
+    const sel = cs.find(c => c.data.action === 'selectExercise');
+    r.sel = sel && { tag: sel.tag, events: Object.keys(a.ACTIONS.selectExercise || {}) };
+    const opts = [...html.matchAll(/<option value="([^"]*)"/g)].map(m => m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
+    r.value = opts[opts.length - 1];
+    if(sel){
+      const el = fakeEl(sel.data, { value: r.value });
+      fireAction(a, 'click', el); fireAction(a, 'input', el);
+      fireAction(a, 'change', el);
+    }
+    r.sels = JSON.stringify(sels);
+    prs = spyOn(a, 'selectPR');
+    const pr = cs.find(c => c.data.action === 'selectPR');
+    r.pr = pr && pr.tag;
+    if(pr) fireAction(a, 'click', fakeEl(pr.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: picking an exercise and a PR row select through the dispatcher',
+     !threw && !!r.sel && r.sel.tag === 'select' && JSON.stringify(r.sel.events) === '["change"]'
+       && !!r.value && r.sels === JSON.stringify([[r.value]])
+       && r.pr === 'button' && prs.length === 1 && prs[0].length === 1 && prs[0][0] === 0, { threw, r, prs });
+}
+{
+  const a = f2Progress();
+  const r = {};
+  let threw = null;
+  const rm = spyOn(a, 'rmWeight'), rmp = spyOn(a, 'rmPetWeight');
+  try {
+    const w = controlsIn(f2AppHtml(a)).find(c => c.data.action === 'rmWeight');
+    r.w = w && w.tag;
+    if(w) fireAction(a, 'click', fakeEl(w.data));
+    a.__sandbox.progSubTab('pet');
+    r.pets = a.DB.petWeights.filter(x => !x.deletedAt).length;
+    const p = controlsIn(f2AppHtml(a)).find(c => c.data.action === 'rmPetWeight');
+    r.p = p && p.tag;
+    if(p) fireAction(a, 'click', fakeEl(p.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: deleting a weigh-in passes a numeric index',
+     !threw && r.w === 'button' && JSON.stringify(rm) === '[[2]]' && typeof rm[0][0] === 'number'
+       && r.pets > 0 && r.p === 'button' && JSON.stringify(rmp) === '[[1]]' && typeof rmp[0][0] === 'number', { threw, r, rm, rmp });
+}
+/* T-5-02: a cardio id arrives from a Strava import, sync or a backup. It used to sit inside the
+   inline handler's single quotes, where esc() does not reach. */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.cardio = [{ id: HOSTILE, date: dayOff(-1), type: 'Longboard', minutes: 20, distanceKm: 0, note: '', mtime: 1 },
+                 { id: 'c2', date: dayOff(-2), type: 'Walk', minutes: 30, distanceKm: 0, note: '', mtime: 1 }];
+  const r = {};
+  let threw = null;
+  try {
+    a.go('train'); a.setSub('cardio');
+    const html = a.__sandbox.viewCardio();
+    r.rawB = html.includes('<b>');
+    const del = controlsIn(html).filter(c => c.data.action === 'removeCardio');
+    r.ids = del.map(c => c.data.id);
+    const h = del.find(c => c.data.id === HOSTILE);
+    r.tag = h && h.tag;
+    if(h) fireAction(a, 'click', fakeEl(h.data));
+    r.hostileDeleted = !!a.DB.cardio.find(c => c.id === HOSTILE).deletedAt;
+    r.c2Live = !a.DB.cardio.find(c => c.id === 'c2').deletedAt;
+  } catch(e){ threw = e.message; }
+  ok('D-03: a hostile cardio id round-trips through data-id and deletes the right session',
+     !threw && !r.rawB && r.ids.length === 2 && r.tag === 'button' && r.hostileDeleted && r.c2Live, { threw, r });
+}
+/* The picker button clicks the hidden file input inside the tap; the input acts on change alone, so
+   the synthesized click does nothing and a chosen file imports once. */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  const r = {};
+  let threw = null;
+  let picks = [], files = [], adds = [];
+  try {
+    a.go('train'); a.setSub('cardio');
+    const cs = controlsIn(f2AppHtml(a));
+    picks = spyOn(a, 'pickCardioFile'); files = spyOn(a, 'handleCardioFile'); adds = spyOn(a, 'addCardio');
+    const pick = cs.find(c => c.data.action === 'pickCardioFile');
+    const inp = cs.find(c => c.data.action === 'handleCardioFile');
+    r.pick = pick && pick.tag; r.inp = inp && { tag: inp.tag, type: inp.type };
+    if(pick) fireAction(a, 'click', fakeEl(pick.data));
+    r.afterPick = [picks.length, files.length];
+    if(inp){
+      const el = fakeEl(inp.data);
+      fireAction(a, 'change', el);
+      r.sameEl = files.length === 1 && files[0].length === 1 && files[0][0] === el;
+      fireAction(a, 'click', el);
+    }
+    r.after = [picks.length, files.length];
+    const add = cs.find(c => c.data.action === 'addCardio');
+    r.add = add && add.tag;
+    if(add) fireAction(a, 'click', fakeEl(add.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the Strava file picker opens from its button, and choosing a file runs the handler once',
+     !threw && r.pick === 'button' && !!r.inp && r.inp.tag === 'input' && r.inp.type === 'file'
+       && JSON.stringify(r.afterPick) === '[1,0]' && r.sameEl && JSON.stringify(r.after) === '[1,1]'
+       && r.add === 'button' && JSON.stringify(adds) === '[[]]', { threw, r, adds });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

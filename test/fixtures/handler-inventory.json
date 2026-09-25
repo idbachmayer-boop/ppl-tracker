@@ -1036,7 +1036,7 @@
   "calls": [
    "setRange"
   ],
-  "action": null
+  "action": "setRange"
  },
  {
   "fn": "rangeSeg",
@@ -1047,7 +1047,7 @@
   "calls": [
    "setRange"
   ],
-  "action": null
+  "action": "setRange"
  },
  {
   "fn": "rangeSeg",
@@ -1058,7 +1058,7 @@
   "calls": [
    "setRange"
   ],
-  "action": null
+  "action": "setRange"
  },
  {
   "fn": "rangeSeg",
@@ -1069,7 +1069,7 @@
   "calls": [
    "setRange"
   ],
-  "action": null
+  "action": "setRange"
  },
  {
   "fn": "viewWeight",
@@ -1080,7 +1080,7 @@
   "calls": [
    "progSubTab"
   ],
-  "action": null
+  "action": "progSubTab"
  },
  {
   "fn": "viewWeight",
@@ -1091,7 +1091,7 @@
   "calls": [
    "progSubTab"
   ],
-  "action": null
+  "action": "progSubTab"
  },
  {
   "fn": "viewWeight",
@@ -1102,7 +1102,7 @@
   "calls": [
    "progSubTab"
   ],
-  "action": null
+  "action": "progSubTab"
  },
  {
   "fn": "viewWeight",
@@ -1113,7 +1113,7 @@
   "calls": [
    "progSubTab"
   ],
-  "action": null
+  "action": "progSubTab"
  },
  {
   "fn": "viewWeight",
@@ -1124,7 +1124,7 @@
   "calls": [
    "progSubTab"
   ],
-  "action": null
+  "action": "progSubTab"
  },
  {
   "fn": "viewWeight",
@@ -1135,7 +1135,7 @@
   "calls": [
    "logWeight"
   ],
-  "action": null
+  "action": "logWeight"
  },
  {
   "fn": "viewPetWeight",
@@ -1146,7 +1146,7 @@
   "calls": [
    "logPetWeight"
   ],
-  "action": null
+  "action": "logPetWeight"
  },
  {
   "fn": "viewStrength",
@@ -1157,7 +1157,7 @@
   "calls": [
    "selectPR"
   ],
-  "action": null
+  "action": "selectPR"
  },
  {
   "fn": "viewStrength",
@@ -1168,7 +1168,7 @@
   "calls": [
    "selectExercise"
   ],
-  "action": null
+  "action": "selectExercise"
  },
  {
   "fn": "weightList",
@@ -1179,7 +1179,7 @@
   "calls": [
    "rmWeight"
   ],
-  "action": null
+  "action": "rmWeight"
  },
  {
   "fn": "petWeightList",
@@ -1190,7 +1190,7 @@
   "calls": [
    "rmPetWeight"
   ],
-  "action": null
+  "action": "rmPetWeight"
  },
  {
   "fn": "exercisesCardHTML",
@@ -1676,7 +1676,7 @@
   "calls": [
    "confirmCardioImport"
   ],
-  "action": null
+  "action": "confirmCardioImport"
  },
  {
   "fn": "viewCardio",
@@ -1687,7 +1687,7 @@
   "calls": [
    "discardCardioImport"
   ],
-  "action": null
+  "action": "discardCardioImport"
  },
  {
   "fn": "viewCardio",
@@ -1698,7 +1698,7 @@
   "calls": [
    "removeCardio"
   ],
-  "action": null
+  "action": "removeCardio"
  },
  {
   "fn": "viewCardio",
@@ -1709,7 +1709,7 @@
   "calls": [
    "addCardio"
   ],
-  "action": null
+  "action": "addCardio"
  },
  {
   "fn": "viewCardio",
@@ -1720,7 +1720,7 @@
   "calls": [
    "pickCardioFile"
   ],
-  "action": null
+  "action": "pickCardioFile"
  },
  {
   "fn": "viewCardio",
@@ -1731,7 +1731,7 @@
   "calls": [
    "handleCardioFile"
   ],
-  "action": null
+  "action": "handleCardioFile"
  },
  {
   "fn": "viewSleep",
