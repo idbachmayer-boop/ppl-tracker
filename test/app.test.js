@@ -4853,6 +4853,25 @@ function f2Corpus(){
       out.push({ label, html: appHtml(a) });
     });
   }
+  /* 05-06: the active workout in the states the default mid-workout screen never shows. The first has
+     slot 0 stalled (the coach's Deload button) with set 1 skipped (its Undo), slot 1 collapsed (the
+     whole-card button) and slot 2 deloaded (the coach's undo); the warm-up ramp on slot 0 is open,
+     which only changes the DOM box, so its button is what renders. The second is a backdated draft
+     (the date and minutes inputs) with the stair stepper skipped (its Undo). */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    [['Train → Log: mid-workout, collapsed, skipped set, stalled and deloaded slots, warm-up open', (d, a) => f2MidBusy(d, a),
+      a => { a.__sandbox.toggleExCollapse(1); a.__sandbox.toggleWarm(0); }],
+     ['Train → Log: backdated draft, stair stepper skipped', d => f2MidPast(d), null]].forEach(([label, seed, after]) => {
+      const a = loadApp(APP_PATH);
+      try {
+        const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); seed(d, a); a.DB = d;
+        a.go('train'); a.setSub('log');
+        if(after) after(a);
+      } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label, html: appHtml(a) });
+    });
+  }
   f2Corpus.cache = out;
   return out;
 }
@@ -6696,6 +6715,256 @@ function f2Log(seed){
   ok('F2 rule: the collection recipe prescribes no inline on-event attribute',
      recipe.length > 0 && Array.isArray(rows) && rows.length === 0 && recipe.includes('data-action') && synthetic,
      { rows: (rows || []).slice(0, 5).map(r => r.event + '=' + r.was), mentionsDataAction: recipe.includes('data-action'), synthetic });
+}
+
+/* The active workout. Every check starts from populatedDB with a full local draft of PUSH 1 and
+   updatedAt 1000, on Train → Log. `seed(d, a)` edits the DB before it is installed. */
+function f2Mid(seed){
+  const a = loadApp(APP_PATH);
+  const d = populatedDB(a);
+  d.draft = fullDraft(a, 'PUSH 1');
+  d.updatedAt = 1000;
+  if(seed) seed(d, a);
+  a.DB = d;
+  a.go('train'); a.setSub('log');
+  return a;
+}
+/* Four earlier PUSH 1 sessions whose slot-0 best never beats the first one: isStalledSlot() is true
+   for slot 0, so the card offers the coach's Deload button. */
+function f2Stall(d, a){
+  const name = d.draft.entries[0].name;
+  [[-40, '185', '8'], [-35, '135', '5'], [-30, '135', '5'], [-25, '135', '5']].forEach(([off, w, r], n) => {
+    d.sessions.push({ id: 'st' + n, workout: 'PUSH 1', date: dayOff(off), endedAt: 10 + n, extras: {},
+      entries: [{ name, sets: [{ w, r, skipped: false }] }] });
+  });
+  d.sessions.sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
+}
+const f2Find = (a, pred) => controlsIn(f2AppHtml(a)).find(pred) || null;
+const f2At = (action, i, k) => c => c.data.action === action && (i === undefined || c.data.i === String(i)) && (k === undefined || c.data.k === String(k));
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid();
+    const spy = spyPushes(a);
+    const w = f2Find(a, f2At('setWeight', 0, 0)), rp = f2Find(a, f2At('setReps', 0, 0));
+    r.tags = [w && w.tag, rp && rp.tag];
+    if(w) fireListener(a, 'input', fakeEl(w.data, { value: '100' }));
+    if(rp) fireListener(a, 'input', fakeEl(rp.data, { value: '8' }));
+    const st = a.__stored();
+    r.stored = st && st.draft ? { w: st.draft.entries[0].sets[0].w, r: st.draft.entries[0].sets[0].r } : null;
+    r.updatedAt = a.DB.updatedAt; r.pushes = spy.n;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: typing a weight stores it on this device and pushes nothing',
+     !threw && JSON.stringify(r.tags) === '["input","input"]' && r.stored && r.stored.w === '100' && r.stored.r === '8'
+       && r.updatedAt === 1000 && r.pushes === 0, { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  const three = d => { d.draft.entries[0].sets = [0, 1, 2].map(() => ({ w: '', r: '', skipped: false, reason: '' })); };
+  try {
+    const a = f2Mid(three);
+    const w = f2Find(a, f2At('setWeight', 0, 0));
+    if(w) fireListener(a, 'input', fakeEl(w.data, { value: '100' }));
+    r.afterInput = a.DB.draft.entries[0].sets.map(s => s.w);
+    const b = f2Mid(three);
+    const bw = f2Find(b, f2At('setWeight', 0, 0));
+    if(bw) fireListener(b, 'change', fakeEl(bw.data, { value: '100' }));
+    r.afterChange = b.DB.draft.entries[0].sets.map(s => s.w);
+    r.found = !!w && !!bw;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: leaving the weight box rolls the weight into the empty sets below',
+     !threw && r.found && JSON.stringify(r.afterInput) === '["100","",""]' && JSON.stringify(r.afterChange) === '["100","100","100"]',
+     { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid();
+    const prompts = [];
+    a.__sandbox.prompt = msg => { prompts.push(msg); return null; };
+    const sel = f2Find(a, f2At('pickEx', 0));
+    r.tag = sel && sel.tag;
+    const before = a.DB.draft.entries[0].name;
+    const other = a.PROGRAM['PUSH 1'].slots[0].examples.find(x => x !== before);
+    if(sel){
+      fireListener(a, 'input', fakeEl(sel.data, { value: other }));
+      r.afterInput = a.DB.draft.entries[0].name;
+      fireListener(a, 'change', fakeEl(sel.data, { value: other }));
+      r.afterChange = a.DB.draft.entries[0].name;
+      const sel2 = f2Find(a, f2At('pickEx', 0));
+      fireListener(a, 'input', fakeEl(sel2.data, { value: '__custom' }));
+      r.promptsAfterInput = prompts.length;
+      fireListener(a, 'change', fakeEl(sel2.data, { value: '__custom' }));
+      r.promptsAfterChange = prompts.length;
+    }
+    r.before = before; r.other = other;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: swapping an exercise runs on change only, once',
+     !threw && r.tag === 'select' && !!r.other && r.afterInput === r.before && r.afterChange === r.other
+       && r.promptsAfterInput === 0 && r.promptsAfterChange === 1, { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid(d => { d.draft.entries[0].sets = [0, 1].map(() => ({ w: '', r: '', skipped: false, reason: '' })); });
+    const prompts = [];
+    a.__sandbox.prompt = msg => { prompts.push(msg); return 'tired'; };
+    const sk = f2Find(a, f2At('skipSet', 0, 1));
+    r.tag = sk && sk.tag;
+    if(sk) fireListener(a, 'click', fakeEl(sk.data));
+    r.prompts = prompts.slice();
+    r.skipped = a.DB.draft.entries[0].sets.map(s => s.skipped);
+    const un = f2Find(a, f2At('unskipSet', 0, 1));
+    r.unTag = un && un.tag;
+    if(un) fireListener(a, 'click', fakeEl(un.data));
+    r.restored = a.DB.draft.entries[0].sets.map(s => s.skipped);
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: skipping a set asks about set 2, never set 11 (numeric index)',
+     !threw && r.tag === 'button' && r.prompts.length === 1 && /set 2\b/.test(r.prompts[0]) && !/set 11/.test(r.prompts[0])
+       && JSON.stringify(r.skipped) === '[false,true]' && r.unTag === 'button' && JSON.stringify(r.restored) === '[false,false]',
+     { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid();
+    const collapsedCard = () => f2Find(a, c => f2At('toggleExCollapse', 0)(c) && /(^|\s)tap(\s|$)/.test(c.cls));
+    const head = f2Find(a, c => f2At('toggleExCollapse', 0)(c) && !/(^|\s)tap(\s|$)/.test(c.cls));
+    r.head = head && head.tag;
+    r.before = !!collapsedCard();
+    if(head) fireListener(a, 'click', fakeEl(head.data));
+    const card = collapsedCard();
+    r.card = card && { tag: card.tag, cls: card.cls };
+    r.summary = /▾ expand/.test(f2AppHtml(a));
+    if(card) fireListener(a, 'click', fakeEl(card.data));
+    r.after = !!collapsedCard();
+    r.expanded = !!f2Find(a, f2At('setWeight', 0, 0));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a collapsed exercise expands and collapses again through the dispatcher',
+     !threw && r.head === 'button' && r.before === false && r.card && r.card.tag === 'button' && /(^|\s)tap(\s|$)/.test(r.card.cls)
+       && r.summary && r.after === false && r.expanded, { threw, r });
+}
+/* Every active-workout control, fired once, calls its function with exactly the arguments the inline
+   handler passed: numbers where it passed numbers, the element where it passed `this`, nothing where
+   it passed nothing. Two instances between them render every control: a stalled slot 0 with set 1
+   skipped, slot 1 collapsed and slot 2 deloaded; then a backdated draft with the stair stepper skipped. */
+const f2LogSpied = ['setVal', 'updTargetBadge', 'updPlates', 'rollWeight', 'repCheck', 'skipSet', 'rmSet', 'unskipSet',
+  'toggleExCollapse', 'pickEx', 'addSet', 'toggleWarm', 'setNote', 'stairVal', 'stairTimeSet', 'unskipStairs', 'skipStairs',
+  'setDraftDate', 'setDraftDur', 'setSessionNote', 'finishWorkout', 'discardWorkout', 'deloadExercise', 'undeloadExercise',
+  'exSet', 'exRoll', 'exRmSet', 'exPick', 'exAddSet', 'toggleAcc'];
+function f2MidBusy(d, a){
+  f2Stall(d, a);
+  d.draft.entries[0].sets = [{ w: '', r: '', skipped: false, reason: '' }, { w: '', r: '', skipped: true, reason: 'tired' }];
+  d.draft.entries[2].deload = true;
+}
+function f2MidPast(d){
+  d.draft.historical = true; d.draft.startedAt = null; d.draft.durationMin = '';
+  d.draft.stairs.skipped = true; d.draft.stairs.reason = 'knees';
+}
+{
+  const got = {}, missing = [];
+  let threw = null, busyStalled = null;
+  const run = (a, spies, label, pick, type, value) => {
+    const c = f2Find(a, pick);
+    if(!c){ missing.push(label); return; }
+    Object.values(spies).forEach(l => { l.length = 0; });
+    const el = fakeEl(c.data, { value: value === undefined ? '' : value });
+    fireListener(a, type, el);
+    const out = {};
+    Object.keys(spies).forEach(n => { if(spies[n].length) out[n] = spies[n].map(args => args.map(x => x === el ? '<el>' : x)); });
+    got[label] = { tag: c.tag, calls: out };
+  };
+  try {
+    const a = f2Mid(f2MidBusy);
+    busyStalled = a.__sandbox.isStalledSlot(a.DB.draft.entries[0].name, 'PUSH 1', 0);
+    a.__sandbox.toggleExCollapse(1);   /* slot 1 collapsed, re-rendered before any spy goes in */
+    const s = {}; f2LogSpied.forEach(n => { s[n] = spyOn(a, n); });
+    run(a, s, 'weight input', f2At('setWeight', 0, 0), 'input', '100');
+    run(a, s, 'weight change', f2At('setWeight', 0, 0), 'change', '100');
+    run(a, s, 'weight click', f2At('setWeight', 0, 0), 'click', '100');
+    run(a, s, 'reps input', f2At('setReps', 0, 0), 'input', '8');
+    run(a, s, 'reps change', f2At('setReps', 0, 0), 'change', '8');
+    run(a, s, 'skip set', f2At('skipSet', 0, 0), 'click');
+    run(a, s, 'remove set', f2At('rmSet', 0, 0), 'click');
+    run(a, s, 'undo skipped set', f2At('unskipSet', 0, 1), 'click');
+    run(a, s, 'collapse header', c => f2At('toggleExCollapse', 0)(c) && !/(^|\s)tap(\s|$)/.test(c.cls), 'click');
+    run(a, s, 'collapsed card', c => f2At('toggleExCollapse', 1)(c) && /(^|\s)tap(\s|$)/.test(c.cls), 'click');
+    run(a, s, 'exercise select change', f2At('pickEx', 0), 'change', 'DB bench press');
+    run(a, s, 'exercise select input', f2At('pickEx', 0), 'input', 'DB bench press');
+    run(a, s, 'add set', f2At('addSet', 0), 'click');
+    run(a, s, 'warm-up', f2At('toggleWarm', 0), 'click');
+    run(a, s, 'exercise note', f2At('setNote', 0), 'input', 'felt good');
+    run(a, s, 'deload', f2At('deloadExercise', 0), 'click');
+    run(a, s, 'undo deload', f2At('undeloadExercise', 2), 'click');
+    run(a, s, 'stairs level', c => c.data.action === 'stairVal' && c.data.field === 'level', 'input', '7');
+    run(a, s, 'stairs minutes', c => c.data.action === 'stairTimeSet' && c.data.part === 'm', 'input', '3');
+    run(a, s, 'stairs seconds', c => c.data.action === 'stairTimeSet' && c.data.part === 's', 'input', '20');
+    run(a, s, 'skip stairs', f2At('skipStairs'), 'click');
+    run(a, s, 'session note', f2At('setSessionNote'), 'input', 'solid');
+    run(a, s, 'finish', f2At('finishWorkout'), 'click');
+    run(a, s, 'discard', f2At('discardWorkout'), 'click');
+    const b = f2Mid(f2MidPast);
+    const t = {}; f2LogSpied.forEach(n => { t[n] = spyOn(b, n); });
+    run(b, t, 'undo skipped stairs', f2At('unskipStairs'), 'click');
+    run(b, t, 'backdated date', f2At('setDraftDate'), 'input', '2026-08-01');
+    run(b, t, 'backdated minutes', f2At('setDraftDur'), 'input', '45');
+  } catch(e){ threw = e.message; }
+  const want = {
+    'weight input': ['input', { setVal: [[0, 0, 'w', '100']], updTargetBadge: [[0, 0]], updPlates: [[0]] }],
+    'weight change': ['input', { rollWeight: [[0, 0, '100']] }],
+    'weight click': ['input', {}],
+    'reps input': ['input', { setVal: [[0, 0, 'r', '8']], updTargetBadge: [[0, 0]] }],
+    'reps change': ['input', { repCheck: [[0, 0]] }],
+    'skip set': ['button', { skipSet: [[0, 0]] }],
+    'remove set': ['button', { rmSet: [[0, 0]] }],
+    'undo skipped set': ['button', { unskipSet: [[0, 1]] }],
+    'collapse header': ['button', { toggleExCollapse: [[0]] }],
+    'collapsed card': ['button', { toggleExCollapse: [[1]] }],
+    'exercise select change': ['select', { pickEx: [[0, '<el>']] }],
+    'exercise select input': ['select', {}],
+    'add set': ['button', { addSet: [[0]] }],
+    'warm-up': ['button', { toggleWarm: [[0]] }],
+    'exercise note': ['input', { setNote: [[0, 'felt good']] }],
+    'deload': ['button', { deloadExercise: [[0]] }],
+    'undo deload': ['button', { undeloadExercise: [[2]] }],
+    'stairs level': ['input', { stairVal: [['level', '7']] }],
+    'stairs minutes': ['input', { stairTimeSet: [['m', '3']] }],
+    'stairs seconds': ['input', { stairTimeSet: [['s', '20']] }],
+    'skip stairs': ['button', { skipStairs: [[]] }],
+    'session note': ['textarea', { setSessionNote: [['solid']] }],
+    'finish': ['button', { finishWorkout: [[]] }],
+    'discard': ['button', { discardWorkout: [[]] }],
+    'undo skipped stairs': ['button', { unskipStairs: [[]] }],
+    'backdated date': ['input', { setDraftDate: [['2026-08-01']] }],
+    'backdated minutes': ['input', { setDraftDur: [['45']] }],
+  };
+  const wrong = Object.keys(want).filter(k => !got[k] || got[k].tag !== want[k][0] || JSON.stringify(got[k].calls) !== JSON.stringify(want[k][1]))
+    .map(k => ({ control: k, want: want[k], got: got[k] || null }));
+  ok('DELEG-02: every active-workout control calls its function with exactly the arguments the inline handler passed',
+     !threw && busyStalled === true && missing.length === 0 && wrong.length === 0, { threw, busyStalled, missing, wrong: wrong.slice(0, 4) });
+}
+/* D-09. Built from ordinary characters so no escaping in this file can mask the payload. */
+const EVIL = String.fromCharCode(34) + '><img src=x onerror=alert(1)>';
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid(d => {
+      d.draft.entries[0].sets[0].w = EVIL; d.draft.entries[0].sets[0].r = EVIL;
+      d.draft.stairs.level = EVIL;
+      d.draft.historical = true; d.draft.date = EVIL; d.draft.durationMin = EVIL;
+    });
+    const html = a.viewActive();
+    r.img = /<img/i.test(html);
+    r.escaped = html.split('&quot;&gt;&lt;img').length - 1;
+  } catch(e){ threw = e.message; }
+  ok('D-09: a hostile set, stairs, date or duration value renders escaped in the Log tab',
+     !threw && r.img === false && r.escaped >= 5, { threw, r });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

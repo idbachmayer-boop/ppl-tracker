@@ -566,7 +566,7 @@
   "calls": [
    "toggleExCollapse"
   ],
-  "action": null
+  "action": "toggleExCollapse"
  },
  {
   "fn": "viewActive",
@@ -577,7 +577,7 @@
   "calls": [
    "undeloadExercise"
   ],
-  "action": null
+  "action": "undeloadExercise"
  },
  {
   "fn": "viewActive",
@@ -588,7 +588,7 @@
   "calls": [
    "deloadExercise"
   ],
-  "action": null
+  "action": "deloadExercise"
  },
  {
   "fn": "viewActive",
@@ -599,7 +599,7 @@
   "calls": [
    "unskipSet"
   ],
-  "action": null
+  "action": "unskipSet"
  },
  {
   "fn": "viewActive",
@@ -612,7 +612,7 @@
    "updTargetBadge",
    "updPlates"
   ],
-  "action": null
+  "action": "setWeight"
  },
  {
   "fn": "viewActive",
@@ -623,7 +623,7 @@
   "calls": [
    "rollWeight"
   ],
-  "action": null
+  "action": "setWeight"
  },
  {
   "fn": "viewActive",
@@ -635,7 +635,7 @@
    "setVal",
    "updTargetBadge"
   ],
-  "action": null
+  "action": "setReps"
  },
  {
   "fn": "viewActive",
@@ -646,7 +646,7 @@
   "calls": [
    "repCheck"
   ],
-  "action": null
+  "action": "setReps"
  },
  {
   "fn": "viewActive",
@@ -657,7 +657,7 @@
   "calls": [
    "skipSet"
   ],
-  "action": null
+  "action": "skipSet"
  },
  {
   "fn": "viewActive",
@@ -668,7 +668,7 @@
   "calls": [
    "rmSet"
   ],
-  "action": null
+  "action": "rmSet"
  },
  {
   "fn": "viewActive",
@@ -679,7 +679,7 @@
   "calls": [
    "toggleExCollapse"
   ],
-  "action": null
+  "action": "toggleExCollapse"
  },
  {
   "fn": "viewActive",
@@ -690,7 +690,7 @@
   "calls": [
    "pickEx"
   ],
-  "action": null
+  "action": "pickEx"
  },
  {
   "fn": "viewActive",
@@ -701,7 +701,7 @@
   "calls": [
    "addSet"
   ],
-  "action": null
+  "action": "addSet"
  },
  {
   "fn": "viewActive",
@@ -712,7 +712,7 @@
   "calls": [
    "toggleWarm"
   ],
-  "action": null
+  "action": "toggleWarm"
  },
  {
   "fn": "viewActive",
@@ -723,7 +723,7 @@
   "calls": [
    "setNote"
   ],
-  "action": null
+  "action": "setNote"
  },
  {
   "fn": "viewActive",
@@ -734,7 +734,7 @@
   "calls": [
    "unskipStairs"
   ],
-  "action": null
+  "action": "unskipStairs"
  },
  {
   "fn": "viewActive",
@@ -745,7 +745,7 @@
   "calls": [
    "stairVal"
   ],
-  "action": null
+  "action": "stairVal"
  },
  {
   "fn": "viewActive",
@@ -756,7 +756,7 @@
   "calls": [
    "stairTimeSet"
   ],
-  "action": null
+  "action": "stairTimeSet"
  },
  {
   "fn": "viewActive",
@@ -767,7 +767,7 @@
   "calls": [
    "stairTimeSet"
   ],
-  "action": null
+  "action": "stairTimeSet"
  },
  {
   "fn": "viewActive",
@@ -778,7 +778,7 @@
   "calls": [
    "skipStairs"
   ],
-  "action": null
+  "action": "skipStairs"
  },
  {
   "fn": "viewActive",
@@ -789,7 +789,7 @@
   "calls": [
    "setDraftDate"
   ],
-  "action": null
+  "action": "setDraftDate"
  },
  {
   "fn": "viewActive",
@@ -800,7 +800,7 @@
   "calls": [
    "setDraftDur"
   ],
-  "action": null
+  "action": "setDraftDur"
  },
  {
   "fn": "viewActive",
@@ -811,7 +811,7 @@
   "calls": [
    "setSessionNote"
   ],
-  "action": null
+  "action": "setSessionNote"
  },
  {
   "fn": "viewActive",
@@ -822,7 +822,7 @@
   "calls": [
    "finishWorkout"
   ],
-  "action": null
+  "action": "finishWorkout"
  },
  {
   "fn": "viewActive",
@@ -833,7 +833,7 @@
   "calls": [
    "discardWorkout"
   ],
-  "action": null
+  "action": "discardWorkout"
  },
  {
   "fn": "renderWeekReview",

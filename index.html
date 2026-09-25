@@ -1787,9 +1787,9 @@ function viewActive(){
       const done = entry.sets.filter(x=>!x.skipped && x.r!=='');
       const summary = done.length ? done.map(x=>fmtSet(x.w,x.r)).join(', ') : 'no sets yet';
       return `<div class="ex-card"><div class="ex-accent ${barClass(g)}"></div>
-        <div class="ex-body" style="padding:11px 14px;cursor:pointer" onclick="toggleExCollapse(${i})">
-          <div class="row"><div style="min-width:0"><span style="font-weight:700;font-size:14px">${esc(entry.name)}</span> <span class="muted" style="font-size:12px">${done.length?'✓ ':''}${summary}</span></div><span class="muted" style="white-space:nowrap">▾ expand</span></div>
-        </div></div>`;
+        <button class="ex-body tap" style="padding:11px 14px;cursor:pointer" data-action="toggleExCollapse" data-i="${esc(i)}">
+          <span class="row"><span style="display:block;min-width:0"><span style="font-weight:700;font-size:14px">${esc(entry.name)}</span> <span class="muted" style="font-size:12px">${done.length?'✓ ':''}${esc(summary)}</span></span><span class="muted" style="white-space:nowrap">▾ expand</span></span>
+        </button></div>`;
     }
     /* "Last time" tracks the exercise actually selected, not just this slot's position — swap
        Barbell bench → DB bench and the barbell numbers must not follow you. Exact match in this
@@ -1818,21 +1818,21 @@ function viewActive(){
       if(alt.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(alt.entry.note)}</div>`;
     }
     let coachHint='';
-    if(entry.deload) coachHint = `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" onclick="undeloadExercise(${i})">undo</button></div>`;
-    else if(isStalledSlot(entry.name, name, i)) coachHint = `<div class="coach stall">⚠ Stalled — no new best for this exercise on ${name} in 3 sessions. <button class="coach-btn" onclick="deloadExercise(${i})">Deload −10%</button> or swap the exercise above.</div>`;
+    if(entry.deload) coachHint = `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`;
+    else if(isStalledSlot(entry.name, name, i)) coachHint = `<div class="coach stall">⚠ Stalled — no new best for this exercise on ${name} in 3 sessions. <button class="coach-btn" data-action="deloadExercise" data-i="${esc(i)}">Deload −10%</button> or swap the exercise above.</div>`;
     const opts = s.examples.map(e=>`<option ${e===entry.name?'selected':''}>${esc(e)}</option>`).join('') +
                  (s.examples.includes(entry.name)?'':`<option selected>${esc(entry.name)}</option>`) +
                  `<option value="__custom">+ Custom…</option>`;
     const setRows = entry.sets.map((st,k)=>{
-      if(st.skipped) return `<div class="skip-note"><span>${ph('skip-forward','lead')}Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipSet(${i},${k})">Undo</button></div>`;
+      if(st.skipped) return `<div class="skip-note"><span>${ph('skip-forward','lead')}Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button data-action="unskipSet" data-i="${esc(i)}" data-k="${esc(k)}">Undo</button></div>`;
       const [bt,bc,btitle] = setStatus(i,k);
       return `<div class="set-grid">
         <span class="set-no">${k+1}</span>
-        <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value);updTargetBadge(${i},${k});updPlates(${i})" onchange="rollWeight(${i},${k},this.value)">
-        <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="${repHint(i,k)}" value="${st.r}" oninput="setVal(${i},${k},'r',this.value);updTargetBadge(${i},${k})" onchange="repCheck(${i},${k})">
+        <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${esc(st.w)}" data-action="setWeight" data-i="${esc(i)}" data-k="${esc(k)}">
+        <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="${esc(repHint(i,k))}" value="${esc(st.r)}" data-action="setReps" data-i="${esc(i)}" data-k="${esc(k)}">
         <span id="tgt-${i}-${k}" class="tgt-badge ${bc}" title="${esc(btitle||'')}">${bt}</span>
-        <button class="skip-set" onclick="skipSet(${i},${k})" title="skip this set">${ph('skip-forward')}</button>
-        <button class="x-set" onclick="rmSet(${i},${k})" title="remove set">${ph('x')}</button>
+        <button class="skip-set" data-action="skipSet" data-i="${esc(i)}" data-k="${esc(k)}" title="skip this set">${ph('skip-forward')}</button>
+        <button class="x-set" data-action="rmSet" data-i="${esc(i)}" data-k="${esc(k)}" title="remove set">${ph('x')}</button>
       </div>`;
     }).join('');
     return `<div class="ex-card">
@@ -1841,23 +1841,23 @@ function viewActive(){
         <div class="ex-head">
           <div><div class="ex-meta">${s.muscle} · ${s.movement}${s.note?' · '+s.note:''} · <a href="${gsearch(entry.name)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">how-to ${ph('arrow-square-out')}</a></div></div>
           <div style="text-align:right;white-space:nowrap">
-            <button class="skip-set" onclick="toggleExCollapse(${i})" title="collapse" style="font-size:16px;vertical-align:middle">${ph('caret-up')}</button>
+            <button class="skip-set" data-action="toggleExCollapse" data-i="${esc(i)}" title="collapse" style="font-size:16px;vertical-align:middle">${ph('caret-up')}</button>
             <span class="range-badge">${rangeText(rng)} reps</span>${flag?'<br>'+flag:''}
           </div>
         </div>
-        <select onchange="pickEx(${i},this)">${opts}</select>
+        <select data-action="pickEx" data-i="${esc(i)}">${opts}</select>
         <div class="lasttime">${lastLine}</div>
         ${noteHint}
         ${coachHint}
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
         ${setRows}
-        <button class="addset" onclick="addSet(${i})">+ Add set</button>
+        <button class="addset" data-action="addSet" data-i="${esc(i)}">+ Add set</button>
         ${isBarbell(entry.name)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'', barWeight(entry.name), barStyle(entry.name))}</div>`:''}
         ${i===0?`<div class="warm">
-          <button class="warm-toggle" onclick="toggleWarm(${i})">${ph('fire')}Warm-up ramp</button>
+          <button class="warm-toggle" data-action="toggleWarm" data-i="${esc(i)}">${ph('fire')}Warm-up ramp</button>
           <div class="warm-table hidden" id="warm-${i}"></div>
         </div>`:''}
-        <input type="text" placeholder="Note — pain, tempo, how it felt…" value="${esc(entry.note||'')}" oninput="setNote(${i},this.value)" style="margin-top:10px;font-size:13px;padding:7px 9px">
+        <input type="text" placeholder="Note — pain, tempo, how it felt…" value="${esc(entry.note||'')}" data-action="setNote" data-i="${esc(i)}" style="margin-top:10px;font-size:13px;padding:7px 9px">
       </div>
     </div>`;
   }).join('');
@@ -1872,7 +1872,7 @@ function viewActive(){
     : `First time — set your starting point. You'll go up 15s each session.`;
   const stairsCard = st.skipped
     ? `<div class="ex-card"><div class="ex-accent acc-bar-cardio"></div><div class="ex-body">
-        <div class="skip-note" style="margin:0"><span>${ph('skip-forward','lead')}Stair stepper skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipStairs()">Undo</button></div>
+        <div class="skip-note" style="margin:0"><span>${ph('skip-forward','lead')}Stair stepper skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button data-action="unskipStairs">Undo</button></div>
       </div></div>`
     : `<div class="ex-card"><div class="ex-accent acc-bar-cardio"></div><div class="ex-body">
         <div class="ex-head">
@@ -1881,11 +1881,11 @@ function viewActive(){
         </div>
         <div class="lasttime">${stairLast}</div>
         <div class="stair-grid" style="grid-template-columns:1fr 1fr 1fr">
-          <div><label>Level</label><input type="number" inputmode="numeric" placeholder="lvl" value="${st.level}" oninput="stairVal('level',this.value)"></div>
-          <div><label>Min</label><input type="number" inputmode="numeric" placeholder="min" value="${stMin}" oninput="stairTimeSet('m',this.value)"></div>
-          <div><label>Sec</label><input type="number" inputmode="numeric" placeholder="sec" value="${stSec}" oninput="stairTimeSet('s',this.value)"></div>
+          <div><label>Level</label><input type="number" inputmode="numeric" placeholder="lvl" value="${esc(st.level)}" data-action="stairVal" data-field="level"></div>
+          <div><label>Min</label><input type="number" inputmode="numeric" placeholder="min" value="${esc(stMin)}" data-action="stairTimeSet" data-part="m"></div>
+          <div><label>Sec</label><input type="number" inputmode="numeric" placeholder="sec" value="${esc(stSec)}" data-action="stairTimeSet" data-part="s"></div>
         </div>
-        <button class="skip-set" style="font-size:12px;font-weight:600" onclick="skipStairs()">${ph('skip-forward')}skip stair stepper</button>
+        <button class="skip-set" style="font-size:12px;font-weight:600" data-action="skipStairs">${ph('skip-forward')}skip stair stepper</button>
       </div></div>`;
 
   const lblCss = 'font-size:10px;font-weight:700;color:var(--muted-2);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px';
@@ -1893,8 +1893,8 @@ function viewActive(){
     ? `<div>
         <h1><span class="pill ${accClass(g)}">${name}</span> <span class="muted" style="font-size:13px">· past entry</span></h1>
         <div class="stair-grid" style="margin-top:10px">
-          <div><label style="${lblCss}">Date</label><input type="date" value="${DB.draft.date}" max="${todayISO()}" oninput="setDraftDate(this.value)"></div>
-          <div><label style="${lblCss}">Minutes at gym (opt)</label><input type="number" inputmode="numeric" placeholder="min" value="${DB.draft.durationMin||''}" oninput="setDraftDur(this.value)"></div>
+          <div><label style="${lblCss}">Date</label><input type="date" value="${esc(DB.draft.date)}" max="${todayISO()}" data-action="setDraftDate"></div>
+          <div><label style="${lblCss}">Minutes at gym (opt)</label><input type="number" inputmode="numeric" placeholder="min" value="${esc(DB.draft.durationMin||'')}" data-action="setDraftDur"></div>
         </div>
       </div>`
     : `<div class="row" style="align-items:flex-start">
@@ -1911,10 +1911,10 @@ function viewActive(){
     <div style="margin-top:16px">${acc.warm}${cards}${acc.lifts}${stairsCard}${acc.cooldown}</div>
     <div class="card">
       <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Session note</div>
-      <textarea id="session-note" rows="2" placeholder="How did the session feel? Overall notes…" oninput="setSessionNote(this.value)" style="resize:vertical;line-height:1.5;min-height:56px">${esc(DB.draft.sessionNote||'')}</textarea>
+      <textarea id="session-note" rows="2" placeholder="How did the session feel? Overall notes…" data-action="setSessionNote" style="resize:vertical;line-height:1.5;min-height:56px">${esc(DB.draft.sessionNote||'')}</textarea>
     </div>
-    <button class="btn btn-block" style="margin-top:6px" onclick="finishWorkout()">${DB.draft.historical?'Save past workout':'Finish & save workout'}</button>
-    <button class="btn btn-danger btn-block" style="margin-top:10px" onclick="discardWorkout()">Discard</button>`;
+    <button class="btn btn-block" style="margin-top:6px" data-action="finishWorkout">${DB.draft.historical?'Save past workout':'Finish & save workout'}</button>
+    <button class="btn btn-danger btn-block" style="margin-top:10px" data-action="discardWorkout">Discard</button>`;
 }
 function setDraftDate(v){ DB.draft.date=v; saveLocal(); }
 function setDraftDur(v){ DB.draft.durationMin=v; saveLocal(); }
@@ -4873,6 +4873,36 @@ const ACTIONS = {
      Set of numbers, so the section index decodes with a unary plus; a string opens nothing. */
   togglePreview: { click: el => togglePreview(el.dataset.name) },
   toggleGuide:   { click: el => toggleGuide(+el.dataset.i) },
+  /* The active workout. Slot and set indexes decode with a unary plus: skipSet's prompt reads k+1,
+     and a string k asks about "set 11" when you meant set 2. Every function called here is a draft
+     function that owns its own saveLocal(); pickEx alone still save()s, because a custom name can add
+     a synced exercise-registry row (CLAUDE.md, the draft rule). The weight and reps boxes are one
+     element with two events: input stores the value as you type (and refreshes the badge and plate
+     text), change runs once on leaving the box (the weight rolls down, a reps entry starts the rest
+     clock). The exercise select acts on change alone, so "+ Custom…" prompts once. */
+  toggleExCollapse: { click: el => toggleExCollapse(+el.dataset.i) },
+  undeloadExercise: { click: el => undeloadExercise(+el.dataset.i) },
+  deloadExercise:   { click: el => deloadExercise(+el.dataset.i) },
+  addSet:           { click: el => addSet(+el.dataset.i) },
+  toggleWarm:       { click: el => toggleWarm(+el.dataset.i) },
+  unskipSet:        { click: el => unskipSet(+el.dataset.i, +el.dataset.k) },
+  skipSet:          { click: el => skipSet(+el.dataset.i, +el.dataset.k) },
+  rmSet:            { click: el => rmSet(+el.dataset.i, +el.dataset.k) },
+  setWeight: { input: el => { const i = +el.dataset.i, k = +el.dataset.k; setVal(i, k, 'w', el.value); updTargetBadge(i, k); updPlates(i); },
+               change: el => rollWeight(+el.dataset.i, +el.dataset.k, el.value) },
+  setReps:   { input: el => { const i = +el.dataset.i, k = +el.dataset.k; setVal(i, k, 'r', el.value); updTargetBadge(i, k); },
+               change: el => repCheck(+el.dataset.i, +el.dataset.k) },
+  pickEx:           { change: el => pickEx(+el.dataset.i, el) },
+  setNote:          { input: el => setNote(+el.dataset.i, el.value) },
+  unskipStairs:     { click: () => unskipStairs() },
+  skipStairs:       { click: () => skipStairs() },
+  stairVal:         { input: el => stairVal(el.dataset.field, el.value) },
+  stairTimeSet:     { input: el => stairTimeSet(el.dataset.part, el.value) },
+  setDraftDate:     { input: el => setDraftDate(el.value) },
+  setDraftDur:      { input: el => setDraftDur(el.value) },
+  setSessionNote:   { input: el => setSessionNote(el.value) },
+  finishWorkout:    { click: () => finishWorkout() },
+  discardWorkout:   { click: () => discardWorkout() },
 };
 document.addEventListener('click', dispatchAction, { passive: false });
 document.addEventListener('change', dispatchAction, { passive: false });
