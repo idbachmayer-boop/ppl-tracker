@@ -50,6 +50,9 @@ function loadApp(htmlPath, seed, opts){
   if(opts && typeof opts.transform === 'function') code = opts.transform(code);
 
   const store = {};
+  /* document.addEventListener records { fn, opts } per event type, so a test can assert which
+     delegated listeners the app registered and fire the very listener a tap would reach. */
+  const listeners = {};
   if(seed) store['ppl_tracker_v1'] = typeof seed === 'string' ? seed : JSON.stringify(seed);
   const el = () => ({ innerHTML:'', textContent:'', value:'', style:{}, dataset:{},
     classList:{ add(){}, remove(){}, toggle(){} }, querySelector:()=>null, querySelectorAll:()=>[],
@@ -63,7 +66,7 @@ function loadApp(htmlPath, seed, opts){
     createElement: el,
     body: el(),
     documentElement: el(),
-    addEventListener(){},
+    addEventListener(type, fn, opts){ (listeners[type] = listeners[type] || []).push({ fn, opts }); },
     head: el(),
   };
   const sandbox = {
@@ -138,15 +141,19 @@ function loadApp(htmlPath, seed, opts){
     'importMerge', 'importReplace', 'restoreSnapshot', 'restoreCloudVersion', 'loadCloudVersions', 'wipe',
     /* Which build a device is running (Settings → This version). */
     'BUILD', 'buildLabel',
+    /* Event delegation (Phase 5). ACTIONS is a const, reachable only through this export. */
+    'ACTIONS', 'dispatchAction', 'buildTabBar',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
     get DB(){ return DB; }, set DB(v){ DB = v; },
+    get TAB(){ return TAB; },
     get fbDb(){ return fbDb; }, set fbDb(v){ fbDb = v; }
   })`, sandbox);
   api.__sandbox = sandbox;
   api.__src = code;
   api.__stored = () => { try{ return JSON.parse(store['ppl_tracker_v1']); }catch(e){ return null; } };
+  api.__listeners = listeners;
   return api;
 }
 

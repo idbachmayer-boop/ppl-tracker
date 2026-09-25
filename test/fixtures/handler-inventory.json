@@ -107,7 +107,7 @@
   "calls": [
    "go"
   ],
-  "action": null
+  "action": "go"
  },
  {
   "fn": "segNav",

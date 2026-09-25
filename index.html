@@ -1401,7 +1401,7 @@ TABS.forEach(t=>{ if(t.sub) subState[t.id]=t.sub[0][0]; });
 
 function buildTabBar(){
   document.getElementById('tabbar').innerHTML = TABS.map(t=>
-    `<button class="tab${t.id===TAB?' active':''}" data-tab="${t.id}" onclick="go('${t.id}')"><span class="ic">${ph(t.id===TAB ? t.icon+'-fill' : t.icon)}</span>${t.label}</button>`
+    `<button class="tab${t.id===TAB?' active':''}" data-action="go" data-tab="${esc(t.id)}"><span class="ic">${ph(t.id===TAB ? t.icon+'-fill' : t.icon)}</span>${t.label}</button>`
   ).join('');
 }
 /* Icons are Phosphor Regular when inactive and Fill when active, so the glyph itself has to be
@@ -4681,6 +4681,49 @@ function copyIdeas(){
   else fallbackCopy(text, done);
 }
 function fallbackCopy(text, cb){ try{ const ta=document.createElement('textarea'); ta.value=text; ta.style.cssText='position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); cb(); }catch(e){ toast('Copy failed'); } }
+
+/* ───────────────────────── Event delegation (F2) ───────────────────────── */
+/* Markup names an action with data-action (plus scalar data-* arguments), and this section is the
+   only code that turns a gesture into a call. There is one document listener per event type, and
+   each one hands the event to dispatchAction(), which finds the nearest element carrying an action
+   and runs that action's handler for the event that fired.
+
+   Entries are keyed by event type. A control that fires several events (a <select> fires input and
+   change, a checkbox fires click, input and change) runs only the handler for the one it fired, so
+   nothing runs twice.
+
+   Wrappers are thin. They decode data-* (Number() or unary plus on every index, because dataset
+   values are always strings), never touch DB, never persist, and call the existing function with
+   its existing signature. The functions they call own save() and saveLocal(), so the draft rules
+   in CLAUDE.md keep holding.
+
+   This section sits after every other top-level const in the file, and ACTIONS is read only when an
+   event fires. No event can fire before this script finishes, so nothing reads it at module
+   evaluation. There is deliberately no boot-time validator: a bad entry must break one control,
+   never the app, and never the Log tab mid-workout. The suite checks the registry instead.
+
+   Never stop propagation, never add a second listener for one of these events, and never defer a
+   wrapper (a timer, an await or an animation frame before the call). Clipboard, share and file
+   pickers need the tap's user activation, which lasts only while the event is being dispatched. */
+function dispatchAction(e){
+  let t = e.target;
+  if(t && t.nodeType === 3) t = t.parentElement;
+  const el = t && typeof t.closest === 'function' ? t.closest('[data-action]') : null;
+  if(!el || el.disabled) return;
+  const name = el.dataset.action;
+  if(!Object.prototype.hasOwnProperty.call(ACTIONS, name)) return;
+  const fn = ACTIONS[name][e.type];
+  if(typeof fn === 'function') fn(el, e);
+}
+const ACTIONS = {
+  /* App shell */
+  go: { click: el => go(el.dataset.tab) },
+};
+document.addEventListener('click', dispatchAction, { passive: false });
+document.addEventListener('change', dispatchAction, { passive: false });
+document.addEventListener('input', dispatchAction, { passive: false });
+document.addEventListener('keydown', dispatchAction, { passive: false });
+document.addEventListener('pointerdown', dispatchAction, { passive: false });
 
 /* ───────────────────────── Boot ───────────────────────── */
 /* The stopwatch bar, the idea FAB and its sheet live as static markup in <body>, so they can't

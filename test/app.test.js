@@ -9,7 +9,7 @@
  * The clock is frozen to midday Fri 7 Aug 2026 (see harness.js). Set TZ=America/Chicago; the suite
  * checks that itself below, because half these rules are date- and hour-sensitive.
  */
-const { loadApp, makeWx, freezeRunnerClock, APP_PATH } = require('./harness');
+const { loadApp, makeWx, freezeRunnerClock, APP_PATH, scanInlineHandlers } = require('./harness');
 const fs = require('fs');
 const path = require('path');
 
@@ -136,7 +136,8 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy',
   'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections', 'ensureCollectionDefaults',
   'sleepUid', 'addSleep', 'removeSleep', 'viewSleep',
-  'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown', 'exportShareFailed'];
+  'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown', 'exportShareFailed',
+  'ACTIONS', 'dispatchAction'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -4363,6 +4364,217 @@ function shareEnv(a, opts){
   ok('export: a build failure shows a toast and neither shares nor downloads',
      result==='error' && toastText==="Couldn't build the export" && env.clicks.length===0 && env.shareCalls.length===0,
      { result, toastText, clicks: env.clicks.length, shareCalls: env.shareCalls.length });
+}
+
+console.log('\n── F2: every inline handler becomes a delegated action (DELEG-01…06) ──');
+/* Phase 5 moves every inline on-event attribute to one delegated dispatcher: markup names an action
+   (`data-action`), five document listeners hand the event to dispatchAction(), and the event-keyed
+   ACTIONS registry calls the existing function. Delegation fails SILENTLY — a dropped call site, a
+   string where a number was, or a double fire all look like "the button does nothing" on the
+   phone, where the inline version would have worked or thrown. These checks are the phase.
+
+   The helpers below are top-level function declarations, hoisted with their bodies, so checks
+   earlier in the file may call them. They read only their arguments, never a const declared in
+   this section (that would be a temporal-dead-zone error when called from earlier). */
+
+/* One object per start tag in rendered `html` that carries a data-action attribute. */
+function controlsIn(html){
+  const out = [];
+  const decode = v => String(v).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  const TAG = /<([a-zA-Z][\w-]*)((?:\s+[^\s=>\/"']+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?)*)\s*\/?>/g;
+  const ATTR = /([^\s=>\/"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+)))?/g;
+  let m;
+  while((m = TAG.exec(String(html || '')))){
+    const attrs = {};
+    let a;
+    ATTR.lastIndex = 0;
+    while((a = ATTR.exec(m[2]))){
+      const name = a[1].toLowerCase();
+      const val = a[2] !== undefined ? a[2] : a[3] !== undefined ? a[3] : a[4] !== undefined ? a[4] : null;
+      if(!(name in attrs)) attrs[name] = val;
+    }
+    if(!('data-action' in attrs)) continue;
+    const data = {};
+    Object.keys(attrs).filter(k => k.startsWith('data-')).forEach(k => {
+      data[k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = decode(attrs[k] === null ? '' : attrs[k]);
+    });
+    out.push({ tag: m[1].toLowerCase(), type: attrs.type ? decode(attrs.type) : '', cls: attrs.class ? decode(attrs.class) : '',
+               disabled: 'disabled' in attrs, data });
+  }
+  return out;
+}
+/* A stand-in element: enough for dispatchAction (dataset, disabled, value, closest). */
+function fakeEl(data, extra){
+  const el = Object.assign({ dataset: Object.assign({}, data), disabled: false, value: '' }, extra);
+  if(!('closest' in el)) el.closest = sel => sel === '[data-action]' ? el : null;
+  return el;
+}
+function f2Event(type, el, more){
+  return Object.assign({ type, target: el, key: undefined, defaultPrevented: false,
+    preventDefault(){ this.defaultPrevented = true; } }, more);
+}
+/* Straight into the dispatcher. */
+function fireAction(a, type, el, more){
+  const ev = f2Event(type, el, more);
+  if(typeof a.dispatchAction === 'function') a.dispatchAction(ev);
+  return ev;
+}
+/* Through every listener the app itself registered on document for this event type, exactly as a
+   real tap reaches the app. This proves the registration as well as the dispatch. */
+function fireListener(a, type, el, more){
+  const ev = f2Event(type, el, more);
+  ((a.__listeners && a.__listeners[type]) || []).forEach(l => { if(typeof l.fn === 'function') l.fn(ev); });
+  return ev;
+}
+/* Replace a function declaration on the vm global with a recorder of its argument lists. A wrapper
+   resolves the name through the global at call time, so the override is what it calls. */
+function spyOn(a, name){
+  const calls = [];
+  a.__sandbox[name] = (...args) => { calls.push(args); };
+  return calls;
+}
+/* JS comments out, keeping `https://` (a `//` preceded by a colon is a URL, not a comment). */
+function f2StripJs(s){
+  return String(s).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\\])\/\/.*$/gm, '$1');
+}
+/* The static markup: from <body> up to the first exact <script> (the inline app script). */
+function f2Static(raw){
+  const b = raw.indexOf('<body>'), s = raw.indexOf('<script>', b < 0 ? 0 : b);
+  return b < 0 || s < 0 ? '' : raw.slice(b, s);
+}
+
+const F2_EVENTS = ['click','change','input','keydown','pointerdown'];
+const F2_RAW = fs.readFileSync(APP_PATH, 'utf8');
+const F2_INV_PATH = path.join(__dirname, 'fixtures', 'handler-inventory.json');
+let F2_INV = [], F2_INV_ERR = null;
+try { F2_INV = JSON.parse(fs.readFileSync(F2_INV_PATH, 'utf8')); }
+catch(e){ F2_INV_ERR = String(e && e.message || e); F2_INV = []; }
+if(!Array.isArray(F2_INV)){ F2_INV_ERR = F2_INV_ERR || 'not an array'; F2_INV = []; }
+/* A fresh instance, so no earlier check's override of a sandbox function can hide a call site. */
+const f2app = loadApp(APP_PATH);
+const F2_A = f2app.ACTIONS || {};
+const f2Own = name => typeof name === 'string' && Object.prototype.hasOwnProperty.call(F2_A, name);
+const f2FnSrc = fn => fn === '(static markup)' ? f2Static(F2_RAW)
+  : (typeof f2app.__sandbox[fn] === 'function' ? Function.prototype.toString.call(f2app.__sandbox[fn]) : '');
+const f2HandlerSrc = (name, ev) => f2Own(name) && F2_A[name] && typeof F2_A[name][ev] === 'function'
+  ? Function.prototype.toString.call(F2_A[name][ev]) : '';
+const f2Names = r => Array.isArray(r.actions) ? r.actions : (r.action ? [r.action] : []);
+const f2Count = (hay, needle) => needle ? hay.split(needle).length - 1 : 0;
+
+ok('DELEG-01: the handler inventory exists and every row names its function, event, handler text and callees', (() => {
+  if(F2_INV_ERR || !F2_INV.length) return false;
+  const seen = new Set();
+  return F2_INV.every(r => {
+    if(!r || typeof r !== 'object') return false;
+    const key = [r.fn, r.event, r.was, r.occurrence].join('|');
+    if(seen.has(key)) return false;
+    seen.add(key);
+    const hasAction = 'action' in r, hasActions = 'actions' in r;
+    return typeof r.fn === 'string' && r.fn.length > 0 && F2_EVENTS.includes(r.event)
+      && typeof r.was === 'string' && r.was.length > 0 && Number.isInteger(r.occurrence) && r.occurrence >= 1
+      && Array.isArray(r.calls) && r.calls.every(c => typeof c === 'string' && c.length > 0)
+      && hasAction !== hasActions
+      && (hasAction ? (r.action === null || typeof r.action === 'string')
+                    : (Array.isArray(r.actions) && r.actions.every(x => typeof x === 'string' && x.length > 0)));
+  });
+})(), F2_INV_ERR || undefined);
+
+/* DELEG-03, the ratchet. An unmapped row must still be inline, verbatim, in its function. A mapped
+   row must be wired (`data-action`, or `data-action="enter"` + `data-enter` for Enter-to-submit) in
+   the same function, to an action that handles its event, and that action must still call every
+   function the original handler called. */
+{
+  const broken = [];
+  F2_INV.forEach(r => {
+    if(!r || typeof r !== 'object') return;
+    const src = f2FnSrc(r.fn), names = f2Names(r);
+    if(!names.length){
+      if(f2Count(src, `on${r.event}="${r.was}"`) < r.occurrence) broken.push({ fn: r.fn, event: r.event, was: r.was, why: 'dropped without a mapping' });
+      return;
+    }
+    const why = [];
+    names.forEach(x => {
+      if(r.event === 'keydown'){
+        if(!f2HandlerSrc('enter', 'keydown')) why.push('no enter.keydown');
+        if(!f2HandlerSrc(x, 'click')) why.push(x + ' has no click handler');
+        if(!src.includes('data-action="enter"') || !src.includes(`data-enter="${x}"`)) why.push(x + ' not wired by data-enter');
+      } else {
+        if(!f2HandlerSrc(x, r.event)) why.push(x + ' has no ' + r.event + ' handler');
+        if(!src.includes(`data-action="${x}"`)) why.push(x + ' not wired by data-action');
+      }
+    });
+    const ran = names.map(x => f2HandlerSrc(x, r.event === 'keydown' ? 'click' : r.event)).join('\n');
+    /* Whole identifier only: `goX` must not stand in for `go`. */
+    (r.calls || []).forEach(c => {
+      const tail = String(c).split('.').pop().replace(/\$/g, '\\$');
+      if(!new RegExp('(?<![\\w$])' + tail + '(?![\\w$])').test(ran)) why.push('lost call ' + c);
+    });
+    if(why.length) broken.push({ fn: r.fn, event: r.event, was: r.was, why });
+  });
+  ok('DELEG-03: every inventoried call site is still inline, or is wired to an action that handles its event and keeps every call',
+     !F2_INV_ERR && broken.length === 0, broken.slice(0, 5));
+}
+
+/* DELEG-04: no NEW inline handler. Every inline on-event attribute left in the file (any event, any
+   quoting, comments included) must be an UNMAPPED inventory row, and no key may appear more often
+   than the unmapped rows allow. */
+{
+  const scan = typeof scanInlineHandlers === 'function' ? scanInlineHandlers : null;
+  const rows = scan ? scan(F2_RAW) : [];
+  const budget = {};
+  F2_INV.filter(r => r && !f2Names(r).length).forEach(r => { const k = [r.fn, r.event, r.was].join('|'); budget[k] = (budget[k] || 0) + 1; });
+  const used = {}, offenders = [];
+  rows.forEach(r => {
+    const k = [r.fn, r.event, r.was].join('|');
+    used[k] = (used[k] || 0) + 1;
+    if(!F2_EVENTS.includes(r.event) || r.was === null || used[k] > (budget[k] || 0)) offenders.push({ fn: r.fn, event: r.event, tag: r.tag, was: r.was });
+  });
+  const synthetic = scan ? { attribute: scan('<b onclick="x()">').length, jsProperty: scan('r.onload=()=>1; const one = 2').length } : null;
+  ok('DELEG-04: every inline handler left in index.html is an unconverted inventory row',
+     !!scan && !F2_INV_ERR && offenders.length === 0 && synthetic.attribute === 1 && synthetic.jsProperty === 0,
+     { offenders: offenders.slice(0, 5), synthetic });
+}
+
+/* DELEG-04: every action name in the source is a literal that names a registry entry. */
+{
+  const text = f2StripJs(f2app.__src || '') + '\n' + f2Static(F2_RAW);
+  const unknown = [], built = [];
+  for(const m of text.matchAll(/data-(action|enter)\s*=\s*("([^"]*)"|\S{0,24})/g)){
+    const quoted = m[2][0] === '"', val = quoted ? m[3] : m[2];
+    if(!quoted || val.includes('${')) built.push(m[0]);
+    else if(!f2Own(val)) unknown.push(m[1] + '=' + val);
+  }
+  ok('DELEG-04: every data-action and data-enter names an ACTIONS entry, and no action name is built at runtime',
+     unknown.length === 0 && built.length === 0, { unknown: unknown.slice(0, 5), built: built.slice(0, 5) });
+}
+
+/* DELEG-02: one document listener per delegated event, all dispatchAction, none passive (a passive
+   pointerdown would silently drop swGuard's preventDefault and dismiss the keyboard mid-set). */
+{
+  const a = loadApp(APP_PATH);
+  const wrong = F2_EVENTS.filter(t => {
+    const ls = (a.__listeners && a.__listeners[t]) || [];
+    if(ls.length !== 1 || typeof a.dispatchAction !== 'function' || ls[0].fn !== a.dispatchAction) return true;
+    const o = ls[0].opts;
+    return !!(o && typeof o === 'object' && o.passive);
+  });
+  ok('DELEG-02: document has one listener per delegated event, it is dispatchAction, and none is passive', wrong.length === 0, wrong);
+}
+
+/* The tracer: a tap on a tab reaches go() only through the listener the app registered, the
+   dispatcher and the registry. */
+{
+  const a = loadApp(APP_PATH);
+  let control = null, threw = null;
+  try {
+    if(typeof a.buildTabBar === 'function') a.buildTabBar();
+    control = controlsIn(a.__sandbox.document.getElementById('tabbar').innerHTML).find(c => c.data.tab === 'train') || null;
+    if(control) fireListener(a, 'click', fakeEl(control.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG tracer: a tap on a tab reaches go() through the document listener',
+     !threw && !!control && control.tag === 'button' && control.data.action === 'go' && a.TAB === 'train',
+     { threw, control, TAB: a.TAB });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
