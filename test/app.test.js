@@ -4823,6 +4823,122 @@ function f2UnescapedData(text){
      offenders.length === 0, offenders.slice(0, 5));
 }
 
+/* The converted-button reset. A <button> that replaced a div, span or link must look exactly like
+   it did: zero specificity (so .card, .row, .hist-item and .ex-body still win), and no colour of
+   its own (the theme lives in the :root custom properties, CLAUDE.md). */
+function f2CssRules(raw){
+  const css = (String(raw).match(/<style[^>]*>([\s\S]*?)<\/style>/g) || []).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(m => ({ selector: m[1].trim(), body: m[2] }));
+}
+function f2ColourProblems(body){
+  const bad = [];
+  if(/#[0-9a-fA-F]{3,8}\b/.test(body)) bad.push('hex colour');
+  if(/\b(rgba?|hsla?)\(/.test(body)) bad.push('rgb()/hsl()');
+  String(body).split(';').map(d => d.trim()).filter(Boolean).forEach(d => {
+    const i = d.indexOf(':'); if(i < 0) return;
+    const prop = d.slice(0, i).trim().toLowerCase(), val = d.slice(i + 1).trim().toLowerCase();
+    if(/color$/.test(prop) || ['background', 'fill', 'stroke', 'box-shadow', 'text-shadow'].includes(prop)){
+      if(!['inherit', 'none', 'transparent'].includes(val)) bad.push(prop + ':' + val);
+    } else if(['border', 'outline'].includes(prop) || /^border-(top|right|bottom|left)$/.test(prop)){
+      if(!/^(0|none)$/.test(val)) bad.push(prop + ':' + val);
+    }
+  });
+  return bad;
+}
+{
+  const rules = f2CssRules(F2_RAW);
+  const found = {}, problems = {};
+  [':where(button.tap)', ':where(button.tap-inline)'].forEach(sel => {
+    const r = rules.filter(x => x.selector === sel);
+    found[sel] = r.length;
+    problems[sel] = r.flatMap(x => f2ColourProblems(x.body));
+  });
+  const synthetic = { hex: f2ColourProblems('color:#fff').length > 0, named: f2ColourProblems('background:red').length > 0,
+                      clean: f2ColourProblems('background:none; border:0; color:inherit').length === 0 };
+  ok('F2: the converted-button reset has zero specificity and no hard-coded colour',
+     Object.values(found).every(n => n >= 1) && Object.values(problems).every(p => p.length === 0) && Object.values(synthetic).every(Boolean),
+     { found, problems, synthetic });
+}
+
+/* Start tags in template SOURCE, walked to their closing `>` past any `${…}` (which may hold `>`). */
+function f2SourceStartTags(text, names){
+  const out = [];
+  const re = new RegExp('<(' + names.join('|') + ')(?=[\\s>/])', 'g');
+  let m;
+  while((m = re.exec(text))){
+    let i = m.index + m[0].length, depth = 0;
+    while(i < text.length){
+      const ch = text[i];
+      if(ch === '$' && text[i + 1] === '{'){ depth++; i += 2; continue; }
+      if(depth && ch === '{'){ depth++; i++; continue; }
+      if(depth && ch === '}'){ depth--; i++; continue; }
+      if(!depth && ch === '>') break;
+      i++;
+    }
+    out.push({ tag: m[1], index: m.index, text: text.slice(m.index, i + 1) });
+  }
+  return out;
+}
+{
+  const NONBUTTON = ['div', 'span', 'a', 'li', 'tr', 'td', 'label', 'p', 'section', 'img'];
+  const clicks = name => f2Own(name) && F2_A[name] && typeof F2_A[name].click === 'function';
+  const staticOffenders = text => f2SourceStartTags(text, NONBUTTON).flatMap(t => {
+    const a = t.text.match(/data-action="([^"]*)"/);
+    return a && clicks(a[1]) && !REVIEWED_NONBUTTON_CLICK.includes(a[1]) ? [t.tag + ' ' + a[1]] : [];
+  });
+  const stat = staticOffenders(f2StripJs(f2app.__src || '') + '\n' + f2Static(F2_RAW));
+  const syntheticCaught = staticOffenders('<div class="row" data-action="go">').length === 1;
+  const rendered = [];
+  f2Corpus().forEach(({ label, html }) => controlsIn(html).forEach(c => {
+    if(clicks(c.data.action) && c.tag !== 'button' && !REVIEWED_NONBUTTON_CLICK.includes(c.data.action)) rendered.push({ label, tag: c.tag, action: c.data.action });
+  }));
+  ok('DELEG-06: every control that acts on click is a button (the Ideas backdrop is the one reviewed exception)',
+     stat.length === 0 && rendered.length === 0 && syntheticCaught,
+     { static: stat.slice(0, 5), rendered: rendered.slice(0, 5), syntheticCaught });
+}
+
+/* D-11: a converted button's content stays valid phrasing content, so no <div> inside it, and any
+   kicker() inside it is the block-span form. */
+function f2TapRegions(text){
+  const out = [];
+  f2SourceStartTags(text, ['button']).forEach(t => {
+    const cls = t.text.match(/\sclass="([^"]*)"/);
+    const tokens = cls ? cls[1].split(/\s+/) : [];
+    if(!tokens.includes('tap') && !tokens.includes('tap-inline')) return;
+    const start = t.index, end = text.indexOf('</button>', start);
+    out.push(text.slice(start, end < 0 ? text.length : end));
+  });
+  return out;
+}
+function f2TapRegionProblems(region){
+  const bad = [];
+  if(/<div[\s>]/.test(region)) bad.push('div inside');
+  const re = /(?<![\w$.])kicker\(/g;
+  let m;
+  while((m = re.exec(region))){
+    let i = m.index + m[0].length, depth = 1, argStart = i, lastArg = '';
+    for(; i < region.length && depth; i++){
+      const ch = region[i];
+      if(ch === '(' || ch === '[' || ch === '{') depth++;
+      else if(ch === ')' || ch === ']' || ch === '}'){ depth--; if(!depth){ lastArg = region.slice(argStart, i); break; } }
+      else if(ch === ',' && depth === 1) argStart = i + 1;
+    }
+    if(!/^\s*(['"])span\1\s*$/.test(lastArg)) bad.push('kicker without span: ' + region.slice(m.index, i + 1));
+  }
+  return bad;
+}
+{
+  const bad = f2TapRegions(F2_RAW).flatMap(f2TapRegionProblems);
+  const synthetic = {
+    divCaught: f2TapRegionProblems('<button class="tap"><div>x</div>').length === 1,
+    kickerCaught: f2TapRegionProblems("<button class=\"tap\">${kicker('x')}").length === 1,
+    spanPasses: f2TapRegionProblems("<button class=\"tap\">${kicker('x','span')}").length === 0,
+    regionFound: f2TapRegions('<button class="card tap" data-action="go">a</button><button class="tapx">b</button>').length === 1,
+  };
+  ok('D-11: no converted button wraps a div, and every kicker inside one is the span form',
+     bad.length === 0 && Object.values(synthetic).every(Boolean), { bad: bad.slice(0, 5), synthetic });
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */

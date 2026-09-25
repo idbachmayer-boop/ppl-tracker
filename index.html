@@ -54,6 +54,11 @@
 
     /* Buttons */
     button { font-family: inherit; }
+    /* Converted click targets (F2): a button that must look exactly like the div, span or link it
+       replaced. :where() has zero specificity, so .card, .row, .hist-item and .ex-body still win for
+       background, border, padding and display. */
+    :where(button.tap) { display: block; width: 100%; background: none; border: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: inherit; cursor: pointer; -webkit-appearance: none; appearance: none; }
+    :where(button.tap-inline) { display: inline; background: none; border: 0; padding: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; -webkit-appearance: none; appearance: none; }
     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600; padding: 11px 16px; background: var(--btn-bg); color: var(--btn-fg); transition: opacity .15s; }
     .btn:active { opacity: .7; }
     .btn-block { width: 100%; }
