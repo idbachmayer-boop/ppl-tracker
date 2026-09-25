@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 05
 current_phase_name: f2-event-delegation
 status: executing
-stopped_at: Phase 5 planned (6 plans)
-last_updated: "2026-09-25T09:25:00.460Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-09-25T09:41:04.533Z"
 last_activity: 2026-09-25
 last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 24
-  completed_plans: 18
+  completed_plans: 19
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 ## Current Position
 
 Phase: 05 (f2-event-delegation) — EXECUTING
-Plan: 1 of 6
-Status: Executing Phase 05
+Plan: 2 of 6
+Status: Ready to execute
 Last activity: 2026-09-25 — Phase 05 execution started
 
-Progress: [██████████] 100%
+Progress: [████████░░] 79%
 
 ## Performance Metrics
 
@@ -78,6 +78,7 @@ Progress: [██████████] 100%
 | Phase 04 P01 | 17min | 2 tasks | 5 files |
 | Phase 04 P02 | 97min | 2 tasks | 3 files |
 | Phase 04 P03 | 3min | 2 tasks | 4 files |
+| Phase 05 P01 | 15min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -129,6 +130,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 4, plan 04-01]: test harness fetch never settles, because a rejecting fetch spun an endless Lawn-tab weather retry in microtasks once async checks existed
 - [Phase ?]: 04-02: every site turning foreign data into DB reads keepLocalDraft(normalize(stripDraft(raw))); a dbAssignLines tripwire fails the suite on any unsanctioned DB assignment
 - [Phase ?]: 04-03: every draft-only function uses saveLocal(); only pickEx, exPick and finishWorkout still save() from a draft path, pinned by the DRAFT_PUSHERS allowlist
+- [Phase ?]: 05-01: ACTIONS is event-keyed (name -> {event: wrapper}); dispatchAction uses an own-key lookup; five non-passive document listeners; no boot-time validator
+- [Phase ?]: 05-01: the inventory ratchet matches callees as whole identifiers, and the dispatcher test poisons Object.prototype, because the mutation pass showed the substring and inherited-name forms passed vacuously
+- [Phase ?]: 05-01: F2 source checks read a fresh loadApp instance (f2app); f2Corpus() is cached on the function so later plans append states without a TDZ risk
 
 ### Pending Todos
 
@@ -153,6 +157,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-24T12:13:11.333Z
-Stopped at: Phase 5 planned (6 plans)
+Last session: 2026-09-25T09:41:04.512Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None

@@ -177,13 +177,13 @@ Plans:
   4. Every converted control is still operable by keyboard, not only by pointer or click (DELEG-06).
   5. The Log tab — the screen Ian is standing in front of mid-workout — is manually verified end to end and behaves identically to before the conversion (DELEG-07).
 
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 **UI hint**: yes
 
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Tracer: capture the inline-handler inventory before any change, then a tap on a tab goes through one delegated dispatcher; the rest of the app shell, the completeness ratchet, the registry guards and the keyboard reset (DELEG-01, DELEG-03, DELEG-05; DELEG-02/04/06 infrastructure)
+- [x] 05-01-PLAN.md — Tracer: capture the inline-handler inventory before any change, then a tap on a tab goes through one delegated dispatcher; the rest of the app shell, the completeness ratchet, the registry guards and the keyboard reset (DELEG-01, DELEG-03, DELEG-05; DELEG-02/04/06 infrastructure)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -253,6 +253,6 @@ Phase 5 completes.
 | 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 5/5 | Complete    | 2026-09-22 |
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
-| 5. F2 — Event Delegation | 0/TBD | Not started | - |
+| 5. F2 — Event Delegation | 1/6 | In Progress|  |
 | 6. F4 — .gitattributes | 0/TBD | Not started | - |
 | 7. Content Security Policy | 0/TBD | Not started | - |
