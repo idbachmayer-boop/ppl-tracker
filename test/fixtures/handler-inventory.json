@@ -1,0 +1,1935 @@
+[
+ {
+  "fn": "(static markup)",
+  "event": "pointerdown",
+  "tag": "button",
+  "was": "swGuard(event)",
+  "occurrence": 1,
+  "calls": [
+   "swGuard"
+  ],
+  "action": null
+ },
+ {
+  "fn": "(static markup)",
+  "event": "click",
+  "tag": "button",
+  "was": "swToggle()",
+  "occurrence": 1,
+  "calls": [
+   "swToggle"
+  ],
+  "action": null
+ },
+ {
+  "fn": "(static markup)",
+  "event": "pointerdown",
+  "tag": "button",
+  "was": "swGuard(event)",
+  "occurrence": 2,
+  "calls": [
+   "swGuard"
+  ],
+  "action": null
+ },
+ {
+  "fn": "(static markup)",
+  "event": "click",
+  "tag": "button",
+  "was": "swClear()",
+  "occurrence": 1,
+  "calls": [
+   "swClear"
+  ],
+  "action": null
+ },
+ {
+  "fn": "(static markup)",
+  "event": "click",
+  "tag": "button",
+  "was": "openIdeas()",
+  "occurrence": 1,
+  "calls": [
+   "openIdeas"
+  ],
+  "action": null
+ },
+ {
+  "fn": "(static markup)",
+  "event": "click",
+  "tag": "div",
+  "was": "if(event.target===this)closeIdeas()",
+  "occurrence": 1,
+  "calls": [
+   "closeIdeas"
+  ],
+  "action": null
+ },
+ {
+  "fn": "(static markup)",
+  "event": "click",
+  "tag": "button",
+  "was": "closeIdeas()",
+  "occurrence": 1,
+  "calls": [
+   "closeIdeas"
+  ],
+  "action": null
+ },
+ {
+  "fn": "(static markup)",
+  "event": "click",
+  "tag": "button",
+  "was": "addIdea()",
+  "occurrence": 1,
+  "calls": [
+   "addIdea"
+  ],
+  "action": null
+ },
+ {
+  "fn": "(static markup)",
+  "event": "click",
+  "tag": "button",
+  "was": "copyIdeas()",
+  "occurrence": 1,
+  "calls": [
+   "copyIdeas"
+  ],
+  "action": null
+ },
+ {
+  "fn": "buildTabBar",
+  "event": "click",
+  "tag": "button",
+  "was": "go('${t.id}')",
+  "occurrence": 1,
+  "calls": [
+   "go"
+  ],
+  "action": null
+ },
+ {
+  "fn": "segNav",
+  "event": "click",
+  "tag": "button",
+  "was": "setSub('${k}')",
+  "occurrence": 1,
+  "calls": [
+   "setSub"
+  ],
+  "action": null
+ },
+ {
+  "fn": "render",
+  "event": "click",
+  "tag": "button",
+  "was": "exportData()",
+  "occurrence": 1,
+  "calls": [
+   "exportData"
+  ],
+  "action": null
+ },
+ {
+  "fn": "render",
+  "event": "click",
+  "tag": "button",
+  "was": "location.reload()",
+  "occurrence": 1,
+  "calls": [
+   "location.reload"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "goSub('train','log')",
+  "occurrence": 1,
+  "calls": [
+   "goSub"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "startWorkout('${o.name}')",
+  "occurrence": 1,
+  "calls": [
+   "startWorkout"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "skipDay('SPECIALIZED')",
+  "occurrence": 1,
+  "calls": [
+   "skipDay"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "startWorkout('${nxt}')",
+  "occurrence": 1,
+  "calls": [
+   "startWorkout"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "skipDay('${nxt}')",
+  "occurrence": 1,
+  "calls": [
+   "skipDay"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "setPickCat('hobby')",
+  "occurrence": 1,
+  "calls": [
+   "setPickCat"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "setPickCat('productivity')",
+  "occurrence": 1,
+  "calls": [
+   "setPickCat"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "shufflePick()",
+  "occurrence": 1,
+  "calls": [
+   "shufflePick"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "didPick()",
+  "occurrence": 1,
+  "calls": [
+   "didPick"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "change",
+  "tag": "select",
+  "was": "selectPick(this.value)",
+  "occurrence": 1,
+  "calls": [
+   "selectPick"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "input",
+  "tag": "textarea",
+  "was": "saveJournal(this.value)",
+  "occurrence": 1,
+  "calls": [
+   "saveJournal"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "a",
+  "was": "goSub('train','history')",
+  "occurrence": 1,
+  "calls": [
+   "goSub"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "keydown",
+  "tag": "input",
+  "was": "if(event.key==='Enter')${fn}",
+  "occurrence": 1,
+  "calls": [
+   "logWeight",
+   "logPetWeight"
+  ],
+  "actions": []
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "${fn}",
+  "occurrence": 1,
+  "calls": [
+   "logWeight",
+   "logPetWeight"
+  ],
+  "actions": []
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "div",
+  "was": "toggleAcc('weighin')",
+  "occurrence": 1,
+  "calls": [
+   "toggleAcc"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "progSub='body';goSub('train','progress')",
+  "occurrence": 1,
+  "calls": [
+   "goSub"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "progSub='pet';goSub('train','progress')",
+  "occurrence": 1,
+  "calls": [
+   "goSub"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "div",
+  "was": "goSub('care','lawn')",
+  "occurrence": 1,
+  "calls": [
+   "goSub"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "div",
+  "was": "goSub('train','history')",
+  "occurrence": 2,
+  "calls": [
+   "goSub"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "div",
+  "was": "goSub('train','cardio')",
+  "occurrence": 1,
+  "calls": [
+   "goSub"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "div",
+  "was": "toggleAcc('mob-today')",
+  "occurrence": 1,
+  "calls": [
+   "toggleAcc"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "toggleMobSession()",
+  "occurrence": 1,
+  "calls": [
+   "toggleMobSession"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "keydown",
+  "tag": "input",
+  "was": "if(event.key==='Enter')addTodo()",
+  "occurrence": 1,
+  "calls": [
+   "addTodo"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "addTodo()",
+  "occurrence": 1,
+  "calls": [
+   "addTodo"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "change",
+  "tag": "input",
+  "was": "doneTodo(${i})",
+  "occurrence": 1,
+  "calls": [
+   "doneTodo"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "removeTodo(${i})",
+  "occurrence": 1,
+  "calls": [
+   "removeTodo"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "toggleAcc('todos-all')",
+  "occurrence": 1,
+  "calls": [
+   "toggleAcc"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "exportData()",
+  "occurrence": 1,
+  "calls": [
+   "exportData"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "go('settings')",
+  "occurrence": 1,
+  "calls": [
+   "go"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "go('settings')",
+  "occurrence": 2,
+  "calls": [
+   "go"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "exportData()",
+  "occurrence": 2,
+  "calls": [
+   "exportData"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewToday",
+  "event": "click",
+  "tag": "button",
+  "was": "snoozeBackup()",
+  "occurrence": 1,
+  "calls": [
+   "snoozeBackup"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewPicker",
+  "event": "click",
+  "tag": "div",
+  "was": "togglePreview('${name}')",
+  "occurrence": 1,
+  "calls": [
+   "togglePreview"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewPicker",
+  "event": "click",
+  "tag": "button",
+  "was": "skipDay('${skipName}')",
+  "occurrence": 1,
+  "calls": [
+   "skipDay"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewPicker",
+  "event": "click",
+  "tag": "button",
+  "was": "startWorkout('${name}')",
+  "occurrence": 1,
+  "calls": [
+   "startWorkout"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewPicker",
+  "event": "click",
+  "tag": "button",
+  "was": "startWorkout('${o.name}')",
+  "occurrence": 1,
+  "calls": [
+   "startWorkout"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewPicker",
+  "event": "click",
+  "tag": "button",
+  "was": "toggleGuide(${i})",
+  "occurrence": 1,
+  "calls": [
+   "toggleGuide"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "div",
+  "was": "toggleExCollapse(${i})",
+  "occurrence": 1,
+  "calls": [
+   "toggleExCollapse"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "undeloadExercise(${i})",
+  "occurrence": 1,
+  "calls": [
+   "undeloadExercise"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "deloadExercise(${i})",
+  "occurrence": 1,
+  "calls": [
+   "deloadExercise"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "unskipSet(${i},${k})",
+  "occurrence": 1,
+  "calls": [
+   "unskipSet"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "input",
+  "tag": "input",
+  "was": "setVal(${i},${k},'w',this.value);updTargetBadge(${i},${k});updPlates(${i})",
+  "occurrence": 1,
+  "calls": [
+   "setVal",
+   "updTargetBadge",
+   "updPlates"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "change",
+  "tag": "input",
+  "was": "rollWeight(${i},${k},this.value)",
+  "occurrence": 1,
+  "calls": [
+   "rollWeight"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "input",
+  "tag": "input",
+  "was": "setVal(${i},${k},'r',this.value);updTargetBadge(${i},${k})",
+  "occurrence": 1,
+  "calls": [
+   "setVal",
+   "updTargetBadge"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "change",
+  "tag": "input",
+  "was": "repCheck(${i},${k})",
+  "occurrence": 1,
+  "calls": [
+   "repCheck"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "skipSet(${i},${k})",
+  "occurrence": 1,
+  "calls": [
+   "skipSet"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "rmSet(${i},${k})",
+  "occurrence": 1,
+  "calls": [
+   "rmSet"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "toggleExCollapse(${i})",
+  "occurrence": 2,
+  "calls": [
+   "toggleExCollapse"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "change",
+  "tag": "select",
+  "was": "pickEx(${i},this)",
+  "occurrence": 1,
+  "calls": [
+   "pickEx"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "addSet(${i})",
+  "occurrence": 1,
+  "calls": [
+   "addSet"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "toggleWarm(${i})",
+  "occurrence": 1,
+  "calls": [
+   "toggleWarm"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "input",
+  "tag": "input",
+  "was": "setNote(${i},this.value)",
+  "occurrence": 1,
+  "calls": [
+   "setNote"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "unskipStairs()",
+  "occurrence": 1,
+  "calls": [
+   "unskipStairs"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "input",
+  "tag": "input",
+  "was": "stairVal('level',this.value)",
+  "occurrence": 1,
+  "calls": [
+   "stairVal"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "input",
+  "tag": "input",
+  "was": "stairTimeSet('m',this.value)",
+  "occurrence": 1,
+  "calls": [
+   "stairTimeSet"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "input",
+  "tag": "input",
+  "was": "stairTimeSet('s',this.value)",
+  "occurrence": 1,
+  "calls": [
+   "stairTimeSet"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "skipStairs()",
+  "occurrence": 1,
+  "calls": [
+   "skipStairs"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "input",
+  "tag": "input",
+  "was": "setDraftDate(this.value)",
+  "occurrence": 1,
+  "calls": [
+   "setDraftDate"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "input",
+  "tag": "input",
+  "was": "setDraftDur(this.value)",
+  "occurrence": 1,
+  "calls": [
+   "setDraftDur"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "input",
+  "tag": "textarea",
+  "was": "setSessionNote(this.value)",
+  "occurrence": 1,
+  "calls": [
+   "setSessionNote"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "finishWorkout()",
+  "occurrence": 1,
+  "calls": [
+   "finishWorkout"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewActive",
+  "event": "click",
+  "tag": "button",
+  "was": "discardWorkout()",
+  "occurrence": 1,
+  "calls": [
+   "discardWorkout"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderWeekReview",
+  "event": "click",
+  "tag": "a",
+  "was": "editJournal('${iso}')",
+  "occurrence": 1,
+  "calls": [
+   "editJournal"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderWeekReview",
+  "event": "input",
+  "tag": "textarea",
+  "was": "saveJournalFor('${iso}',this.value)",
+  "occurrence": 1,
+  "calls": [
+   "saveJournalFor"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderWeekReview",
+  "event": "click",
+  "tag": "button",
+  "was": "closeJournalEdit()",
+  "occurrence": 1,
+  "calls": [
+   "closeJournalEdit"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderWeekReview",
+  "event": "click",
+  "tag": "a",
+  "was": "openActivityAdd('${iso}')",
+  "occurrence": 1,
+  "calls": [
+   "openActivityAdd"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderWeekReview",
+  "event": "click",
+  "tag": "button",
+  "was": "setActAddCat('hobby')",
+  "occurrence": 1,
+  "calls": [
+   "setActAddCat"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderWeekReview",
+  "event": "click",
+  "tag": "button",
+  "was": "setActAddCat('productivity')",
+  "occurrence": 1,
+  "calls": [
+   "setActAddCat"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderWeekReview",
+  "event": "click",
+  "tag": "button",
+  "was": "addActivityFor('${iso}')",
+  "occurrence": 1,
+  "calls": [
+   "addActivityFor"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderWeekReview",
+  "event": "click",
+  "tag": "button",
+  "was": "cancelActivityAdd()",
+  "occurrence": 1,
+  "calls": [
+   "cancelActivityAdd"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderWeekReview",
+  "event": "click",
+  "tag": "span",
+  "was": "removeActivity(${o.idx})",
+  "occurrence": 1,
+  "calls": [
+   "removeActivity"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderWeekReview",
+  "event": "click",
+  "tag": "button",
+  "was": "weekShift(-1)",
+  "occurrence": 1,
+  "calls": [
+   "weekShift"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderWeekReview",
+  "event": "click",
+  "tag": "button",
+  "was": "weekShift(1)",
+  "occurrence": 1,
+  "calls": [
+   "weekShift"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewHistory",
+  "event": "click",
+  "tag": "button",
+  "was": "toggleBackdate()",
+  "occurrence": 1,
+  "calls": [
+   "toggleBackdate"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewHistory",
+  "event": "click",
+  "tag": "button",
+  "was": "startBackdate('${n}')",
+  "occurrence": 1,
+  "calls": [
+   "startBackdate"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewHistory",
+  "event": "click",
+  "tag": "button",
+  "was": "startBackdate('${o.name}')",
+  "occurrence": 1,
+  "calls": [
+   "startBackdate"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewHistory",
+  "event": "change",
+  "tag": "input",
+  "was": "changeSessionDate(${idx},this.value)",
+  "occurrence": 1,
+  "calls": [
+   "changeSessionDate"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewHistory",
+  "event": "click",
+  "tag": "button",
+  "was": "editSession(${idx})",
+  "occurrence": 1,
+  "calls": [
+   "editSession"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewHistory",
+  "event": "click",
+  "tag": "button",
+  "was": "deleteSession(${idx})",
+  "occurrence": 1,
+  "calls": [
+   "deleteSession"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewHistory",
+  "event": "click",
+  "tag": "div",
+  "was": "toggleHist(${idx})",
+  "occurrence": 1,
+  "calls": [
+   "toggleHist"
+  ],
+  "action": null
+ },
+ {
+  "fn": "rangeSeg",
+  "event": "click",
+  "tag": "button",
+  "was": "setRange(30)",
+  "occurrence": 1,
+  "calls": [
+   "setRange"
+  ],
+  "action": null
+ },
+ {
+  "fn": "rangeSeg",
+  "event": "click",
+  "tag": "button",
+  "was": "setRange(90)",
+  "occurrence": 1,
+  "calls": [
+   "setRange"
+  ],
+  "action": null
+ },
+ {
+  "fn": "rangeSeg",
+  "event": "click",
+  "tag": "button",
+  "was": "setRange(365)",
+  "occurrence": 1,
+  "calls": [
+   "setRange"
+  ],
+  "action": null
+ },
+ {
+  "fn": "rangeSeg",
+  "event": "click",
+  "tag": "button",
+  "was": "setRange(9999)",
+  "occurrence": 1,
+  "calls": [
+   "setRange"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewWeight",
+  "event": "click",
+  "tag": "button",
+  "was": "progSubTab('body')",
+  "occurrence": 1,
+  "calls": [
+   "progSubTab"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewWeight",
+  "event": "click",
+  "tag": "button",
+  "was": "progSubTab('strength')",
+  "occurrence": 1,
+  "calls": [
+   "progSubTab"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewWeight",
+  "event": "click",
+  "tag": "button",
+  "was": "progSubTab('volume')",
+  "occurrence": 1,
+  "calls": [
+   "progSubTab"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewWeight",
+  "event": "click",
+  "tag": "button",
+  "was": "progSubTab('cardio')",
+  "occurrence": 1,
+  "calls": [
+   "progSubTab"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewWeight",
+  "event": "click",
+  "tag": "button",
+  "was": "progSubTab('pet')",
+  "occurrence": 1,
+  "calls": [
+   "progSubTab"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewWeight",
+  "event": "click",
+  "tag": "button",
+  "was": "logWeight()",
+  "occurrence": 1,
+  "calls": [
+   "logWeight"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewPetWeight",
+  "event": "click",
+  "tag": "button",
+  "was": "logPetWeight('pet-input','pet-date')",
+  "occurrence": 1,
+  "calls": [
+   "logPetWeight"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewStrength",
+  "event": "click",
+  "tag": "div",
+  "was": "selectPR(${i})",
+  "occurrence": 1,
+  "calls": [
+   "selectPR"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewStrength",
+  "event": "change",
+  "tag": "select",
+  "was": "selectExercise(this.value)",
+  "occurrence": 1,
+  "calls": [
+   "selectExercise"
+  ],
+  "action": null
+ },
+ {
+  "fn": "weightList",
+  "event": "click",
+  "tag": "button",
+  "was": "rmWeight(${idx})",
+  "occurrence": 1,
+  "calls": [
+   "rmWeight"
+  ],
+  "action": null
+ },
+ {
+  "fn": "petWeightList",
+  "event": "click",
+  "tag": "button",
+  "was": "rmPetWeight(${i})",
+  "occurrence": 1,
+  "calls": [
+   "rmPetWeight"
+  ],
+  "action": null
+ },
+ {
+  "fn": "exercisesCardHTML",
+  "event": "click",
+  "tag": "button",
+  "was": "doExMerge()",
+  "occurrence": 1,
+  "calls": [
+   "doExMerge"
+  ],
+  "action": null
+ },
+ {
+  "fn": "exercisesCardHTML",
+  "event": "click",
+  "tag": "button",
+  "was": "renameExercise('${esc(r.id)}')",
+  "occurrence": 1,
+  "calls": [
+   "renameExercise"
+  ],
+  "action": null
+ },
+ {
+  "fn": "accItem",
+  "event": "click",
+  "tag": "button",
+  "was": "toggleAcc('${key}')",
+  "occurrence": 1,
+  "calls": [
+   "toggleAcc"
+  ],
+  "action": null
+ },
+ {
+  "fn": "mobilityRows",
+  "event": "change",
+  "tag": "input",
+  "was": "toggleMobility(${i})",
+  "occurrence": 1,
+  "calls": [
+   "toggleMobility"
+  ],
+  "action": null
+ },
+ {
+  "fn": "extraCard",
+  "event": "input",
+  "tag": "input",
+  "was": "exSet('${id}',${k},'w',this.value)",
+  "occurrence": 1,
+  "calls": [
+   "exSet"
+  ],
+  "action": null
+ },
+ {
+  "fn": "extraCard",
+  "event": "change",
+  "tag": "input",
+  "was": "exRoll('${id}',${k},this.value)",
+  "occurrence": 1,
+  "calls": [
+   "exRoll"
+  ],
+  "action": null
+ },
+ {
+  "fn": "extraCard",
+  "event": "input",
+  "tag": "input",
+  "was": "exSet('${id}',${k},'r',this.value)",
+  "occurrence": 1,
+  "calls": [
+   "exSet"
+  ],
+  "action": null
+ },
+ {
+  "fn": "extraCard",
+  "event": "click",
+  "tag": "button",
+  "was": "exRmSet('${id}',${k})",
+  "occurrence": 1,
+  "calls": [
+   "exRmSet"
+  ],
+  "action": null
+ },
+ {
+  "fn": "extraCard",
+  "event": "click",
+  "tag": "button",
+  "was": "toggleAcc('${id}')",
+  "occurrence": 1,
+  "calls": [
+   "toggleAcc"
+  ],
+  "action": null
+ },
+ {
+  "fn": "extraCard",
+  "event": "change",
+  "tag": "select",
+  "was": "exPick('${id}',this)",
+  "occurrence": 1,
+  "calls": [
+   "exPick"
+  ],
+  "action": null
+ },
+ {
+  "fn": "extraCard",
+  "event": "click",
+  "tag": "button",
+  "was": "exAddSet('${id}')",
+  "occurrence": 1,
+  "calls": [
+   "exAddSet"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewSkincare",
+  "event": "click",
+  "tag": "button",
+  "was": "skinSubTab('routine')",
+  "occurrence": 1,
+  "calls": [
+   "skinSubTab"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewSkincare",
+  "event": "click",
+  "tag": "button",
+  "was": "skinSubTab('shaving')",
+  "occurrence": 1,
+  "calls": [
+   "skinSubTab"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewSkincare",
+  "event": "click",
+  "tag": "button",
+  "was": "skinTogglePhase(${pi})",
+  "occurrence": 1,
+  "calls": [
+   "skinTogglePhase"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewSkincare",
+  "event": "click",
+  "tag": "button",
+  "was": "skinSelectDay('${d}')",
+  "occurrence": 1,
+  "calls": [
+   "skinSelectDay"
+  ],
+  "action": null
+ },
+ {
+  "fn": "lawnSetup",
+  "event": "click",
+  "tag": "button",
+  "was": "useMyLocation()",
+  "occurrence": 1,
+  "calls": [
+   "useMyLocation"
+  ],
+  "action": null
+ },
+ {
+  "fn": "lawnSetup",
+  "event": "keydown",
+  "tag": "input",
+  "was": "if(event.key==='Enter')searchLocation()",
+  "occurrence": 1,
+  "calls": [
+   "searchLocation"
+  ],
+  "action": null
+ },
+ {
+  "fn": "lawnSetup",
+  "event": "click",
+  "tag": "button",
+  "was": "searchLocation()",
+  "occurrence": 1,
+  "calls": [
+   "searchLocation"
+  ],
+  "action": null
+ },
+ {
+  "fn": "cLawnCard",
+  "event": "click",
+  "tag": "div",
+  "was": "goSub('care','lawn')",
+  "occurrence": 1,
+  "calls": [
+   "goSub"
+  ],
+  "action": null
+ },
+ {
+  "fn": "cLawnCard",
+  "event": "click",
+  "tag": "button",
+  "was": "setLawnDaysAgo('${action}',${n})",
+  "occurrence": 1,
+  "calls": [
+   "setLawnDaysAgo"
+  ],
+  "action": null
+ },
+ {
+  "fn": "cLawnCard",
+  "event": "click",
+  "tag": "button",
+  "was": "toggleLawnLog('${which.log}')",
+  "occurrence": 1,
+  "calls": [
+   "toggleLawnLog"
+  ],
+  "action": null
+ },
+ {
+  "fn": "cLawnCard",
+  "event": "click",
+  "tag": "button",
+  "was": "toggleLawnOverride('${which.ov}')",
+  "occurrence": 1,
+  "calls": [
+   "toggleLawnOverride"
+  ],
+  "action": null
+ },
+ {
+  "fn": "cLawnCard",
+  "event": "click",
+  "tag": "div",
+  "was": "goSub('care','lawn')",
+  "occurrence": 2,
+  "calls": [
+   "goSub"
+  ],
+  "action": null
+ },
+ {
+  "fn": "lawnHistory",
+  "event": "click",
+  "tag": "button",
+  "was": "toggleLawnLog('${action}','${iso}')",
+  "occurrence": 1,
+  "calls": [
+   "toggleLawnLog"
+  ],
+  "action": null
+ },
+ {
+  "fn": "lawnHistory",
+  "event": "click",
+  "tag": "button",
+  "was": "logLawnPastDate('watered')",
+  "occurrence": 1,
+  "calls": [
+   "logLawnPastDate"
+  ],
+  "action": null
+ },
+ {
+  "fn": "lawnHistory",
+  "event": "click",
+  "tag": "button",
+  "was": "logLawnPastDate('mowed')",
+  "occurrence": 1,
+  "calls": [
+   "logLawnPastDate"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewLawn",
+  "event": "click",
+  "tag": "button",
+  "was": "changeLawnLoc()",
+  "occurrence": 1,
+  "calls": [
+   "changeLawnLoc"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewLawn",
+  "event": "click",
+  "tag": "button",
+  "was": "fetchWeather()",
+  "occurrence": 1,
+  "calls": [
+   "fetchWeather"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewLawn",
+  "event": "click",
+  "tag": "button",
+  "was": "fetchWeather()",
+  "occurrence": 2,
+  "calls": [
+   "fetchWeather"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "setUnit('lb')",
+  "occurrence": 1,
+  "calls": [
+   "setUnit"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "setUnit('kg')",
+  "occurrence": 1,
+  "calls": [
+   "setUnit"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "setRoutineMode('3day')",
+  "occurrence": 1,
+  "calls": [
+   "setRoutineMode"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "setRoutineMode('4day')",
+  "occurrence": 1,
+  "calls": [
+   "setRoutineMode"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "change",
+  "tag": "input",
+  "was": "setPetName(this.value);render()",
+  "occurrence": 1,
+  "calls": [
+   "setPetName",
+   "render"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "removeItem('hobby',${i})",
+  "occurrence": 1,
+  "calls": [
+   "removeItem"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "addItem('hobby')",
+  "occurrence": 1,
+  "calls": [
+   "addItem"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "removeItem('productivity',${i})",
+  "occurrence": 1,
+  "calls": [
+   "removeItem"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "addItem('productivity')",
+  "occurrence": 1,
+  "calls": [
+   "addItem"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "exportData()",
+  "occurrence": 1,
+  "calls": [
+   "exportData"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "exportMarkdown()",
+  "occurrence": 1,
+  "calls": [
+   "exportMarkdown"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "document.getElementById('imp').click()",
+  "occurrence": 1,
+  "calls": [
+   "document.getElementById",
+   "click"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "change",
+  "tag": "input",
+  "was": "importData(this)",
+  "occurrence": 1,
+  "calls": [
+   "importData"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewData",
+  "event": "click",
+  "tag": "button",
+  "was": "wipe()",
+  "occurrence": 1,
+  "calls": [
+   "wipe"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewCardio",
+  "event": "click",
+  "tag": "button",
+  "was": "confirmCardioImport()",
+  "occurrence": 1,
+  "calls": [
+   "confirmCardioImport"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewCardio",
+  "event": "click",
+  "tag": "button",
+  "was": "discardCardioImport()",
+  "occurrence": 1,
+  "calls": [
+   "discardCardioImport"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewCardio",
+  "event": "click",
+  "tag": "button",
+  "was": "removeCardio('${c.id}')",
+  "occurrence": 1,
+  "calls": [
+   "removeCardio"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewCardio",
+  "event": "click",
+  "tag": "button",
+  "was": "addCardio()",
+  "occurrence": 1,
+  "calls": [
+   "addCardio"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewCardio",
+  "event": "click",
+  "tag": "button",
+  "was": "pickCardioFile()",
+  "occurrence": 1,
+  "calls": [
+   "pickCardioFile"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewCardio",
+  "event": "change",
+  "tag": "input",
+  "was": "handleCardioFile(this)",
+  "occurrence": 1,
+  "calls": [
+   "handleCardioFile"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewSleep",
+  "event": "click",
+  "tag": "button",
+  "was": "removeSleep('${s.id}')",
+  "occurrence": 1,
+  "calls": [
+   "removeSleep"
+  ],
+  "action": null
+ },
+ {
+  "fn": "viewSleep",
+  "event": "click",
+  "tag": "button",
+  "was": "addSleep()",
+  "occurrence": 1,
+  "calls": [
+   "addSleep"
+  ],
+  "action": null
+ },
+ {
+  "fn": "trashCardHTML",
+  "event": "click",
+  "tag": "div",
+  "was": "toggleTrash()",
+  "occurrence": 1,
+  "calls": [
+   "toggleTrash"
+  ],
+  "action": null
+ },
+ {
+  "fn": "trashCardHTML",
+  "event": "click",
+  "tag": "button",
+  "was": "restoreDeleted('${o.kind}',${o.i})",
+  "occurrence": 1,
+  "calls": [
+   "restoreDeleted"
+  ],
+  "action": null
+ },
+ {
+  "fn": "trashCardHTML",
+  "event": "click",
+  "tag": "div",
+  "was": "toggleTrash()",
+  "occurrence": 2,
+  "calls": [
+   "toggleTrash"
+  ],
+  "action": null
+ },
+ {
+  "fn": "versionsCardHTML",
+  "event": "click",
+  "tag": "button",
+  "was": "${action}",
+  "occurrence": 1,
+  "calls": [
+   "restoreSnapshot",
+   "restoreCloudVersion"
+  ],
+  "actions": []
+ },
+ {
+  "fn": "versionsCardHTML",
+  "event": "click",
+  "tag": "div",
+  "was": "toggleVersions()",
+  "occurrence": 1,
+  "calls": [
+   "toggleVersions"
+  ],
+  "action": null
+ },
+ {
+  "fn": "versionsCardHTML",
+  "event": "click",
+  "tag": "div",
+  "was": "toggleVersions()",
+  "occurrence": 2,
+  "calls": [
+   "toggleVersions"
+  ],
+  "action": null
+ },
+ {
+  "fn": "syncCardHTML",
+  "event": "click",
+  "tag": "button",
+  "was": "location.reload()",
+  "occurrence": 1,
+  "calls": [
+   "location.reload"
+  ],
+  "action": null
+ },
+ {
+  "fn": "syncCardHTML",
+  "event": "click",
+  "tag": "button",
+  "was": "pushNow(false)",
+  "occurrence": 1,
+  "calls": [
+   "pushNow"
+  ],
+  "action": null
+ },
+ {
+  "fn": "syncCardHTML",
+  "event": "click",
+  "tag": "button",
+  "was": "syncSignOut()",
+  "occurrence": 1,
+  "calls": [
+   "syncSignOut"
+  ],
+  "action": null
+ },
+ {
+  "fn": "syncCardHTML",
+  "event": "click",
+  "tag": "button",
+  "was": "syncSignIn(false)",
+  "occurrence": 1,
+  "calls": [
+   "syncSignIn"
+  ],
+  "action": null
+ },
+ {
+  "fn": "syncCardHTML",
+  "event": "click",
+  "tag": "button",
+  "was": "syncSignIn(true)",
+  "occurrence": 1,
+  "calls": [
+   "syncSignIn"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderIdeasList",
+  "event": "click",
+  "tag": "button",
+  "was": "saveEditIdea('${i.id}')",
+  "occurrence": 1,
+  "calls": [
+   "saveEditIdea"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderIdeasList",
+  "event": "click",
+  "tag": "button",
+  "was": "cancelEditIdea()",
+  "occurrence": 1,
+  "calls": [
+   "cancelEditIdea"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderIdeasList",
+  "event": "change",
+  "tag": "input",
+  "was": "toggleIdeaDone('${i.id}')",
+  "occurrence": 1,
+  "calls": [
+   "toggleIdeaDone"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderIdeasList",
+  "event": "click",
+  "tag": "button",
+  "was": "startEditIdea('${i.id}')",
+  "occurrence": 1,
+  "calls": [
+   "startEditIdea"
+  ],
+  "action": null
+ },
+ {
+  "fn": "renderIdeasList",
+  "event": "click",
+  "tag": "button",
+  "was": "removeIdea('${i.id}')",
+  "occurrence": 1,
+  "calls": [
+   "removeIdea"
+  ],
+  "action": null
+ }
+]
