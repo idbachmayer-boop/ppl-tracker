@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 05
 current_phase_name: f2-event-delegation
 status: executing
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-09-25T10:16:04.530Z"
+stopped_at: Completed 05-04-PLAN.md
+last_updated: "2026-09-25T10:36:13.260Z"
 last_activity: 2026-09-25
 last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 24
-  completed_plans: 21
+  completed_plans: 22
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 ## Current Position
 
 Phase: 05 (f2-event-delegation) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 Status: Ready to execute
 Last activity: 2026-09-25 — Phase 05 execution started
 
-Progress: [█████████░] 88%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -81,6 +81,7 @@ Progress: [█████████░] 88%
 | Phase 05 P01 | 15min | 3 tasks | 7 files |
 | Phase 05 P02 | 16min | 3 tasks | 4 files |
 | Phase 05 P03 | 16min | 2 tasks | 4 files |
+| Phase 05 P04 | 19min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -139,6 +140,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 05-02: the Ideas backdrop keeps its div exception with the e.target===el guard in its wrapper; trash and versions headers are <button class="row tap"> with block spans
 - [Phase ?]: 05-03: the enter action runs data-enter's target only if both the entry and its click are OWN properties (the plan's form read click through the prototype)
 - [Phase ?]: 05-03: the DELEG-03 ratchet counts wiring sites per mapped row, so a surviving same-name sibling cannot hide a dropped control
+- [Phase ?]: 05-04: a shared action whose other consumer lands in a later plan gets a stand-in-element check for that consumer's call shape (logPetWeight with no data-date-el)
+- [Phase ?]: 05-04: attribute values outside data-* that a plan escapes (D-09) get a hostile-value check; the D-03 check reads data-* only
 
 ### Pending Todos
 
@@ -163,6 +166,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-25T10:16:04.486Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-09-25T10:36:13.220Z
+Stopped at: Completed 05-04-PLAN.md
 Resume file: None
