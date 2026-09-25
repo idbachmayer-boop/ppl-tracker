@@ -1322,7 +1322,7 @@
   "calls": [
    "skinSubTab"
   ],
-  "action": null
+  "action": "skinSubTab"
  },
  {
   "fn": "viewSkincare",
@@ -1333,7 +1333,7 @@
   "calls": [
    "skinSubTab"
   ],
-  "action": null
+  "action": "skinSubTab"
  },
  {
   "fn": "viewSkincare",
@@ -1344,7 +1344,7 @@
   "calls": [
    "skinTogglePhase"
   ],
-  "action": null
+  "action": "skinTogglePhase"
  },
  {
   "fn": "viewSkincare",
@@ -1355,7 +1355,7 @@
   "calls": [
    "skinSelectDay"
   ],
-  "action": null
+  "action": "skinSelectDay"
  },
  {
   "fn": "lawnSetup",
@@ -1742,7 +1742,7 @@
   "calls": [
    "removeSleep"
   ],
-  "action": null
+  "action": "removeSleep"
  },
  {
   "fn": "viewSleep",
@@ -1753,7 +1753,7 @@
   "calls": [
    "addSleep"
   ],
-  "action": null
+  "action": "addSleep"
  },
  {
   "fn": "trashCardHTML",

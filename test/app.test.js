@@ -1464,8 +1464,11 @@ console.log('\n── sleep: log, list and delete (SLEEP-02/SLEEP-03) ──');
 {
   const S = loadApp(APP_PATH); S.DB = populatedDB(S);
   const html = S.viewSleep();
+  /* Read the delete controls as parsed data (controlsIn, hoisted from the F2 section), never as
+     handler text: the property is "a live night can be deleted, a deleted one is not listed". */
+  const del = controlsIn(html).filter(c => c.data.action === 'removeSleep');
   ok('sleep: the history lists live nights and hides deleted ones',
-     html.indexOf("removeSleep('sl1')") >= 0 && html.indexOf("removeSleep('sl2')") < 0, html.length);
+     del.some(c => c.data.id === 'sl1') && !del.some(c => c.data.id === 'sl2'), del.map(c => c.data.id));
 }
 
 {
@@ -1507,8 +1510,11 @@ console.log('\n── sleep: log, list and delete (SLEEP-02/SLEEP-03) ──');
   const S = loadApp(APP_PATH); S.DB = S.blank();
   S.DB.sleep = [{ id:"a'b(c);", date:'2026-08-01', hours:7, quality:3, note:'', mtime:1 }];
   const html = S.viewSleep();
+  /* The safeId gate is defence in depth behind esc(): an unsafe id gets no delete control at all,
+     neither a delegated one nor an inline handler. Proven to bite by removing the gate (05-03). */
+  const del = controlsIn(html).filter(c => c.data.action === 'removeSleep');
   ok('sleep: an id that could break out of the attribute gets no delete button',
-     html.indexOf('7h') >= 0 && html.indexOf('removeSleep(') < 0, html);
+     html.indexOf('7h') >= 0 && del.length === 0 && html.indexOf('removeSleep(') < 0, { del, html });
 }
 
 {
@@ -4666,6 +4672,18 @@ function f2Corpus(){
       out.push({ label: 'Settings: versions open (local + cloud), sync signed in and paused', html: appHtml() });
     } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
   }
+  /* 05-03: Care → Skin on the shaving sub-tab with phase 0 expanded, which the default Skin screen
+     (the routine) never renders. */
+  {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    try {
+      a.go('care'); a.setSub('skin');
+      a.__sandbox.skinSubTab('shaving');
+      a.__sandbox.skinTogglePhase(0);
+    } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
+    out.push({ label: 'Care → Skin: shaving, phase 0 open', html: a.__sandbox.document.getElementById('app').innerHTML || '' });
+  }
   f2Corpus.cache = out;
   return out;
 }
@@ -5280,6 +5298,60 @@ const f2AppHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '
        && JSON.stringify(signIns) === '[[false],[true]]' && JSON.stringify(pushes) === '[[false]]'
        && JSON.stringify(outs) === '[[]]' && reloads === 1,
      { threw, signedOut, signedIn, signIns, pushes, outs, reloads });
+}
+
+/* ── Plan 05-03: Care (Skin, Lawn, Sleep) and the lawn card Today shows ── */
+/* skinOpenPhases is a Set of NUMBERS. A string index from the dataset would add '0' on the first
+   tap and never find it again, so the phase would open and never close (Pitfall 1). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  const r = {};
+  let threw = null;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    a.go('care'); a.setSub('skin');
+    const tab = find(c => c.data.action === 'skinSubTab' && c.data.sub === 'shaving');
+    r.tab = tab && tab.tag;
+    if(tab) fireAction(a, 'click', fakeEl(tab.data));
+    r.guide = /Shaving Guide/.test(f2AppHtml(a));
+    r.bodyBefore = f2AppHtml(a).includes('phase-body');
+    const p1 = find(c => c.data.action === 'skinTogglePhase' && c.data.i === '0');
+    r.phase = p1 && p1.tag;
+    if(p1) fireAction(a, 'click', fakeEl(p1.data));
+    r.opened = f2AppHtml(a).includes('phase-body');
+    const p2 = find(c => c.data.action === 'skinTogglePhase' && c.data.i === '0');
+    if(p2) fireAction(a, 'click', fakeEl(p2.data));
+    r.closed = !f2AppHtml(a).includes('phase-body');
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a shaving phase opens and closes through the dispatcher (numeric index)',
+     !threw && r.tab === 'button' && r.guide && !r.bodyBefore && r.phase === 'button' && r.opened && r.closed, { threw, r });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  const r = {};
+  let threw = null;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    a.go('care'); a.setSub('skin');
+    const wed0 = find(c => c.data.action === 'skinSelectDay' && c.data.day === 'Wed');
+    r.before = wed0 && wed0.cls;
+    if(wed0) fireAction(a, 'click', fakeEl(wed0.data));
+    const wed1 = find(c => c.data.action === 'skinSelectDay' && c.data.day === 'Wed');
+    r.after = wed1 && wed1.cls;
+    r.tag = wed1 && wed1.tag;
+    const shave = find(c => c.data.action === 'skinSubTab' && c.data.sub === 'shaving');
+    if(shave) fireAction(a, 'click', fakeEl(shave.data));
+    r.shaving = /Shaving Guide/.test(f2AppHtml(a));
+    const routine = find(c => c.data.action === 'skinSubTab' && c.data.sub === 'routine');
+    if(routine) fireAction(a, 'click', fakeEl(routine.data));
+    r.routine = /<h1>Skincare<\/h1>/.test(f2AppHtml(a));
+  } catch(e){ threw = e.message; }
+  const tokens = s => String(s || '').split(/\s+/);
+  ok("DELEG-02: Skin's day picker and sub-tabs switch through the dispatcher",
+     !threw && r.before != null && !tokens(r.before).includes('active') && tokens(r.after).includes('active')
+       && r.tag === 'button' && r.shaving && r.routine, { threw, r });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

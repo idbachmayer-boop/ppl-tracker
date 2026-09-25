@@ -2831,13 +2831,13 @@ function skinTogglePhase(i){ skinOpenPhases.has(i)?skinOpenPhases.delete(i):skin
 function viewSkincare(){
   if(skinDay===null) skinDay = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()];
   const sub = `<div class="seg" style="margin-top:14px">
-    <button class="${skinSub==='routine'?'active':''}" onclick="skinSubTab('routine')">Routine</button>
-    <button class="${skinSub==='shaving'?'active':''}" onclick="skinSubTab('shaving')">Shaving</button></div>`;
+    <button class="${skinSub==='routine'?'active':''}" data-action="skinSubTab" data-sub="routine">Routine</button>
+    <button class="${skinSub==='shaving'?'active':''}" data-action="skinSubTab" data-sub="shaving">Shaving</button></div>`;
   if(skinSub==='shaving'){
     const phases = SHAVE_STEPS.map((p,pi)=>{
       const open=skinOpenPhases.has(pi);
       return `<div class="phase-card">
-        <button class="phase-header" onclick="skinTogglePhase(${pi})">
+        <button class="phase-header" data-action="skinTogglePhase" data-i="${esc(pi)}">
           <span style="display:flex;align-items:center;gap:10px"><span class="phase-num">${pi+1}</span><span class="phase-title">${p.phase}</span><span class="phase-count">${p.steps.length} steps</span></span>
           <span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span>
         </button>
@@ -2850,7 +2850,7 @@ function viewSkincare(){
   const dayBtns = days.map(d=>{
     const tags=SKIN_SCHEDULE[d].tags;
     const dot = tags.includes('retinol')?'<span class="day-dot dot-retinol"></span>':tags.includes('bha')?'<span class="day-dot dot-bha"></span>':'';
-    return `<button class="day-btn ${d===skinDay?'active':''}" onclick="skinSelectDay('${d}')">${d}${dot}</button>`;
+    return `<button class="day-btn ${d===skinDay?'active':''}" data-action="skinSelectDay" data-day="${esc(d)}">${d}${dot}</button>`;
   }).join('');
   const data=SKIN_SCHEDULE[skinDay];
   const badges = data.tags.map(t=> t==='retinol'?'<span class="badge badge-retinol">Retinol Night</span>':t==='bha'?'<span class="badge badge-bha">BHA Exfoliant</span>':'').join('');
@@ -3917,7 +3917,7 @@ function viewSleep(){
   const rows=list.length ? list.map(s=>`<div class="hist-item" style="cursor:default">
       <div><div style="font-weight:600">${esc(String(Number(s.hours)))}h · quality ${esc(String(Number(s.quality)))}/5</div>
         <div class="muted" style="font-size:12px">${/^\d{4}-\d{2}-\d{2}$/.test(s.date)?fmtDate(s.date):esc(String(s.date||'?'))}${s.note?' · '+esc(s.note):''}</div></div>
-      ${safeId.test(String(s.id)) ? `<button class="x-set" onclick="removeSleep('${s.id}')" title="delete">${ph('x')}</button>` : ''}
+      ${safeId.test(String(s.id)) ? `<button class="x-set" data-action="removeSleep" data-id="${esc(s.id)}" title="delete">${ph('x')}</button>` : ''}
     </div>`).join('') : '<p class="empty">No sleep logged yet. Log last night above.</p>';
   return `<h1>Sleep</h1>
     <div class="card">
@@ -3934,7 +3934,7 @@ function viewSleep(){
         </select></div>
       </div>
       <input id="sleep-note" placeholder="Note (optional)" style="margin-top:10px">
-      <button class="btn btn-block" style="margin-top:12px" onclick="addSleep()">Add sleep</button>
+      <button class="btn btn-block" style="margin-top:12px" data-action="addSleep">Add sleep</button>
     </div>
     <h2>History</h2>
     <div class="card">${rows}</div>`;
@@ -4768,6 +4768,13 @@ const ACTIONS = {
   syncSignOut:         { click: () => syncSignOut() },
   syncSignIn:          { click: () => syncSignIn(false) },
   syncCreateAccount:   { click: () => syncSignIn(true) },
+  /* Care → Skin and Care → Sleep. skinOpenPhases is a Set of numbers, so the phase index is decoded
+     with a unary plus; a string would open a phase that then never closes. */
+  skinSubTab:      { click: el => skinSubTab(el.dataset.sub) },
+  skinTogglePhase: { click: el => skinTogglePhase(+el.dataset.i) },
+  skinSelectDay:   { click: el => skinSelectDay(el.dataset.day) },
+  removeSleep:     { click: el => removeSleep(el.dataset.id) },
+  addSleep:        { click: () => addSleep() },
 };
 document.addEventListener('click', dispatchAction, { passive: false });
 document.addEventListener('change', dispatchAction, { passive: false });
