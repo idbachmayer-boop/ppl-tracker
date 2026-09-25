@@ -4792,6 +4792,20 @@ function f2Corpus(){
     try { a.go('train'); a.setSub('cardio'); } catch(e){ /* the checks read whatever rendered */ }
     out.push({ label: 'Train → Cardio: two logged sessions', html: appHtml(a) });
   }
+  /* 05-05: Today's workout card in each of its three variants. The frozen clock is a Friday, a
+     workout day: populatedDB's next workout is LEGS 2 (the fixed card), 4-day mode after a Pull day
+     reaches the Specialized options, and a draft shows Resume. */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    [['Today: workout in progress (Resume)', a => { a.DB.draft = fullDraft(a, 'PUSH 1'); }],
+     ['Today: workout day, fixed next workout', null],
+     ['Today: 4-day mode, Specialized next', a => f2SeedSpecialized(a)],
+     ['Today: evening order (week card)', a => f2Evening(a)]].forEach(([label, seed]) => {
+      const a = loadApp(APP_PATH);
+      try { a.DB = populatedDB(a); if(seed) seed(a); a.go('today'); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label, html: appHtml(a) });
+    });
+  }
   f2Corpus.cache = out;
   return out;
 }
@@ -6007,6 +6021,171 @@ function f2Progress(sub){
      !threw && r.pick === 'button' && !!r.inp && r.inp.tag === 'input' && r.inp.type === 'file'
        && JSON.stringify(r.afterPick) === '[1,0]' && r.sameEl && JSON.stringify(r.after) === '[1,1]'
        && r.add === 'button' && JSON.stringify(adds) === '[[]]', { threw, r, adds });
+}
+
+/* ── Plan 05-05: Today ── */
+/* The frozen clock is Friday 12:00 Chicago: a workout day, and the afternoon card order (no week
+   card; the weigh-in card is closed until toggled). populatedDB's last live session is PUSH 2, so
+   the fixed next workout is LEGS 2. */
+function f2Today(seed){
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  if(seed) seed(a);
+  a.go('today');
+  return a;
+}
+/* 4-day mode with a Pull day last: nextWorkout() returns SPECIALIZED, so the card offers the five
+   focus options. */
+/* This instance's clock at 20:00 Chicago on the frozen calendar day (the evening card order). */
+function f2Evening(a){
+  const ms = Date.parse('2026-08-08T01:00:00Z'), Base = a.__sandbox.Date;
+  function Evening(...args){
+    if(!new.target) return new Base(ms).toString();
+    return args.length ? new Base(...args) : new Base(ms);
+  }
+  Evening.prototype = Base.prototype;
+  Evening.now = () => ms; Evening.parse = Base.parse; Evening.UTC = Base.UTC;
+  a.__sandbox.Date = Evening;
+}
+function f2SeedSpecialized(a){
+  a.DB.routineMode = '4day';
+  a.DB.sessions.push({ id:'s6', workout:'PULL 1', date:dayOff(-1), endedAt:6, extras:{},
+    entries:[{ name:'Barbell row', sets:[{ w:'135', r:'8', skipped:false }] }] });
+}
+{
+  const r = {};
+  let threw = null;
+  let starts = [], skips = [], sStarts = [], sSkips = [];
+  try {
+    const a = f2Today();
+    starts = spyOn(a, 'startWorkout'); skips = spyOn(a, 'skipDay');
+    const cs = controlsIn(f2AppHtml(a));
+    r.next = a.__sandbox.nextWorkout();
+    const st = cs.filter(c => c.data.action === 'startWorkout'), sk = cs.filter(c => c.data.action === 'skipDay');
+    r.fixed = { st: st.map(c => c.tag + ':' + c.data.name), sk: sk.map(c => c.tag + ':' + c.data.name) };
+    st.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+    sk.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+
+    const b = f2Today(f2SeedSpecialized);
+    sStarts = spyOn(b, 'startWorkout'); sSkips = spyOn(b, 'skipDay');
+    const bs = controlsIn(f2AppHtml(b));
+    r.sNext = b.__sandbox.nextWorkout();
+    const opts = bs.filter(c => c.data.action === 'startWorkout');
+    r.opts = opts.map(c => c.tag + ':' + c.data.name);
+    opts.forEach(c => fireAction(b, 'click', fakeEl(c.data)));
+    bs.filter(c => c.data.action === 'skipDay').forEach(c => fireAction(b, 'click', fakeEl(c.data)));
+    r.PROGRAM = Object.keys(b.PROGRAM || {});
+  } catch(e){ threw = e.message; }
+  const inProgram = n => (r.PROGRAM || []).includes(n);
+  const optNames = (r.opts || []).map(x => x.slice(x.indexOf(':') + 1));
+  ok('DELEG-02: Start and Skip on Today pass the workout name through data-name',
+     !threw && r.next === 'LEGS 2' && JSON.stringify(r.fixed.st) === '["button:LEGS 2"]' && JSON.stringify(r.fixed.sk) === '["button:LEGS 2"]'
+       && JSON.stringify(starts) === '[["LEGS 2"]]' && JSON.stringify(skips) === '[["LEGS 2"]]' && inProgram('LEGS 2')
+       && r.sNext === 'SPECIALIZED' && optNames.length === 5 && new Set(optNames).size === 5
+       && optNames.every(n => n.indexOf('SPECIALIZED — ') === 0 && inProgram(n)) && r.opts.every(x => x.startsWith('button:'))
+       && optNames.includes('SPECIALIZED — CHEST & TRICEPS')
+       && JSON.stringify(sStarts) === JSON.stringify(optNames.map(n => [n])) && JSON.stringify(sSkips) === '[["SPECIALIZED"]]',
+     { threw, r, starts, skips, sStarts, sSkips });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Today(a => { a.DB.draft = fullDraft(a, 'PUSH 1'); });
+    a.subState.train = 'history';   /* so "opens the Log sub" is not the default passing */
+    r.before = a.TAB;
+    const res =controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'log');
+    r.res = res.map(c => c.tag);
+    if(res[0]) fireAction(a, 'click', fakeEl(res[0].data));
+    r.tab = a.TAB; r.sub = a.subState.train;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: with a workout in progress, Resume opens the Log tab',
+     !threw && r.before === 'today' && JSON.stringify(r.res) === '["button"]' && r.tab === 'train' && r.sub === 'log', { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  let shuffles = [], dids = [], selects = [];
+  try {
+    const a = f2Today();
+    const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+    const prod = find(c => c.data.action === 'setPickCat' && c.data.cat === 'productivity');
+    r.prodBefore = prod && prod.cls;
+    if(prod) fireAction(a, 'click', fakeEl(prod.data));
+    const prod2 = find(c => c.data.action === 'setPickCat' && c.data.cat === 'productivity');
+    const hobby2 = find(c => c.data.action === 'setPickCat' && c.data.cat === 'hobby');
+    r.prodAfter = prod2 && prod2.cls; r.hobbyAfter = hobby2 && hobby2.cls;
+    r.segTags = [prod2 && prod2.tag, hobby2 && hobby2.tag];
+    shuffles = spyOn(a, 'shufflePick'); dids = spyOn(a, 'didPick'); selects = spyOn(a, 'selectPick');
+    const sh = find(c => c.data.action === 'shufflePick'), dn = find(c => c.data.action === 'didPick');
+    const sel = find(c => c.data.action === 'selectPick');
+    r.tags = [sh && sh.tag, dn && dn.tag, sel && sel.tag];
+    if(sh) fireAction(a, 'click', fakeEl(sh.data));
+    if(dn) fireAction(a, 'click', fakeEl(dn.data));
+    if(sel){
+      const el = fakeEl(sel.data, { value: 'Laundry' });
+      fireAction(a, 'click', el); fireAction(a, 'input', el); fireAction(a, 'change', el);
+    }
+    r.selKeys = Object.keys((a.ACTIONS || {}).selectPick || {});
+  } catch(e){ threw = e.message; }
+  const active = s => String(s || '').split(/\s+/).includes('active');
+  ok('DELEG-02: the pick-a-thing card routes category, shuffle, done and the selector through the dispatcher',
+     !threw && r.prodBefore != null && !active(r.prodBefore) && active(r.prodAfter) && !active(r.hobbyAfter)
+       && JSON.stringify(r.segTags) === '["button","button"]' && JSON.stringify(r.tags) === '["button","button","select"]'
+       && JSON.stringify(shuffles) === '[[]]' && JSON.stringify(dids) === '[[]]'
+       && JSON.stringify(selects) === '[["Laundry"]]' && JSON.stringify(r.selKeys) === '["change"]',
+     { threw, r, shuffles, dids, selects });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Today();
+    const box = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'saveJournal');
+    r.box = box.map(c => c.tag);
+    if(box[0]){
+      const el = fakeEl(box[0].data, { value: 'a good day' });
+      fireAction(a, 'click', el);
+      r.afterClick = a.DB.journal[a.todayISO()];
+      fireAction(a, 'input', el);
+    }
+    r.saved = a.DB.journal[a.todayISO()];
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the journal box saves on input through the dispatcher',
+     !threw && JSON.stringify(r.box) === '["textarea"]' && r.afterClick === '' && r.saved === 'a good day', { threw, r });
+}
+/* The afternoon order has no week card, so the only train/history shortcut on Today is the link
+   under the journal box. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Today();
+    const links = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'history');
+    r.links = links.map(c => c.tag + ':' + c.cls);
+    if(links[0]) fireAction(a, 'click', fakeEl(links[0].data));
+    r.tab = a.TAB; r.sub = a.subState.train;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-06: the week link under the journal box is an inline button that opens History',
+     !threw && JSON.stringify(r.links) === '["button:tap-inline"]' && r.tab === 'train' && r.sub === 'history', { threw, r });
+}
+/* The week card renders only in the evening order. Moves this instance's clock to 20:00 Chicago on
+   the same calendar day; every other instance keeps the frozen midday. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Today(f2Evening);
+    const cs = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'history');
+    r.hist = cs.map(c => c.tag + ':' + c.cls);
+    r.evening = /Good evening/.test(f2AppHtml(a));
+    const card = cs.find(c => c.cls.split(/\s+/).includes('card')) || null;
+    if(card) fireAction(a, 'click', fakeEl(card.data));
+    r.tab = a.TAB; r.sub = a.subState.train;
+  } catch(e){ threw = e.message; }
+  ok("DELEG-06: Today's evening week card is a whole-card button that opens History",
+     !threw && r.evening && r.hist.includes('button:card tap') && r.hist.includes('button:tap-inline') && r.hist.length === 2
+       && r.tab === 'train' && r.sub === 'history', { threw, r });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

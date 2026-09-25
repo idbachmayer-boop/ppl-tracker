@@ -151,7 +151,7 @@
   "calls": [
    "goSub"
   ],
-  "action": null
+  "action": "goSub"
  },
  {
   "fn": "viewToday",
@@ -162,7 +162,7 @@
   "calls": [
    "startWorkout"
   ],
-  "action": null
+  "action": "startWorkout"
  },
  {
   "fn": "viewToday",
@@ -173,7 +173,7 @@
   "calls": [
    "skipDay"
   ],
-  "action": null
+  "action": "skipDay"
  },
  {
   "fn": "viewToday",
@@ -184,7 +184,7 @@
   "calls": [
    "startWorkout"
   ],
-  "action": null
+  "action": "startWorkout"
  },
  {
   "fn": "viewToday",
@@ -195,7 +195,7 @@
   "calls": [
    "skipDay"
   ],
-  "action": null
+  "action": "skipDay"
  },
  {
   "fn": "viewToday",
@@ -206,7 +206,7 @@
   "calls": [
    "setPickCat"
   ],
-  "action": null
+  "action": "setPickCat"
  },
  {
   "fn": "viewToday",
@@ -217,7 +217,7 @@
   "calls": [
    "setPickCat"
   ],
-  "action": null
+  "action": "setPickCat"
  },
  {
   "fn": "viewToday",
@@ -228,7 +228,7 @@
   "calls": [
    "shufflePick"
   ],
-  "action": null
+  "action": "shufflePick"
  },
  {
   "fn": "viewToday",
@@ -239,7 +239,7 @@
   "calls": [
    "didPick"
   ],
-  "action": null
+  "action": "didPick"
  },
  {
   "fn": "viewToday",
@@ -250,7 +250,7 @@
   "calls": [
    "selectPick"
   ],
-  "action": null
+  "action": "selectPick"
  },
  {
   "fn": "viewToday",
@@ -261,7 +261,7 @@
   "calls": [
    "saveJournal"
   ],
-  "action": null
+  "action": "saveJournal"
  },
  {
   "fn": "viewToday",
@@ -272,7 +272,7 @@
   "calls": [
    "goSub"
   ],
-  "action": null
+  "action": "goSub"
  },
  {
   "fn": "viewToday",
@@ -351,7 +351,7 @@
   "calls": [
    "goSub"
   ],
-  "action": null
+  "action": "goSub"
  },
  {
   "fn": "viewToday",
