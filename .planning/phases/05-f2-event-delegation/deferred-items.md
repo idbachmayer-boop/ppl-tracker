@@ -20,3 +20,20 @@ and what would fix it.
   planted `click` is in place.
 - **Why deferred:** the dispatcher belongs to 05-01. The scope rule limits 05-03 to what its own
   changes caused.
+
+## 2. Logged set values render as HTML text without `esc()` (found in 05-06)
+
+- **Where:** `index.html`, every `fmtSet(w, r)` result placed in markup: the picker preview's
+  "Last:" line (`previewRows`), the active workout's "Last time" line (both the exact-slot and the
+  elsewhere branch of `viewActive`), History's set list (`setsOf` in `viewHistory`) and the strength
+  history rows. `setStatus`'s title goes through `esc()` already.
+- **What:** `fmtSet` returns the stored `w` and `r` as they are. A session from an imported backup or
+  an older build can hold any string there (`validateBackup()` checks shape, never types), and it
+  would render as markup in these text positions. These are not attributes, so D-09 did not cover
+  them. 05-06 escaped the one such line it rewrote (the collapsed card's summary).
+- **Risk today:** low. The values come from this device's own storage or Ian's own backups, and the
+  inputs are `type="number"`.
+- **Fix:** escape at the sink (`esc(fmtSet(...))` or make `fmtSet` return escaped text and audit its
+  non-HTML callers, such as the Markdown exporter), with a hostile-history check like the D-09 ones.
+  This belongs with VAL-02's file-wide sweep.
+- **Why deferred:** outside 05-06's rewritten lines, and not attribute values.
