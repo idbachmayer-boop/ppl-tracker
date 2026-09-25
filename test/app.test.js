@@ -4577,6 +4577,252 @@ ok('DELEG-01: the handler inventory exists and every row names its function, eve
      { threw, control, TAB: a.TAB });
 }
 
+/* Every numeric data-* key. A wrapper must read each one as `+el.dataset.key` or
+   `Number(el.dataset.key)`: dataset values are always strings, and a string index fails silently
+   (a Set lookup that never matches, `0 + "-1"`, "set 01"). A plan that needs another numeric key
+   adds it here in the same commit. */
+const NUMERIC_DATA = ['i','k','idx','n','d','range'];
+/* Function names allowed to stop propagation, each added only after confirming it cannot starve the
+   one document listener for that event. Empty: index.html had none when Phase 5 began. */
+const REVIEWED_PROPAGATION = [];
+/* Actions allowed on a non-button click target. The Ideas modal backdrop wraps interactive controls,
+   so it cannot be a <button>; its keyboard path is the sheet's own Close button (D-08). */
+const REVIEWED_NONBUTTON_CLICK = ['ideasBackdrop'];
+
+/* Instance whose Today view throws, so render() shows the "Something broke" card. */
+function f2ErrorCard(){
+  const a = loadApp(APP_PATH);
+  const t = a.TABS[0], view = t.view;
+  t.view = () => { throw new Error('boom'); };
+  try { a.go(t.id); } finally { t.view = view; }
+  return { a, html: a.__sandbox.document.getElementById('app').innerHTML || '' };
+}
+/* Every rendered state the F2 checks look at: the static markup, every screen in three states, the
+   tab bar and the error card. Computed once. */
+function f2Corpus(){
+  if(f2Corpus.cache) return f2Corpus.cache;
+  const out = [];
+  const raw = fs.readFileSync(APP_PATH, 'utf8');
+  out.push({ label: 'static markup', html: f2Static(raw) });
+  const states = [
+    ['with data', a => { a.DB = populatedDB(a); }],
+    ['fresh install', a => { a.DB = a.blank(); }],
+    ['mid-workout', a => { const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d; }],
+  ];
+  states.forEach(([state, seed]) => {
+    const a = loadApp(APP_PATH);
+    seed(a);
+    const appEl = a.__sandbox.document.getElementById('app');
+    SCREENS.forEach(([label, tab, sub]) => {
+      appEl.innerHTML = '';
+      try { a.go(tab); if(sub) a.setSub(sub); } catch(e){ /* drawEvery reports a screen that throws */ }
+      out.push({ label: `${state}: ${label}`, html: appEl.innerHTML || '' });
+    });
+    a.buildTabBar();
+    out.push({ label: `${state}: tab bar`, html: a.__sandbox.document.getElementById('tabbar').innerHTML || '' });
+  });
+  out.push({ label: 'error card', html: f2ErrorCard().html });
+  /* States later plans add, to reach controls the default screens do not render: */
+  f2Corpus.cache = out;
+  return out;
+}
+
+/* Every [name, event, source] in the registry. */
+const f2Handlers = () => Object.keys(F2_A).flatMap(name => {
+  const spec = F2_A[name];
+  return spec && typeof spec === 'object'
+    ? Object.keys(spec).filter(ev => typeof spec[ev] === 'function').map(ev => [name, ev, Function.prototype.toString.call(spec[ev])])
+    : [];
+});
+
+{
+  const a = loadApp(APP_PATH);
+  a.go('train');
+  const c = controlsIn(a.__sandbox.document.getElementById('app').innerHTML).find(x => x.data.action === 'setSub' && x.data.sub === 'history');
+  let threw = null;
+  try { if(c) fireAction(a, 'click', fakeEl(c.data)); } catch(e){ threw = e.message; }
+  ok('DELEG-02: the section switcher changes the sub-view through the dispatcher',
+     !!c && !threw && a.subState.train === 'history', { control: c || null, threw, sub: a.subState.train });
+}
+{
+  const { a, html } = f2ErrorCard();
+  const cs = controlsIn(html);
+  const exp = cs.find(x => x.data.action === 'exportData'), rel = cs.find(x => x.data.action === 'reload');
+  const exports = spyOn(a, 'exportData');
+  let reloads = 0;
+  a.__sandbox.location.reload = () => { reloads++; };
+  let threw = null;
+  try {
+    if(exp) fireAction(a, 'click', fakeEl(exp.data));
+    if(rel) fireAction(a, 'click', fakeEl(rel.data));
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: the error card's Export and Reload run through the dispatcher",
+     /Something broke on this screen/.test(html) && !!exp && !!rel && !threw && exports.length === 1 && reloads === 1,
+     { export: !!exp, reload: !!rel, threw, exports: exports.length, reloads });
+}
+
+ok('F2: every ACTIONS entry is keyed only by the five delegated events',
+   !!f2app.ACTIONS && Object.keys(F2_A).every(name => {
+     const spec = F2_A[name];
+     return spec && typeof spec === 'object' && Object.keys(spec).length > 0
+       && Object.keys(spec).every(ev => F2_EVENTS.includes(ev) && typeof spec[ev] === 'function');
+   }),
+   Object.keys(F2_A).filter(name => { const s = F2_A[name]; return !s || typeof s !== 'object' || !Object.keys(s).length
+     || Object.keys(s).some(ev => !F2_EVENTS.includes(ev) || typeof s[ev] !== 'function'); }));
+
+/* Enter on a focused button fires click natively; a keydown handler there would run it twice. */
+ok('F2: only the Enter action listens to keydown',
+   Object.keys(F2_A).filter(name => F2_A[name] && typeof F2_A[name].keydown === 'function').every(name => name === 'enter'),
+   Object.keys(F2_A).filter(name => F2_A[name] && F2_A[name].keydown && name !== 'enter'));
+
+{
+  const bad = f2Handlers().filter(([, , src]) => { const s = f2StripJs(src); return /\bDB\b/.test(s) || /\bsave(Local)?\(/.test(s); })
+    .map(([name, ev]) => name + '.' + ev);
+  ok('F2: action wrappers never read DB and never persist', bad.length === 0, bad);
+}
+/* DRAFT-05's own scan walks sandbox function declarations only; ACTIONS' arrows are not among them.
+   Apply the same property to every wrapper, so a wrapper can never read the draft and push. */
+{
+  const bad = f2Handlers().filter(([, , src]) => { const s = f2StripJs(src); return /\bDB\.draft\b/.test(s) && /(?<![\w.$])save\(\)/.test(s); })
+    .map(([name, ev]) => name + '.' + ev);
+  ok('DRAFT-05 (F2): no action wrapper reads the draft and pushes', bad.length === 0, bad);
+}
+
+/* Each `.dataset.<numeric key>` must sit right after `Number(` or a UNARY plus. A binary plus
+   (`'x' + el.dataset.i`) is string concatenation, so a plus only counts after an operator, an
+   opening bracket, an arrow or the start of the expression. */
+function f2UndecodedNumeric(src, keys){
+  const bad = [];
+  const re = /([\w$]+(?:\.[\w$]+)*)\.dataset\.([A-Za-z_$][\w$]*)(?![\w$])/g;
+  let m;
+  while((m = re.exec(src))){
+    if(!keys.includes(m[2])) continue;
+    const before = src.slice(0, m.index).replace(/\s+$/, '');
+    const numberCall = /(^|[^\w$.])Number\($/.test(before);
+    const unary = /\+$/.test(before) && /(^|[(,=\[:?!&|{};>+\-*\/])$/.test(before.slice(0, -1).replace(/\s+$/, ''));
+    if(!numberCall && !unary) bad.push(m[0]);
+  }
+  return bad;
+}
+{
+  const bad = f2Handlers().flatMap(([name, ev, src]) => f2UndecodedNumeric(f2StripJs(src), NUMERIC_DATA).map(x => `${name}.${ev}: ${x}`));
+  const synthetic = {
+    caught: f2UndecodedNumeric('el => weekShift(el.dataset.d)', NUMERIC_DATA).length === 1,
+    concatCaught: f2UndecodedNumeric("el => f('x' + el.dataset.i)", NUMERIC_DATA).length === 1,
+    passes: f2UndecodedNumeric('el => weekShift(+el.dataset.d)', NUMERIC_DATA).length === 0
+         && f2UndecodedNumeric('el => f(Number(el.dataset.i), +el.dataset.k)', NUMERIC_DATA).length === 0,
+    wholeKey: f2UndecodedNumeric('el => f(el.dataset.dateEl)', NUMERIC_DATA).length === 0,
+  };
+  ok('F2: every numeric data-* is decoded with Number() or unary plus',
+     bad.length === 0 && Object.values(synthetic).every(Boolean), { bad: bad.slice(0, 5), synthetic });
+}
+
+{
+  const a = loadApp(APP_PATH);
+  const cases = [
+    ['no target', { target: null }],
+    ['closest finds nothing', { target: { closest: () => null } }],
+    ['no closest at all', { target: {} }],
+    ['unknown action', { target: fakeEl({ action: 'nope', tab: 'care' }) }],
+    ['constructor', { target: fakeEl({ action: 'constructor', tab: 'care' }) }],
+    ['toString', { target: fakeEl({ action: 'toString', tab: 'care' }) }],
+    ['__proto__', { target: fakeEl({ action: '__proto__', tab: 'care' }) }],
+    ['disabled', { target: fakeEl({ action: 'go', tab: 'care' }, { disabled: true }) }],
+    ['unhandled event', { type: 'keydown', target: fakeEl({ action: 'go', tab: 'care' }) }],
+  ];
+  const wrong = [];
+  /* Poison the app's own Object.prototype with a click handler, so an inherited name that slipped
+     past an own-key check would visibly run it instead of harmlessly finding nothing. */
+  const proto = a.ACTIONS ? Object.getPrototypeOf(a.ACTIONS) : null;
+  const inherited = [];
+  if(proto) proto.click = () => { inherited.push('ran'); };
+  try {
+    cases.forEach(([label, ev]) => {
+      try { fireAction(a, ev.type || 'click', ev.target, ev); if(a.TAB !== 'today') wrong.push(label + ': switched to ' + a.TAB); }
+      catch(e){ wrong.push(label + ': threw ' + e.message); }
+    });
+  } finally { if(proto) delete proto.click; }
+  if(inherited.length) wrong.push('an inherited name reached Object.prototype (' + inherited.length + 'x)');
+  let textNode = null;
+  try { fireAction(a, 'click', { nodeType: 3, parentElement: fakeEl({ action: 'go', tab: 'care' }) }); textNode = a.TAB; }
+  catch(e){ textNode = 'threw ' + e.message; }
+  ok('F2: the dispatcher ignores a tap on nothing, an unknown or inherited action, a disabled control and an event the action does not handle',
+     typeof a.dispatchAction === 'function' && wrong.length === 0 && textNode === 'care', { wrong, textNode });
+}
+
+/* DELEG-05. One document listener per event means a stopPropagation anywhere below it silently kills
+   every delegated control above that element. */
+{
+  const STOP = /\.(stopPropagation|stopImmediatePropagation)\s*\(|\bcancelBubble\s*=(?!=)/;
+  const hits = [];
+  Object.keys(f2app.__sandbox).forEach(k => {
+    const f = f2app.__sandbox[k];
+    if(typeof f === 'function' && STOP.test(f2StripJs(Function.prototype.toString.call(f)))) hits.push(k);
+  });
+  f2Handlers().forEach(([name, ev, src]) => { if(STOP.test(f2StripJs(src))) hits.push(`ACTIONS.${name}.${ev}`); });
+  if(STOP.test(f2Static(F2_RAW))) hits.push('(static markup)');
+  const unreviewed = hits.filter(h => !REVIEWED_PROPAGATION.includes(h));
+  const synthetic = ['e.stopPropagation()', 'x.cancelBubble = true'].every(s => STOP.test(s))
+    && !STOP.test('if(x.cancelBubble === true){}');
+  ok('DELEG-05: nothing stops propagation without review', unreviewed.length === 0 && synthetic, { unreviewed, syntheticCaught: synthetic });
+}
+
+/* D-03: every interpolated data-* value goes through esc(). Walks each data-* attribute value to its
+   closing quote and checks every top-level placeholder in it. data-action / data-enter are covered
+   by the action-name check. */
+function f2UnescapedData(text){
+  const bad = [];
+  const re = /data-([\w-]+)="/g;
+  let m;
+  while((m = re.exec(text))){
+    if(m[1] === 'action' || m[1] === 'enter') continue;
+    let i = m.index + m[0].length, depth = 0;
+    while(i < text.length){
+      if(text[i] === '$' && text[i + 1] === '{'){
+        if(depth === 0 && !text.startsWith('esc(', i + 2)) { bad.push(text.slice(m.index, Math.min(text.length, i + 24))); }
+        depth++; i += 2; continue;
+      }
+      if(depth && text[i] === '}'){ depth--; i++; continue; }
+      if(!depth && text[i] === '"') break;
+      i++;
+    }
+  }
+  return bad;
+}
+{
+  const bad = f2UnescapedData(f2StripJs(f2app.__src || '') + '\n' + f2Static(F2_RAW));
+  const synthetic = { caught: f2UnescapedData('data-i="${i}"').length === 1, passes: f2UnescapedData('data-i="${esc(i)}"').length === 0,
+                      laterCaught: f2UnescapedData('data-id="x-${esc(a)}-${b}"').length === 1 };
+  ok('D-03: every interpolated data-* value goes through esc()', bad.length === 0 && Object.values(synthetic).every(Boolean),
+     { bad: bad.slice(0, 5), synthetic });
+}
+
+/* Each rendered control's action may listen only to events its element fires once per gesture: a
+   button's click (plus the stopwatch's pointerdown), a select's or checkbox's change, a text
+   field's input/change/keydown. A flat or mismatched entry double-fires or never fires. */
+{
+  const offenders = [];
+  f2Corpus().forEach(({ label, html }) => {
+    controlsIn(html).forEach(c => {
+      const name = c.data.action;
+      if(!f2Own(name)) return;
+      const keys = Object.keys(F2_A[name] || {});
+      const within = allowed => keys.every(k => allowed.includes(k));
+      const type = String(c.type || '').toLowerCase();
+      let fine;
+      if(c.tag === 'button') fine = within(['click', 'pointerdown']);
+      else if(c.tag === 'select') fine = within(['change']);
+      else if(c.tag === 'input' && ['checkbox', 'radio', 'file'].includes(type)) fine = within(['change']);
+      else if(c.tag === 'input' || c.tag === 'textarea') fine = within(['input', 'change', 'keydown']);
+      else if(c.tag === 'div') fine = within(['click']) && REVIEWED_NONBUTTON_CLICK.includes(name);
+      else fine = false;
+      if(!fine) offenders.push({ label, tag: c.tag, type, action: name, events: keys });
+    });
+  });
+  ok("DELEG-02: every rendered control's action listens only to events its element fires once per gesture",
+     offenders.length === 0, offenders.slice(0, 5));
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */

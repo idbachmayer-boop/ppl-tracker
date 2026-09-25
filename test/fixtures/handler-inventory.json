@@ -118,7 +118,7 @@
   "calls": [
    "setSub"
   ],
-  "action": null
+  "action": "setSub"
  },
  {
   "fn": "render",
@@ -129,7 +129,7 @@
   "calls": [
    "exportData"
   ],
-  "action": null
+  "action": "exportData"
  },
  {
   "fn": "render",
@@ -140,7 +140,7 @@
   "calls": [
    "location.reload"
   ],
-  "action": null
+  "action": "reload"
  },
  {
   "fn": "viewToday",

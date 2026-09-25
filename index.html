@@ -1419,7 +1419,7 @@ function goSub(id, sub){ const t=tabDef(id); if(!t) return; if(t.sub && sub) sub
 /* Switch sub-view within the CURRENT tab (used by the segmented control). */
 function setSub(sub){ const t=tabDef(TAB); if(t && t.sub) subState[TAB]=sub; render(); window.scrollTo(0,0); }
 function segNav(items, active){
-  return `<div class="seg" style="margin-bottom:16px">${items.map(([k,label])=>`<button class="${k===active?'active':''}" onclick="setSub('${k}')">${label}</button>`).join('')}</div>`;
+  return `<div class="seg" style="margin-bottom:16px">${items.map(([k,label])=>`<button class="${k===active?'active':''}" data-action="setSub" data-sub="${esc(k)}">${label}</button>`).join('')}</div>`;
 }
 /* Whichever Progress chart is active — shared by render() and the theme-change redraw. */
 function drawActiveChart(){ if(TAB==='train' && subState.train==='progress'){ if(progSub==='strength') drawStrengthChart(); else if(progSub==='pet') drawPetChart(); else if(progSub==='body') drawChart(); } }
@@ -1436,8 +1436,8 @@ function render(){
       <h2>Something broke on this screen</h2>
       <p class="muted" style="line-height:1.5;margin:8px 0">${esc(e && e.message || String(e))}</p>
       <p class="muted" style="margin-bottom:12px">Your data is safe — export a copy, then reload.</p>
-      <button class="btn btn-block" onclick="exportData()">${ph('download-simple')}Export my data</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="location.reload()">Reload app</button>
+      <button class="btn btn-block" data-action="exportData">${ph('download-simple')}Export my data</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="reload">Reload app</button>
     </div>`;
   }
   if(typeof updateStopwatch==='function') updateStopwatch();
@@ -4717,7 +4717,11 @@ function dispatchAction(e){
 }
 const ACTIONS = {
   /* App shell */
-  go: { click: el => go(el.dataset.tab) },
+  go:         { click: el => go(el.dataset.tab) },
+  setSub:     { click: el => setSub(el.dataset.sub) },
+  /* The render() error card */
+  exportData: { click: () => exportData() },
+  reload:     { click: () => location.reload() },
 };
 document.addEventListener('click', dispatchAction, { passive: false });
 document.addEventListener('change', dispatchAction, { passive: false });
