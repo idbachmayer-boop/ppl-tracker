@@ -1229,7 +1229,7 @@
   "calls": [
    "toggleAcc"
   ],
-  "action": null
+  "action": "toggleAcc"
  },
  {
   "fn": "mobilityRows",
@@ -1251,7 +1251,7 @@
   "calls": [
    "exSet"
   ],
-  "action": null
+  "action": "setExtraWeight"
  },
  {
   "fn": "extraCard",
@@ -1262,7 +1262,7 @@
   "calls": [
    "exRoll"
   ],
-  "action": null
+  "action": "setExtraWeight"
  },
  {
   "fn": "extraCard",
@@ -1273,7 +1273,7 @@
   "calls": [
    "exSet"
   ],
-  "action": null
+  "action": "setExtraReps"
  },
  {
   "fn": "extraCard",
@@ -1284,7 +1284,7 @@
   "calls": [
    "exRmSet"
   ],
-  "action": null
+  "action": "exRmSet"
  },
  {
   "fn": "extraCard",
@@ -1295,7 +1295,7 @@
   "calls": [
    "toggleAcc"
   ],
-  "action": null
+  "action": "toggleAcc"
  },
  {
   "fn": "extraCard",
@@ -1306,7 +1306,7 @@
   "calls": [
    "exPick"
   ],
-  "action": null
+  "action": "exPick"
  },
  {
   "fn": "extraCard",
@@ -1317,7 +1317,7 @@
   "calls": [
    "exAddSet"
   ],
-  "action": null
+  "action": "exAddSet"
  },
  {
   "fn": "viewSkincare",

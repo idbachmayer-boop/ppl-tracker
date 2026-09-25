@@ -2706,7 +2706,7 @@ function toggleAcc(k){ accOpen.has(k)?accOpen.delete(k):accOpen.add(k); render()
 function accItem(key, title, bodyHTML){
   const open=accOpen.has(key);
   return `<div class="phase-card">
-    <button class="phase-header" onclick="toggleAcc('${key}')"><span class="phase-title" style="font-size:14px">${title}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
+    <button class="phase-header" data-action="toggleAcc" data-key="${esc(key)}"><span class="phase-title" style="font-size:14px">${title}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
     ${open?`<div class="phase-body">${bodyHTML}</div>`:''}
   </div>`;
 }
@@ -2811,17 +2811,17 @@ function extraCard(id){
   const cols = isSec ? '22px 1fr 26px' : '22px 1fr 1fr 26px';
   const rows=e.sets.map((st,k)=>`<div class="set-grid" style="grid-template-columns:${cols}">
       <span class="set-no">${k+1}</span>
-      ${isSec?'':`<input type="number" inputmode="decimal" id="ex-${id}-w-${k}" placeholder="0=BW" value="${st.w}" oninput="exSet('${id}',${k},'w',this.value)" onchange="exRoll('${id}',${k},this.value)">`}
-      <input type="number" inputmode="numeric" placeholder="${isSec?'sec':rangeTxt}" value="${st.r}" oninput="exSet('${id}',${k},'r',this.value)">
-      <button class="x-set" onclick="exRmSet('${id}',${k})">${ph('x')}</button>
+      ${isSec?'':`<input type="number" inputmode="decimal" id="ex-${id}-w-${k}" placeholder="0=BW" value="${esc(st.w)}" data-action="setExtraWeight" data-id="${esc(id)}" data-k="${esc(k)}">`}
+      <input type="number" inputmode="numeric" placeholder="${isSec?'sec':rangeTxt}" value="${esc(st.r)}" data-action="setExtraReps" data-id="${esc(id)}" data-k="${esc(k)}">
+      <button class="x-set" data-action="exRmSet" data-id="${esc(id)}" data-k="${esc(k)}">${ph('x')}</button>
     </div>`).join('');
   return `<div class="phase-card">
-    <button class="phase-header" onclick="toggleAcc('${id}')"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${ph(def.icon)}${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
+    <button class="phase-header" data-action="toggleAcc" data-key="${esc(id)}"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${ph(def.icon)}${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
     ${open?`<div class="phase-body">
-      <select onchange="exPick('${id}',this)" style="margin-bottom:8px">${opts}</select>
+      <select data-action="exPick" data-id="${esc(id)}" style="margin-bottom:8px">${opts}</select>
       <div class="set-grid" style="grid-template-columns:${cols};margin-bottom:4px"><span></span>${isSec?'':'<span class="colhead">Weight</span>'}<span class="colhead">${isSec?'Sec':'Reps'}</span><span></span></div>
       ${rows}
-      <button class="addset" onclick="exAddSet('${id}')">+ Add set</button>
+      <button class="addset" data-action="exAddSet" data-id="${esc(id)}">+ Add set</button>
     </div>`:''}
   </div>`;
 }
@@ -4903,6 +4903,16 @@ const ACTIONS = {
   setSessionNote:   { input: el => setSessionNote(el.value) },
   finishWorkout:    { click: () => finishWorkout() },
   discardWorkout:   { click: () => discardWorkout() },
+  /* The extras cards (abs, forearms, dead hang) inside the active workout; their headers and the
+     warm-up and cool-down accordions reuse toggleAcc. The accessory id is a string key and the set
+     index a number. The weight box stores on input and rolls down on change, like a main set; exPick
+     is the one extras path that still save()s (a custom name can add a synced registry row). */
+  setExtraWeight: { input: el => exSet(el.dataset.id, +el.dataset.k, 'w', el.value),
+                    change: el => exRoll(el.dataset.id, +el.dataset.k, el.value) },
+  setExtraReps:   { input: el => exSet(el.dataset.id, +el.dataset.k, 'r', el.value) },
+  exRmSet:        { click: el => exRmSet(el.dataset.id, +el.dataset.k) },
+  exPick:         { change: el => exPick(el.dataset.id, el) },
+  exAddSet:       { click: el => exAddSet(el.dataset.id) },
 };
 document.addEventListener('click', dispatchAction, { passive: false });
 document.addEventListener('change', dispatchAction, { passive: false });

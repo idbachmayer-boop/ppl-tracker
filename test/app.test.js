@@ -4862,7 +4862,11 @@ function f2Corpus(){
     const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
     [['Train → Log: mid-workout, collapsed, skipped set, stalled and deloaded slots, warm-up open', (d, a) => f2MidBusy(d, a),
       a => { a.__sandbox.toggleExCollapse(1); a.__sandbox.toggleWarm(0); }],
-     ['Train → Log: backdated draft, stair stepper skipped', d => f2MidPast(d), null]].forEach(([label, seed, after]) => {
+     ['Train → Log: backdated draft, stair stepper skipped', d => f2MidPast(d), null],
+     /* the warm-up and cool-down accordions and PUSH 1's abs extras card open (its boxes, select and
+        set buttons) */
+     ['Train → Log: warm-up, cool-down and the abs extras card open', () => {},
+      a => { a.__sandbox.toggleAcc('warmup'); a.__sandbox.toggleAcc('stretch'); a.__sandbox.toggleAcc('abs'); }]].forEach(([label, seed, after]) => {
       const a = loadApp(APP_PATH);
       try {
         const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); seed(d, a); a.DB = d;
@@ -6965,6 +6969,136 @@ const EVIL = String.fromCharCode(34) + '><img src=x onerror=alert(1)>';
   } catch(e){ threw = e.message; }
   ok('D-09: a hostile set, stairs, date or duration value renders escaped in the Log tab',
      !threw && r.img === false && r.escaped >= 5, { threw, r });
+}
+
+/* The accessories. PUSH 1's assigned extra is `abs`, which is load-bearing (it has a weight column),
+   so one card exercises both setExtraWeight and setExtraReps. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid();
+    const spy = spyPushes(a);
+    r.def = a.ACCESSORIES && a.ACCESSORIES.abs ? { days: a.ACCESSORIES.abs.days.includes('PUSH 1'), sec: a.ACCESSORIES.abs.unit === 'sec' } : null;
+    const hdr = f2Find(a, c => c.data.action === 'toggleAcc' && c.data.key === 'abs');
+    r.hdr = hdr && hdr.tag;
+    r.closed = !f2Find(a, c => c.data.action === 'exPick' && c.data.id === 'abs');
+    if(hdr) fireListener(a, 'click', fakeEl(hdr.data));
+    const at = (action, k) => f2Find(a, c => c.data.action === action && c.data.id === 'abs' && (k === undefined || c.data.k === String(k)));
+    const sel = at('exPick');
+    r.sel = sel && sel.tag;
+    const reps = at('setExtraReps', 0), wt = at('setExtraWeight', 0);
+    r.inputs = [reps && reps.tag, wt && wt.tag];
+    if(reps) fireListener(a, 'input', fakeEl(reps.data, { value: '12' }));
+    if(wt){ fireListener(a, 'input', fakeEl(wt.data, { value: '50' })); fireListener(a, 'change', fakeEl(wt.data, { value: '50' })); }
+    const st = a.__stored();
+    r.stored = st && st.draft && st.draft.extras.abs ? st.draft.extras.abs.sets.map(s => s.w + '/' + s.r) : null;
+    r.pushes = spy.n; r.updatedAt = a.DB.updatedAt;
+    const n0 = a.DB.draft.extras.abs.sets.length;
+    const add = at('exAddSet');
+    if(add) fireListener(a, 'click', fakeEl(add.data));
+    const n1 = a.DB.draft.extras.abs.sets.length;
+    const rm = at('exRmSet', n1 - 1);
+    if(rm) fireListener(a, 'click', fakeEl(rm.data));
+    r.counts = [n0, n1, a.DB.draft.extras.abs.sets.length];
+    const before = a.DB.draft.extras.abs.name;
+    const other = a.ACCESSORIES.abs.examples.find(x => x !== before);
+    const sel2 = at('exPick');
+    if(sel2){
+      fireListener(a, 'input', fakeEl(sel2.data, { value: other }));
+      r.afterInput = a.DB.draft.extras.abs.name === before;
+      fireListener(a, 'change', fakeEl(sel2.data, { value: other }));
+      r.afterChange = a.DB.draft.extras.abs.name === other;
+      r.pickEntry = Object.keys(a.ACTIONS.exPick || {});
+    }
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: an accessory's weight, reps, exercise and set buttons route through the dispatcher",
+     !threw && r.def && r.def.days && !r.def.sec && r.hdr === 'button' && r.closed && r.sel === 'select'
+       && JSON.stringify(r.inputs) === '["input","input"]'
+       && JSON.stringify(r.stored) === '["50/12","50/","50/"]' && r.pushes === 0 && r.updatedAt === 1000
+       && JSON.stringify(r.counts) === '[3,4,3]' && r.afterInput && r.afterChange && JSON.stringify(r.pickEntry) === '["change"]',
+     { threw, r });
+}
+/* Exact arguments for every accessory control: the accordion headers (accItem), the extras card's
+   header, boxes, select and buttons. The id is a string key; the set index is a number. */
+{
+  const got = {}, missing = [];
+  let threw = null;
+  try {
+    const a = f2Mid();
+    a.__sandbox.toggleAcc('abs');
+    const s = {}; f2LogSpied.forEach(n => { s[n] = spyOn(a, n); });
+    const fire = (label, pick, type, value) => {
+      const c = f2Find(a, pick);
+      if(!c){ missing.push(label); return; }
+      Object.values(s).forEach(l => { l.length = 0; });
+      const el = fakeEl(c.data, { value: value === undefined ? '' : value });
+      fireListener(a, type, el);
+      const out = {};
+      Object.keys(s).forEach(n => { if(s[n].length) out[n] = s[n].map(args => args.map(x => x === el ? '<el>' : x)); });
+      got[label] = { tag: c.tag, calls: out };
+    };
+    const ex = (action, k) => c => c.data.action === action && c.data.id === 'abs' && (k === undefined || c.data.k === String(k));
+    fire('warm-up accordion', c => c.data.action === 'toggleAcc' && c.data.key === 'warmup', 'click');
+    fire('cool-down accordion', c => c.data.action === 'toggleAcc' && c.data.key === 'stretch', 'click');
+    fire('extras header', c => c.data.action === 'toggleAcc' && c.data.key === 'abs', 'click');
+    fire('extra weight input', ex('setExtraWeight', 1), 'input', '50');
+    fire('extra weight change', ex('setExtraWeight', 1), 'change', '50');
+    fire('extra reps input', ex('setExtraReps', 1), 'input', '12');
+    fire('extra reps change', ex('setExtraReps', 1), 'change', '12');
+    fire('extra remove set', ex('exRmSet', 1), 'click');
+    fire('extra select change', ex('exPick'), 'change', 'Cable crunch');
+    fire('extra select input', ex('exPick'), 'input', 'Cable crunch');
+    fire('extra add set', ex('exAddSet'), 'click');
+  } catch(e){ threw = e.message; }
+  const want = {
+    'warm-up accordion': ['button', { toggleAcc: [['warmup']] }],
+    'cool-down accordion': ['button', { toggleAcc: [['stretch']] }],
+    'extras header': ['button', { toggleAcc: [['abs']] }],
+    'extra weight input': ['input', { exSet: [['abs', 1, 'w', '50']] }],
+    'extra weight change': ['input', { exRoll: [['abs', 1, '50']] }],
+    'extra reps input': ['input', { exSet: [['abs', 1, 'r', '12']] }],
+    'extra reps change': ['input', {}],
+    'extra remove set': ['button', { exRmSet: [['abs', 1]] }],
+    'extra select change': ['select', { exPick: [['abs', '<el>']] }],
+    'extra select input': ['select', {}],
+    'extra add set': ['button', { exAddSet: [['abs']] }],
+  };
+  const wrong = Object.keys(want).filter(k => !got[k] || got[k].tag !== want[k][0] || JSON.stringify(got[k].calls) !== JSON.stringify(want[k][1]))
+    .map(k => ({ control: k, want: want[k], got: got[k] || null }));
+  ok('DELEG-02: every accessory control calls its function with exactly the arguments the inline handler passed',
+     !threw && missing.length === 0 && wrong.length === 0, { threw, missing, wrong: wrong.slice(0, 4) });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid(d => { d.draft.extras.abs.sets[0].w = EVIL; d.draft.extras.abs.sets[0].r = EVIL; });
+    a.__sandbox.toggleAcc('abs');
+    const html = a.viewActive();
+    r.open = /data-action="exPick"/.test(html);
+    r.img = /<img/i.test(html);
+    r.escaped = html.split('&quot;&gt;&lt;img').length - 1;
+  } catch(e){ threw = e.message; }
+  ok('D-09: a hostile accessory value renders escaped', !threw && r.open && r.img === false && r.escaped >= 2, { threw, r });
+}
+
+/* The phase's two closing properties, stated with no count. Every inventoried call site is an
+   action, and nothing in index.html (any event, any quoting, comments included) is an inline
+   on-event attribute any more. The synthetic line proves the scanner still sees one. */
+{
+  const unmapped = F2_INV.filter(r => !(r && (r.action || (Array.isArray(r.actions) && r.actions.length))));
+  ok('DELEG-02: every inventoried call site is now a delegated action',
+     !F2_INV_ERR && F2_INV.length > 0 && unmapped.length === 0,
+     unmapped.slice(0, 5).map(r => r && [r.fn, r.event, r.was].join(' | ')));
+}
+{
+  const scan = typeof scanInlineHandlers === 'function' ? scanInlineHandlers : null;
+  const rows = scan ? scan(F2_RAW) : null;
+  const synthetic = scan ? scan('<b onmouseover="x()">').length === 1 : false;
+  ok('DELEG-04: index.html has no inline on-event attribute left',
+     Array.isArray(rows) && rows.length === 0 && synthetic,
+     { rows: (rows || []).slice(0, 5).map(r => [r.fn, r.event, r.was].join(' | ')), synthetic });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
