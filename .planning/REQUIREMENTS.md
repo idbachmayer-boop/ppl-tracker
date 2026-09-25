@@ -71,9 +71,9 @@ Clean data out of the app and into Claude Desktop.
 ### Delegation (DELEG)
 
 - [x] **DELEG-01**: A static inventory of all 175 inline handler attributes is captured before any are changed
-- [ ] **DELEG-02**: Inline `onclick`, `onchange`, `oninput`, `onkeydown` and `onpointerdown` attributes are replaced by delegated listeners reading `data-*` attributes
+- [x] **DELEG-02**: Inline `onclick`, `onchange`, `oninput`, `onkeydown` and `onpointerdown` attributes are replaced by delegated listeners reading `data-*` attributes
 - [x] **DELEG-03**: A static completeness check cross-references the pre-change inventory against the dispatcher, so a dropped call site fails the suite rather than the phone
-- [ ] **DELEG-04**: No handler is left reachable only through a global function called by name from markup
+- [x] **DELEG-04**: No handler is left reachable only through a global function called by name from markup
 - [x] **DELEG-05**: Any `stopPropagation()` call that would break delegation is found and resolved
 - [ ] **DELEG-06**: Controls converted to delegation remain keyboard-operable
 - [ ] **DELEG-07**: The Log tab is manually verified end to end, being the screen Ian uses mid-workout

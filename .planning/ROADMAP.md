@@ -177,7 +177,7 @@ Plans:
   4. Every converted control is still operable by keyboard, not only by pointer or click (DELEG-06).
   5. The Log tab — the screen Ian is standing in front of mid-workout — is manually verified end to end and behaves identically to before the conversion (DELEG-07).
 
-**Plans**: 5/6 plans executed
+**Plans**: 6/6 plans executed
 **UI hint**: yes
 
 Plans:
@@ -203,7 +203,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 05-06-PLAN.md — The Log tab last and alone: `swGuard` kept, set-row values escaped, the draft rule untouched; no inline handler left; docs teach the pattern; keyboard pass and phone checklist queued as the end-of-phase gate (DELEG-02, DELEG-04, DELEG-06, DELEG-07)
+- [x] 05-06-PLAN.md — The Log tab last and alone: `swGuard` kept, set-row values escaped, the draft rule untouched; no inline handler left; docs teach the pattern; keyboard pass and phone checklist queued as the end-of-phase gate (DELEG-02, DELEG-04, DELEG-06, DELEG-07)
 
 ### Phase 6: F4 — .gitattributes
 
@@ -253,6 +253,6 @@ Phase 5 completes.
 | 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 5/5 | Complete    | 2026-09-22 |
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
-| 5. F2 — Event Delegation | 5/6 | In Progress|  |
+| 5. F2 — Event Delegation | 6/6 | In Progress|  |
 | 6. F4 — .gitattributes | 0/TBD | Not started | - |
 | 7. Content Security Policy | 0/TBD | Not started | - |
