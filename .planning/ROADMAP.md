@@ -177,7 +177,7 @@ Plans:
   4. Every converted control is still operable by keyboard, not only by pointer or click (DELEG-06).
   5. The Log tab — the screen Ian is standing in front of mid-workout — is manually verified end to end and behaves identically to before the conversion (DELEG-07).
 
-**Plans**: 2/6 plans executed
+**Plans**: 3/6 plans executed
 **UI hint**: yes
 
 Plans:
@@ -191,7 +191,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 05-03-PLAN.md — Care (Skin, Lawn, Sleep): Enter-to-search through the registry, the lawn card on Today and Care as a button, and the four text-pinned lawn/sleep checks retargeted (DELEG-02, DELEG-04, DELEG-06)
+- [x] 05-03-PLAN.md — Care (Skin, Lawn, Sleep): Enter-to-search through the registry, the lawn card on Today and Care as a button, and the four text-pinned lawn/sleep checks retargeted (DELEG-02, DELEG-04, DELEG-06)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -253,6 +253,6 @@ Phase 5 completes.
 | 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 5/5 | Complete    | 2026-09-22 |
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
-| 5. F2 — Event Delegation | 2/6 | In Progress|  |
+| 5. F2 — Event Delegation | 3/6 | In Progress|  |
 | 6. F4 — .gitattributes | 0/TBD | Not started | - |
 | 7. Content Security Policy | 0/TBD | Not started | - |

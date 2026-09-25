@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 05
 current_phase_name: f2-event-delegation
 status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-09-25T09:58:16.149Z"
+stopped_at: Completed 05-03-PLAN.md
+last_updated: "2026-09-25T10:16:04.530Z"
 last_activity: 2026-09-25
 last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 24
-  completed_plans: 20
+  completed_plans: 21
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 ## Current Position
 
 Phase: 05 (f2-event-delegation) — EXECUTING
-Plan: 3 of 6
+Plan: 4 of 6
 Status: Ready to execute
 Last activity: 2026-09-25 — Phase 05 execution started
 
-Progress: [████████░░] 83%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -80,6 +80,7 @@ Progress: [████████░░] 83%
 | Phase 04 P03 | 3min | 2 tasks | 4 files |
 | Phase 05 P01 | 15min | 3 tasks | 7 files |
 | Phase 05 P02 | 16min | 3 tasks | 4 files |
+| Phase 05 P03 | 16min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 05-01: F2 source checks read a fresh loadApp instance (f2app); f2Corpus() is cached on the function so later plans append states without a TDZ risk
 - [Phase ?]: 05-02: Settings and Ideas delegated; idea/exercise/cloud-version ids travel as data-id="${esc(id)}" and a hostile-id test proves each inert. The export-placement test counts controls whose action calls exportMarkdown instead of matching markup text
 - [Phase ?]: 05-02: the Ideas backdrop keeps its div exception with the e.target===el guard in its wrapper; trash and versions headers are <button class="row tap"> with block spans
+- [Phase ?]: 05-03: the enter action runs data-enter's target only if both the entry and its click are OWN properties (the plan's form read click through the prototype)
+- [Phase ?]: 05-03: the DELEG-03 ratchet counts wiring sites per mapped row, so a surviving same-name sibling cannot hide a dropped control
 
 ### Pending Todos
 
@@ -160,6 +163,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-25T09:58:16.107Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-09-25T10:16:04.486Z
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
