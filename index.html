@@ -286,13 +286,13 @@
 
 <div class="toast" id="toast"></div>
 
-<button class="fab" id="idea-fab" onclick="openIdeas()" aria-label="Add an idea or feedback" data-ph="lightbulb"></button>
-<div class="modal-overlay" id="ideas-modal" onclick="if(event.target===this)closeIdeas()">
+<button class="fab" id="idea-fab" data-action="openIdeas" aria-label="Add an idea or feedback" data-ph="lightbulb"></button>
+<div class="modal-overlay" id="ideas-modal" data-action="ideasBackdrop">
   <div class="modal-card">
-    <div class="row" style="margin-bottom:12px"><h2 style="margin:0" data-ph="lightbulb">Ideas & feedback</h2><button class="sw-btn sw-clear" onclick="closeIdeas()">Close</button></div>
+    <div class="row" style="margin-bottom:12px"><h2 style="margin:0" data-ph="lightbulb">Ideas & feedback</h2><button class="sw-btn sw-clear" data-action="closeIdeas">Close</button></div>
     <textarea id="idea-input" rows="3" placeholder="An idea, bug, or thing to tweak — jot it while it's fresh…" style="resize:vertical;line-height:1.5;min-height:64px"></textarea>
-    <button class="btn btn-block" style="margin-top:10px" onclick="addIdea()">Add idea</button>
-    <div class="row" style="margin:16px 0 4px"><span class="muted" id="idea-count" style="font-size:12px"></span><button class="btn btn-sm btn-ghost" onclick="copyIdeas()" data-ph="copy">Copy all</button></div>
+    <button class="btn btn-block" style="margin-top:10px" data-action="addIdea">Add idea</button>
+    <div class="row" style="margin:16px 0 4px"><span class="muted" id="idea-count" style="font-size:12px"></span><button class="btn btn-sm btn-ghost" data-action="copyIdeas" data-ph="copy">Copy all</button></div>
     <div id="ideas-list"></div>
   </div>
 </div>
@@ -4665,17 +4665,17 @@ function renderIdeasList(){
   if(!box) return;
   box.innerHTML = list.length ? list.map(i=> i.id===editingIdeaId ? `<div class="idea-item">
     <div style="flex:1">
-      <textarea id="idea-edit-${i.id}" rows="3" style="resize:vertical;line-height:1.5;min-height:64px">${esc(i.text)}</textarea>
+      <textarea id="idea-edit-${esc(i.id)}" rows="3" style="resize:vertical;line-height:1.5;min-height:64px">${esc(i.text)}</textarea>
       <div class="row" style="gap:8px;margin-top:8px">
-        <button class="btn btn-sm" style="flex:1" onclick="saveEditIdea('${i.id}')">Save</button>
-        <button class="btn btn-sm btn-ghost" style="flex:1" onclick="cancelEditIdea()">Cancel</button>
+        <button class="btn btn-sm" style="flex:1" data-action="saveEditIdea" data-id="${esc(i.id)}">Save</button>
+        <button class="btn btn-sm btn-ghost" style="flex:1" data-action="cancelEditIdea" data-id="${esc(i.id)}">Cancel</button>
       </div>
     </div>
   </div>` : `<div class="idea-item${i.done?' done':''}">
-    <input type="checkbox" ${i.done?'checked':''} onchange="toggleIdeaDone('${i.id}')" style="margin-top:2px">
+    <input type="checkbox" ${i.done?'checked':''} data-action="toggleIdeaDone" data-id="${esc(i.id)}" style="margin-top:2px">
     <span class="txt">${esc(i.text)}<span class="muted" style="font-size:11px"> · ${fmtDate(i.date)}</span></span>
-    <button class="x-set" onclick="startEditIdea('${i.id}')" title="edit">${ph('pencil-simple')}</button>
-    <button class="x-set" onclick="removeIdea('${i.id}')" title="delete">${ph('x')}</button>
+    <button class="x-set" data-action="startEditIdea" data-id="${esc(i.id)}" title="edit">${ph('pencil-simple')}</button>
+    <button class="x-set" data-action="removeIdea" data-id="${esc(i.id)}" title="delete">${ph('x')}</button>
   </div>`).join('') : '<p class="muted" style="font-size:13px;padding:8px 0">No ideas yet — add one above while you\'re using the app.</p>';
 }
 function copyIdeas(){
@@ -4727,6 +4727,20 @@ const ACTIONS = {
   /* The render() error card */
   exportData: { click: () => exportData() },
   reload:     { click: () => location.reload() },
+  /* The Ideas sheet (static markup) and its list. The backdrop is a div around the whole sheet, so
+     dispatchAction resolves any tap inside the sheet that has no action of its own to it: only a
+     tap whose target IS the backdrop closes. Never contains(), because a re-render can detach the
+     target mid-dispatch. The ticked checkbox acts on change alone, which fires once per tick. */
+  openIdeas:      { click: () => openIdeas() },
+  ideasBackdrop:  { click: (el, e) => { if(e.target === el) closeIdeas(); } },
+  closeIdeas:     { click: () => closeIdeas() },
+  addIdea:        { click: () => addIdea() },
+  copyIdeas:      { click: () => copyIdeas() },
+  saveEditIdea:   { click: el => saveEditIdea(el.dataset.id) },
+  cancelEditIdea: { click: () => cancelEditIdea() },
+  toggleIdeaDone: { change: el => toggleIdeaDone(el.dataset.id) },
+  startEditIdea:  { click: el => startEditIdea(el.dataset.id) },
+  removeIdea:     { click: el => removeIdea(el.dataset.id) },
 };
 document.addEventListener('click', dispatchAction, { passive: false });
 document.addEventListener('change', dispatchAction, { passive: false });

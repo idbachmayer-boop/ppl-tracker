@@ -4623,6 +4623,21 @@ function f2Corpus(){
   });
   out.push({ label: 'error card', html: f2ErrorCard().html });
   /* States later plans add, to reach controls the default screens do not render: */
+  /* 05-02: the Ideas list, which lives in static markup outside render(), with one idea being
+     edited so both row forms (read and edit) are present. */
+  {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.DB.ideas = [{ id:'i1', text:'first', date:a.todayISO(), done:false, mtime:1 },
+                  { id:'i2', text:'second', date:a.todayISO(), done:true, mtime:1 }];
+    const list = () => a.__sandbox.document.getElementById('ideas-list').innerHTML || '';
+    try {
+      a.renderIdeasList();
+      const edit = controlsIn(list()).find(c => c.data.action === 'startEditIdea' && c.data.id === 'i2');
+      if(edit) fireAction(a, 'click', fakeEl(edit.data));
+    } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
+    out.push({ label: 'ideas list (one being edited)', html: list() });
+  }
   f2Corpus.cache = out;
   return out;
 }
@@ -4937,6 +4952,111 @@ function f2TapRegionProblems(region){
   };
   ok('D-11: no converted button wraps a div, and every kicker inside one is the span form',
      bad.length === 0 && Object.values(synthetic).every(Boolean), { bad: bad.slice(0, 5), synthetic });
+}
+
+/* ── Plan 05-02: the Ideas sheet and Settings ── */
+/* An id carrying every character that matters inside an attribute or an inline handler: a double
+   quote, the single quote esc() does not escape, a tag opener and an ampersand. Ids arrive from sync
+   or an imported backup, and validateBackup() never checks their type or content (T-5-02). Before
+   Phase 5 such an id sat inside an inline handler's quotes. */
+const HOSTILE = `i"1'<b>&x`;
+const f2IdeasList = a => a.__sandbox.document.getElementById('ideas-list').innerHTML || '';
+
+{
+  const a = loadApp(APP_PATH);
+  const cs = controlsIn(f2Static(F2_RAW));
+  const names = ['openIdeas', 'closeIdeas', 'addIdea', 'copyIdeas'];
+  const tags = {}, calls = {};
+  names.forEach(n => { tags[n] = cs.filter(c => c.data.action === n).map(c => c.tag); calls[n] = spyOn(a, n); });
+  let threw = null;
+  try { names.forEach(n => { const c = cs.find(x => x.data.action === n); if(c) fireAction(a, 'click', fakeEl(c.data)); }); }
+  catch(e){ threw = e.message; }
+  ok('DELEG-02: the Ideas sheet opens, closes, adds and copies through the dispatcher',
+     !threw && names.every(n => tags[n].length === 1 && tags[n][0] === 'button' && calls[n].length === 1 && calls[n][0].length === 0),
+     { tags, calls, threw });
+}
+/* D-08: the backdrop wraps the sheet's controls, so it stays a div (no role, no tabindex) and its
+   keyboard path is the sheet's Close button. dispatchAction resolves ANY tap inside the sheet that
+   has no action of its own to the backdrop, so the wrapper's own `e.target === el` test is what
+   keeps a tap on the textarea from closing the sheet (Pitfall 11: never contains()). */
+{
+  const a = loadApp(APP_PATH);
+  const stat = f2Static(F2_RAW);
+  const cs = controlsIn(stat).filter(c => c.data.action === 'ideasBackdrop');
+  const startTag = (stat.match(/<[a-z]+\s[^>]*data-action="ideasBackdrop"[^>]*>/) || [''])[0];
+  const closes = spyOn(a, 'closeIdeas');
+  let threw = null, onSelf = -1, onChild = -1;
+  try {
+    const bd = fakeEl(cs[0] ? cs[0].data : { action: 'ideasBackdrop' });
+    fireAction(a, 'click', bd);
+    onSelf = closes.length;
+    const child = fakeEl({}, { closest: sel => sel === '[data-action]' ? bd : null });
+    fireAction(a, 'click', child);
+    onChild = closes.length - onSelf;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-06: the Ideas backdrop closes only on a tap on the backdrop itself',
+     !threw && cs.length === 1 && cs[0].tag === 'div' && !/\s(tabindex|role)\s*=/.test(startTag) && onSelf === 1 && onChild === 0,
+     { found: cs.length, tag: cs[0] && cs[0].tag, startTag, onSelf, onChild, threw });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.ideas = [{ id: HOSTILE, text:'hostile id', date: today, done:false, mtime:1 },
+                { id:'i2', text:'plain', date: today, done:false, mtime:1 }];
+  let threw = null, html = '', ctl = null;
+  try {
+    a.renderIdeasList();
+    html = f2IdeasList(a);
+    ctl = controlsIn(html).find(c => c.data.action === 'removeIdea' && c.data.id === HOSTILE) || null;
+    if(ctl) fireAction(a, 'click', fakeEl(ctl.data));
+  } catch(e){ threw = e.message; }
+  const hostile = (a.DB.ideas || []).find(x => x.id === HOSTILE), plain = (a.DB.ideas || []).find(x => x.id === 'i2');
+  ok('D-03: a hostile idea id round-trips through data-id and deletes the right idea',
+     !threw && html.length > 0 && !html.includes('<b>') && !!ctl && !!hostile && !!hostile.deletedAt && !!plain && !plain.deletedAt,
+     { threw, rawB: html.includes('<b>'), control: ctl, hostileDeleted: !!(hostile && hostile.deletedAt), plainDeleted: !!(plain && plain.deletedAt) });
+}
+/* A checkbox fires click, input and change for one tick. Only change may toggle, or one tick
+   flips the idea three times (Pitfall 2). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.ideas = [{ id:'i2', text:'plain', date: today, done:false, mtime:1 }];
+  let threw = null, c = null, afterClick = null, afterInput = null, afterChange = null;
+  try {
+    a.renderIdeasList();
+    c = controlsIn(f2IdeasList(a)).find(x => x.data.action === 'toggleIdeaDone') || null;
+    if(c){
+      fireAction(a, 'click', fakeEl(c.data));  afterClick = a.DB.ideas[0].done;
+      fireAction(a, 'input', fakeEl(c.data));  afterInput = a.DB.ideas[0].done;
+      fireAction(a, 'change', fakeEl(c.data)); afterChange = a.DB.ideas[0].done;
+    }
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: ticking an idea done fires once per change, and a click on the checkbox does nothing',
+     !threw && !!c && c.tag === 'input' && c.type === 'checkbox' && c.data.id === 'i2'
+       && afterClick === false && afterInput === false && afterChange === true,
+     { threw, control: c, afterClick, afterInput, afterChange });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.ideas = [{ id:'i1', text:'first', date: today, done:false, mtime:1 },
+                { id:'i2', text:'plain', date: today, done:false, mtime:1 }];
+  let threw = null, save = null, cancel = null;
+  try {
+    a.renderIdeasList();
+    const start = controlsIn(f2IdeasList(a)).find(x => x.data.action === 'startEditIdea' && x.data.id === 'i2');
+    if(start) fireAction(a, 'click', fakeEl(start.data));
+    const cs = controlsIn(f2IdeasList(a));
+    save = cs.find(x => x.data.action === 'saveEditIdea') || null;
+    cancel = cs.find(x => x.data.action === 'cancelEditIdea') || null;
+    a.__sandbox.document.getElementById('idea-edit-i2').value = 'reworded';
+    if(save) fireAction(a, 'click', fakeEl(save.data));
+  } catch(e){ threw = e.message; }
+  const i2 = (a.DB.ideas || []).find(x => x.id === 'i2'), i1 = (a.DB.ideas || []).find(x => x.id === 'i1');
+  ok('DELEG-02: rewording an idea saves through the dispatcher',
+     !threw && !!save && !!cancel && save.data.id === 'i2' && cancel.data.id === 'i2'
+       && !!i2 && i2.text === 'reworded' && !!i1 && i1.text === 'first',
+     { threw, save, cancel, text: i2 && i2.text });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

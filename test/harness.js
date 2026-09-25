@@ -57,7 +57,7 @@ function loadApp(htmlPath, seed, opts){
   const el = () => ({ innerHTML:'', textContent:'', value:'', style:{}, dataset:{},
     classList:{ add(){}, remove(){}, toggle(){} }, querySelector:()=>null, querySelectorAll:()=>[],
     addEventListener(){}, removeEventListener(){}, appendChild(){}, remove(){}, focus(){}, click(){},
-    setAttribute(){}, getAttribute(){ return ''; }, getContext(){ return null; } });
+    setSelectionRange(){}, setAttribute(){}, getAttribute(){ return ''; }, getContext(){ return null; } });
   const byId = new Map();
   const doc = {
     getElementById: id => { if(!byId.has(id)) byId.set(id, el()); return byId.get(id); },
@@ -143,6 +143,8 @@ function loadApp(htmlPath, seed, opts){
     'BUILD', 'buildLabel',
     /* Event delegation (Phase 5). ACTIONS is a const, reachable only through this export. */
     'ACTIONS', 'dispatchAction', 'buildTabBar',
+    /* Settings and the Ideas sheet (plan 05-02). */
+    'renderIdeasList',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

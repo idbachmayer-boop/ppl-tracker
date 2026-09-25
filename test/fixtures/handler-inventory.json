@@ -52,7 +52,7 @@
   "calls": [
    "openIdeas"
   ],
-  "action": null
+  "action": "openIdeas"
  },
  {
   "fn": "(static markup)",
@@ -63,7 +63,7 @@
   "calls": [
    "closeIdeas"
   ],
-  "action": null
+  "action": "ideasBackdrop"
  },
  {
   "fn": "(static markup)",
@@ -74,7 +74,7 @@
   "calls": [
    "closeIdeas"
   ],
-  "action": null
+  "action": "closeIdeas"
  },
  {
   "fn": "(static markup)",
@@ -85,7 +85,7 @@
   "calls": [
    "addIdea"
   ],
-  "action": null
+  "action": "addIdea"
  },
  {
   "fn": "(static markup)",
@@ -96,7 +96,7 @@
   "calls": [
    "copyIdeas"
   ],
-  "action": null
+  "action": "copyIdeas"
  },
  {
   "fn": "buildTabBar",
@@ -1886,7 +1886,7 @@
   "calls": [
    "saveEditIdea"
   ],
-  "action": null
+  "action": "saveEditIdea"
  },
  {
   "fn": "renderIdeasList",
@@ -1897,7 +1897,7 @@
   "calls": [
    "cancelEditIdea"
   ],
-  "action": null
+  "action": "cancelEditIdea"
  },
  {
   "fn": "renderIdeasList",
@@ -1908,7 +1908,7 @@
   "calls": [
    "toggleIdeaDone"
   ],
-  "action": null
+  "action": "toggleIdeaDone"
  },
  {
   "fn": "renderIdeasList",
@@ -1919,7 +1919,7 @@
   "calls": [
    "startEditIdea"
   ],
-  "action": null
+  "action": "startEditIdea"
  },
  {
   "fn": "renderIdeasList",
@@ -1930,6 +1930,6 @@
   "calls": [
    "removeIdea"
   ],
-  "action": null
+  "action": "removeIdea"
  }
 ]
