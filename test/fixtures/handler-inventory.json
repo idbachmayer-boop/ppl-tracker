@@ -401,7 +401,7 @@
   "calls": [
    "addTodo"
   ],
-  "action": null
+  "action": "addTodo"
  },
  {
   "fn": "viewToday",
@@ -412,7 +412,7 @@
   "calls": [
    "addTodo"
   ],
-  "action": null
+  "action": "addTodo"
  },
  {
   "fn": "viewToday",
@@ -423,7 +423,7 @@
   "calls": [
    "doneTodo"
   ],
-  "action": null
+  "action": "doneTodo"
  },
  {
   "fn": "viewToday",
@@ -434,7 +434,7 @@
   "calls": [
    "removeTodo"
   ],
-  "action": null
+  "action": "removeTodo"
  },
  {
   "fn": "viewToday",
@@ -445,7 +445,7 @@
   "calls": [
    "toggleAcc"
   ],
-  "action": null
+  "action": "toggleAcc"
  },
  {
   "fn": "viewToday",
@@ -456,7 +456,7 @@
   "calls": [
    "exportData"
   ],
-  "action": null
+  "action": "exportData"
  },
  {
   "fn": "viewToday",
@@ -467,7 +467,7 @@
   "calls": [
    "go"
   ],
-  "action": null
+  "action": "go"
  },
  {
   "fn": "viewToday",
@@ -478,7 +478,7 @@
   "calls": [
    "go"
   ],
-  "action": null
+  "action": "go"
  },
  {
   "fn": "viewToday",
@@ -489,7 +489,7 @@
   "calls": [
    "exportData"
   ],
-  "action": null
+  "action": "exportData"
  },
  {
   "fn": "viewToday",
@@ -500,7 +500,7 @@
   "calls": [
    "snoozeBackup"
   ],
-  "action": null
+  "action": "snoozeBackup"
  },
  {
   "fn": "viewPicker",

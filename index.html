@@ -1610,28 +1610,28 @@ function viewToday(){
   const cTodo = `<div class="card">
       ${kicker('To-do'+(todos.length?` · ${todos.length} open`:''))}
       <div class="row" style="gap:8px;margin:8px 0 ${todos.length?'10px':'0'}">
-        <input id="todo-input" placeholder="Add a task…" style="flex:1" onkeydown="if(event.key==='Enter')addTodo()">
-        <button class="btn" onclick="addTodo()">Add</button>
+        <input id="todo-input" placeholder="Add a task…" style="flex:1" data-action="enter" data-enter="addTodo">
+        <button class="btn" data-action="addTodo">Add</button>
       </div>
       ${shownTodos.map((t,i)=>{ const age=todoAge(t.created); return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-3)">
-        <input type="checkbox" onchange="doneTodo(${i})" style="margin-top:1px">
+        <input type="checkbox" data-action="doneTodo" data-i="${esc(i)}" style="margin-top:1px">
         <span style="flex:1;font-size:14px">${esc(t.text)}${age>0?` <span class="muted" style="font-size:11px">· ${age}d</span>`:''}</span>
-        <button class="x-set" onclick="removeTodo(${i})" title="remove">${ph('x')}</button>
+        <button class="x-set" data-action="removeTodo" data-i="${esc(i)}" title="remove">${ph('x')}</button>
       </div>`; }).join('')}
-      ${todos.length>TODO_CAP?`<button class="addset" onclick="toggleAcc('todos-all')">${todosExpanded?'Show less':`+ ${todos.length-TODO_CAP} more`}</button>`:''}
+      ${todos.length>TODO_CAP?`<button class="addset" data-action="toggleAcc" data-key="todos-all">${todosExpanded?'Show less':`+ ${todos.length-TODO_CAP} more`}</button>`:''}
       ${todos.length?'':'<p class="muted" style="margin-top:8px;font-size:12px">Nothing pending. Tasks roll over until you check them off — checking one logs it to your journal.</p>'}
     </div>`;
 
   const cQuota = quotaBannerShown ? `<div class="card" style="border:1.5px solid var(--danger-bd);background:rgba(255,107,107,.08)">
       <div style="font-weight:700;font-size:14px;color:var(--danger)">${ph('warning','lead')}This device is out of storage</div>
       <p class="muted" style="line-height:1.5;margin-top:4px">Recent changes may not be saved locally. Export a backup now, and make sure Cloud Sync is on so nothing is lost.</p>
-      <div class="row" style="gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="exportData()">${ph('download-simple')}Export now</button><button class="btn btn-ghost" style="flex:1" onclick="go('settings')">Settings</button></div>
+      <div class="row" style="gap:8px;margin-top:10px"><button class="btn" style="flex:1" data-action="exportData">${ph('download-simple')}Export now</button><button class="btn btn-ghost" style="flex:1" data-action="go" data-tab="settings">Settings</button></div>
     </div>` : '';
   const cBackup = backupStale() ? `<div class="card" style="border:1.5px solid var(--warm-bd);background:var(--warm-bg)">
       <div style="font-weight:700;font-size:14px">${ph('warning','lead')}Back up your data</div>
       <p class="muted" style="line-height:1.5;margin-top:4px">${SYNC && SYNC.user ? 'Cloud Sync is on, but keeping an occasional downloadable copy means even a bad sync can’t cost you anything.' : 'Your data lives only on this device. Turn on <strong>Cloud Sync</strong> and it\'s backed up automatically — and available on your laptop too. A one-off export works as a fallback.'}</p>
-      <div class="row" style="gap:8px;margin-top:10px">${SYNC && SYNC.user ? '' : `<button class="btn" style="flex:1" onclick="go('settings')">${ph('cloud-arrow-up')}Set up sync</button>`}<button class="btn ${SYNC&&SYNC.user?'':'btn-ghost'}" style="flex:1" onclick="exportData()">${ph('download-simple')}Export</button></div>
-      <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="snoozeBackup()">Later</button>
+      <div class="row" style="gap:8px;margin-top:10px">${SYNC && SYNC.user ? '' : `<button class="btn" style="flex:1" data-action="go" data-tab="settings">${ph('cloud-arrow-up')}Set up sync</button>`}<button class="btn ${SYNC&&SYNC.user?'':'btn-ghost'}" style="flex:1" data-action="exportData">${ph('download-simple')}Export</button></div>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="snoozeBackup">Later</button>
     </div>` : '';
 
   const wDays = daysUntil(WEDDING_DATE);
@@ -4807,6 +4807,13 @@ const ACTIONS = {
   openChart:        { click: el => { progSub = el.dataset.prog; goSub('train', 'progress'); } },
   toggleMobSession: { click: () => toggleMobSession() },
   toggleMobility:   { change: el => toggleMobility(+el.dataset.i) },
+  /* Today's to-dos and the backup banner. doneTodo and removeTodo index the LIVE list, so the index
+     decodes with a unary plus; the tick box acts on change alone, which fires once per tick. The to-do
+     box's Enter reaches addTodo through the enter action, and addTodo reads the box itself. */
+  addTodo:      { click: () => addTodo() },
+  doneTodo:     { change: el => doneTodo(+el.dataset.i) },
+  removeTodo:   { click: el => removeTodo(+el.dataset.i) },
+  snoozeBackup: { click: () => snoozeBackup() },
   /* Care → Lawn, and the lawn card Today also renders. toggleLawnLog logs today when it gets no
      date, so a card button passes one argument and a history pill passes its own date: never an
      undefined second argument. */

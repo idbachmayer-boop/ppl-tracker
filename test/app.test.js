@@ -4812,7 +4812,20 @@ function f2Corpus(){
     const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
     [['Today: blank, weigh-in open (both log rows)', a => { a.DB = a.blank(); a.go('today'); a.toggleAcc('weighin'); }],
      ['Today: lawn location and weather (weather card)', a => { a.DB = a.blank(); setup(a, {}); a.go('today'); }],
-     ['Today: mobility card open', a => { a.DB = a.blank(); a.go('today'); a.toggleAcc('mob-today'); }]].forEach(([label, drive]) => {
+     ['Today: mobility card open', a => { a.DB = a.blank(); a.go('today'); a.toggleAcc('mob-today'); }],
+     /* 05-05 Task 3: more to-dos than the cap, expanded (every checkbox and × plus Show less) */
+     ['Today: seven to-dos, list expanded', a => {
+       a.DB = a.blank();
+       a.DB.todos = Array.from({ length: 7 }, (_, k) => ({ text: 'task ' + k, created: dayOff(-k), mtime: 1 }));
+       a.go('today'); a.toggleAcc('todos-all'); }],
+     /* both banners: never backed up (the backup banner, signed out so Set up sync shows) and a
+        quota failure on save (the storage banner) */
+     ['Today: backup and storage banners', a => {
+       a.DB = a.blank();
+       const ls = a.__sandbox.localStorage, setItem = ls.setItem;
+       ls.setItem = () => { throw new Error('QuotaExceededError'); };
+       try { a.__sandbox.save(); } finally { ls.setItem = setItem; }
+       a.go('today'); }]].forEach(([label, drive]) => {
       const a = loadApp(APP_PATH);
       try { drive(a); } catch(e){ /* the checks read whatever rendered */ }
       out.push({ label, html: appHtml(a) });
@@ -6384,6 +6397,134 @@ function f2TodayWeighIn(){
   } catch(e){ threw = e.message; }
   ok("DELEG-06: Today's weigh-in and mobility headers and the weather, week and cardio cards are buttons",
      !threw && r.weigh && r.mob && r.lawn && r.weather && r.cardio && r.week, { threw, r });
+}
+
+/* Enter-to-add on the to-do box: the box forwards Enter to addTodo's click, which reads the box's
+   value itself. The harness's getElementById hands back the same element across renders, so the
+   box is emptied by hand between steps (a real re-render gives a fresh, empty box). */
+{
+  const r = {};
+  let threw = null;
+  let dones = [], adds = [];
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.go('today');
+    const inp = a.__sandbox.document.getElementById('todo-input');
+    const texts = () => a.liveTodos().map(t => t.text);
+    const cs0 = controlsIn(f2AppHtml(a));
+    const box = cs0.find(c => c.data.action === 'enter' && c.data.enter === 'addTodo') || null;
+    const add = cs0.find(c => c.data.action === 'addTodo') || null;
+    r.box = box && box.tag; r.add = add && add.tag;
+    if(box){
+      const el = fakeEl(box.data, { tagName: 'INPUT' });
+      inp.value = 'buy milk';
+      fireListener(a, 'keydown', el, { key: 'a' });     r.otherKey = texts();
+      fireListener(a, 'click', el);                      r.clickBox = texts();
+      fireListener(a, 'keydown', el, { key: 'Enter' }); r.enter = texts();
+      inp.value = '';
+      fireListener(a, 'keydown', el, { key: 'Enter' }); r.empty = texts();
+    }
+    if(add){ inp.value = 'call the vet'; fireListener(a, 'click', fakeEl(add.data, { tagName: 'BUTTON' })); inp.value = ''; }
+    r.added = texts();
+    const cs = controlsIn(f2AppHtml(a));
+    const done = cs.filter(c => c.data.action === 'doneTodo'), rm = cs.filter(c => c.data.action === 'removeTodo');
+    r.done = done.map(c => c.tag + ':' + c.type + ':' + c.data.i); r.rm = rm.map(c => c.tag + ':' + c.data.i);
+    if(done[0]){
+      const el = fakeEl(done[0].data);
+      fireAction(a, 'click', el); r.afterClick = texts();
+      fireAction(a, 'change', el); r.afterChange = texts();
+      r.journal = /buy milk/.test(a.DB.journal[a.todayISO()] || '');
+    }
+    const rm2 = controlsIn(f2AppHtml(a)).find(c => c.data.action === 'removeTodo') || null;
+    if(rm2) fireAction(a, 'click', fakeEl(rm2.data));
+    r.afterRemove = texts();
+    r.soft = a.DB.todos.length === 2 && a.DB.todos.every(t => t.deletedAt);
+    dones = spyOn(a, 'doneTodo');
+    fireAction(a, 'change', fakeEl({ action: 'doneTodo', i: '0' }));
+    /* addTodo reads the box itself and takes no argument, from either path */
+    adds = spyOn(a, 'addTodo');
+    if(add) fireListener(a, 'click', fakeEl(add.data, { tagName: 'BUTTON' }));
+    if(box) fireListener(a, 'keydown', fakeEl(box.data, { tagName: 'INPUT' }), { key: 'Enter' });
+  } catch(e){ threw = e.message; }
+  const J = x => JSON.stringify(x);
+  ok('DELEG-02: Enter in the to-do box adds one to-do, and ticking one fires once with a numeric index',
+     !threw && r.box === 'input' && r.add === 'button' && J(r.otherKey) === '[]' && J(r.clickBox) === '[]'
+       && J(r.enter) === '["buy milk"]' && J(r.empty) === '["buy milk"]' && J(r.added) === '["buy milk","call the vet"]'
+       && J(r.done) === '["input:checkbox:0","input:checkbox:1"]' && J(r.rm) === '["button:0","button:1"]'
+       && J(r.afterClick) === '["buy milk","call the vet"]' && J(r.afterChange) === '["call the vet"]' && r.journal
+       && J(r.afterRemove) === '[]' && r.soft && J(dones) === '[[0]]' && typeof (dones[0] || [])[0] === 'number'
+       && J(adds) === '[[],[]]',
+     { threw, r, dones, adds });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.DB.todos = Array.from({ length: 7 }, (_, k) => ({ text: 'task ' + k, created: dayOff(-k), mtime: 1 }));
+    a.go('today');
+    const count = () => controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'doneTodo').length;
+    const more = () => controlsIn(f2AppHtml(a)).find(c => c.data.action === 'toggleAcc' && c.data.key === 'todos-all') || null;
+    r.before = count();
+    const m1 = more();
+    r.tag = m1 && m1.tag;
+    if(m1) fireAction(a, 'click', fakeEl(m1.data));
+    r.expanded = count();
+    const m2 = more();
+    if(m2) fireAction(a, 'click', fakeEl(m2.data));
+    r.collapsed = count();
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: Show more expands the to-do list through toggleAcc',
+     !threw && r.tag === 'button' && r.before === 5 && r.expanded === 7 && r.collapsed === 5, { threw, r });
+}
+/* A blank DB has never been backed up, so the backup banner shows. The storage banner is reached the
+   way a full device reaches it: localStorage.setItem throws a quota error, save() falls back to
+   handleQuotaFailure(), and that re-renders with the banner. */
+{
+  const r = {};
+  let threw = null;
+  let exports = [], snoozes = [];
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.go('today');
+    exports = spyOn(a, 'exportData'); snoozes = spyOn(a, 'snoozeBackup');
+    const cs = controlsIn(f2AppHtml(a));
+    r.banner = /Back up your data/.test(f2AppHtml(a));
+    const exp = cs.filter(c => c.data.action === 'exportData'), later = cs.filter(c => c.data.action === 'snoozeBackup');
+    const sync = cs.filter(c => c.data.action === 'go' && c.data.tab === 'settings');
+    r.tags = [exp, later, sync].map(l => l.map(c => c.tag).join(','));
+    exp.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+    later.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+    r.exports = exports.length; r.snoozes = snoozes.length;
+    if(sync[0]) fireAction(a, 'click', fakeEl(sync[0].data));
+    r.tab = a.TAB;
+
+    const b = loadApp(APP_PATH);
+    b.DB = b.blank();
+    b.DB.lastBackupAt = Date.now();          /* only the storage banner, so its buttons are the only ones */
+    b.go('today');
+    const ls = b.__sandbox.localStorage, setItem = ls.setItem;
+    ls.setItem = () => { const e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e; };
+    try { b.__sandbox.save(); } finally { ls.setItem = setItem; }
+    b.go('today');
+    const bh = f2AppHtml(b), bs = controlsIn(bh);
+    r.quota = /This device is out of storage/.test(bh) && !/Back up your data/.test(bh);
+    const qExports = spyOn(b, 'exportData');
+    const qExp = bs.filter(c => c.data.action === 'exportData'), qSet = bs.filter(c => c.data.action === 'go' && c.data.tab === 'settings');
+    r.qTags = [qExp, qSet].map(l => l.map(c => c.tag).join(','));
+    qExp.forEach(c => fireAction(b, 'click', fakeEl(c.data)));
+    r.qExports = JSON.stringify(qExports);
+    if(qSet[0]) fireAction(b, 'click', fakeEl(qSet[0].data));
+    r.qTab = b.TAB;
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: the backup and storage banners' buttons route through the dispatcher",
+     !threw && r.banner && JSON.stringify(r.tags) === '["button","button","button"]' && r.exports === 1 && r.snoozes === 1
+       && JSON.stringify(exports) === '[[]]' && JSON.stringify(snoozes) === '[[]]' && r.tab === 'settings'
+       && r.quota && JSON.stringify(r.qTags) === '["button","button"]' && r.qExports === '[[]]' && r.qTab === 'settings',
+     { threw, r, exports, snoozes });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
