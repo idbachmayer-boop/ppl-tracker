@@ -177,7 +177,7 @@ Plans:
   4. Every converted control is still operable by keyboard, not only by pointer or click (DELEG-06).
   5. The Log tab — the screen Ian is standing in front of mid-workout — is manually verified end to end and behaves identically to before the conversion (DELEG-07).
 
-**Plans**: 4/6 plans executed
+**Plans**: 5/6 plans executed
 **UI hint**: yes
 
 Plans:
@@ -199,7 +199,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 05-05-PLAN.md — Today: Enter-to-log and the Log button each log once, the Chart chains become one action, and the shortcut cards and headers become buttons (DELEG-02, DELEG-04, DELEG-06)
+- [x] 05-05-PLAN.md — Today: Enter-to-log and the Log button each log once, the Chart chains become one action, and the shortcut cards and headers become buttons (DELEG-02, DELEG-04, DELEG-06)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -253,6 +253,6 @@ Phase 5 completes.
 | 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 5/5 | Complete    | 2026-09-22 |
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
-| 5. F2 — Event Delegation | 4/6 | In Progress|  |
+| 5. F2 — Event Delegation | 5/6 | In Progress|  |
 | 6. F4 — .gitattributes | 0/TBD | Not started | - |
 | 7. Content Security Policy | 0/TBD | Not started | - |

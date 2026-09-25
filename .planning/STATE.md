@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 05
 current_phase_name: f2-event-delegation
 status: executing
-stopped_at: Completed 05-04-PLAN.md
-last_updated: "2026-09-25T10:36:13.260Z"
+stopped_at: Completed 05-05-PLAN.md
+last_updated: "2026-09-25T11:05:10.256Z"
 last_activity: 2026-09-25
 last_activity_desc: Phase 05 execution started
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 24
-  completed_plans: 22
+  completed_plans: 23
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 ## Current Position
 
 Phase: 05 (f2-event-delegation) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-09-25 — Phase 05 execution started
 
-Progress: [█████████░] 92%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -82,6 +82,7 @@ Progress: [█████████░] 92%
 | Phase 05 P02 | 16min | 3 tasks | 4 files |
 | Phase 05 P03 | 16min | 2 tasks | 4 files |
 | Phase 05 P04 | 19min | 2 tasks | 3 files |
+| Phase 05 P05 | 27min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 05-03: the DELEG-03 ratchet counts wiring sites per mapped row, so a surviving same-name sibling cannot hide a dropped control
 - [Phase ?]: 05-04: a shared action whose other consumer lands in a later plan gets a stand-in-element check for that consumer's call shape (logPetWeight with no data-date-el)
 - [Phase ?]: 05-04: attribute values outside data-* that a plan escapes (D-09) get a hostile-value check; the D-03 check reads data-* only
+- [Phase ?]: 05-05: rows sharing handler text in one function convert in the same task, because the DELEG-03 ratchet counts inline occurrences (the week link and the evening week card)
+- [Phase ?]: 05-05: evening-only Today markup is reached with a per-instance clock (f2Evening), never by moving the shared frozen clock
 
 ### Pending Todos
 
@@ -166,6 +169,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-25T10:36:13.220Z
-Stopped at: Completed 05-04-PLAN.md
+Last session: 2026-09-25T11:05:10.212Z
+Stopped at: Completed 05-05-PLAN.md
 Resume file: None
