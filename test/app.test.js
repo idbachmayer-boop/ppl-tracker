@@ -4752,6 +4752,29 @@ function f2Corpus(){
       out.push({ label: 'Today: lawn heads-up', html: appHtml(a) });
     }
   }
+  /* 05-04: Train → History with the controls the default screen hides. The journal editor and the
+     activity panel exclude each other (each opener closes the other), so they are two states. */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    const hist = () => { const a = loadApp(APP_PATH); a.DB = populatedDB(a); a.go('train'); a.setSub('history'); return a; };
+    {
+      const a = hist();
+      try {
+        a.__sandbox.toggleBackdate();
+        a.__sandbox.toggleHist(3);
+        a.__sandbox.editJournal(dayOff(-1));
+      } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
+      out.push({ label: 'Train → History: backdate picker, session row and journal editor open', html: appHtml(a) });
+    }
+    {
+      const a = hist();
+      try {
+        a.__sandbox.toggleHist(2);
+        a.__sandbox.openActivityAdd(dayOff(-1));
+      } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
+      out.push({ label: 'Train → History: skipped row open, activity panel with one logged activity', html: appHtml(a) });
+    }
+  }
   f2Corpus.cache = out;
   return out;
 }
@@ -5570,6 +5593,223 @@ const f2AppHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '
     span: a.cLawnCard().includes(`<span class="muted" style="display:block;${STYLE}">Lawn · heads up</span>`),
   };
   ok("F2: kicker() without a tag is unchanged, and kicker(t, 'span') is the same element as a block span", r.div && r.span, r);
+}
+
+/* ── Plan 05-04: Train → History, Progress and Cardio ── */
+/* A fresh instance with populatedDB on Train → History. `renderWeekReview` renders inside
+   `viewHistory`, so the week review's controls are read from the History screen. */
+function f2History(){
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  a.go('train'); a.setSub('history');
+  return a;
+}
+/* The start tag of the first control in `html` whose data-action is `name`, as source text. */
+function f2StartTag(html, name){
+  const m = String(html).match(new RegExp('<[a-zA-Z][^>]*data-action="' + name + '"[^>]*>'));
+  return m ? m[0] : '';
+}
+/* Pitfalls 1 and 10: weekShift adds its argument to a number, so a string offset makes the title
+   NaN. At offset 0 the next button is disabled, and the dispatcher must leave it inert. */
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    const next = find(c => c.data.action === 'weekShift' && c.data.d === '1');
+    r.next = next && { tag: next.tag, disabled: next.disabled };
+    if(next) fireAction(a, 'click', fakeEl(next.data, { disabled: next.disabled }));
+    r.stillThisWeek = f2AppHtml(a).includes('>This week<');
+    const back = find(c => c.data.action === 'weekShift' && c.data.d === '-1');
+    r.back = back && back.tag;
+    if(back) fireAction(a, 'click', fakeEl(back.data));
+    r.lastWeek = f2AppHtml(a).includes('>Last week<');
+    r.nan = /NaN/.test(f2AppHtml(a));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the week review steps back a week with a numeric offset, and the disabled next button does nothing',
+     !threw && !!r.next && r.next.tag === 'button' && r.next.disabled === true && r.stillThisWeek
+       && r.back === 'button' && r.lastWeek && !r.nan, { threw, r });
+}
+/* Pitfall 1: toggleHist compares openHist === i, so a string index opens a row that never closes. */
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const first = () => controlsIn(f2AppHtml(a)).find(c => c.data.action === 'toggleHist') || null;
+  try {
+    const c1 = first();
+    r.tag = c1 && c1.tag; r.idx = c1 && c1.data.idx;
+    r.before = f2AppHtml(a).includes('hist-detail');
+    if(c1) fireAction(a, 'click', fakeEl(c1.data));
+    r.opened = f2AppHtml(a).includes('hist-detail');
+    const c2 = first();
+    r.sameRow = !!c2 && c2.data.idx === r.idx;
+    if(c2) fireAction(a, 'click', fakeEl(c2.data));
+    r.closed = !f2AppHtml(a).includes('hist-detail');
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a history row opens and closes again through the dispatcher (numeric index)',
+     !threw && r.tag === 'button' && !r.before && r.opened && r.sameRow && r.closed, { threw, r });
+}
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const iso = dayOff(-1);
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    const open = find(c => c.data.action === 'editJournal' && c.data.iso === iso);
+    r.open = open && { tag: open.tag, cls: open.cls };
+    if(open) fireAction(a, 'click', fakeEl(open.data));
+    r.textarea = f2AppHtml(a).includes(`<textarea id="journal-edit-${iso}"`);
+    const ta = find(c => c.data.action === 'saveJournalFor');
+    r.ta = ta && { tag: ta.tag, iso: ta.data.iso };
+    if(ta) fireAction(a, 'input', fakeEl(ta.data, { value: 'note text' }));
+    r.saved = a.DB.journal[iso];
+    const done = find(c => c.data.action === 'closeJournalEdit');
+    r.done = done && done.tag;
+    if(done) fireAction(a, 'click', fakeEl(done.data));
+    r.closed = !f2AppHtml(a).includes('<textarea id="journal-edit-');
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: a day's journal note opens, saves with its date, and closes through the dispatcher",
+     !threw && !!r.open && r.open.tag === 'button' && r.open.cls.split(/\s+/).includes('tap-inline') && r.textarea
+       && !!r.ta && r.ta.tag === 'textarea' && r.ta.iso === iso && r.saved === 'note text' && r.done === 'button' && r.closed,
+     { threw, r });
+}
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const iso = dayOff(-1);
+  const liveOn = () => a.DB.hobbyLog.filter(h => h.date === iso && !h.deletedAt).length;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    const open = find(c => c.data.action === 'openActivityAdd' && c.data.iso === iso);
+    r.open = open && { tag: open.tag, cls: open.cls };
+    if(open) fireAction(a, 'click', fakeEl(open.data));
+    r.panel = f2AppHtml(a).includes('id="act-item"');
+    const cat = find(c => c.data.action === 'setActAddCat' && c.data.cat === 'hobby');
+    r.cat = cat && cat.tag;
+    const item = (a.DB.hobbies || []).find(h => !a.DB.hobbyLog.some(x => x.date === iso && x.item === h));
+    r.item = item;
+    a.__sandbox.document.getElementById('act-item').value = item;
+    const before = liveOn();
+    const add = find(c => c.data.action === 'addActivityFor' && c.data.iso === iso);
+    r.add = add && add.tag;
+    if(add) fireAction(a, 'click', fakeEl(add.data));
+    r.added = liveOn() - before;
+    r.newRow = a.DB.hobbyLog.some(h => h.date === iso && h.item === item && !h.deletedAt);
+    const tag = f2StartTag(f2AppHtml(a), 'removeActivity');
+    r.xTag = tag;
+    const x = find(c => c.data.action === 'removeActivity');
+    r.x = x && { tag: x.tag, idx: x.data.idx };
+    if(x) fireAction(a, 'click', fakeEl(x.data));
+    r.removed = !!x && !!a.DB.hobbyLog[+x.data.idx] && !!a.DB.hobbyLog[+x.data.idx].deletedAt;
+    r.oneLeft = liveOn() === before;
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: logging and removing a day's activity goes through the dispatcher",
+     !threw && !!r.open && r.open.tag === 'button' && r.open.cls.split(/\s+/).includes('tap-inline') && r.panel
+       && r.cat === 'button' && !!r.item && r.add === 'button' && r.added === 1 && r.newRow
+       && !!r.x && r.x.tag === 'button' && /^<button\b/.test(r.xTag) && /\saria-label="[^"]+"/.test(r.xTag)
+       && r.removed && r.oneLeft, { threw, r });
+}
+/* Pitfall 5: the date input sits inside a <label>. A tap on the label clicks the input, so the action
+   lives on the input's change alone and never on the label. */
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  const target = dayOff(-8);
+  try {
+    const row = find(c => c.data.action === 'toggleHist');
+    if(row) fireAction(a, 'click', fakeEl(row.data));
+    const html = f2AppHtml(a);
+    r.labels = controlsIn(html).filter(c => c.tag === 'label').length;
+    const d = find(c => c.data.action === 'changeSessionDate');
+    r.d = d && { tag: d.tag, type: d.type, idx: d.data.idx };
+    const s = d && a.DB.sessions[+d.data.idx];
+    r.id = s && s.id;
+    if(d) fireAction(a, 'change', fakeEl(d.data, { value: target }));
+    r.moved = !!r.id && a.DB.sessions.find(x => x.id === r.id).date === target;
+    /* Once per change, with a number: click and input on the same element do nothing. */
+    const d2 = find(c => c.data.action === 'changeSessionDate');
+    const calls = spyOn(a, 'changeSessionDate');
+    if(d2){
+      const el = fakeEl(d2.data, { value: dayOff(-10) });
+      fireAction(a, 'click', el); fireAction(a, 'input', el);
+      r.stray = calls.length;
+      fireAction(a, 'change', el);
+    }
+    r.calls = calls;
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: a past session's date changes once, from the date input, not its label",
+     !threw && r.labels === 0 && !!r.d && r.d.tag === 'input' && r.d.type === 'date' && r.moved
+       && r.stray === 0 && r.calls.length === 1 && r.calls[0].length === 2 && typeof r.calls[0][0] === 'number'
+       && r.calls[0][1] === dayOff(-10), { threw, r });
+}
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const calls = spyOn(a, 'startBackdate');
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    r.before = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'startBackdate').length;
+    const t = find(c => c.data.action === 'toggleBackdate');
+    r.toggle = t && t.tag;
+    if(t) fireAction(a, 'click', fakeEl(t.data));
+    const picks = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'startBackdate');
+    r.picks = picks.map(c => c.tag + ':' + c.data.name);
+    const p = picks.find(c => c.data.name === 'PUSH 1');
+    if(p) fireAction(a, 'click', fakeEl(p.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: Add a past workout opens the picker and starts the chosen program',
+     !threw && r.before === 0 && r.toggle === 'button' && r.picks.length > 0 && r.picks.every(x => x.startsWith('button:'))
+       && JSON.stringify(calls) === '[["PUSH 1"]]', { threw, r, calls });
+}
+/* The rest of History: each control reaches its function with the arguments the old handler passed
+   (a session's index as a number, the category as a string, nothing for Done). */
+{
+  const a = f2History();
+  const names = ['editSession', 'deleteSession', 'setActAddCat', 'cancelActivityAdd'];
+  const r = {};
+  let threw = null;
+  const clickAll = (pred) => controlsIn(f2AppHtml(a)).filter(pred).map(c => { fireAction(a, 'click', fakeEl(c.data)); return c.tag; });
+  let calls = {};
+  try {
+    a.__sandbox.toggleHist(3);
+    a.__sandbox.openActivityAdd(dayOff(-1));
+    names.forEach(n => { calls[n] = spyOn(a, n); });
+    r.edit = clickAll(c => c.data.action === 'editSession');
+    r.del = clickAll(c => c.data.action === 'deleteSession');
+    r.cat = clickAll(c => c.data.action === 'setActAddCat' && c.data.cat === 'productivity');
+    r.cancel = clickAll(c => c.data.action === 'cancelActivityAdd');
+  } catch(e){ threw = e.message; }
+  const got = {};
+  names.forEach(n => { got[n] = JSON.stringify(calls[n]); });
+  ok('DELEG-02: editing, deleting, the activity category and Done in History run with their arguments',
+     !threw && [r.edit, r.del, r.cat, r.cancel].every(t => t && t.length === 1 && t[0] === 'button')
+       && got.editSession === '[[3]]' && got.deleteSession === '[[3]]'
+       && got.setActAddCat === '[["productivity"]]' && got.cancelActivityAdd === '[[]]', { threw, r, got });
+}
+/* D-09: a session's date lands in the date input's value attribute. validateBackup() never checks a
+   date's content, so a hand-edited backup can put a quote and a tag in it. */
+{
+  const a = f2History();
+  const bad = '2026-08-01"><b>x';
+  a.DB.sessions.push({ id: 'sh', workout: 'PUSH 1', date: bad, endedAt: 9, extras: {}, entries: [] });
+  const r = {};
+  let threw = null;
+  try {
+    a.__sandbox.toggleHist(a.DB.sessions.length - 1);
+    const html = f2AppHtml(a);
+    r.open = html.includes('data-action="changeSessionDate" data-idx="' + (a.DB.sessions.length - 1) + '"');
+    r.rawB = html.includes('<b>x');
+    r.escaped = html.includes('value="2026-08-01&quot;&gt;&lt;b&gt;x"');
+  } catch(e){ threw = e.message; }
+  ok("D-09: a hostile session date stays inside the date input's value attribute",
+     !threw && r.open && !r.rawB && r.escaped, { threw, r });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

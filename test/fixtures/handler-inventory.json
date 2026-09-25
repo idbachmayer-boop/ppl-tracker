@@ -838,7 +838,7 @@
   "calls": [
    "editJournal"
   ],
-  "action": null
+  "action": "editJournal"
  },
  {
   "fn": "renderWeekReview",
@@ -849,7 +849,7 @@
   "calls": [
    "saveJournalFor"
   ],
-  "action": null
+  "action": "saveJournalFor"
  },
  {
   "fn": "renderWeekReview",
@@ -860,7 +860,7 @@
   "calls": [
    "closeJournalEdit"
   ],
-  "action": null
+  "action": "closeJournalEdit"
  },
  {
   "fn": "renderWeekReview",
@@ -871,7 +871,7 @@
   "calls": [
    "openActivityAdd"
   ],
-  "action": null
+  "action": "openActivityAdd"
  },
  {
   "fn": "renderWeekReview",
@@ -882,7 +882,7 @@
   "calls": [
    "setActAddCat"
   ],
-  "action": null
+  "action": "setActAddCat"
  },
  {
   "fn": "renderWeekReview",
@@ -893,7 +893,7 @@
   "calls": [
    "setActAddCat"
   ],
-  "action": null
+  "action": "setActAddCat"
  },
  {
   "fn": "renderWeekReview",
@@ -904,7 +904,7 @@
   "calls": [
    "addActivityFor"
   ],
-  "action": null
+  "action": "addActivityFor"
  },
  {
   "fn": "renderWeekReview",
@@ -915,7 +915,7 @@
   "calls": [
    "cancelActivityAdd"
   ],
-  "action": null
+  "action": "cancelActivityAdd"
  },
  {
   "fn": "renderWeekReview",
@@ -926,7 +926,7 @@
   "calls": [
    "removeActivity"
   ],
-  "action": null
+  "action": "removeActivity"
  },
  {
   "fn": "renderWeekReview",
@@ -937,7 +937,7 @@
   "calls": [
    "weekShift"
   ],
-  "action": null
+  "action": "weekShift"
  },
  {
   "fn": "renderWeekReview",
@@ -948,7 +948,7 @@
   "calls": [
    "weekShift"
   ],
-  "action": null
+  "action": "weekShift"
  },
  {
   "fn": "viewHistory",
@@ -959,7 +959,7 @@
   "calls": [
    "toggleBackdate"
   ],
-  "action": null
+  "action": "toggleBackdate"
  },
  {
   "fn": "viewHistory",
@@ -970,7 +970,7 @@
   "calls": [
    "startBackdate"
   ],
-  "action": null
+  "action": "startBackdate"
  },
  {
   "fn": "viewHistory",
@@ -981,7 +981,7 @@
   "calls": [
    "startBackdate"
   ],
-  "action": null
+  "action": "startBackdate"
  },
  {
   "fn": "viewHistory",
@@ -992,7 +992,7 @@
   "calls": [
    "changeSessionDate"
   ],
-  "action": null
+  "action": "changeSessionDate"
  },
  {
   "fn": "viewHistory",
@@ -1003,7 +1003,7 @@
   "calls": [
    "editSession"
   ],
-  "action": null
+  "action": "editSession"
  },
  {
   "fn": "viewHistory",
@@ -1014,7 +1014,7 @@
   "calls": [
    "deleteSession"
   ],
-  "action": null
+  "action": "deleteSession"
  },
  {
   "fn": "viewHistory",
@@ -1025,7 +1025,7 @@
   "calls": [
    "toggleHist"
   ],
-  "action": null
+  "action": "toggleHist"
  },
  {
   "fn": "rangeSeg",

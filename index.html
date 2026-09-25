@@ -2102,26 +2102,26 @@ function renderWeekReview(){
     if(dayComplete(iso)) tags.push(`<span style="font-size:11px">🧎 ${hasMobSession(iso)?'session':mobDoneOn(iso)}</span>`);
     if(sess.some(s=>prIdx.sessionHasPR(s))) tags.push(`<span style="font-size:11px">🏆 PR</span>`);
     const hasNote = note && note.trim();
-    const editLink = iso => `<a onclick="editJournal('${iso}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${ph('note-pencil')}${hasNote?'Edit note':'Add note'}</a>`;
+    const editLink = iso => `<button class="tap-inline" data-action="editJournal" data-iso="${esc(iso)}" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${ph('note-pencil')}${hasNote?'Edit note':'Add note'}</button>`;
     let noteHTML;
     if(future){ noteHTML=''; }
     else if(editJournalDate===iso){
       noteHTML = `<div style="margin-top:6px">
-        <textarea id="journal-edit-${iso}" rows="3" placeholder="What did you do on this day?" oninput="saveJournalFor('${iso}',this.value)" style="resize:vertical;line-height:1.5;min-height:64px;font-size:13px">${esc(note||'')}</textarea>
-        <button class="btn btn-sm" style="margin-top:6px" onclick="closeJournalEdit()">Done</button>
+        <textarea id="journal-edit-${esc(iso)}" rows="3" placeholder="What did you do on this day?" data-action="saveJournalFor" data-iso="${esc(iso)}" style="resize:vertical;line-height:1.5;min-height:64px;font-size:13px">${esc(note||'')}</textarea>
+        <button class="btn btn-sm" style="margin-top:6px" data-action="closeJournalEdit">Done</button>
       </div>`;
     } else {
       noteHTML = `${hasNote?`<div style="font-size:13px;color:var(--text-2);line-height:1.5;margin-top:6px;white-space:pre-wrap">${esc(note)}</div>`:''}
-        <div style="margin-top:${hasNote?4:3}px">${editLink(iso)}${addActivityDate===iso?'':` <span style="color:var(--muted-3)">·</span> <a onclick="openActivityAdd('${iso}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">＋ Log activity</a>`}</div>`;
+        <div style="margin-top:${hasNote?4:3}px">${editLink(iso)}${addActivityDate===iso?'':` <span style="color:var(--muted-3)">·</span> <button class="tap-inline" data-action="openActivityAdd" data-iso="${esc(iso)}" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">＋ Log activity</button>`}</div>`;
     }
     let activityPanel='';
     if(!future && addActivityDate===iso){
       const items=listFor(actAddCat);
       const dayActs=(DB.hobbyLog||[]).map((h,idx)=>({h,idx})).filter(o=>isLive(o.h) && o.h.date===iso);
       activityPanel = `<div style="margin-top:8px;padding:10px;border:1px solid var(--border-2);border-radius:8px">
-        <div class="seg" style="margin:0 0 8px"><button class="${actAddCat==='hobby'?'active':''}" onclick="setActAddCat('hobby')">Hobby</button><button class="${actAddCat==='productivity'?'active':''}" onclick="setActAddCat('productivity')">Productivity</button></div>
-        <div class="row" style="gap:8px"><select id="act-item" style="flex:1">${items.map(x=>`<option>${esc(x)}</option>`).join('')}</select><button class="btn btn-sm" onclick="addActivityFor('${iso}')">Add</button><button class="btn btn-sm btn-ghost" onclick="cancelActivityAdd()">Done</button></div>
-        ${dayActs.length?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${dayActs.map(o=>`<span style="font-size:11px;background:var(--surface-3);border-radius:12px;padding:3px 9px">🎲 ${esc(o.h.item||o.h.hobby)} <span onclick="removeActivity(${o.idx})" style="cursor:pointer;color:var(--danger);font-weight:700;margin-left:2px">×</span></span>`).join('')}</div>`:''}
+        <div class="seg" style="margin:0 0 8px"><button class="${actAddCat==='hobby'?'active':''}" data-action="setActAddCat" data-cat="hobby">Hobby</button><button class="${actAddCat==='productivity'?'active':''}" data-action="setActAddCat" data-cat="productivity">Productivity</button></div>
+        <div class="row" style="gap:8px"><select id="act-item" style="flex:1">${items.map(x=>`<option>${esc(x)}</option>`).join('')}</select><button class="btn btn-sm" data-action="addActivityFor" data-iso="${esc(iso)}">Add</button><button class="btn btn-sm btn-ghost" data-action="cancelActivityAdd">Done</button></div>
+        ${dayActs.length?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${dayActs.map(o=>`<span style="font-size:11px;background:var(--surface-3);border-radius:12px;padding:3px 9px">🎲 ${esc(o.h.item||o.h.hobby)} <button class="tap-inline" aria-label="Remove activity" data-action="removeActivity" data-idx="${esc(o.idx)}" style="cursor:pointer;color:var(--danger);font-weight:700;margin-left:2px">×</button></span>`).join('')}</div>`:''}
       </div>`;
     }
     return `<div style="padding:9px 0;border-bottom:1px solid var(--border-3)">
@@ -2135,9 +2135,9 @@ function renderWeekReview(){
   const title = reviewWeekOffset===0?'This week':reviewWeekOffset===-1?'Last week':`${-reviewWeekOffset} weeks ago`;
   return `<div class="card">
     <div class="row" style="margin-bottom:10px">
-      <button class="btn btn-ghost btn-sm" onclick="weekShift(-1)">${ph('caret-left')}</button>
+      <button class="btn btn-ghost btn-sm" data-action="weekShift" data-d="-1">${ph('caret-left')}</button>
       <div style="text-align:center"><div style="font-weight:700">${title}</div><div class="muted" style="font-size:11px">${label}</div></div>
-      <button class="btn btn-ghost btn-sm" onclick="weekShift(1)" ${reviewWeekOffset>=0?'disabled style="opacity:.35"':''}>${ph('caret-right')}</button>
+      <button class="btn btn-ghost btn-sm" data-action="weekShift" data-d="1" ${reviewWeekOffset>=0?'disabled style="opacity:.35"':''}>${ph('caret-right')}</button>
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:4px">${nW} workout${nW!==1?'s':''} · ${nH} activit${nH!==1?'ies':'y'} · journaled ${nJ}/7</div>
     ${rows}
@@ -2170,10 +2170,10 @@ function renderSummary(){
 function viewHistory(){
   const summary = renderSummary();
   const back = `
-    <button class="btn btn-ghost btn-block" onclick="toggleBackdate()">＋ Add a past workout</button>
+    <button class="btn btn-ghost btn-block" data-action="toggleBackdate">＋ Add a past workout</button>
     ${showBackdate? `<div class="card" style="margin-top:10px">
       <div class="muted" style="font-weight:700;margin-bottom:10px">Which workout?</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${SEQUENCE.map(n=>`<button class="btn btn-ghost btn-sm" onclick="startBackdate('${n}')">${n}</button>`).join('')}${DB.routineMode==='4day'?SPECIALIZED_OPTIONS.map(o=>`<button class="btn btn-ghost btn-sm" onclick="startBackdate('${o.name}')">${o.label}</button>`).join(''):''}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${SEQUENCE.map(n=>`<button class="btn btn-ghost btn-sm" data-action="startBackdate" data-name="${esc(n)}">${n}</button>`).join('')}${DB.routineMode==='4day'?SPECIALIZED_OPTIONS.map(o=>`<button class="btn btn-ghost btn-sm" data-action="startBackdate" data-name="${esc(o.name)}">${o.label}</button>`).join(''):''}</div>
       <p class="muted" style="margin-top:10px">Tip: enter your 5 oldest-first so each session sees the one before it as "last time".</p>
     </div>`:''}`;
   if(!liveSessions().length) return `<h2>Week in review</h2>${renderWeekReview()}<div style="margin:14px 0">${back}</div><div class="empty">No workouts logged yet.<br>Start one from the Workout tab, or add a past workout above.</div>`;
@@ -2183,9 +2183,9 @@ function viewHistory(){
     const open = openHist===idx;
     let right, detail='';
     const editRow = `<div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap;border-top:1px solid var(--border-3);padding-top:10px">
-        <label style="font-size:11px;font-weight:600;color:var(--muted)">Date <input type="date" value="${s.date}" max="${todayISO()}" onchange="changeSessionDate(${idx},this.value)" style="width:auto;display:inline-block;margin-left:4px;padding:6px 8px"></label>
-        ${s.skipped?'':`<button onclick="editSession(${idx})" style="background:none;border:none;color:var(--link);font-size:12px;font-weight:600;cursor:pointer;padding:0">${ph('pencil-simple')}Edit workout</button>`}
-        <button onclick="deleteSession(${idx})" style="background:none;border:none;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer;padding:0">Delete entry</button>
+        <label style="font-size:11px;font-weight:600;color:var(--muted)">Date <input type="date" value="${esc(s.date)}" max="${todayISO()}" data-action="changeSessionDate" data-idx="${esc(idx)}" style="width:auto;display:inline-block;margin-left:4px;padding:6px 8px"></label>
+        ${s.skipped?'':`<button data-action="editSession" data-idx="${esc(idx)}" style="background:none;border:none;color:var(--link);font-size:12px;font-weight:600;cursor:pointer;padding:0">${ph('pencil-simple')}Edit workout</button>`}
+        <button data-action="deleteSession" data-idx="${esc(idx)}" style="background:none;border:none;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer;padding:0">Delete entry</button>
       </div>`;
     if(s.skipped){
       right = `<span class="muted">Skipped ${ph(open?'caret-up':'caret-down')}</span>`;
@@ -2213,10 +2213,10 @@ function viewHistory(){
       }
     }
     return `<div>
-      <div class="hist-item" onclick="toggleHist(${idx})">
-        <div><span class="pill ${accClass(g)}">${s.workout}</span> <span class="muted" style="margin-left:6px">${fmtDate(s.date)}</span>${prIdx.sessionHasPR(s)?' 🏆':''}</div>
+      <button class="hist-item tap" data-action="toggleHist" data-idx="${esc(idx)}">
+        <span style="display:block"><span class="pill ${accClass(g)}">${s.workout}</span> <span class="muted" style="margin-left:6px">${fmtDate(s.date)}</span>${prIdx.sessionHasPR(s)?' 🏆':''}</span>
         ${right}
-      </div>${detail}
+      </button>${detail}
     </div>`;
   }).join('');
   return `<p class="subtitle">${liveSessions().length} entries logged</p>
@@ -4797,6 +4797,25 @@ const ACTIONS = {
   toggleLawnLog:      { click: el => el.dataset.iso ? toggleLawnLog(el.dataset.which, el.dataset.iso) : toggleLawnLog(el.dataset.which) },
   toggleLawnOverride: { click: el => toggleLawnOverride(el.dataset.which) },
   logLawnPastDate:    { click: el => logLawnPastDate(el.dataset.which) },
+  /* Train → History and the week in review. weekShift adds its offset to a number, and toggleHist
+     compares openHist === i, so both decode with a unary plus: a string offset makes the week title
+     NaN, and a string index opens a row that never closes. The session date input sits inside a
+     <label>, which clicks the input on a tap, so its action lives on the input's change alone. */
+  editJournal:       { click: el => editJournal(el.dataset.iso) },
+  saveJournalFor:    { input: el => saveJournalFor(el.dataset.iso, el.value) },
+  closeJournalEdit:  { click: () => closeJournalEdit() },
+  openActivityAdd:   { click: el => openActivityAdd(el.dataset.iso) },
+  setActAddCat:      { click: el => setActAddCat(el.dataset.cat) },
+  addActivityFor:    { click: el => addActivityFor(el.dataset.iso) },
+  cancelActivityAdd: { click: () => cancelActivityAdd() },
+  removeActivity:    { click: el => removeActivity(+el.dataset.idx) },
+  weekShift:         { click: el => weekShift(+el.dataset.d) },
+  toggleBackdate:    { click: () => toggleBackdate() },
+  startBackdate:     { click: el => startBackdate(el.dataset.name) },
+  changeSessionDate: { change: el => changeSessionDate(+el.dataset.idx, el.value) },
+  editSession:       { click: el => editSession(+el.dataset.idx) },
+  deleteSession:     { click: el => deleteSession(+el.dataset.idx) },
+  toggleHist:        { click: el => toggleHist(+el.dataset.idx) },
 };
 document.addEventListener('click', dispatchAction, { passive: false });
 document.addEventListener('change', dispatchAction, { passive: false });
