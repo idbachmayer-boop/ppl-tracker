@@ -1702,7 +1702,7 @@ function viewPicker(){
     const open = previewOpen===name; const ls = lastSessionOf(name);
     return `<div class="card" style="padding:14px">
       <div class="row">
-        <button class="tap" style="cursor:pointer;min-width:0" data-action="togglePreview" data-name="${esc(name)}">
+        <button class="tap" style="cursor:pointer;min-width:0;width:auto;flex:1 1 auto" data-action="togglePreview" data-name="${esc(name)}">
           <span class="pill ${accClass(PROGRAM[name].group)}">${label}</span>
           <span class="muted" style="display:block;margin-top:6px">${PROGRAM[name].slots.length} exercises${ls?' · last '+fmtDate(ls.date):''} ${ph(open?'caret-up':'caret-down')}</span>
         </button>

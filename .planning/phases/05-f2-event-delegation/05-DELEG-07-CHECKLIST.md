@@ -14,6 +14,9 @@ Run it after the Phase 5 PR is merged and GitHub Pages has published.
 
 ## 2. Start
 
+- [ ] Train → Log, before tapping anything: look at the suggested workout's card. **Skip** and
+      **Start ▶** sit side by side on one line, the same height as the other cards' buttons, and
+      "Start ▶" doesn't wrap onto two lines.
 - [ ] Train → Log. Tap a program's name to open its preview, then tap it again to close it.
 - [ ] Open a "How this program works" section, then close it.
 - [ ] Tap **Start** on today's workout. The workout opens.

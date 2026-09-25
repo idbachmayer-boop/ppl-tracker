@@ -7178,6 +7178,62 @@ function f2HostileSession(id, workout, date, name){
   ok("D-09: a hostile logged set renders escaped in the active workout's last-time lines",
      !threw && r.exact && r.elsewhere && r.img === false && r.escaped >= 4, { threw, r });
 }
+/* WR-03. The converted-button reset gives button.tap width:100%. That is harmless on a button that is
+   itself the card, the row or the list item, but when the button is a flex ITEM that width becomes its
+   flex basis: it claims the whole row and squeezes its siblings to min-content (the Log picker's
+   "Start ▶" wrapped onto two lines). The suite has no layout engine, so this resolves the basis the
+   way the cascade does (inline style over the zero-specificity reset) for every tap button that is a
+   direct child of a flex container, on every rendered screen. Which classes are flex containers is
+   read from the app's own CSS. */
+function f2Decls(body){
+  const out = {};
+  String(body || '').split(';').forEach(d => { const i = d.indexOf(':'); if(i > 0) out[d.slice(0, i).trim().toLowerCase()] = d.slice(i + 1).trim().toLowerCase(); });
+  return out;
+}
+const F2_RULES = f2CssRules(F2_RAW);
+const F2_FLEX_CLASSES = F2_RULES.filter(r => /^\.[\w-]+$/.test(r.selector) && /^(inline-)?flex$/.test(f2Decls(r.body).display || ''))
+  .map(r => r.selector.slice(1));
+const F2_TAP_WIDTH = (F2_RULES.filter(r => r.selector === ':where(button.tap)').map(r => f2Decls(r.body).width).pop()) || 'auto';
+function f2FlexItemTapProblems(html){
+  const VOID = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
+  const attr = (s, n) => { const m = s.match(new RegExp('\\s' + n + '="([^"]*)"')); return m ? m[1] : ''; };
+  const stack = [], bad = [];
+  const TAG = /<(\/?)([a-zA-Z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+  let m;
+  while((m = TAG.exec(String(html || '')))){
+    const [, close, name, rest] = m, tag = name.toLowerCase();
+    if(close){ const i = stack.map(x => x.tag).lastIndexOf(tag); if(i >= 0) stack.length = i; continue; }
+    const cls = attr(rest, 'class').split(/\s+/).filter(Boolean), style = f2Decls(attr(rest, 'style'));
+    const node = { tag, flex: /^(inline-)?flex$/.test(style.display || '') || cls.some(c => F2_FLEX_CLASSES.includes(c)) };
+    const parent = stack[stack.length - 1];
+    if(tag === 'button' && cls.includes('tap') && parent && parent.flex){
+      const flex = (style.flex || '').split(/\s+/).filter(Boolean);
+      const basis = style['flex-basis'] || (flex.length === 3 ? flex[2] : '') || style.width || F2_TAP_WIDTH;
+      if(basis === '100%') bad.push(`<button class="${cls.join(' ')}" data-action="${attr(rest, 'data-action')}">`);
+    }
+    if(!VOID.test(tag) && !/\/\s*$/.test(rest)) stack.push(node);
+  }
+  return bad;
+}
+{
+  const bad = [];
+  f2Corpus().forEach(({ label, html }) => f2FlexItemTapProblems(html).forEach(b => bad.push(label + ': ' + b)));
+  const picker = [];
+  ['with data', 'fresh install'].forEach(state => {
+    const shot = f2Corpus().find(c => c.label === `${state}: Train → Log`) || f2Corpus().find(c => c.label.startsWith(state + ':') && /togglePreview/.test(c.html));
+    picker.push(!!shot && /data-action="togglePreview"/.test(shot.html));
+  });
+  const synthetic = {
+    squeezed: f2FlexItemTapProblems('<div class="row"><button class="tap" data-action="x">a</button><div>b</div></div>').length === 1,
+    inlineFlex: f2FlexItemTapProblems('<span style="display:flex"><button class="tap">a</button></span>').length === 1,
+    contentWidth: f2FlexItemTapProblems('<div class="row"><button class="tap" style="width:auto">a</button></div>').length === 0,
+    autoBasis: f2FlexItemTapProblems('<div class="row"><button class="tap" style="flex:1 1 auto">a</button></div>').length === 0,
+    blockParent: f2FlexItemTapProblems('<div class="card"><button class="row tap">a</button></div>').length === 0,
+  };
+  ok('WR-03: no converted button that sits in a flex row takes the full-width reset as its flex basis (the Log picker keeps Start on one line)',
+     F2_FLEX_CLASSES.includes('row') && F2_TAP_WIDTH === '100%' && picker.every(Boolean) && bad.length === 0 && Object.values(synthetic).every(Boolean),
+     { bad: bad.slice(0, 5), picker, flexClasses: F2_FLEX_CLASSES.length, tapWidth: F2_TAP_WIDTH, synthetic });
+}
 
 /* The phase's two closing properties, stated with no count. Every inventoried call site is an
    action, and nothing in index.html (any event, any quoting, comments included) is an inline
