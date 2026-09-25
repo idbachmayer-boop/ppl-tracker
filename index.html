@@ -278,8 +278,8 @@
     <span class="sw-label" data-ph="timer">Rest</span>
     <span class="sw-time" id="sw-time">0:00</span>
     <span class="sw-target" id="sw-target"></span>
-    <button class="sw-btn" id="sw-toggle" onpointerdown="swGuard(event)" onclick="swToggle()" data-ph="play"></button>
-    <button class="sw-btn sw-clear" onpointerdown="swGuard(event)" onclick="swClear()">Clear</button>
+    <button class="sw-btn" id="sw-toggle" data-action="swToggle" data-ph="play"></button>
+    <button class="sw-btn sw-clear" data-action="swClear">Clear</button>
   </div>
   <div class="tabbar-inner" id="tabbar"><!-- generated from TABS registry --></div>
 </div>
@@ -1699,12 +1699,12 @@ function viewPicker(){
     const open = previewOpen===name; const ls = lastSessionOf(name);
     return `<div class="card" style="padding:14px">
       <div class="row">
-        <div style="cursor:pointer;min-width:0" onclick="togglePreview('${name}')">
+        <button class="tap" style="cursor:pointer;min-width:0" data-action="togglePreview" data-name="${esc(name)}">
           <span class="pill ${accClass(PROGRAM[name].group)}">${label}</span>
-          <div class="muted" style="margin-top:6px">${PROGRAM[name].slots.length} exercises${ls?' · last '+fmtDate(ls.date):''} ${ph(open?'caret-up':'caret-down')}</div>
-        </div>
+          <span class="muted" style="display:block;margin-top:6px">${PROGRAM[name].slots.length} exercises${ls?' · last '+fmtDate(ls.date):''} ${ph(open?'caret-up':'caret-down')}</span>
+        </button>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-sm btn-ghost" onclick="skipDay('${skipName}')">Skip</button>
+          <button class="btn btn-sm btn-ghost" data-action="skipDay" data-name="${esc(skipName)}">Skip</button>
           ${startBtn}
         </div>
       </div>
@@ -1712,12 +1712,12 @@ function viewPicker(){
     </div>`;
   };
   const cards = SEQUENCE.map(name=>
-    card(name, name, `<button class="btn btn-sm ${name===nxt?'':'btn-ghost'}" onclick="startWorkout('${name}')">${name===nxt?'Start ▶':'Start'}</button>`, name)
+    card(name, name, `<button class="btn btn-sm ${name===nxt?'':'btn-ghost'}" data-action="startWorkout" data-name="${esc(name)}">${name===nxt?'Start ▶':'Start'}</button>`, name)
   ).join('');
   const is4Day = DB.routineMode==='4day';
   const specializedSection = is4Day ? `<h2 style="margin-top:22px">Specialized — choose one${nxt==='SPECIALIZED'?' <span class="flag">suggested next</span>':''}</h2>
     ${SPECIALIZED_OPTIONS.map(o=>
-      card(o.name, o.label, `<button class="btn btn-sm btn-ghost" onclick="startWorkout('${o.name}')">Start</button>`, 'SPECIALIZED')
+      card(o.name, o.label, `<button class="btn btn-sm btn-ghost" data-action="startWorkout" data-name="${esc(o.name)}">Start</button>`, 'SPECIALIZED')
     ).join('')}
     <p class="muted" style="font-size:12px">Tip: avoid Back the week it lands right after a Pull day — little recovery.</p>` : '';
   const nxtLabel = nxt==='SPECIALIZED' ? 'Specialized (choose your focus)' : nxt;
@@ -1727,7 +1727,7 @@ function viewPicker(){
     ${specializedSection}
     <h2 style="margin-top:22px">${ph('book-open')}How this program works</h2>
     ${guideDisplay.map((s,i)=>{ const o=guideOpen.has(i); return `<div class="phase-card">
-      <button class="phase-header" onclick="toggleGuide(${i})"><span class="phase-title" style="font-size:14px">${s.t}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${o?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
+      <button class="phase-header" data-action="toggleGuide" data-i="${esc(i)}"><span class="phase-title" style="font-size:14px">${s.t}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${o?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
       ${o?`<div class="phase-body">${s.b}</div>`:''}
     </div>`; }).join('')}`;
 }
@@ -4864,6 +4864,15 @@ const ACTIONS = {
   addCardio:           { click: () => addCardio() },
   pickCardioFile:      { click: () => pickCardioFile() },
   handleCardioFile:    { change: el => handleCardioFile(el) },
+  /* The rest stopwatch (static markup). A tap reaches pointerdown before click: swGuard holds focus
+     in the weight or reps box while the keyboard is up (preventDefault, which is why no listener here
+     is ever passive) and blurs it while the keyboard is down. The click then toggles or clears. */
+  swToggle: { pointerdown: (el, e) => swGuard(e), click: () => swToggle() },
+  swClear:  { pointerdown: (el, e) => swGuard(e), click: () => swClear() },
+  /* The Log tab's workout picker. Start and Skip reuse startWorkout and skipDay above. guideOpen is a
+     Set of numbers, so the section index decodes with a unary plus; a string opens nothing. */
+  togglePreview: { click: el => togglePreview(el.dataset.name) },
+  toggleGuide:   { click: el => toggleGuide(+el.dataset.i) },
 };
 document.addEventListener('click', dispatchAction, { passive: false });
 document.addEventListener('change', dispatchAction, { passive: false });

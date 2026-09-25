@@ -8,7 +8,7 @@
   "calls": [
    "swGuard"
   ],
-  "action": null
+  "action": "swToggle"
  },
  {
   "fn": "(static markup)",
@@ -19,7 +19,7 @@
   "calls": [
    "swToggle"
   ],
-  "action": null
+  "action": "swToggle"
  },
  {
   "fn": "(static markup)",
@@ -30,7 +30,7 @@
   "calls": [
    "swGuard"
   ],
-  "action": null
+  "action": "swClear"
  },
  {
   "fn": "(static markup)",
@@ -41,7 +41,7 @@
   "calls": [
    "swClear"
   ],
-  "action": null
+  "action": "swClear"
  },
  {
   "fn": "(static markup)",
@@ -511,7 +511,7 @@
   "calls": [
    "togglePreview"
   ],
-  "action": null
+  "action": "togglePreview"
  },
  {
   "fn": "viewPicker",
@@ -522,7 +522,7 @@
   "calls": [
    "skipDay"
   ],
-  "action": null
+  "action": "skipDay"
  },
  {
   "fn": "viewPicker",
@@ -533,7 +533,7 @@
   "calls": [
    "startWorkout"
   ],
-  "action": null
+  "action": "startWorkout"
  },
  {
   "fn": "viewPicker",
@@ -544,7 +544,7 @@
   "calls": [
    "startWorkout"
   ],
-  "action": null
+  "action": "startWorkout"
  },
  {
   "fn": "viewPicker",
@@ -555,7 +555,7 @@
   "calls": [
    "toggleGuide"
   ],
-  "action": null
+  "action": "toggleGuide"
  },
  {
   "fn": "viewActive",

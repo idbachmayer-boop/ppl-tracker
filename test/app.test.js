@@ -4535,15 +4535,23 @@ ok('DELEG-01: the handler inventory exists and every row names its function, eve
   });
   /* Per occurrence, not per name: two rows mapped to the same action in one function need two
      wiring sites, so one surviving sibling cannot hide a dropped control (05-03 mutation pass: the
-     Load weather button lost its data-action while the refresh button kept the name present). */
-  const need = {};
+     Load weather button lost its data-action while the refresh button kept the name present).
+     Counted per event: one element whose action handles two events (the stopwatch's pointerdown and
+     click, the weight box's input and change) is two rows but one wiring site, while two rows of the
+     SAME event mapped to one action still need two sites (05-06). */
+  const perEvent = {};
   F2_INV.forEach(r => {
     if(!r || typeof r !== 'object') return;
     f2Names(r).forEach(x => {
       const attr = r.event === 'keydown' ? `data-enter="${x}"` : `data-action="${x}"`;
-      const k = r.fn + '\u0000' + attr;
-      need[k] = (need[k] || 0) + 1;
+      const k = r.fn + '\u0000' + attr + '\u0000' + r.event;
+      perEvent[k] = (perEvent[k] || 0) + 1;
     });
+  });
+  const need = {};
+  Object.keys(perEvent).forEach(k => {
+    const key = k.split('\u0000').slice(0, 2).join('\u0000');
+    need[key] = Math.max(need[key] || 0, perEvent[k]);
   });
   Object.keys(need).forEach(k => {
     const [fn, attr] = k.split('\u0000');
@@ -4826,6 +4834,20 @@ function f2Corpus(){
        ls.setItem = () => { throw new Error('QuotaExceededError'); };
        try { a.__sandbox.save(); } finally { ls.setItem = setItem; }
        a.go('today'); }]].forEach(([label, drive]) => {
+      const a = loadApp(APP_PATH);
+      try { drive(a); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label, html: appHtml(a) });
+    });
+  }
+  /* 05-06: the Log tab's workout picker with a program preview and guide section 0 open, and the
+     picker in 4-day mode (the Specialized cards, whose Skip names SPECIALIZED). */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    [['Train → Log: picker, PUSH 1 preview and guide section 0 open', a => {
+       a.DB = populatedDB(a); a.go('train'); a.setSub('log');
+       a.__sandbox.togglePreview('PUSH 1'); a.__sandbox.toggleGuide(0); }],
+     ['Train → Log: picker in 4-day mode (Specialized cards)', a => {
+       a.DB = populatedDB(a); a.DB.routineMode = '4day'; a.go('train'); a.setSub('log'); }]].forEach(([label, drive]) => {
       const a = loadApp(APP_PATH);
       try { drive(a); } catch(e){ /* the checks read whatever rendered */ }
       out.push({ label, html: appHtml(a) });
@@ -6525,6 +6547,127 @@ function f2TodayWeighIn(){
        && JSON.stringify(exports) === '[[]]' && JSON.stringify(snoozes) === '[[]]' && r.tab === 'settings'
        && r.quota && JSON.stringify(r.qTags) === '["button","button"]' && r.qExports === '[[]]' && r.qTab === 'settings',
      { threw, r, exports, snoozes });
+}
+
+/* ── Plan 05-06: the Log tab ── */
+/* The screen Ian is standing in front of mid-set. The stopwatch bar is static markup, so its controls
+   are read from the file, and every tap goes through the listener the app registered. */
+function f2StaticControl(name){
+  return controlsIn(f2Static(F2_RAW)).find(c => c.data.action === name) || null;
+}
+/* Train → Log on a fresh instance. With no draft this is the picker. */
+function f2Log(seed){
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  if(seed) seed(a);
+  a.go('train'); a.setSub('log');
+  return a;
+}
+/* swGuard, through the app's own non-passive pointerdown listener: with the keyboard up the tap is
+   preventDefault'ed, so focus stays in the weight or reps box; with it down, the focused element is
+   blurred, so the keyboard stays down. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    ['swToggle', 'swClear'].forEach(name => {
+      const c = f2StaticControl(name);
+      r[name] = { tag: c && c.tag };
+      if(!c) return;
+      const a = loadApp(APP_PATH);
+      let blurred = 0;
+      a.__sandbox.document.activeElement = { blur(){ blurred++; } };
+      a.__sandbox.visualViewport = { height: 400, offsetTop: 0 };
+      const up = fireListener(a, 'pointerdown', fakeEl(c.data));
+      r[name].up = up.defaultPrevented; r[name].blurUp = blurred;
+      delete a.__sandbox.visualViewport;
+      const down = fireListener(a, 'pointerdown', fakeEl(c.data));
+      r[name].down = down.defaultPrevented; r[name].blurDown = blurred;
+    });
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the stopwatch holds focus with the keyboard up and lets it go with the keyboard down (swGuard through the dispatcher)',
+     !threw && ['swToggle', 'swClear'].every(n => r[n] && r[n].tag === 'button' && r[n].up === true && r[n].blurUp === 0
+       && r[n].down === false && r[n].blurDown === 1), { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  let toggles = [], clears = [];
+  try {
+    const a = loadApp(APP_PATH);
+    toggles = spyOn(a, 'swToggle'); clears = spyOn(a, 'swClear');
+    const t = f2StaticControl('swToggle'), c = f2StaticControl('swClear');
+    r.found = [!!t, !!c];
+    [t, c].forEach(x => { if(x) fireListener(a, 'pointerdown', fakeEl(x.data)); });
+    r.afterPointerdown = [toggles.length, clears.length];
+    if(t) fireListener(a, 'click', fakeEl(t.data));
+    if(c) fireListener(a, 'click', fakeEl(c.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a stopwatch tap toggles once, and Clear clears once',
+     !threw && JSON.stringify(r.found) === '[true,true]' && JSON.stringify(r.afterPointerdown) === '[0,0]'
+       && JSON.stringify(toggles) === '[[]]' && JSON.stringify(clears) === '[[]]', { threw, r, toggles, clears });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Log();
+    const rows = a.__sandbox.previewRows('PUSH 1');
+    const shown = () => f2AppHtml(a).includes(rows);
+    const bodies = () => f2AppHtml(a).split('<div class="phase-body">').length - 1;
+    const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+    const pv = find(c => c.data.action === 'togglePreview' && c.data.name === 'PUSH 1');
+    r.pv = pv && { tag: pv.tag, cls: pv.cls };
+    r.preview = [shown()];
+    if(pv){ fireListener(a, 'click', fakeEl(pv.data)); r.preview.push(shown()); fireListener(a, 'click', fakeEl(pv.data)); r.preview.push(shown()); }
+    const gd = find(c => c.data.action === 'toggleGuide' && c.data.i === '0');
+    r.gd = gd && gd.tag;
+    r.guide = [bodies()];
+    if(gd){ fireListener(a, 'click', fakeEl(gd.data)); r.guide.push(bodies()); fireListener(a, 'click', fakeEl(gd.data)); r.guide.push(bodies()); }
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a program preview and a guide section open and close through the dispatcher',
+     !threw && r.pv && r.pv.tag === 'button' && /(^|\s)tap(\s|$)/.test(r.pv.cls) && JSON.stringify(r.preview) === '[false,true,false]'
+       && r.gd === 'button' && JSON.stringify(r.guide) === '[0,1,0]', { threw, r });
+}
+/* Every Start and Skip on the picker, in both routine modes, passes its own card's name: the fixed
+   cards their workout, the Specialized options theirs, and every Specialized Skip SPECIALIZED.
+   4-day is the default mode (blank() and migration 11), so the 3-day instance sets it explicitly. */
+{
+  const r = {};
+  let threw = null;
+  let starts = [], skips = [], sStarts = [], sSkips = [];
+  try {
+    const a = f2Log(a => { a.DB.routineMode = '3day'; });   /* the fixed cards alone */
+    starts = spyOn(a, 'startWorkout'); skips = spyOn(a, 'skipDay');
+    const cs = controlsIn(f2AppHtml(a));
+    const st = cs.filter(c => c.data.action === 'startWorkout'), sk = cs.filter(c => c.data.action === 'skipDay');
+    r.st = st.map(c => c.tag + ':' + c.data.name); r.sk = sk.map(c => c.tag + ':' + c.data.name);
+    st.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+    sk.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+
+    const b = f2Log(b => { b.DB.routineMode = '4day'; });
+    sStarts = spyOn(b, 'startWorkout'); sSkips = spyOn(b, 'skipDay');
+    const bs = controlsIn(f2AppHtml(b));
+    const sst = bs.filter(c => c.data.action === 'startWorkout' && c.data.name.indexOf('SPECIALIZED') === 0);
+    const ssk = bs.filter(c => c.data.action === 'skipDay' && c.data.name.indexOf('SPECIALIZED') === 0);
+    r.sst = sst.map(c => c.tag + ':' + c.data.name); r.ssk = ssk.map(c => c.tag + ':' + c.data.name);
+    sst.forEach(c => fireAction(b, 'click', fakeEl(c.data)));
+    ssk.forEach(c => fireAction(b, 'click', fakeEl(c.data)));
+    r.PROGRAM = Object.keys(a.PROGRAM || {});
+  } catch(e){ threw = e.message; }
+  const names = l => (l || []).map(x => x.slice(x.indexOf(':') + 1));
+  const FIXED = ['PUSH 1', 'LEGS 1', 'PULL 1', 'PUSH 2', 'LEGS 2', 'PULL 2'];
+  const sNames = names(r.sst);
+  ok("DELEG-02: Start and Skip on the Log picker reuse Today's actions",
+     !threw && JSON.stringify(names(r.st)) === JSON.stringify(FIXED) && JSON.stringify(names(r.sk)) === JSON.stringify(FIXED)
+       && [r.st, r.sk, r.sst, r.ssk].every(l => (l || []).length && l.every(x => x.startsWith('button:')))
+       && JSON.stringify(starts) === JSON.stringify(FIXED.map(n => [n])) && JSON.stringify(skips) === JSON.stringify(FIXED.map(n => [n]))
+       && starts[0][0] === 'PUSH 1' && skips[0][0] === 'PUSH 1'
+       && sNames.length === 5 && new Set(sNames).size === 5 && sNames.every(n => r.PROGRAM.includes(n))
+       && sNames.includes('SPECIALIZED — CHEST & TRICEPS')
+       && JSON.stringify(sStarts) === JSON.stringify(sNames.map(n => [n]))
+       && names(r.ssk).every(n => n === 'SPECIALIZED') && JSON.stringify(sSkips) === JSON.stringify(names(r.ssk).map(n => [n])),
+     { threw, r, starts, skips, sStarts, sSkips });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
