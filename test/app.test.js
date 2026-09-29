@@ -9,7 +9,7 @@
  * The clock is frozen to midday Fri 7 Aug 2026 (see harness.js). Set TZ=America/Chicago; the suite
  * checks that itself below, because half these rules are date- and hour-sensitive.
  */
-const { loadApp, makeWx, freezeRunnerClock, APP_PATH } = require('./harness');
+const { loadApp, makeWx, freezeRunnerClock, APP_PATH, scanInlineHandlers } = require('./harness');
 const fs = require('fs');
 const path = require('path');
 
@@ -136,7 +136,8 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'liveSessions_legacy','liveWeights_legacy','livePetWeights_legacy','liveCardio_legacy','liveIdeas_legacy','liveTodos_legacy','liveHobbyLog_legacy',
   'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections', 'ensureCollectionDefaults',
   'sleepUid', 'addSleep', 'removeSleep', 'viewSleep',
-  'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown', 'exportShareFailed'];
+  'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown', 'exportShareFailed',
+  'ACTIONS', 'dispatchAction'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -225,8 +226,13 @@ f = app.mowForecast();
 ok('the forecast still projects, flagged unknown', f.unknown === true && f.days.length === 7 && f.next.k === 0, f && f.next);
 ok('  …one mow day, then a cooldown (not a week of green)', f.days.filter(d=>d.ok).length === 1, f.days.map(d=>d.ok?'mow':d.blocked));
 let card = app.cLawnCard();
+/* The anchor buttons are read as parsed controls (controlsIn, hoisted from the F2 section), never as
+   handler text: "2 days ago" backdates a mow by exactly two days. The buttons render in label order
+   (Today, Yesterday, 2 days ago, 3 days ago), so their day counts must read 0,1,2,3 in that order. */
 ok('the card carries the recommendation AND the anchor buttons',
-   /Mow today/.test(card) && /setLawnDaysAgo\('mowed',2\)/.test(card), card.replace(/<svg[\s\S]*?<\/svg>/g,'').slice(0,200));
+   /Mow today/.test(card) && controlsIn(card).some(c => c.data.action === 'setLawnDaysAgo' && c.data.which === 'mowed' && c.data.n === '2')
+     && controlsIn(card).filter(c => c.data.action === 'setLawnDaysAgo' && c.data.which === 'mowed').map(c => c.data.n).join() === '0,1,2,3',
+   { anchors: controlsIn(card).filter(c => c.data.action === 'setLawnDaysAgo').map(c => c.data), card: card.replace(/<svg[\s\S]*?<\/svg>/g,'').slice(0,200) });
 
 console.log('\n── watering ──');
 setup(app, { mowedDaysAgo: 1, wateredDaysAgo: 7, wx:{ precipByOffset:{ '-5': 1.41 } } });
@@ -273,7 +279,11 @@ ok('a future date is refused', app.setLawnLog(dayOff(1), 'mowed', true) === fals
    a deleted key would read as "never logged" on the other device. */
 ok('un-logging stores an explicit false, not a deletion',
    (app.setLawnLog(dayOff(-3),'watered',true), app.setLawnLog(dayOff(-3),'watered',false), app.DB.lawnLog[dayOff(-3)].watered === false), app.DB.lawnLog[dayOff(-3)]);
-ok('the history lists all 14 days, each tappable', (app.lawnHistory().match(/toggleLawnLog\('watered'/g)||[]).length === 14);
+{
+  /* 14 is the product's two-week window. Each pill logs its OWN date, so the 14 dates are distinct. */
+  const pills = controlsIn(app.lawnHistory()).filter(c => c.data.action === 'toggleLawnLog' && c.data.which === 'watered');
+  ok('the history lists all 14 days, each tappable', pills.length === 14 && new Set(pills.map(c => c.data.iso)).size === 14, pills.map(c => c.data.iso));
+}
 ok('  …plus a picker for older dates', /id="lawn-past-date"/.test(app.lawnHistory()));
 
 console.log('\n── the strip assumes you actually mow on the mow day ──');
@@ -1463,8 +1473,11 @@ console.log('\n── sleep: log, list and delete (SLEEP-02/SLEEP-03) ──');
 {
   const S = loadApp(APP_PATH); S.DB = populatedDB(S);
   const html = S.viewSleep();
+  /* Read the delete controls as parsed data (controlsIn, hoisted from the F2 section), never as
+     handler text: the property is "a live night can be deleted, a deleted one is not listed". */
+  const del = controlsIn(html).filter(c => c.data.action === 'removeSleep');
   ok('sleep: the history lists live nights and hides deleted ones',
-     html.indexOf("removeSleep('sl1')") >= 0 && html.indexOf("removeSleep('sl2')") < 0, html.length);
+     del.some(c => c.data.id === 'sl1') && !del.some(c => c.data.id === 'sl2'), del.map(c => c.data.id));
 }
 
 {
@@ -1506,8 +1519,11 @@ console.log('\n── sleep: log, list and delete (SLEEP-02/SLEEP-03) ──');
   const S = loadApp(APP_PATH); S.DB = S.blank();
   S.DB.sleep = [{ id:"a'b(c);", date:'2026-08-01', hours:7, quality:3, note:'', mtime:1 }];
   const html = S.viewSleep();
+  /* The safeId gate is defence in depth behind esc(): an unsafe id gets no delete control at all,
+     neither a delegated one nor an inline handler. Proven to bite by removing the gate (05-03). */
+  const del = controlsIn(html).filter(c => c.data.action === 'removeSleep');
   ok('sleep: an id that could break out of the attribute gets no delete button',
-     html.indexOf('7h') >= 0 && html.indexOf('removeSleep(') < 0, html);
+     html.indexOf('7h') >= 0 && del.length === 0 && html.indexOf('removeSleep(') < 0, { del, html });
 }
 
 {
@@ -3530,10 +3546,16 @@ X.__sandbox.Blob = function(parts, opts){ this.parts = parts; this.type = opts &
   // Claude button's own opening tag. A second one would mean another button sits in between.
   const between = jsonBtnEnd >= 0 && claudeIdx >= 0 ? html.slice(jsonBtnEnd, claudeIdx) : '';
   const buttonTagsBetween = (between.match(/<button/g) || []).length;
-  const onclickCount = (X.__src.match(/onclick="exportMarkdown\(\)"/g) || []).length;
+  /* Exactly one Settings control runs exportMarkdown, whatever the markup calls it (Phase 5 moved
+     the call from an inline handler to a delegated action, Pitfall 8). */
+  const xActions = X.ACTIONS || {};
+  const exportControls = controlsIn(html).filter(c => {
+    const own = Object.prototype.hasOwnProperty.call(xActions, c.data.action) && xActions[c.data.action];
+    return !!own && typeof own.click === 'function' && Function.prototype.toString.call(own.click).includes('exportMarkdown(');
+  }).length;
   ok('export: Settings shows Export for Claude (.md) directly below Export backup (.json) (D-02)',
-     jsonIdx >= 0 && claudeIdx > jsonIdx && importIdx > claudeIdx && buttonTagsBetween === 1 && onclickCount === 1,
-     { jsonIdx, claudeIdx, importIdx, buttonTagsBetween, onclickCount });
+     jsonIdx >= 0 && claudeIdx > jsonIdx && importIdx > claudeIdx && buttonTagsBetween === 1 && exportControls === 1,
+     { jsonIdx, claudeIdx, importIdx, buttonTagsBetween, exportControls });
 }
 
 let exportResult;
@@ -4363,6 +4385,2899 @@ function shareEnv(a, opts){
   ok('export: a build failure shows a toast and neither shares nor downloads',
      result==='error' && toastText==="Couldn't build the export" && env.clicks.length===0 && env.shareCalls.length===0,
      { result, toastText, clicks: env.clicks.length, shareCalls: env.shareCalls.length });
+}
+
+console.log('\n── F2: every inline handler becomes a delegated action (DELEG-01…06) ──');
+/* Phase 5 moves every inline on-event attribute to one delegated dispatcher: markup names an action
+   (`data-action`), five document listeners hand the event to dispatchAction(), and the event-keyed
+   ACTIONS registry calls the existing function. Delegation fails SILENTLY — a dropped call site, a
+   string where a number was, or a double fire all look like "the button does nothing" on the
+   phone, where the inline version would have worked or thrown. These checks are the phase.
+
+   The helpers below are top-level function declarations, hoisted with their bodies, so checks
+   earlier in the file may call them. They read only their arguments, never a const declared in
+   this section (that would be a temporal-dead-zone error when called from earlier). */
+
+/* One object per start tag in rendered `html` that carries a data-action attribute. */
+function controlsIn(html){
+  const out = [];
+  const decode = v => String(v).replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  const TAG = /<([a-zA-Z][\w-]*)((?:\s+[^\s=>\/"']+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?)*)\s*\/?>/g;
+  const ATTR = /([^\s=>\/"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+)))?/g;
+  let m;
+  while((m = TAG.exec(String(html || '')))){
+    const attrs = {};
+    let a;
+    ATTR.lastIndex = 0;
+    while((a = ATTR.exec(m[2]))){
+      const name = a[1].toLowerCase();
+      const val = a[2] !== undefined ? a[2] : a[3] !== undefined ? a[3] : a[4] !== undefined ? a[4] : null;
+      if(!(name in attrs)) attrs[name] = val;
+    }
+    if(!('data-action' in attrs)) continue;
+    const data = {};
+    Object.keys(attrs).filter(k => k.startsWith('data-')).forEach(k => {
+      data[k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = decode(attrs[k] === null ? '' : attrs[k]);
+    });
+    out.push({ tag: m[1].toLowerCase(), type: attrs.type ? decode(attrs.type) : '', cls: attrs.class ? decode(attrs.class) : '',
+               disabled: 'disabled' in attrs, data });
+  }
+  return out;
+}
+/* A stand-in element: enough for dispatchAction (dataset, disabled, value, closest). */
+function fakeEl(data, extra){
+  const el = Object.assign({ dataset: Object.assign({}, data), disabled: false, value: '' }, extra);
+  if(!('closest' in el)) el.closest = sel => sel === '[data-action]' ? el : null;
+  return el;
+}
+function f2Event(type, el, more){
+  return Object.assign({ type, target: el, key: undefined, defaultPrevented: false,
+    preventDefault(){ this.defaultPrevented = true; } }, more);
+}
+/* Straight into the dispatcher. */
+function fireAction(a, type, el, more){
+  const ev = f2Event(type, el, more);
+  if(typeof a.dispatchAction === 'function') a.dispatchAction(ev);
+  return ev;
+}
+/* Through every listener the app itself registered on document for this event type, exactly as a
+   real tap reaches the app. This proves the registration as well as the dispatch. */
+function fireListener(a, type, el, more){
+  const ev = f2Event(type, el, more);
+  ((a.__listeners && a.__listeners[type]) || []).forEach(l => { if(typeof l.fn === 'function') l.fn(ev); });
+  return ev;
+}
+/* Replace a function declaration on the vm global with a recorder of its argument lists. A wrapper
+   resolves the name through the global at call time, so the override is what it calls. */
+function spyOn(a, name){
+  const calls = [];
+  a.__sandbox[name] = (...args) => { calls.push(args); };
+  return calls;
+}
+/* JS comments out, keeping `https://` (a `//` preceded by a colon is a URL, not a comment). */
+function f2StripJs(s){
+  return String(s).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\\])\/\/.*$/gm, '$1');
+}
+/* The static markup: from <body> up to the first exact <script> (the inline app script). */
+function f2Static(raw){
+  const b = raw.indexOf('<body>'), s = raw.indexOf('<script>', b < 0 ? 0 : b);
+  return b < 0 || s < 0 ? '' : raw.slice(b, s);
+}
+
+const F2_EVENTS = ['click','change','input','keydown','pointerdown'];
+const F2_RAW = fs.readFileSync(APP_PATH, 'utf8');
+const F2_INV_PATH = path.join(__dirname, 'fixtures', 'handler-inventory.json');
+let F2_INV = [], F2_INV_ERR = null;
+try { F2_INV = JSON.parse(fs.readFileSync(F2_INV_PATH, 'utf8')); }
+catch(e){ F2_INV_ERR = String(e && e.message || e); F2_INV = []; }
+if(!Array.isArray(F2_INV)){ F2_INV_ERR = F2_INV_ERR || 'not an array'; F2_INV = []; }
+/* A fresh instance, so no earlier check's override of a sandbox function can hide a call site. */
+const f2app = loadApp(APP_PATH);
+const F2_A = f2app.ACTIONS || {};
+const f2Own = name => typeof name === 'string' && Object.prototype.hasOwnProperty.call(F2_A, name);
+const f2FnSrc = fn => fn === '(static markup)' ? f2Static(F2_RAW)
+  : (typeof f2app.__sandbox[fn] === 'function' ? Function.prototype.toString.call(f2app.__sandbox[fn]) : '');
+const f2HandlerSrc = (name, ev) => f2Own(name) && F2_A[name] && typeof F2_A[name][ev] === 'function'
+  ? Function.prototype.toString.call(F2_A[name][ev]) : '';
+const f2Names = r => Array.isArray(r.actions) ? r.actions : (r.action ? [r.action] : []);
+const f2Count = (hay, needle) => needle ? hay.split(needle).length - 1 : 0;
+
+ok('DELEG-01: the handler inventory exists and every row names its function, event, handler text and callees', (() => {
+  if(F2_INV_ERR || !F2_INV.length) return false;
+  const seen = new Set();
+  return F2_INV.every(r => {
+    if(!r || typeof r !== 'object') return false;
+    const key = [r.fn, r.event, r.was, r.occurrence].join('|');
+    if(seen.has(key)) return false;
+    seen.add(key);
+    const hasAction = 'action' in r, hasActions = 'actions' in r;
+    return typeof r.fn === 'string' && r.fn.length > 0 && F2_EVENTS.includes(r.event)
+      && typeof r.was === 'string' && r.was.length > 0 && Number.isInteger(r.occurrence) && r.occurrence >= 1
+      && Array.isArray(r.calls) && r.calls.every(c => typeof c === 'string' && c.length > 0)
+      && hasAction !== hasActions
+      && (hasAction ? (r.action === null || typeof r.action === 'string')
+                    : (Array.isArray(r.actions) && r.actions.every(x => typeof x === 'string' && x.length > 0)));
+  });
+})(), F2_INV_ERR || undefined);
+
+/* DELEG-03, the ratchet. An unmapped row must still be inline, verbatim, in its function. A mapped
+   row must be wired (`data-action`, or `data-action="enter"` + `data-enter` for Enter-to-submit) in
+   the same function, to an action that handles its event, and that action must still call every
+   function the original handler called. */
+{
+  const broken = [];
+  F2_INV.forEach(r => {
+    if(!r || typeof r !== 'object') return;
+    const src = f2FnSrc(r.fn), names = f2Names(r);
+    if(!names.length){
+      if(f2Count(src, `on${r.event}="${r.was}"`) < r.occurrence) broken.push({ fn: r.fn, event: r.event, was: r.was, why: 'dropped without a mapping' });
+      return;
+    }
+    const why = [];
+    names.forEach(x => {
+      if(r.event === 'keydown'){
+        if(!f2HandlerSrc('enter', 'keydown')) why.push('no enter.keydown');
+        if(!f2HandlerSrc(x, 'click')) why.push(x + ' has no click handler');
+        if(!src.includes('data-action="enter"') || !src.includes(`data-enter="${x}"`)) why.push(x + ' not wired by data-enter');
+      } else {
+        if(!f2HandlerSrc(x, r.event)) why.push(x + ' has no ' + r.event + ' handler');
+        if(!src.includes(`data-action="${x}"`)) why.push(x + ' not wired by data-action');
+      }
+    });
+    const ran = names.map(x => f2HandlerSrc(x, r.event === 'keydown' ? 'click' : r.event)).join('\n');
+    /* Whole identifier only: `goX` must not stand in for `go`. */
+    (r.calls || []).forEach(c => {
+      const tail = String(c).split('.').pop().replace(/\$/g, '\\$');
+      if(!new RegExp('(?<![\\w$])' + tail + '(?![\\w$])').test(ran)) why.push('lost call ' + c);
+    });
+    if(why.length) broken.push({ fn: r.fn, event: r.event, was: r.was, why });
+  });
+  /* Per occurrence, not per name: two rows mapped to the same action in one function need two
+     wiring sites, so one surviving sibling cannot hide a dropped control (05-03 mutation pass: the
+     Load weather button lost its data-action while the refresh button kept the name present).
+     Counted per event: one element whose action handles two events (the stopwatch's pointerdown and
+     click, the weight box's input and change) is two rows but one wiring site, while two rows of the
+     SAME event mapped to one action still need two sites (05-06). */
+  const perEvent = {};
+  F2_INV.forEach(r => {
+    if(!r || typeof r !== 'object') return;
+    f2Names(r).forEach(x => {
+      const attr = r.event === 'keydown' ? `data-enter="${x}"` : `data-action="${x}"`;
+      const k = r.fn + '\u0000' + attr + '\u0000' + r.event;
+      perEvent[k] = (perEvent[k] || 0) + 1;
+    });
+  });
+  const need = {};
+  Object.keys(perEvent).forEach(k => {
+    const key = k.split('\u0000').slice(0, 2).join('\u0000');
+    need[key] = Math.max(need[key] || 0, perEvent[k]);
+  });
+  Object.keys(need).forEach(k => {
+    const [fn, attr] = k.split('\u0000');
+    const have = f2Count(f2FnSrc(fn), attr);
+    if(have < need[k]) broken.push({ fn, why: `${attr} wired ${have}x, ${need[k]} inventory rows map to it` });
+  });
+  ok('DELEG-03: every inventoried call site is still inline, or is wired to an action that handles its event and keeps every call',
+     !F2_INV_ERR && broken.length === 0, broken.slice(0, 5));
+}
+
+/* DELEG-04: no NEW inline handler. Every inline on-event attribute left in the file (any event, any
+   quoting, comments included) must be an UNMAPPED inventory row, and no key may appear more often
+   than the unmapped rows allow. */
+{
+  const scan = typeof scanInlineHandlers === 'function' ? scanInlineHandlers : null;
+  const rows = scan ? scan(F2_RAW) : [];
+  const budget = {};
+  F2_INV.filter(r => r && !f2Names(r).length).forEach(r => { const k = [r.fn, r.event, r.was].join('|'); budget[k] = (budget[k] || 0) + 1; });
+  const used = {}, offenders = [];
+  rows.forEach(r => {
+    const k = [r.fn, r.event, r.was].join('|');
+    used[k] = (used[k] || 0) + 1;
+    if(!F2_EVENTS.includes(r.event) || r.was === null || used[k] > (budget[k] || 0)) offenders.push({ fn: r.fn, event: r.event, tag: r.tag, was: r.was });
+  });
+  const synthetic = scan ? { attribute: scan('<b onclick="x()">').length, jsProperty: scan('r.onload=()=>1; const one = 2').length } : null;
+  ok('DELEG-04: every inline handler left in index.html is an unconverted inventory row',
+     !!scan && !F2_INV_ERR && offenders.length === 0 && synthetic.attribute === 1 && synthetic.jsProperty === 0,
+     { offenders: offenders.slice(0, 5), synthetic });
+}
+
+/* DELEG-04: every action name in the source is a literal that names a registry entry. */
+{
+  const text = f2StripJs(f2app.__src || '') + '\n' + f2Static(F2_RAW);
+  const unknown = [], built = [];
+  for(const m of text.matchAll(/data-(action|enter)\s*=\s*("([^"]*)"|\S{0,24})/g)){
+    const quoted = m[2][0] === '"', val = quoted ? m[3] : m[2];
+    if(!quoted || val.includes('${')) built.push(m[0]);
+    else if(!f2Own(val)) unknown.push(m[1] + '=' + val);
+  }
+  ok('DELEG-04: every data-action and data-enter names an ACTIONS entry, and no action name is built at runtime',
+     unknown.length === 0 && built.length === 0, { unknown: unknown.slice(0, 5), built: built.slice(0, 5) });
+}
+
+/* DELEG-02: one document listener per delegated event, all dispatchAction, none passive (a passive
+   pointerdown would silently drop swGuard's preventDefault and dismiss the keyboard mid-set). */
+{
+  const a = loadApp(APP_PATH);
+  const wrong = F2_EVENTS.filter(t => {
+    const ls = (a.__listeners && a.__listeners[t]) || [];
+    if(ls.length !== 1 || typeof a.dispatchAction !== 'function' || ls[0].fn !== a.dispatchAction) return true;
+    const o = ls[0].opts;
+    return !!(o && typeof o === 'object' && o.passive);
+  });
+  ok('DELEG-02: document has one listener per delegated event, it is dispatchAction, and none is passive', wrong.length === 0, wrong);
+}
+
+/* The tracer: a tap on a tab reaches go() only through the listener the app registered, the
+   dispatcher and the registry. */
+{
+  const a = loadApp(APP_PATH);
+  let control = null, threw = null;
+  try {
+    if(typeof a.buildTabBar === 'function') a.buildTabBar();
+    control = controlsIn(a.__sandbox.document.getElementById('tabbar').innerHTML).find(c => c.data.tab === 'train') || null;
+    if(control) fireListener(a, 'click', fakeEl(control.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG tracer: a tap on a tab reaches go() through the document listener',
+     !threw && !!control && control.tag === 'button' && control.data.action === 'go' && a.TAB === 'train',
+     { threw, control, TAB: a.TAB });
+}
+
+/* Every numeric data-* key. A wrapper must read each one as `+el.dataset.key` or
+   `Number(el.dataset.key)`: dataset values are always strings, and a string index fails silently
+   (a Set lookup that never matches, `0 + "-1"`, "set 01"). A plan that needs another numeric key
+   adds it here in the same commit. */
+const NUMERIC_DATA = ['i','k','idx','n','d','range'];
+/* Function names allowed to stop propagation, each added only after confirming it cannot starve the
+   one document listener for that event. Empty: index.html had none when Phase 5 began. */
+const REVIEWED_PROPAGATION = [];
+/* Actions allowed on a non-button click target. The Ideas modal backdrop wraps interactive controls,
+   so it cannot be a <button>; its keyboard path is the sheet's own Close button (D-08). */
+const REVIEWED_NONBUTTON_CLICK = ['ideasBackdrop'];
+
+/* Instance whose Today view throws, so render() shows the "Something broke" card. */
+function f2ErrorCard(){
+  const a = loadApp(APP_PATH);
+  const t = a.TABS[0], view = t.view;
+  t.view = () => { throw new Error('boom'); };
+  try { a.go(t.id); } finally { t.view = view; }
+  return { a, html: a.__sandbox.document.getElementById('app').innerHTML || '' };
+}
+/* Every rendered state the F2 checks look at: the static markup, every screen in three states, the
+   tab bar and the error card. Computed once. */
+function f2Corpus(){
+  if(f2Corpus.cache) return f2Corpus.cache;
+  const out = [];
+  const raw = fs.readFileSync(APP_PATH, 'utf8');
+  out.push({ label: 'static markup', html: f2Static(raw) });
+  const states = [
+    ['with data', a => { a.DB = populatedDB(a); }],
+    ['fresh install', a => { a.DB = a.blank(); }],
+    ['mid-workout', a => { const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d; }],
+  ];
+  states.forEach(([state, seed]) => {
+    const a = loadApp(APP_PATH);
+    seed(a);
+    const appEl = a.__sandbox.document.getElementById('app');
+    SCREENS.forEach(([label, tab, sub]) => {
+      appEl.innerHTML = '';
+      try { a.go(tab); if(sub) a.setSub(sub); } catch(e){ /* drawEvery reports a screen that throws */ }
+      out.push({ label: `${state}: ${label}`, html: appEl.innerHTML || '' });
+    });
+    a.buildTabBar();
+    out.push({ label: `${state}: tab bar`, html: a.__sandbox.document.getElementById('tabbar').innerHTML || '' });
+  });
+  out.push({ label: 'error card', html: f2ErrorCard().html });
+  /* States later plans add, to reach controls the default screens do not render: */
+  /* 05-02: the Ideas list, which lives in static markup outside render(), with one idea being
+     edited so both row forms (read and edit) are present. */
+  {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.DB.ideas = [{ id:'i1', text:'first', date:a.todayISO(), done:false, mtime:1 },
+                  { id:'i2', text:'second', date:a.todayISO(), done:true, mtime:1 }];
+    const list = () => a.__sandbox.document.getElementById('ideas-list').innerHTML || '';
+    try {
+      a.renderIdeasList();
+      const edit = controlsIn(list()).find(c => c.data.action === 'startEditIdea' && c.data.id === 'i2');
+      if(edit) fireAction(a, 'click', fakeEl(edit.data));
+    } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
+    out.push({ label: 'ideas list (one being edited)', html: list() });
+  }
+  /* 05-02: Settings with the cards the default states never open. The harness has no Firebase, so
+     the sync card shows its buttons only once `firebase` is stubbed. */
+  {
+    const a = loadApp(APP_PATH);
+    const appHtml = () => a.__sandbox.document.getElementById('app').innerHTML || '';
+    a.__sandbox.firebase = {};
+    a.DB = a.blank();
+    a.DB.weights = [{ date: a.todayISO(), value: 190, deletedAt: Date.now(), mtime: Date.now() }];
+    try {
+      a.go('settings');
+      out.push({ label: 'Settings: sync signed out', html: appHtml() });
+      a.__sandbox.toggleTrash();
+      out.push({ label: 'Settings: trash open (one deleted item)', html: appHtml() });
+      a.__sandbox.toggleTrash();
+      a.snapshotNow('f2');
+      a.SYNC.user = { email: 't@example.com' };
+      a.SYNC.needsUpdate = true;
+      a.cloudVersionList = [{ _id: 'v1', at: Date.now(), label: 'cloud', summary: {} }];
+      a.__sandbox.toggleVersions();
+      out.push({ label: 'Settings: versions open (local + cloud), sync signed in and paused', html: appHtml() });
+    } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
+  }
+  /* 05-03: Care → Skin on the shaving sub-tab with phase 0 expanded, which the default Skin screen
+     (the routine) never renders. */
+  {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    try {
+      a.go('care'); a.setSub('skin');
+      a.__sandbox.skinSubTab('shaving');
+      a.__sandbox.skinTogglePhase(0);
+    } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
+    out.push({ label: 'Care → Skin: shaving, phase 0 open', html: a.__sandbox.document.getElementById('app').innerHTML || '' });
+  }
+  /* 05-03: the Lawn states the default screens never reach. `lawnAt` places the location and a
+     weather blob for the same spot, so the cache is not stale and no fetch starts. */
+  {
+    const lawnAt = (a, o) => {
+      a.DB = a.blank();
+      a.DB.lawn = { lat: 44.94, lon: -93.36, label: 'St. Louis Park' };
+      a.DB.wx = o.wx === null ? null : Object.assign(makeWx(Object.assign({ todayISO: a.todayISO() }, o.wx || {})), { lat: 44.94, lon: -93.36 });
+      a.DB.lawnLog = {};
+      const day = n => { const d = new Date(a.todayISO() + 'T00:00'); d.setDate(d.getDate() - n); return d.toLocaleDateString('en-CA'); };
+      if(o.mowedDaysAgo != null) (a.DB.lawnLog[day(o.mowedDaysAgo)] = a.DB.lawnLog[day(o.mowedDaysAgo)] || {}).mowed = true;
+      if(o.wateredDaysAgo != null) (a.DB.lawnLog[day(o.wateredDaysAgo)] = a.DB.lawnLog[day(o.wateredDaysAgo)] || {}).watered = true;
+    };
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    {
+      const a = loadApp(APP_PATH);
+      a.DB = a.blank();
+      try { a.go('care'); a.setSub('lawn'); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label: 'Care → Lawn: no location (setup)', html: appHtml(a) });
+    }
+    {
+      /* never watered, so the full card also shows the "Last done" anchor buttons */
+      const a = loadApp(APP_PATH);
+      lawnAt(a, { mowedDaysAgo: 9, wx: {} });
+      try { a.go('care'); a.setSub('lawn'); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label: 'Care → Lawn: location and weather (full card, history, refresh)', html: appHtml(a) });
+    }
+    {
+      /* viewLawn() directly: on the screen, onRender starts a fetch that the harness never settles,
+         and the view then shows "Loading weather…" in place of the button. */
+      const a = loadApp(APP_PATH);
+      lawnAt(a, { wx: null });
+      let html = '';
+      try { html = a.__sandbox.viewLawn(); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label: 'Care → Lawn: location, no weather (Load weather)', html });
+    }
+    {
+      const a = loadApp(APP_PATH);
+      lawnAt(a, { mowedDaysAgo: 5, wateredDaysAgo: 1, wx: { precipByOffset: { 0: 0.6 } } });
+      try { a.go('today'); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label: 'Today: lawn heads-up', html: appHtml(a) });
+    }
+  }
+  /* 05-04: Train → History with the controls the default screen hides. The journal editor and the
+     activity panel exclude each other (each opener closes the other), so they are two states. */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    const hist = () => { const a = loadApp(APP_PATH); a.DB = populatedDB(a); a.go('train'); a.setSub('history'); return a; };
+    {
+      const a = hist();
+      try {
+        a.__sandbox.toggleBackdate();
+        a.__sandbox.toggleHist(3);
+        a.__sandbox.editJournal(dayOff(-1));
+      } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
+      out.push({ label: 'Train → History: backdate picker, session row and journal editor open', html: appHtml(a) });
+    }
+    {
+      const a = hist();
+      try {
+        a.__sandbox.toggleHist(2);
+        a.__sandbox.openActivityAdd(dayOff(-1));
+      } catch(e){ /* a throw leaves whatever rendered; the checks read it */ }
+      out.push({ label: 'Train → History: skipped row open, activity panel with one logged activity', html: appHtml(a) });
+    }
+  }
+  /* 05-04: Train → Progress on the strength and pet subs (populatedDB has pet weights), and Train →
+     Cardio with two logged sessions. The pending-import card needs a parsed Strava file, so its Save
+     and Discard are left to the static checks and the ratchet. */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    ['strength', 'pet'].forEach(sub => {
+      const a = loadApp(APP_PATH);
+      a.DB = populatedDB(a);
+      try { a.go('train'); a.setSub('progress'); a.__sandbox.progSubTab(sub); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label: `Train → Progress: ${sub} sub`, html: appHtml(a) });
+    });
+    const a = loadApp(APP_PATH);
+    a.DB = populatedDB(a);
+    a.DB.cardio.push({ id:'c2', date:dayOff(-2), type:'Walk', minutes:30, distanceKm:1.2, note:'', source:'strava', mtime:1 });
+    try { a.go('train'); a.setSub('cardio'); } catch(e){ /* the checks read whatever rendered */ }
+    out.push({ label: 'Train → Cardio: two logged sessions', html: appHtml(a) });
+  }
+  /* 05-05: Today's workout card in each of its three variants. The frozen clock is a Friday, a
+     workout day: populatedDB's next workout is LEGS 2 (the fixed card), 4-day mode after a Pull day
+     reaches the Specialized options, and a draft shows Resume. */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    [['Today: workout in progress (Resume)', a => { a.DB.draft = fullDraft(a, 'PUSH 1'); }],
+     ['Today: workout day, fixed next workout', null],
+     ['Today: 4-day mode, Specialized next', a => f2SeedSpecialized(a)],
+     ['Today: evening order (week card)', a => f2Evening(a)]].forEach(([label, seed]) => {
+      const a = loadApp(APP_PATH);
+      try { a.DB = populatedDB(a); if(seed) seed(a); a.go('today'); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label, html: appHtml(a) });
+    });
+  }
+  /* 05-05: Today's weigh-in card open on a blank DB (both log rows), Today with a lawn location and
+     fresh weather (the weather card), and Today with the mobility card open (its checkboxes). */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    [['Today: blank, weigh-in open (both log rows)', a => { a.DB = a.blank(); a.go('today'); a.toggleAcc('weighin'); }],
+     ['Today: lawn location and weather (weather card)', a => { a.DB = a.blank(); setup(a, {}); a.go('today'); }],
+     ['Today: mobility card open', a => { a.DB = a.blank(); a.go('today'); a.toggleAcc('mob-today'); }],
+     /* 05-05 Task 3: more to-dos than the cap, expanded (every checkbox and × plus Show less) */
+     ['Today: seven to-dos, list expanded', a => {
+       a.DB = a.blank();
+       a.DB.todos = Array.from({ length: 7 }, (_, k) => ({ text: 'task ' + k, created: dayOff(-k), mtime: 1 }));
+       a.go('today'); a.toggleAcc('todos-all'); }],
+     /* both banners: never backed up (the backup banner, signed out so Set up sync shows) and a
+        quota failure on save (the storage banner) */
+     ['Today: backup and storage banners', a => {
+       a.DB = a.blank();
+       const ls = a.__sandbox.localStorage, setItem = ls.setItem;
+       ls.setItem = () => { throw new Error('QuotaExceededError'); };
+       try { a.__sandbox.save(); } finally { ls.setItem = setItem; }
+       a.go('today'); }]].forEach(([label, drive]) => {
+      const a = loadApp(APP_PATH);
+      try { drive(a); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label, html: appHtml(a) });
+    });
+  }
+  /* 05-06: the Log tab's workout picker with a program preview and guide section 0 open, and the
+     picker in 4-day mode (the Specialized cards, whose Skip names SPECIALIZED). */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    [['Train → Log: picker, PUSH 1 preview and guide section 0 open', a => {
+       a.DB = populatedDB(a); a.go('train'); a.setSub('log');
+       a.__sandbox.togglePreview('PUSH 1'); a.__sandbox.toggleGuide(0); }],
+     ['Train → Log: picker in 4-day mode (Specialized cards)', a => {
+       a.DB = populatedDB(a); a.DB.routineMode = '4day'; a.go('train'); a.setSub('log'); }]].forEach(([label, drive]) => {
+      const a = loadApp(APP_PATH);
+      try { drive(a); } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label, html: appHtml(a) });
+    });
+  }
+  /* 05-06: the active workout in the states the default mid-workout screen never shows. The first has
+     slot 0 stalled (the coach's Deload button) with set 1 skipped (its Undo), slot 1 collapsed (the
+     whole-card button) and slot 2 deloaded (the coach's undo); the warm-up ramp on slot 0 is open,
+     which only changes the DOM box, so its button is what renders. The second is a backdated draft
+     (the date and minutes inputs) with the stair stepper skipped (its Undo). */
+  {
+    const appHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+    [['Train → Log: mid-workout, collapsed, skipped set, stalled and deloaded slots, warm-up open', (d, a) => f2MidBusy(d, a),
+      a => { a.__sandbox.toggleExCollapse(1); a.__sandbox.toggleWarm(0); }],
+     ['Train → Log: backdated draft, stair stepper skipped', d => f2MidPast(d), null],
+     /* the warm-up and cool-down accordions and PUSH 1's abs extras card open (its boxes, select and
+        set buttons) */
+     ['Train → Log: warm-up, cool-down and the abs extras card open', () => {},
+      a => { a.__sandbox.toggleAcc('warmup'); a.__sandbox.toggleAcc('stretch'); a.__sandbox.toggleAcc('abs'); }]].forEach(([label, seed, after]) => {
+      const a = loadApp(APP_PATH);
+      try {
+        const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); seed(d, a); a.DB = d;
+        a.go('train'); a.setSub('log');
+        if(after) after(a);
+      } catch(e){ /* the checks read whatever rendered */ }
+      out.push({ label, html: appHtml(a) });
+    });
+  }
+  f2Corpus.cache = out;
+  return out;
+}
+
+/* Every [name, event, source] in the registry. */
+const f2Handlers = () => Object.keys(F2_A).flatMap(name => {
+  const spec = F2_A[name];
+  return spec && typeof spec === 'object'
+    ? Object.keys(spec).filter(ev => typeof spec[ev] === 'function').map(ev => [name, ev, Function.prototype.toString.call(spec[ev])])
+    : [];
+});
+
+{
+  const a = loadApp(APP_PATH);
+  a.go('train');
+  const c = controlsIn(a.__sandbox.document.getElementById('app').innerHTML).find(x => x.data.action === 'setSub' && x.data.sub === 'history');
+  let threw = null;
+  try { if(c) fireAction(a, 'click', fakeEl(c.data)); } catch(e){ threw = e.message; }
+  ok('DELEG-02: the section switcher changes the sub-view through the dispatcher',
+     !!c && !threw && a.subState.train === 'history', { control: c || null, threw, sub: a.subState.train });
+}
+{
+  const { a, html } = f2ErrorCard();
+  const cs = controlsIn(html);
+  const exp = cs.find(x => x.data.action === 'exportData'), rel = cs.find(x => x.data.action === 'reload');
+  const exports = spyOn(a, 'exportData');
+  let reloads = 0;
+  a.__sandbox.location.reload = () => { reloads++; };
+  let threw = null;
+  try {
+    if(exp) fireAction(a, 'click', fakeEl(exp.data));
+    if(rel) fireAction(a, 'click', fakeEl(rel.data));
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: the error card's Export and Reload run through the dispatcher",
+     /Something broke on this screen/.test(html) && !!exp && !!rel && !threw && exports.length === 1 && reloads === 1,
+     { export: !!exp, reload: !!rel, threw, exports: exports.length, reloads });
+}
+
+ok('F2: every ACTIONS entry is keyed only by the five delegated events',
+   !!f2app.ACTIONS && Object.keys(F2_A).every(name => {
+     const spec = F2_A[name];
+     return spec && typeof spec === 'object' && Object.keys(spec).length > 0
+       && Object.keys(spec).every(ev => F2_EVENTS.includes(ev) && typeof spec[ev] === 'function');
+   }),
+   Object.keys(F2_A).filter(name => { const s = F2_A[name]; return !s || typeof s !== 'object' || !Object.keys(s).length
+     || Object.keys(s).some(ev => !F2_EVENTS.includes(ev) || typeof s[ev] !== 'function'); }));
+
+/* Enter on a focused button fires click natively; a keydown handler there would run it twice. */
+ok('F2: only the Enter action listens to keydown',
+   Object.keys(F2_A).filter(name => F2_A[name] && typeof F2_A[name].keydown === 'function').every(name => name === 'enter'),
+   Object.keys(F2_A).filter(name => F2_A[name] && F2_A[name].keydown && name !== 'enter'));
+
+{
+  const bad = f2Handlers().filter(([, , src]) => { const s = f2StripJs(src); return /\bDB\b/.test(s) || /\bsave(Local)?\(/.test(s); })
+    .map(([name, ev]) => name + '.' + ev);
+  ok('F2: action wrappers never read DB and never persist', bad.length === 0, bad);
+}
+/* DRAFT-05's own scan walks sandbox function declarations only; ACTIONS' arrows are not among them.
+   Apply the same property to every wrapper, so a wrapper can never read the draft and push. */
+{
+  const bad = f2Handlers().filter(([, , src]) => { const s = f2StripJs(src); return /\bDB\.draft\b/.test(s) && /(?<![\w.$])save\(\)/.test(s); })
+    .map(([name, ev]) => name + '.' + ev);
+  ok('DRAFT-05 (F2): no action wrapper reads the draft and pushes', bad.length === 0, bad);
+}
+
+/* Each `.dataset.<numeric key>` must sit right after `Number(` or a UNARY plus. A binary plus
+   (`'x' + el.dataset.i`) is string concatenation, so a plus only counts after an operator, an
+   opening bracket, an arrow or the start of the expression. */
+function f2UndecodedNumeric(src, keys){
+  const bad = [];
+  const re = /([\w$]+(?:\.[\w$]+)*)\.dataset\.([A-Za-z_$][\w$]*)(?![\w$])/g;
+  let m;
+  while((m = re.exec(src))){
+    if(!keys.includes(m[2])) continue;
+    const before = src.slice(0, m.index).replace(/\s+$/, '');
+    const numberCall = /(^|[^\w$.])Number\($/.test(before);
+    const unary = /\+$/.test(before) && /(^|[(,=\[:?!&|{};>+\-*\/])$/.test(before.slice(0, -1).replace(/\s+$/, ''));
+    if(!numberCall && !unary) bad.push(m[0]);
+  }
+  return bad;
+}
+{
+  const bad = f2Handlers().flatMap(([name, ev, src]) => f2UndecodedNumeric(f2StripJs(src), NUMERIC_DATA).map(x => `${name}.${ev}: ${x}`));
+  const synthetic = {
+    caught: f2UndecodedNumeric('el => weekShift(el.dataset.d)', NUMERIC_DATA).length === 1,
+    concatCaught: f2UndecodedNumeric("el => f('x' + el.dataset.i)", NUMERIC_DATA).length === 1,
+    passes: f2UndecodedNumeric('el => weekShift(+el.dataset.d)', NUMERIC_DATA).length === 0
+         && f2UndecodedNumeric('el => f(Number(el.dataset.i), +el.dataset.k)', NUMERIC_DATA).length === 0,
+    wholeKey: f2UndecodedNumeric('el => f(el.dataset.dateEl)', NUMERIC_DATA).length === 0,
+  };
+  ok('F2: every numeric data-* is decoded with Number() or unary plus',
+     bad.length === 0 && Object.values(synthetic).every(Boolean), { bad: bad.slice(0, 5), synthetic });
+}
+
+{
+  const a = loadApp(APP_PATH);
+  const cases = [
+    ['no target', { target: null }],
+    ['closest finds nothing', { target: { closest: () => null } }],
+    ['no closest at all', { target: {} }],
+    ['unknown action', { target: fakeEl({ action: 'nope', tab: 'care' }) }],
+    ['constructor', { target: fakeEl({ action: 'constructor', tab: 'care' }) }],
+    ['toString', { target: fakeEl({ action: 'toString', tab: 'care' }) }],
+    ['__proto__', { target: fakeEl({ action: '__proto__', tab: 'care' }) }],
+    ['disabled', { target: fakeEl({ action: 'go', tab: 'care' }, { disabled: true }) }],
+    ['unhandled event', { type: 'keydown', target: fakeEl({ action: 'go', tab: 'care' }) }],
+  ];
+  const wrong = [];
+  /* Poison the app's own Object.prototype with a click handler, so an inherited name that slipped
+     past an own-key check would visibly run it instead of harmlessly finding nothing. */
+  const proto = a.ACTIONS ? Object.getPrototypeOf(a.ACTIONS) : null;
+  const inherited = [];
+  if(proto) proto.click = () => { inherited.push('ran'); };
+  try {
+    cases.forEach(([label, ev]) => {
+      try { fireAction(a, ev.type || 'click', ev.target, ev); if(a.TAB !== 'today') wrong.push(label + ': switched to ' + a.TAB); }
+      catch(e){ wrong.push(label + ': threw ' + e.message); }
+    });
+  } finally { if(proto) delete proto.click; }
+  if(inherited.length) wrong.push('an inherited name reached Object.prototype (' + inherited.length + 'x)');
+  let textNode = null;
+  try { fireAction(a, 'click', { nodeType: 3, parentElement: fakeEl({ action: 'go', tab: 'care' }) }); textNode = a.TAB; }
+  catch(e){ textNode = 'threw ' + e.message; }
+  ok('F2: the dispatcher ignores a tap on nothing, an unknown or inherited action, a disabled control and an event the action does not handle',
+     typeof a.dispatchAction === 'function' && wrong.length === 0 && textNode === 'care', { wrong, textNode });
+}
+
+/* DELEG-05. One document listener per event means a stopPropagation anywhere below it silently kills
+   every delegated control above that element. */
+{
+  const STOP = /\.(stopPropagation|stopImmediatePropagation)\s*\(|\bcancelBubble\s*=(?!=)/;
+  const hits = [];
+  Object.keys(f2app.__sandbox).forEach(k => {
+    const f = f2app.__sandbox[k];
+    if(typeof f === 'function' && STOP.test(f2StripJs(Function.prototype.toString.call(f)))) hits.push(k);
+  });
+  f2Handlers().forEach(([name, ev, src]) => { if(STOP.test(f2StripJs(src))) hits.push(`ACTIONS.${name}.${ev}`); });
+  if(STOP.test(f2Static(F2_RAW))) hits.push('(static markup)');
+  const unreviewed = hits.filter(h => !REVIEWED_PROPAGATION.includes(h));
+  const synthetic = ['e.stopPropagation()', 'x.cancelBubble = true'].every(s => STOP.test(s))
+    && !STOP.test('if(x.cancelBubble === true){}');
+  ok('DELEG-05: nothing stops propagation without review', unreviewed.length === 0 && synthetic, { unreviewed, syntheticCaught: synthetic });
+}
+
+/* D-03: every interpolated data-* value goes through esc(). Walks each data-* attribute value to its
+   closing quote and checks every top-level placeholder in it. data-action / data-enter are covered
+   by the action-name check. */
+function f2UnescapedData(text){
+  const bad = [];
+  const re = /data-([\w-]+)="/g;
+  let m;
+  while((m = re.exec(text))){
+    if(m[1] === 'action' || m[1] === 'enter') continue;
+    let i = m.index + m[0].length, depth = 0;
+    while(i < text.length){
+      if(text[i] === '$' && text[i + 1] === '{'){
+        if(depth === 0 && !text.startsWith('esc(', i + 2)) { bad.push(text.slice(m.index, Math.min(text.length, i + 24))); }
+        depth++; i += 2; continue;
+      }
+      if(depth && text[i] === '}'){ depth--; i++; continue; }
+      if(!depth && text[i] === '"') break;
+      i++;
+    }
+  }
+  return bad;
+}
+{
+  const bad = f2UnescapedData(f2StripJs(f2app.__src || '') + '\n' + f2Static(F2_RAW));
+  const synthetic = { caught: f2UnescapedData('data-i="${i}"').length === 1, passes: f2UnescapedData('data-i="${esc(i)}"').length === 0,
+                      laterCaught: f2UnescapedData('data-id="x-${esc(a)}-${b}"').length === 1 };
+  ok('D-03: every interpolated data-* value goes through esc()', bad.length === 0 && Object.values(synthetic).every(Boolean),
+     { bad: bad.slice(0, 5), synthetic });
+}
+
+/* Each rendered control's action may listen only to events its element fires once per gesture: a
+   button's click (plus the stopwatch's pointerdown), a select's or checkbox's change, a text
+   field's input/change/keydown. A flat or mismatched entry double-fires or never fires. */
+{
+  const offenders = [];
+  f2Corpus().forEach(({ label, html }) => {
+    controlsIn(html).forEach(c => {
+      const name = c.data.action;
+      if(!f2Own(name)) return;
+      const keys = Object.keys(F2_A[name] || {});
+      const within = allowed => keys.every(k => allowed.includes(k));
+      const type = String(c.type || '').toLowerCase();
+      let fine;
+      if(c.tag === 'button') fine = within(['click', 'pointerdown']);
+      else if(c.tag === 'select') fine = within(['change']);
+      else if(c.tag === 'input' && ['checkbox', 'radio', 'file'].includes(type)) fine = within(['change']);
+      else if(c.tag === 'input' || c.tag === 'textarea') fine = within(['input', 'change', 'keydown']);
+      else if(c.tag === 'div') fine = within(['click']) && REVIEWED_NONBUTTON_CLICK.includes(name);
+      else fine = false;
+      if(!fine) offenders.push({ label, tag: c.tag, type, action: name, events: keys });
+    });
+  });
+  ok("DELEG-02: every rendered control's action listens only to events its element fires once per gesture",
+     offenders.length === 0, offenders.slice(0, 5));
+}
+
+/* The converted-button reset. A <button> that replaced a div, span or link must look exactly like
+   it did: zero specificity (so .card, .row, .hist-item and .ex-body still win), and no colour of
+   its own (the theme lives in the :root custom properties, CLAUDE.md). */
+function f2CssRules(raw){
+  const css = (String(raw).match(/<style[^>]*>([\s\S]*?)<\/style>/g) || []).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
+  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(m => ({ selector: m[1].trim(), body: m[2] }));
+}
+function f2ColourProblems(body){
+  const bad = [];
+  if(/#[0-9a-fA-F]{3,8}\b/.test(body)) bad.push('hex colour');
+  if(/\b(rgba?|hsla?)\(/.test(body)) bad.push('rgb()/hsl()');
+  String(body).split(';').map(d => d.trim()).filter(Boolean).forEach(d => {
+    const i = d.indexOf(':'); if(i < 0) return;
+    const prop = d.slice(0, i).trim().toLowerCase(), val = d.slice(i + 1).trim().toLowerCase();
+    if(/color$/.test(prop) || ['background', 'fill', 'stroke', 'box-shadow', 'text-shadow'].includes(prop)){
+      if(!['inherit', 'none', 'transparent'].includes(val)) bad.push(prop + ':' + val);
+    } else if(['border', 'outline'].includes(prop) || /^border-(top|right|bottom|left)$/.test(prop)){
+      if(!/^(0|none)$/.test(val)) bad.push(prop + ':' + val);
+    }
+  });
+  return bad;
+}
+{
+  const rules = f2CssRules(F2_RAW);
+  const found = {}, problems = {};
+  [':where(button.tap)', ':where(button.tap-inline)'].forEach(sel => {
+    const r = rules.filter(x => x.selector === sel);
+    found[sel] = r.length;
+    problems[sel] = r.flatMap(x => f2ColourProblems(x.body));
+  });
+  const synthetic = { hex: f2ColourProblems('color:#fff').length > 0, named: f2ColourProblems('background:red').length > 0,
+                      clean: f2ColourProblems('background:none; border:0; color:inherit').length === 0 };
+  ok('F2: the converted-button reset has zero specificity and no hard-coded colour',
+     Object.values(found).every(n => n >= 1) && Object.values(problems).every(p => p.length === 0) && Object.values(synthetic).every(Boolean),
+     { found, problems, synthetic });
+}
+
+/* Start tags in template SOURCE, walked to their closing `>` past any `${…}` (which may hold `>`). */
+function f2SourceStartTags(text, names){
+  const out = [];
+  const re = new RegExp('<(' + names.join('|') + ')(?=[\\s>/])', 'g');
+  let m;
+  while((m = re.exec(text))){
+    let i = m.index + m[0].length, depth = 0;
+    while(i < text.length){
+      const ch = text[i];
+      if(ch === '$' && text[i + 1] === '{'){ depth++; i += 2; continue; }
+      if(depth && ch === '{'){ depth++; i++; continue; }
+      if(depth && ch === '}'){ depth--; i++; continue; }
+      if(!depth && ch === '>') break;
+      i++;
+    }
+    out.push({ tag: m[1], index: m.index, text: text.slice(m.index, i + 1) });
+  }
+  return out;
+}
+{
+  const NONBUTTON = ['div', 'span', 'a', 'li', 'tr', 'td', 'label', 'p', 'section', 'img'];
+  const clicks = name => f2Own(name) && F2_A[name] && typeof F2_A[name].click === 'function';
+  const staticOffenders = text => f2SourceStartTags(text, NONBUTTON).flatMap(t => {
+    const a = t.text.match(/data-action="([^"]*)"/);
+    return a && clicks(a[1]) && !REVIEWED_NONBUTTON_CLICK.includes(a[1]) ? [t.tag + ' ' + a[1]] : [];
+  });
+  const stat = staticOffenders(f2StripJs(f2app.__src || '') + '\n' + f2Static(F2_RAW));
+  const syntheticCaught = staticOffenders('<div class="row" data-action="go">').length === 1;
+  const rendered = [];
+  f2Corpus().forEach(({ label, html }) => controlsIn(html).forEach(c => {
+    if(clicks(c.data.action) && c.tag !== 'button' && !REVIEWED_NONBUTTON_CLICK.includes(c.data.action)) rendered.push({ label, tag: c.tag, action: c.data.action });
+  }));
+  ok('DELEG-06: every control that acts on click is a button (the Ideas backdrop is the one reviewed exception)',
+     stat.length === 0 && rendered.length === 0 && syntheticCaught,
+     { static: stat.slice(0, 5), rendered: rendered.slice(0, 5), syntheticCaught });
+}
+
+/* D-11: a converted button's content stays valid phrasing content, so no <div> inside it, and any
+   kicker() inside it is the block-span form. */
+function f2TapRegions(text){
+  const out = [];
+  f2SourceStartTags(text, ['button']).forEach(t => {
+    const cls = t.text.match(/\sclass="([^"]*)"/);
+    const tokens = cls ? cls[1].split(/\s+/) : [];
+    if(!tokens.includes('tap') && !tokens.includes('tap-inline')) return;
+    const start = t.index, end = text.indexOf('</button>', start);
+    out.push(text.slice(start, end < 0 ? text.length : end));
+  });
+  return out;
+}
+function f2TapRegionProblems(region){
+  const bad = [];
+  if(/<div[\s>]/.test(region)) bad.push('div inside');
+  const re = /(?<![\w$.])kicker\(/g;
+  let m;
+  while((m = re.exec(region))){
+    let i = m.index + m[0].length, depth = 1, argStart = i, lastArg = '';
+    for(; i < region.length && depth; i++){
+      const ch = region[i];
+      if(ch === '(' || ch === '[' || ch === '{') depth++;
+      else if(ch === ')' || ch === ']' || ch === '}'){ depth--; if(!depth){ lastArg = region.slice(argStart, i); break; } }
+      else if(ch === ',' && depth === 1) argStart = i + 1;
+    }
+    if(!/^\s*(['"])span\1\s*$/.test(lastArg)) bad.push('kicker without span: ' + region.slice(m.index, i + 1));
+  }
+  return bad;
+}
+{
+  const bad = f2TapRegions(F2_RAW).flatMap(f2TapRegionProblems);
+  const synthetic = {
+    divCaught: f2TapRegionProblems('<button class="tap"><div>x</div>').length === 1,
+    kickerCaught: f2TapRegionProblems("<button class=\"tap\">${kicker('x')}").length === 1,
+    spanPasses: f2TapRegionProblems("<button class=\"tap\">${kicker('x','span')}").length === 0,
+    regionFound: f2TapRegions('<button class="card tap" data-action="go">a</button><button class="tapx">b</button>').length === 1,
+  };
+  ok('D-11: no converted button wraps a div, and every kicker inside one is the span form',
+     bad.length === 0 && Object.values(synthetic).every(Boolean), { bad: bad.slice(0, 5), synthetic });
+}
+
+/* ── Plan 05-02: the Ideas sheet and Settings ── */
+/* An id carrying every character that matters inside an attribute or an inline handler: a double
+   quote, the single quote esc() does not escape, a tag opener and an ampersand. Ids arrive from sync
+   or an imported backup, and validateBackup() never checks their type or content (T-5-02). Before
+   Phase 5 such an id sat inside an inline handler's quotes. */
+const HOSTILE = `i"1'<b>&x`;
+const f2IdeasList = a => a.__sandbox.document.getElementById('ideas-list').innerHTML || '';
+
+{
+  const a = loadApp(APP_PATH);
+  const cs = controlsIn(f2Static(F2_RAW));
+  const names = ['openIdeas', 'closeIdeas', 'addIdea', 'copyIdeas'];
+  const tags = {}, calls = {};
+  names.forEach(n => { tags[n] = cs.filter(c => c.data.action === n).map(c => c.tag); calls[n] = spyOn(a, n); });
+  let threw = null;
+  try { names.forEach(n => { const c = cs.find(x => x.data.action === n); if(c) fireAction(a, 'click', fakeEl(c.data)); }); }
+  catch(e){ threw = e.message; }
+  ok('DELEG-02: the Ideas sheet opens, closes, adds and copies through the dispatcher',
+     !threw && names.every(n => tags[n].length === 1 && tags[n][0] === 'button' && calls[n].length === 1 && calls[n][0].length === 0),
+     { tags, calls, threw });
+}
+/* D-08: the backdrop wraps the sheet's controls, so it stays a div (no role, no tabindex) and its
+   keyboard path is the sheet's Close button. dispatchAction resolves ANY tap inside the sheet that
+   has no action of its own to the backdrop, so the wrapper's own `e.target === el` test is what
+   keeps a tap on the textarea from closing the sheet (Pitfall 11: never contains()). */
+{
+  const a = loadApp(APP_PATH);
+  const stat = f2Static(F2_RAW);
+  const cs = controlsIn(stat).filter(c => c.data.action === 'ideasBackdrop');
+  const startTag = (stat.match(/<[a-z]+\s[^>]*data-action="ideasBackdrop"[^>]*>/) || [''])[0];
+  const closes = spyOn(a, 'closeIdeas');
+  let threw = null, onSelf = -1, onChild = -1;
+  try {
+    const bd = fakeEl(cs[0] ? cs[0].data : { action: 'ideasBackdrop' });
+    fireAction(a, 'click', bd);
+    onSelf = closes.length;
+    const child = fakeEl({}, { closest: sel => sel === '[data-action]' ? bd : null });
+    fireAction(a, 'click', child);
+    onChild = closes.length - onSelf;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-06: the Ideas backdrop closes only on a tap on the backdrop itself',
+     !threw && cs.length === 1 && cs[0].tag === 'div' && !/\s(tabindex|role)\s*=/.test(startTag) && onSelf === 1 && onChild === 0,
+     { found: cs.length, tag: cs[0] && cs[0].tag, startTag, onSelf, onChild, threw });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.ideas = [{ id: HOSTILE, text:'hostile id', date: today, done:false, mtime:1 },
+                { id:'i2', text:'plain', date: today, done:false, mtime:1 }];
+  let threw = null, html = '', ctl = null;
+  try {
+    a.renderIdeasList();
+    html = f2IdeasList(a);
+    ctl = controlsIn(html).find(c => c.data.action === 'removeIdea' && c.data.id === HOSTILE) || null;
+    if(ctl) fireAction(a, 'click', fakeEl(ctl.data));
+  } catch(e){ threw = e.message; }
+  const hostile = (a.DB.ideas || []).find(x => x.id === HOSTILE), plain = (a.DB.ideas || []).find(x => x.id === 'i2');
+  ok('D-03: a hostile idea id round-trips through data-id and deletes the right idea',
+     !threw && html.length > 0 && !html.includes('<b>') && !!ctl && !!hostile && !!hostile.deletedAt && !!plain && !plain.deletedAt,
+     { threw, rawB: html.includes('<b>'), control: ctl, hostileDeleted: !!(hostile && hostile.deletedAt), plainDeleted: !!(plain && plain.deletedAt) });
+}
+/* A checkbox fires click, input and change for one tick. Only change may toggle, or one tick
+   flips the idea three times (Pitfall 2). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.ideas = [{ id:'i2', text:'plain', date: today, done:false, mtime:1 }];
+  let threw = null, c = null, afterClick = null, afterInput = null, afterChange = null;
+  try {
+    a.renderIdeasList();
+    c = controlsIn(f2IdeasList(a)).find(x => x.data.action === 'toggleIdeaDone') || null;
+    if(c){
+      fireAction(a, 'click', fakeEl(c.data));  afterClick = a.DB.ideas[0].done;
+      fireAction(a, 'input', fakeEl(c.data));  afterInput = a.DB.ideas[0].done;
+      fireAction(a, 'change', fakeEl(c.data)); afterChange = a.DB.ideas[0].done;
+    }
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: ticking an idea done fires once per change, and a click on the checkbox does nothing',
+     !threw && !!c && c.tag === 'input' && c.type === 'checkbox' && c.data.id === 'i2'
+       && afterClick === false && afterInput === false && afterChange === true,
+     { threw, control: c, afterClick, afterInput, afterChange });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.ideas = [{ id:'i1', text:'first', date: today, done:false, mtime:1 },
+                { id:'i2', text:'plain', date: today, done:false, mtime:1 }];
+  let threw = null, save = null, cancel = null;
+  try {
+    a.renderIdeasList();
+    const start = controlsIn(f2IdeasList(a)).find(x => x.data.action === 'startEditIdea' && x.data.id === 'i2');
+    if(start) fireAction(a, 'click', fakeEl(start.data));
+    const cs = controlsIn(f2IdeasList(a));
+    save = cs.find(x => x.data.action === 'saveEditIdea') || null;
+    cancel = cs.find(x => x.data.action === 'cancelEditIdea') || null;
+    a.__sandbox.document.getElementById('idea-edit-i2').value = 'reworded';
+    if(save) fireAction(a, 'click', fakeEl(save.data));
+  } catch(e){ threw = e.message; }
+  const i2 = (a.DB.ideas || []).find(x => x.id === 'i2'), i1 = (a.DB.ideas || []).find(x => x.id === 'i1');
+  ok('DELEG-02: rewording an idea saves through the dispatcher',
+     !threw && !!save && !!cancel && save.data.id === 'i2' && cancel.data.id === 'i2'
+       && !!i2 && i2.text === 'reworded' && !!i1 && i1.text === 'first',
+     { threw, save, cancel, text: i2 && i2.text });
+}
+
+/* D-02: the old two-statement handler (`setPetName(this.value);render()`) is one action that runs
+   the whole chain, in order, once per change. */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  const order = [];
+  let threw = null, cs = [], events = [];
+  try {
+    cs = controlsIn(a.viewData()).filter(x => x.data.action === 'setPetName');
+    events = a.ACTIONS && a.ACTIONS.setPetName ? Object.keys(a.ACTIONS.setPetName) : [];
+    a.__sandbox.setPetName = (...args) => { order.push(['setPetName', args]); };
+    a.__sandbox.render = (...args) => { order.push(['render', args]); };
+    if(cs[0]){
+      fireAction(a, 'input', fakeEl(cs[0].data, { value: 'Mochi' }));
+      fireAction(a, 'change', fakeEl(cs[0].data, { value: 'Mochi' }));
+    }
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the pet name saves and redraws on change through one action (D-02 chain)',
+     !threw && cs.length === 1 && cs[0].tag === 'input' && JSON.stringify(events) === '["change"]'
+       && JSON.stringify(order) === JSON.stringify([['setPetName', ['Mochi']], ['render', []]]),
+     { threw, found: cs.length, events, order });
+}
+/* Import is two controls: a button that opens the picker by clicking the hidden file input (inside
+   the tap, so the tap's user activation carries over, Pitfall 12), and the input, whose change runs
+   the import. The picker's synthesized click on the input also reaches the dispatcher, and must do
+   nothing (Pitfall 2). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  let threw = null, pick = null, imp = null, opened = 0, afterPick = null, afterChange = null, sameEl = false;
+  const imports = spyOn(a, 'importData');
+  a.__sandbox.document.getElementById('imp').click = () => { opened++; };
+  try {
+    const cs = controlsIn(a.viewData());
+    pick = cs.find(x => x.data.action === 'pickImportFile') || null;
+    imp = cs.find(x => x.data.action === 'importData') || null;
+    if(pick) fireAction(a, 'click', fakeEl(pick.data));
+    afterPick = { opened, imports: imports.length };
+    if(imp){
+      const input = fakeEl(imp.data);
+      fireAction(a, 'change', input);
+      afterChange = imports.length;
+      sameEl = !!imports[0] && imports[0].length === 1 && imports[0][0] === input;
+      fireAction(a, 'click', input);
+    }
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: Import backup opens the file picker, and choosing a file runs importData once',
+     !threw && !!pick && pick.tag === 'button' && !!imp && imp.tag === 'input' && imp.type === 'file'
+       && afterPick.opened === 1 && afterPick.imports === 0 && afterChange === 1 && sameEl && imports.length === 1 && opened === 1,
+     { threw, pick, imp, afterPick, afterChange, sameEl, imports: imports.length, opened });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  const cs = () => controlsIn(a.viewData());
+  let threw = null, kg = null, d3 = null, rm = null;
+  const hobbies = (a.DB.hobbies || []).slice(), prod = JSON.stringify(a.DB.productivity || []);
+  try {
+    kg = cs().find(x => x.data.action === 'setUnit' && x.data.unit === 'kg') || null;
+    if(kg) fireAction(a, 'click', fakeEl(kg.data));
+    d3 = cs().find(x => x.data.action === 'setRoutineMode' && x.data.mode === '3day') || null;
+    if(d3) fireAction(a, 'click', fakeEl(d3.data));
+    rm = cs().find(x => x.data.action === 'removeItem' && x.data.cat === 'hobby') || null;
+    if(rm) fireAction(a, 'click', fakeEl(rm.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: units, routine and list edits route through the dispatcher',
+     !threw && hobbies.length >= 2 && !!kg && a.DB.unit === 'kg' && !!d3 && a.DB.routineMode === '3day'
+       && !!rm && JSON.stringify(a.DB.hobbies) === JSON.stringify(hobbies.slice(1)) && JSON.stringify(a.DB.productivity || []) === prod,
+     { threw, unit: a.DB.unit, routineMode: a.DB.routineMode, removeControl: rm, hobbiesBefore: hobbies.length, hobbiesAfter: (a.DB.hobbies || []).length });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  /* Shaped as exEnsure() writes a row, and used by one session, because the card lists only
+     exercises that have been logged. */
+  a.DB.exercises = [a.touch({ id: HOSTILE, name: 'Hostile press', aliases: ['hostile press'] })];
+  a.DB.sessions = [{ id:'s1', workout:'PUSH 1', date: today, endedAt:1, extras:{}, mtime:1,
+                     entries:[{ name:'Hostile press', exId: HOSTILE, sets:[{ w:'100', r:'5', skipped:false }] }] }];
+  const prompts = [];
+  a.__sandbox.prompt = (...args) => { prompts.push(args); return ''; };
+  let threw = null, html = '', ctl = null;
+  try {
+    html = a.viewData();
+    ctl = controlsIn(html).find(x => x.data.action === 'renameExercise') || null;
+    if(ctl) fireAction(a, 'click', fakeEl(ctl.data));
+  } catch(e){ threw = e.message; }
+  /* renameExercise prompts with a fixed message and the row's current name as the default. */
+  ok('D-03: a hostile exercise id round-trips through data-id',
+     !threw && html.includes('Hostile press') && !html.includes('<b>') && !!ctl && ctl.data.id === HOSTILE
+       && prompts.length === 1 && prompts[0].some(x => String(x).includes('Hostile press')) && a.DB.exercises[0].name === 'Hostile press',
+     { threw, rawB: html.includes('<b>'), control: ctl, prompts });
+}
+
+/* The Recently deleted and Version history headers were clickable divs. As buttons they take focus
+   and toggle on Enter and Space natively; here each must open its card and, re-rendered, close it. */
+const f2AppHtml = a => a.__sandbox.document.getElementById('app').innerHTML || '';
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.weights = [{ date: today, value: 190, deletedAt: Date.now(), mtime: Date.now() }];
+  const toggles = (name, note) => {
+    const r = { before: f2AppHtml(a).includes(note) };
+    const c1 = controlsIn(f2AppHtml(a)).find(x => x.data.action === name) || null;
+    r.closedTag = c1 && c1.tag;
+    if(c1) fireAction(a, 'click', fakeEl(c1.data));
+    r.opened = f2AppHtml(a).includes(note);
+    const c2 = controlsIn(f2AppHtml(a)).find(x => x.data.action === name) || null;
+    r.openTag = c2 && c2.tag;
+    if(c2) fireAction(a, 'click', fakeEl(c2.data));
+    r.closed = !f2AppHtml(a).includes(note);
+    r.ok = !r.before && r.closedTag === 'button' && r.opened && r.openTag === 'button' && r.closed;
+    return r;
+  };
+  let threw = null, trash = null, versions = null;
+  try {
+    a.go('settings');
+    trash = toggles('toggleTrash', 'Deleted items stay hidden here for 30 days');
+    versions = toggles('toggleVersions', 'Restoring snapshots your current data first');
+  } catch(e){ threw = e.message; }
+  ok('DELEG-06: Recently deleted and Version history open and close from a button',
+     !threw && !!trash && trash.ok && !!versions && versions.ok, { threw, trash, versions });
+}
+/* dataset values are strings; restoreSnapshot indexes an array and restoreDeleted compares kinds,
+   so each must receive a NUMBER index (Pitfall 1). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.weights = [{ date: dayOff(-1), value: 191, mtime: 1 },
+                  { date: today, value: 190, deletedAt: Date.now(), mtime: Date.now() }];
+  let threw = null, del = null, snap = null, snapped = false;
+  const restoredDel = spyOn(a, 'restoreDeleted'), restoredSnap = spyOn(a, 'restoreSnapshot');
+  try {
+    a.go('settings');
+    a.__sandbox.toggleTrash();
+    del = controlsIn(f2AppHtml(a)).find(x => x.data.action === 'restoreDeleted') || null;
+    if(del) fireAction(a, 'click', fakeEl(del.data));
+    a.__sandbox.toggleTrash();
+    snapped = a.snapshotNow('f2') !== false;
+    a.__sandbox.toggleVersions();
+    snap = controlsIn(f2AppHtml(a)).find(x => x.data.action === 'restoreSnapshot') || null;
+    if(snap) fireAction(a, 'click', fakeEl(snap.data));
+  } catch(e){ threw = e.message; }
+  const d = restoredDel[0] || [], s = restoredSnap[0] || [];
+  ok('DELEG-02: restoring a deleted item and a snapshot pass numeric indexes',
+     !threw && !!del && restoredDel.length === 1 && d.length === 2 && d[0] === 'weight' && typeof d[1] === 'number' && d[1] === 1
+       && snapped && !!snap && restoredSnap.length === 1 && s.length === 1 && typeof s[0] === 'number' && s[0] === 0,
+     { threw, restoredDel, restoredSnap, snapped, del, snap });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  let threw = null, html = '', ctl = null;
+  const restored = spyOn(a, 'restoreCloudVersion');
+  try {
+    a.SYNC.user = { email: 't@example.com' };
+    a.go('settings');
+    a.__sandbox.toggleVersions();
+    a.cloudVersionList = [{ _id: HOSTILE, at: Date.now(), label: 'hostile', summary: {} }];
+    a.render();
+    html = f2AppHtml(a);
+    ctl = controlsIn(html).find(x => x.data.action === 'restoreCloudVersion') || null;
+    if(ctl) fireAction(a, 'click', fakeEl(ctl.data));
+  } catch(e){ threw = e.message; }
+  finally { a.SYNC.user = null; a.cloudVersionList = null; }
+  ok('D-03: a hostile cloud version id round-trips through data-id',
+     !threw && html.includes('hostile') && !html.includes('<b>') && !!ctl && ctl.data.id === HOSTILE
+       && restored.length === 1 && restored[0].length === 1 && restored[0][0] === HOSTILE,
+     { threw, rawB: html.includes('<b>'), control: ctl, restored });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.__sandbox.firebase = {};
+  let threw = null, signedOut = [], signedIn = [], reloads = 0;
+  const signIns = spyOn(a, 'syncSignIn'), pushes = spyOn(a, 'pushNow'), outs = spyOn(a, 'syncSignOut');
+  a.__sandbox.location.reload = () => { reloads++; };
+  const click = (cs, name) => { const c = cs.find(x => x.data.action === name); if(c) fireAction(a, 'click', fakeEl(c.data)); return c ? c.tag : null; };
+  try {
+    a.go('settings');
+    let cs = controlsIn(f2AppHtml(a));
+    signedOut = [click(cs, 'syncSignIn'), click(cs, 'syncCreateAccount')];
+    a.SYNC.user = { email: 't@example.com' };
+    a.SYNC.needsUpdate = true;
+    a.render();
+    cs = controlsIn(f2AppHtml(a));
+    signedIn = [click(cs, 'pushNow'), click(cs, 'syncSignOut'), click(cs, 'reload')];
+  } catch(e){ threw = e.message; }
+  finally { a.SYNC.user = null; a.SYNC.needsUpdate = false; a.__sandbox.firebase = undefined; }
+  ok('DELEG-02: every Cloud Sync button runs its sync call through the dispatcher',
+     !threw && signedOut.concat(signedIn).every(t => t === 'button')
+       && JSON.stringify(signIns) === '[[false],[true]]' && JSON.stringify(pushes) === '[[false]]'
+       && JSON.stringify(outs) === '[[]]' && reloads === 1,
+     { threw, signedOut, signedIn, signIns, pushes, outs, reloads });
+}
+
+/* ── Plan 05-03: Care (Skin, Lawn, Sleep) and the lawn card Today shows ── */
+/* skinOpenPhases is a Set of NUMBERS. A string index from the dataset would add '0' on the first
+   tap and never find it again, so the phase would open and never close (Pitfall 1). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  const r = {};
+  let threw = null;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    a.go('care'); a.setSub('skin');
+    const tab = find(c => c.data.action === 'skinSubTab' && c.data.sub === 'shaving');
+    r.tab = tab && tab.tag;
+    if(tab) fireAction(a, 'click', fakeEl(tab.data));
+    r.guide = /Shaving Guide/.test(f2AppHtml(a));
+    r.bodyBefore = f2AppHtml(a).includes('phase-body');
+    const p1 = find(c => c.data.action === 'skinTogglePhase' && c.data.i === '0');
+    r.phase = p1 && p1.tag;
+    if(p1) fireAction(a, 'click', fakeEl(p1.data));
+    r.opened = f2AppHtml(a).includes('phase-body');
+    const p2 = find(c => c.data.action === 'skinTogglePhase' && c.data.i === '0');
+    if(p2) fireAction(a, 'click', fakeEl(p2.data));
+    r.closed = !f2AppHtml(a).includes('phase-body');
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a shaving phase opens and closes through the dispatcher (numeric index)',
+     !threw && r.tab === 'button' && r.guide && !r.bodyBefore && r.phase === 'button' && r.opened && r.closed, { threw, r });
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  const r = {};
+  let threw = null;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    a.go('care'); a.setSub('skin');
+    const wed0 = find(c => c.data.action === 'skinSelectDay' && c.data.day === 'Wed');
+    r.before = wed0 && wed0.cls;
+    if(wed0) fireAction(a, 'click', fakeEl(wed0.data));
+    const wed1 = find(c => c.data.action === 'skinSelectDay' && c.data.day === 'Wed');
+    r.after = wed1 && wed1.cls;
+    r.tag = wed1 && wed1.tag;
+    const shave = find(c => c.data.action === 'skinSubTab' && c.data.sub === 'shaving');
+    if(shave) fireAction(a, 'click', fakeEl(shave.data));
+    r.shaving = /Shaving Guide/.test(f2AppHtml(a));
+    const routine = find(c => c.data.action === 'skinSubTab' && c.data.sub === 'routine');
+    if(routine) fireAction(a, 'click', fakeEl(routine.data));
+    r.routine = /<h1>Skincare<\/h1>/.test(f2AppHtml(a));
+  } catch(e){ threw = e.message; }
+  const tokens = s => String(s || '').split(/\s+/);
+  ok("DELEG-02: Skin's day picker and sub-tabs switch through the dispatcher",
+     !threw && r.before != null && !tokens(r.before).includes('active') && tokens(r.after).includes('active')
+       && r.tag === 'button' && r.shaving && r.routine, { threw, r });
+}
+/* Enter-to-submit through the registry (RESEARCH Pattern 3, Pitfall 3). The box's action listens to
+   keydown only and forwards Enter to searchLocation's click handler, so Enter searches exactly once,
+   other keys and a click in the box do nothing, and the Find button still searches. Fired through
+   the app's own document listeners, which proves the registration too. */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.lawn = null;
+  const calls = spyOn(a, 'searchLocation');
+  const r = {};
+  let threw = null;
+  try {
+    a.go('care'); a.setSub('lawn');
+    const cs = controlsIn(f2AppHtml(a));
+    const box = cs.find(c => c.data.action === 'enter' && c.data.enter === 'searchLocation') || null;
+    const find = cs.find(c => c.data.action === 'searchLocation') || null;
+    r.box = box && box.tag; r.find = find && find.tag;
+    if(box){
+      const el = fakeEl(box.data, { tagName: 'INPUT' });
+      fireListener(a, 'keydown', el, { key: 'Enter' }); r.enter = calls.length;
+      fireListener(a, 'keydown', el, { key: 'a' });     r.otherKey = calls.length;
+      fireListener(a, 'click', el);                      r.click = calls.length;
+    }
+    if(find) fireListener(a, 'click', fakeEl(find.data));
+    r.button = calls.length;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: Enter in the location box searches once, other keys do nothing, and a click in the box does nothing',
+     !threw && r.box === 'input' && r.find === 'button' && r.enter === 1 && r.otherKey === 1 && r.click === 1 && r.button === 2
+       && calls.every(c => c.length === 0), { threw, r, calls });
+}
+/* T-5-11: data-enter may only name an OWN registry entry. The app's Object.prototype carries a
+   planted click handler for the duration, so an inherited name that slipped past the own-key check
+   would visibly run it. */
+{
+  const a = loadApp(APP_PATH);
+  const proto = a.ACTIONS ? Object.getPrototypeOf(a.ACTIONS) : null;
+  const ran = [];
+  let threw = null;
+  if(proto) proto.click = () => { ran.push('inherited'); };
+  try {
+    ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'nope', 'enter'].forEach(n =>
+      fireAction(a, 'keydown', fakeEl({ action: 'enter', enter: n }), { key: 'Enter' }));
+  } catch(e){ threw = e.message; }
+  finally { if(proto) delete proto.click; }
+  ok('F2: Enter runs only an own registry entry named by data-enter', !!proto && !threw && ran.length === 0, { threw, ran });
+}
+/* The rest of Care → Lawn: each button reaches its function with the arguments the old handler
+   passed, and each of the two weather buttons is wired on its own. */
+{
+  const a = loadApp(APP_PATH);
+  const names = ['useMyLocation', 'changeLawnLoc', 'fetchWeather', 'logLawnPastDate', 'toggleLawnOverride'];
+  const calls = {};
+  names.forEach(n => { calls[n] = spyOn(a, n); });
+  const r = {};
+  let threw = null;
+  const clickAll = (html, pred) => controlsIn(html).filter(pred).map(c => { fireAction(a, 'click', fakeEl(c.data)); return c.tag; });
+  try {
+    a.DB = a.blank();
+    a.DB.lawn = null;
+    r.setup = clickAll(a.__sandbox.viewLawn(), c => c.data.action === 'useMyLocation');
+    setup(a, { mowedDaysAgo: 1, wateredDaysAgo: 7, wx: null });
+    r.load = clickAll(a.__sandbox.viewLawn(), c => c.data.action === 'fetchWeather');
+    setup(a, { mowedDaysAgo: 1, wateredDaysAgo: 7, wx: {} });
+    const full = a.__sandbox.viewLawn();
+    r.refresh = clickAll(full, c => c.data.action === 'fetchWeather');
+    r.change = clickAll(full, c => c.data.action === 'changeLawnLoc');
+    r.picker = clickAll(full, c => c.data.action === 'logLawnPastDate');
+    r.override = clickAll(full, c => c.data.action === 'toggleLawnOverride');
+  } catch(e){ threw = e.message; }
+  const got = {};
+  names.forEach(n => { got[n] = JSON.stringify(calls[n]); });
+  ok('DELEG-02: location, weather, the date picker and overrides run through the dispatcher with their arguments',
+     !threw && [r.setup, r.load, r.refresh, r.change, r.picker, r.override].every(t => t && t.length && t.every(x => x === 'button'))
+       && r.load.length === 1 && r.refresh.length === 1
+       && got.useMyLocation === '[[]]' && got.changeLawnLoc === '[[]]' && got.fetchWeather === '[[],[]]'
+       && got.logLawnPastDate === '[["watered"],["mowed"]]' && got.toggleLawnOverride === '[["water"],["mow"]]',
+     { threw, r, got });
+}
+/* toggleLawnLog(action, iso) logs `iso`, or TODAY when iso is absent. A pill must pass its own date
+   and a card button must pass nothing, never an `undefined` second argument (T-5-12). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  setup(a, { mowedDaysAgo: 1, wateredDaysAgo: 7, wx:{} });
+  const calls = spyOn(a, 'toggleLawnLog');
+  const r = {};
+  let threw = null;
+  try {
+    const pill = controlsIn(a.lawnHistory()).find(c => c.data.action === 'toggleLawnLog' && c.data.which === 'mowed' && c.data.iso === dayOff(-3)) || null;
+    r.pill = pill && pill.data;
+    if(pill) fireAction(a, 'click', fakeEl(pill.data));
+    const btn = controlsIn(a.cLawnCard(true)).find(c => c.data.action === 'toggleLawnLog' && c.data.which === 'watered') || null;
+    r.btn = btn && btn.data;
+    if(btn) fireAction(a, 'click', fakeEl(btn.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a lawn history pill logs its own date, and a lawn card button logs today (arity preserved)',
+     !threw && !!r.pill && !!r.btn && calls.length === 2
+       && calls[0].length === 2 && calls[0][0] === 'mowed' && calls[0][1] === dayOff(-3)
+       && calls[1].length === 1 && calls[1][0] === 'watered', { threw, r, calls });
+}
+/* The heads-up card and the compact card's header were clickable divs. As buttons they take focus
+   and open Care → Lawn on Enter and Space natively (D-11 keeps their content block spans). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  const calls = spyOn(a, 'goSub');
+  const r = {};
+  let threw = null;
+  const opener = html => controlsIn(html).filter(c => c.data.action === 'goSub');
+  try {
+    /* (a) mowing is due today: the compact card shows its header row */
+    setup(a, { mowedDaysAgo: 9, wateredDaysAgo: 1, wx:{ precipByOffset:{ '-2':0.4 } } });
+    r.mowDue = a.lawnStatus().mow.recommend === true;
+    const compactHtml = a.cLawnCard();
+    r.compactIsHeadsUp = /heads up/.test(compactHtml);
+    const compact = opener(compactHtml);
+    r.compact = compact.map(c => ({ tag: c.tag, cls: c.cls, tab: c.data.tab, sub: c.data.sub }));
+    if(compact.length === 1) fireAction(a, 'click', fakeEl(compact[0].data));
+    /* (b) nothing to do today (rain today pulls the mow in to day 2, and watering is recent): the
+       whole card is the heads-up */
+    setup(a, { mowedDaysAgo: 5, wateredDaysAgo: 1, wx:{ precipByOffset:{ 0:0.6 } } });
+    const st = a.lawnStatus(), f = a.mowForecast();
+    r.quietToday = !st.water.recommend && !st.mow.recommend && !st.water.unknown && !st.mow.unknown;
+    r.nextMow = f && f.next && f.next.k;
+    const headsHtml = a.cLawnCard();
+    r.headsUp = /heads up/.test(headsHtml);
+    const heads = opener(headsHtml);
+    r.heads = heads.map(c => ({ tag: c.tag, cls: c.cls, tab: c.data.tab, sub: c.data.sub }));
+    r.wholeCard = /^\s*<button class="card tap"/.test(headsHtml);
+    if(heads.length === 1) fireAction(a, 'click', fakeEl(heads[0].data));
+  } catch(e){ threw = e.message; }
+  const isOpener = list => list.length === 1 && list[0].tag === 'button' && list[0].tab === 'care' && list[0].sub === 'lawn';
+  ok("DELEG-06: the lawn heads-up card and the compact card's header open Care → Lawn from a button",
+     !threw && r.mowDue && !r.compactIsHeadsUp && isOpener(r.compact)
+       && r.quietToday && r.nextMow >= 1 && r.nextMow <= 3 && r.headsUp && isOpener(r.heads) && r.wholeCard
+       && JSON.stringify(calls) === '[["care","lawn"],["care","lawn"]]', { threw, r, calls });
+}
+/* kicker(t) must stay byte-identical (every existing caller); kicker(t, 'span') is the same element
+   as a block span, for use inside a converted button (D-11). */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  setup(a, { mowedDaysAgo: 5, wateredDaysAgo: 1, wx:{ precipByOffset:{ 0:0.6 } } });
+  const STYLE = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px';
+  const r = {
+    div: a.viewSleep().includes(`<div class="muted" style="${STYLE}">Last 7 days</div>`),
+    span: a.cLawnCard().includes(`<span class="muted" style="display:block;${STYLE}">Lawn · heads up</span>`),
+  };
+  ok("F2: kicker() without a tag is unchanged, and kicker(t, 'span') is the same element as a block span", r.div && r.span, r);
+}
+
+/* ── Plan 05-04: Train → History, Progress and Cardio ── */
+/* A fresh instance with populatedDB on Train → History. `renderWeekReview` renders inside
+   `viewHistory`, so the week review's controls are read from the History screen. */
+function f2History(){
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  a.go('train'); a.setSub('history');
+  return a;
+}
+/* The start tag of the first control in `html` whose data-action is `name`, as source text. */
+function f2StartTag(html, name){
+  const m = String(html).match(new RegExp('<[a-zA-Z][^>]*data-action="' + name + '"[^>]*>'));
+  return m ? m[0] : '';
+}
+/* Pitfalls 1 and 10: weekShift adds its argument to a number, so a string offset makes the title
+   NaN. At offset 0 the next button is disabled, and the dispatcher must leave it inert. */
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    const next = find(c => c.data.action === 'weekShift' && c.data.d === '1');
+    r.next = next && { tag: next.tag, disabled: next.disabled };
+    if(next) fireAction(a, 'click', fakeEl(next.data, { disabled: next.disabled }));
+    r.stillThisWeek = f2AppHtml(a).includes('>This week<');
+    const back = find(c => c.data.action === 'weekShift' && c.data.d === '-1');
+    r.back = back && back.tag;
+    if(back) fireAction(a, 'click', fakeEl(back.data));
+    r.lastWeek = f2AppHtml(a).includes('>Last week<');
+    r.nan = /NaN/.test(f2AppHtml(a));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the week review steps back a week with a numeric offset, and the disabled next button does nothing',
+     !threw && !!r.next && r.next.tag === 'button' && r.next.disabled === true && r.stillThisWeek
+       && r.back === 'button' && r.lastWeek && !r.nan, { threw, r });
+}
+/* Pitfall 1: toggleHist compares openHist === i, so a string index opens a row that never closes. */
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const first = () => controlsIn(f2AppHtml(a)).find(c => c.data.action === 'toggleHist') || null;
+  try {
+    const c1 = first();
+    r.tag = c1 && c1.tag; r.idx = c1 && c1.data.idx;
+    r.before = f2AppHtml(a).includes('hist-detail');
+    if(c1) fireAction(a, 'click', fakeEl(c1.data));
+    r.opened = f2AppHtml(a).includes('hist-detail');
+    const c2 = first();
+    r.sameRow = !!c2 && c2.data.idx === r.idx;
+    if(c2) fireAction(a, 'click', fakeEl(c2.data));
+    r.closed = !f2AppHtml(a).includes('hist-detail');
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a history row opens and closes again through the dispatcher (numeric index)',
+     !threw && r.tag === 'button' && !r.before && r.opened && r.sameRow && r.closed, { threw, r });
+}
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const iso = dayOff(-1);
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    const open = find(c => c.data.action === 'editJournal' && c.data.iso === iso);
+    r.open = open && { tag: open.tag, cls: open.cls };
+    if(open) fireAction(a, 'click', fakeEl(open.data));
+    r.textarea = f2AppHtml(a).includes(`<textarea id="journal-edit-${iso}"`);
+    const ta = find(c => c.data.action === 'saveJournalFor');
+    r.ta = ta && { tag: ta.tag, iso: ta.data.iso };
+    if(ta) fireAction(a, 'input', fakeEl(ta.data, { value: 'note text' }));
+    r.saved = a.DB.journal[iso];
+    const done = find(c => c.data.action === 'closeJournalEdit');
+    r.done = done && done.tag;
+    if(done) fireAction(a, 'click', fakeEl(done.data));
+    r.closed = !f2AppHtml(a).includes('<textarea id="journal-edit-');
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: a day's journal note opens, saves with its date, and closes through the dispatcher",
+     !threw && !!r.open && r.open.tag === 'button' && r.open.cls.split(/\s+/).includes('tap-inline') && r.textarea
+       && !!r.ta && r.ta.tag === 'textarea' && r.ta.iso === iso && r.saved === 'note text' && r.done === 'button' && r.closed,
+     { threw, r });
+}
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const iso = dayOff(-1);
+  const liveOn = () => a.DB.hobbyLog.filter(h => h.date === iso && !h.deletedAt).length;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    const open = find(c => c.data.action === 'openActivityAdd' && c.data.iso === iso);
+    r.open = open && { tag: open.tag, cls: open.cls };
+    if(open) fireAction(a, 'click', fakeEl(open.data));
+    r.panel = f2AppHtml(a).includes('id="act-item"');
+    const cat = find(c => c.data.action === 'setActAddCat' && c.data.cat === 'hobby');
+    r.cat = cat && cat.tag;
+    const item = (a.DB.hobbies || []).find(h => !a.DB.hobbyLog.some(x => x.date === iso && x.item === h));
+    r.item = item;
+    a.__sandbox.document.getElementById('act-item').value = item;
+    const before = liveOn();
+    const add = find(c => c.data.action === 'addActivityFor' && c.data.iso === iso);
+    r.add = add && add.tag;
+    if(add) fireAction(a, 'click', fakeEl(add.data));
+    r.added = liveOn() - before;
+    r.newRow = a.DB.hobbyLog.some(h => h.date === iso && h.item === item && !h.deletedAt);
+    const tag = f2StartTag(f2AppHtml(a), 'removeActivity');
+    r.xTag = tag;
+    const x = find(c => c.data.action === 'removeActivity');
+    r.x = x && { tag: x.tag, idx: x.data.idx };
+    if(x) fireAction(a, 'click', fakeEl(x.data));
+    r.removed = !!x && !!a.DB.hobbyLog[+x.data.idx] && !!a.DB.hobbyLog[+x.data.idx].deletedAt;
+    r.oneLeft = liveOn() === before;
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: logging and removing a day's activity goes through the dispatcher",
+     !threw && !!r.open && r.open.tag === 'button' && r.open.cls.split(/\s+/).includes('tap-inline') && r.panel
+       && r.cat === 'button' && !!r.item && r.add === 'button' && r.added === 1 && r.newRow
+       && !!r.x && r.x.tag === 'button' && /^<button\b/.test(r.xTag) && /\saria-label="[^"]+"/.test(r.xTag)
+       && r.removed && r.oneLeft, { threw, r });
+}
+/* Pitfall 5: the date input sits inside a <label>. A tap on the label clicks the input, so the action
+   lives on the input's change alone and never on the label. */
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  const target = dayOff(-8);
+  try {
+    const row = find(c => c.data.action === 'toggleHist');
+    if(row) fireAction(a, 'click', fakeEl(row.data));
+    const html = f2AppHtml(a);
+    r.labels = controlsIn(html).filter(c => c.tag === 'label').length;
+    const d = find(c => c.data.action === 'changeSessionDate');
+    r.d = d && { tag: d.tag, type: d.type, idx: d.data.idx };
+    const s = d && a.DB.sessions[+d.data.idx];
+    r.id = s && s.id;
+    if(d) fireAction(a, 'change', fakeEl(d.data, { value: target }));
+    r.moved = !!r.id && a.DB.sessions.find(x => x.id === r.id).date === target;
+    /* Once per change, with a number: click and input on the same element do nothing. */
+    const d2 = find(c => c.data.action === 'changeSessionDate');
+    const calls = spyOn(a, 'changeSessionDate');
+    if(d2){
+      const el = fakeEl(d2.data, { value: dayOff(-10) });
+      fireAction(a, 'click', el); fireAction(a, 'input', el);
+      r.stray = calls.length;
+      fireAction(a, 'change', el);
+    }
+    r.calls = calls;
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: a past session's date changes once, from the date input, not its label",
+     !threw && r.labels === 0 && !!r.d && r.d.tag === 'input' && r.d.type === 'date' && r.moved
+       && r.stray === 0 && r.calls.length === 1 && r.calls[0].length === 2 && typeof r.calls[0][0] === 'number'
+       && r.calls[0][1] === dayOff(-10), { threw, r });
+}
+{
+  const a = f2History();
+  const r = {};
+  let threw = null;
+  const calls = spyOn(a, 'startBackdate');
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  try {
+    r.before = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'startBackdate').length;
+    const t = find(c => c.data.action === 'toggleBackdate');
+    r.toggle = t && t.tag;
+    if(t) fireAction(a, 'click', fakeEl(t.data));
+    const picks = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'startBackdate');
+    r.picks = picks.map(c => c.tag + ':' + c.data.name);
+    const p = picks.find(c => c.data.name === 'PUSH 1');
+    if(p) fireAction(a, 'click', fakeEl(p.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: Add a past workout opens the picker and starts the chosen program',
+     !threw && r.before === 0 && r.toggle === 'button' && r.picks.length > 0 && r.picks.every(x => x.startsWith('button:'))
+       && JSON.stringify(calls) === '[["PUSH 1"]]', { threw, r, calls });
+}
+/* The rest of History: each control reaches its function with the arguments the old handler passed
+   (a session's index as a number, the category as a string, nothing for Done). */
+{
+  const a = f2History();
+  const names = ['editSession', 'deleteSession', 'setActAddCat', 'cancelActivityAdd'];
+  const r = {};
+  let threw = null;
+  const clickAll = (pred) => controlsIn(f2AppHtml(a)).filter(pred).map(c => { fireAction(a, 'click', fakeEl(c.data)); return c.tag; });
+  let calls = {};
+  try {
+    a.__sandbox.toggleHist(3);
+    a.__sandbox.openActivityAdd(dayOff(-1));
+    names.forEach(n => { calls[n] = spyOn(a, n); });
+    r.edit = clickAll(c => c.data.action === 'editSession');
+    r.del = clickAll(c => c.data.action === 'deleteSession');
+    r.cat = clickAll(c => c.data.action === 'setActAddCat' && c.data.cat === 'productivity');
+    r.cancel = clickAll(c => c.data.action === 'cancelActivityAdd');
+  } catch(e){ threw = e.message; }
+  const got = {};
+  names.forEach(n => { got[n] = JSON.stringify(calls[n]); });
+  ok('DELEG-02: editing, deleting, the activity category and Done in History run with their arguments',
+     !threw && [r.edit, r.del, r.cat, r.cancel].every(t => t && t.length === 1 && t[0] === 'button')
+       && got.editSession === '[[3]]' && got.deleteSession === '[[3]]'
+       && got.setActAddCat === '[["productivity"]]' && got.cancelActivityAdd === '[[]]', { threw, r, got });
+}
+/* D-09: a session's date lands in the date input's value attribute. validateBackup() never checks a
+   date's content, so a hand-edited backup can put a quote and a tag in it. */
+{
+  const a = f2History();
+  const bad = '2026-08-01"><b>x';
+  a.DB.sessions.push({ id: 'sh', workout: 'PUSH 1', date: bad, endedAt: 9, extras: {}, entries: [] });
+  const r = {};
+  let threw = null;
+  try {
+    a.__sandbox.toggleHist(a.DB.sessions.length - 1);
+    const html = f2AppHtml(a);
+    r.open = html.includes('data-action="changeSessionDate" data-idx="' + (a.DB.sessions.length - 1) + '"');
+    r.rawB = html.includes('<b>x');
+    r.escaped = html.includes('value="2026-08-01&quot;&gt;&lt;b&gt;x"');
+  } catch(e){ threw = e.message; }
+  ok("D-09: a hostile session date stays inside the date input's value attribute",
+     !threw && r.open && !r.rawB && r.escaped, { threw, r });
+}
+/* A fresh instance with populatedDB on Train → Progress, on the body sub unless `sub` names another. */
+function f2Progress(sub){
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  a.go('train'); a.setSub('progress');
+  if(sub) a.__sandbox.progSubTab(sub);
+  return a;
+}
+/* setRange stores its argument and rangeSeg compares chartRange === 90, so a string range leaves
+   every segment inactive. */
+{
+  const a = f2Progress();
+  const r = {};
+  let threw = null;
+  const range = html => controlsIn(html).filter(c => c.data.action === 'setRange');
+  try {
+    const before = range(f2AppHtml(a));
+    r.before = before.map(c => c.data.range + ':' + c.cls);
+    const c90 = before.find(c => c.data.range === '90');
+    if(c90) fireAction(a, 'click', fakeEl(c90.data));
+    const after = range(a.__sandbox.viewWeight());
+    r.after = after.map(c => c.data.range + ':' + c.cls);
+    r.tags = after.map(c => c.tag);
+  } catch(e){ threw = e.message; }
+  const active = list => (list || []).filter(x => x.split(':')[1].split(/\s+/).includes('active')).map(x => x.split(':')[0]);
+  ok('DELEG-02: a range button activates its own segment (numeric range)',
+     !threw && r.before.length === 4 && JSON.stringify(active(r.before)) === '["30"]'
+       && JSON.stringify(active(r.after)) === '["90"]' && r.tags.every(t => t === 'button'), { threw, r });
+}
+{
+  const a = f2Progress();
+  const r = {};
+  let threw = null;
+  const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+  let weights = [], pets = [];
+  try {
+    const subs = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'progSubTab');
+    r.subs = subs.map(c => c.tag + ':' + c.data.sub);
+    const strength = subs.find(c => c.data.sub === 'strength');
+    if(strength) fireAction(a, 'click', fakeEl(strength.data));
+    const s2 = find(c => c.data.action === 'progSubTab' && c.data.sub === 'strength');
+    r.strengthActive = !!s2 && s2.cls.split(/\s+/).includes('active');
+    const body = find(c => c.data.action === 'progSubTab' && c.data.sub === 'body');
+    if(body) fireAction(a, 'click', fakeEl(body.data));
+    weights = spyOn(a, 'logWeight');
+    pets = spyOn(a, 'logPetWeight');
+    const log = find(c => c.data.action === 'logWeight');
+    r.log = log && log.tag;
+    if(log) fireAction(a, 'click', fakeEl(log.data));
+    const pet = find(c => c.data.action === 'progSubTab' && c.data.sub === 'pet');
+    if(pet) fireAction(a, 'click', fakeEl(pet.data));
+    const plog = find(c => c.data.action === 'logPetWeight');
+    r.plog = plog && { tag: plog.tag, data: plog.data };
+    if(plog) fireAction(a, 'click', fakeEl(plog.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the Progress sub-tabs and both Log buttons route through the dispatcher',
+     !threw && r.subs.length === 5 && r.subs.every(x => x.startsWith('button:')) && r.strengthActive
+       && r.log === 'button' && JSON.stringify(weights) === '[[]]'
+       && !!r.plog && r.plog.tag === 'button' && JSON.stringify(pets) === '[["pet-input","pet-date"]]', { threw, r, weights, pets });
+}
+/* logPetWeight(elId, dateElId) is shared with Today's weigh-in row (plan 05-05), whose control names
+   only its input. A control with no data-date-el must pass exactly one argument, never an undefined
+   second one. Today is not converted yet, so the element here is a stand-in with that shape. */
+{
+  const a = loadApp(APP_PATH);
+  const calls = spyOn(a, 'logPetWeight');
+  let threw = null;
+  try {
+    fireAction(a, 'click', fakeEl({ action: 'logPetWeight', input: 'today-pet' }));
+    fireAction(a, 'click', fakeEl({ action: 'logPetWeight', input: 'pet-input', dateEl: 'pet-date' }));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the shared logPetWeight action passes one argument when the control names no date element',
+     !threw && calls.length === 2 && calls[0].length === 1 && calls[0][0] === 'today-pet'
+       && JSON.stringify(calls[1]) === '["pet-input","pet-date"]', { threw, calls });
+}
+{
+  const a = f2Progress('strength');
+  const r = {};
+  let threw = null;
+  const sels = spyOn(a, 'selectExercise');
+  let prs = [];
+  try {
+    const html = f2AppHtml(a);
+    const cs = controlsIn(html);
+    const sel = cs.find(c => c.data.action === 'selectExercise');
+    r.sel = sel && { tag: sel.tag, events: Object.keys(a.ACTIONS.selectExercise || {}) };
+    const opts = [...html.matchAll(/<option value="([^"]*)"/g)].map(m => m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
+    r.value = opts[opts.length - 1];
+    if(sel){
+      const el = fakeEl(sel.data, { value: r.value });
+      fireAction(a, 'click', el); fireAction(a, 'input', el);
+      fireAction(a, 'change', el);
+    }
+    r.sels = JSON.stringify(sels);
+    prs = spyOn(a, 'selectPR');
+    const pr = cs.find(c => c.data.action === 'selectPR');
+    r.pr = pr && pr.tag;
+    if(pr) fireAction(a, 'click', fakeEl(pr.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: picking an exercise and a PR row select through the dispatcher',
+     !threw && !!r.sel && r.sel.tag === 'select' && JSON.stringify(r.sel.events) === '["change"]'
+       && !!r.value && r.sels === JSON.stringify([[r.value]])
+       && r.pr === 'button' && prs.length === 1 && prs[0].length === 1 && prs[0][0] === 0, { threw, r, prs });
+}
+{
+  const a = f2Progress();
+  const r = {};
+  let threw = null;
+  const rm = spyOn(a, 'rmWeight'), rmp = spyOn(a, 'rmPetWeight');
+  try {
+    const w = controlsIn(f2AppHtml(a)).find(c => c.data.action === 'rmWeight');
+    r.w = w && w.tag;
+    if(w) fireAction(a, 'click', fakeEl(w.data));
+    a.__sandbox.progSubTab('pet');
+    r.pets = a.DB.petWeights.filter(x => !x.deletedAt).length;
+    const p = controlsIn(f2AppHtml(a)).find(c => c.data.action === 'rmPetWeight');
+    r.p = p && p.tag;
+    if(p) fireAction(a, 'click', fakeEl(p.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: deleting a weigh-in passes a numeric index',
+     !threw && r.w === 'button' && JSON.stringify(rm) === '[[2]]' && typeof rm[0][0] === 'number'
+       && r.pets > 0 && r.p === 'button' && JSON.stringify(rmp) === '[[1]]' && typeof rmp[0][0] === 'number', { threw, r, rm, rmp });
+}
+/* T-5-02: a cardio id arrives from a Strava import, sync or a backup. It used to sit inside the
+   inline handler's single quotes, where esc() does not reach. */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.cardio = [{ id: HOSTILE, date: dayOff(-1), type: 'Longboard', minutes: 20, distanceKm: 0, note: '', mtime: 1 },
+                 { id: 'c2', date: dayOff(-2), type: 'Walk', minutes: 30, distanceKm: 0, note: '', mtime: 1 }];
+  const r = {};
+  let threw = null;
+  try {
+    a.go('train'); a.setSub('cardio');
+    const html = a.__sandbox.viewCardio();
+    r.rawB = html.includes('<b>');
+    const del = controlsIn(html).filter(c => c.data.action === 'removeCardio');
+    r.ids = del.map(c => c.data.id);
+    const h = del.find(c => c.data.id === HOSTILE);
+    r.tag = h && h.tag;
+    if(h) fireAction(a, 'click', fakeEl(h.data));
+    r.hostileDeleted = !!a.DB.cardio.find(c => c.id === HOSTILE).deletedAt;
+    r.c2Live = !a.DB.cardio.find(c => c.id === 'c2').deletedAt;
+  } catch(e){ threw = e.message; }
+  ok('D-03: a hostile cardio id round-trips through data-id and deletes the right session',
+     !threw && !r.rawB && r.ids.length === 2 && r.tag === 'button' && r.hostileDeleted && r.c2Live, { threw, r });
+}
+/* The picker button clicks the hidden file input inside the tap; the input acts on change alone, so
+   the synthesized click does nothing and a chosen file imports once. */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  const r = {};
+  let threw = null;
+  let picks = [], files = [], adds = [];
+  try {
+    a.go('train'); a.setSub('cardio');
+    const cs = controlsIn(f2AppHtml(a));
+    picks = spyOn(a, 'pickCardioFile'); files = spyOn(a, 'handleCardioFile'); adds = spyOn(a, 'addCardio');
+    const pick = cs.find(c => c.data.action === 'pickCardioFile');
+    const inp = cs.find(c => c.data.action === 'handleCardioFile');
+    r.pick = pick && pick.tag; r.inp = inp && { tag: inp.tag, type: inp.type };
+    if(pick) fireAction(a, 'click', fakeEl(pick.data));
+    r.afterPick = [picks.length, files.length];
+    if(inp){
+      const el = fakeEl(inp.data);
+      fireAction(a, 'change', el);
+      r.sameEl = files.length === 1 && files[0].length === 1 && files[0][0] === el;
+      fireAction(a, 'click', el);
+    }
+    r.after = [picks.length, files.length];
+    const add = cs.find(c => c.data.action === 'addCardio');
+    r.add = add && add.tag;
+    if(add) fireAction(a, 'click', fakeEl(add.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the Strava file picker opens from its button, and choosing a file runs the handler once',
+     !threw && r.pick === 'button' && !!r.inp && r.inp.tag === 'input' && r.inp.type === 'file'
+       && JSON.stringify(r.afterPick) === '[1,0]' && r.sameEl && JSON.stringify(r.after) === '[1,1]'
+       && r.add === 'button' && JSON.stringify(adds) === '[[]]', { threw, r, adds });
+}
+
+/* ── Plan 05-05: Today ── */
+/* The frozen clock is Friday 12:00 Chicago: a workout day, and the afternoon card order (no week
+   card; the weigh-in card is closed until toggled). populatedDB's last live session is PUSH 2, so
+   the fixed next workout is LEGS 2. */
+function f2Today(seed){
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  if(seed) seed(a);
+  a.go('today');
+  return a;
+}
+/* 4-day mode with a Pull day last: nextWorkout() returns SPECIALIZED, so the card offers the five
+   focus options. */
+/* This instance's clock at 20:00 Chicago on the frozen calendar day (the evening card order). */
+function f2Evening(a){
+  const ms = Date.parse('2026-08-08T01:00:00Z'), Base = a.__sandbox.Date;
+  function Evening(...args){
+    if(!new.target) return new Base(ms).toString();
+    return args.length ? new Base(...args) : new Base(ms);
+  }
+  Evening.prototype = Base.prototype;
+  Evening.now = () => ms; Evening.parse = Base.parse; Evening.UTC = Base.UTC;
+  a.__sandbox.Date = Evening;
+}
+function f2SeedSpecialized(a){
+  a.DB.routineMode = '4day';
+  a.DB.sessions.push({ id:'s6', workout:'PULL 1', date:dayOff(-1), endedAt:6, extras:{},
+    entries:[{ name:'Barbell row', sets:[{ w:'135', r:'8', skipped:false }] }] });
+}
+{
+  const r = {};
+  let threw = null;
+  let starts = [], skips = [], sStarts = [], sSkips = [];
+  try {
+    const a = f2Today();
+    starts = spyOn(a, 'startWorkout'); skips = spyOn(a, 'skipDay');
+    const cs = controlsIn(f2AppHtml(a));
+    r.next = a.__sandbox.nextWorkout();
+    const st = cs.filter(c => c.data.action === 'startWorkout'), sk = cs.filter(c => c.data.action === 'skipDay');
+    r.fixed = { st: st.map(c => c.tag + ':' + c.data.name), sk: sk.map(c => c.tag + ':' + c.data.name) };
+    st.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+    sk.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+
+    const b = f2Today(f2SeedSpecialized);
+    sStarts = spyOn(b, 'startWorkout'); sSkips = spyOn(b, 'skipDay');
+    const bs = controlsIn(f2AppHtml(b));
+    r.sNext = b.__sandbox.nextWorkout();
+    const opts = bs.filter(c => c.data.action === 'startWorkout');
+    r.opts = opts.map(c => c.tag + ':' + c.data.name);
+    opts.forEach(c => fireAction(b, 'click', fakeEl(c.data)));
+    bs.filter(c => c.data.action === 'skipDay').forEach(c => fireAction(b, 'click', fakeEl(c.data)));
+    r.PROGRAM = Object.keys(b.PROGRAM || {});
+  } catch(e){ threw = e.message; }
+  const inProgram = n => (r.PROGRAM || []).includes(n);
+  const optNames = (r.opts || []).map(x => x.slice(x.indexOf(':') + 1));
+  ok('DELEG-02: Start and Skip on Today pass the workout name through data-name',
+     !threw && r.next === 'LEGS 2' && JSON.stringify(r.fixed.st) === '["button:LEGS 2"]' && JSON.stringify(r.fixed.sk) === '["button:LEGS 2"]'
+       && JSON.stringify(starts) === '[["LEGS 2"]]' && JSON.stringify(skips) === '[["LEGS 2"]]' && inProgram('LEGS 2')
+       && r.sNext === 'SPECIALIZED' && optNames.length === 5 && new Set(optNames).size === 5
+       && optNames.every(n => n.indexOf('SPECIALIZED — ') === 0 && inProgram(n)) && r.opts.every(x => x.startsWith('button:'))
+       && optNames.includes('SPECIALIZED — CHEST & TRICEPS')
+       && JSON.stringify(sStarts) === JSON.stringify(optNames.map(n => [n])) && JSON.stringify(sSkips) === '[["SPECIALIZED"]]',
+     { threw, r, starts, skips, sStarts, sSkips });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Today(a => { a.DB.draft = fullDraft(a, 'PUSH 1'); });
+    a.subState.train = 'history';   /* so "opens the Log sub" is not the default passing */
+    r.before = a.TAB;
+    const res =controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'log');
+    r.res = res.map(c => c.tag);
+    if(res[0]) fireAction(a, 'click', fakeEl(res[0].data));
+    r.tab = a.TAB; r.sub = a.subState.train;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: with a workout in progress, Resume opens the Log tab',
+     !threw && r.before === 'today' && JSON.stringify(r.res) === '["button"]' && r.tab === 'train' && r.sub === 'log', { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  let shuffles = [], dids = [], selects = [];
+  try {
+    const a = f2Today();
+    const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+    const prod = find(c => c.data.action === 'setPickCat' && c.data.cat === 'productivity');
+    r.prodBefore = prod && prod.cls;
+    if(prod) fireAction(a, 'click', fakeEl(prod.data));
+    const prod2 = find(c => c.data.action === 'setPickCat' && c.data.cat === 'productivity');
+    const hobby2 = find(c => c.data.action === 'setPickCat' && c.data.cat === 'hobby');
+    r.prodAfter = prod2 && prod2.cls; r.hobbyAfter = hobby2 && hobby2.cls;
+    r.segTags = [prod2 && prod2.tag, hobby2 && hobby2.tag];
+    shuffles = spyOn(a, 'shufflePick'); dids = spyOn(a, 'didPick'); selects = spyOn(a, 'selectPick');
+    const sh = find(c => c.data.action === 'shufflePick'), dn = find(c => c.data.action === 'didPick');
+    const sel = find(c => c.data.action === 'selectPick');
+    r.tags = [sh && sh.tag, dn && dn.tag, sel && sel.tag];
+    if(sh) fireAction(a, 'click', fakeEl(sh.data));
+    if(dn) fireAction(a, 'click', fakeEl(dn.data));
+    if(sel){
+      const el = fakeEl(sel.data, { value: 'Laundry' });
+      fireAction(a, 'click', el); fireAction(a, 'input', el); fireAction(a, 'change', el);
+    }
+    r.selKeys = Object.keys((a.ACTIONS || {}).selectPick || {});
+  } catch(e){ threw = e.message; }
+  const active = s => String(s || '').split(/\s+/).includes('active');
+  ok('DELEG-02: the pick-a-thing card routes category, shuffle, done and the selector through the dispatcher',
+     !threw && r.prodBefore != null && !active(r.prodBefore) && active(r.prodAfter) && !active(r.hobbyAfter)
+       && JSON.stringify(r.segTags) === '["button","button"]' && JSON.stringify(r.tags) === '["button","button","select"]'
+       && JSON.stringify(shuffles) === '[[]]' && JSON.stringify(dids) === '[[]]'
+       && JSON.stringify(selects) === '[["Laundry"]]' && JSON.stringify(r.selKeys) === '["change"]',
+     { threw, r, shuffles, dids, selects });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Today();
+    const box = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'saveJournal');
+    r.box = box.map(c => c.tag);
+    if(box[0]){
+      const el = fakeEl(box[0].data, { value: 'a good day' });
+      fireAction(a, 'click', el);
+      r.afterClick = a.DB.journal[a.todayISO()];
+      fireAction(a, 'input', el);
+    }
+    r.saved = a.DB.journal[a.todayISO()];
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the journal box saves on input through the dispatcher',
+     !threw && JSON.stringify(r.box) === '["textarea"]' && r.afterClick === '' && r.saved === 'a good day', { threw, r });
+}
+/* The afternoon order has no week card, so the only train/history shortcut on Today is the link
+   under the journal box. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Today();
+    const links = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'history');
+    r.links = links.map(c => c.tag + ':' + c.cls);
+    if(links[0]) fireAction(a, 'click', fakeEl(links[0].data));
+    r.tab = a.TAB; r.sub = a.subState.train;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-06: the week link under the journal box is an inline button that opens History',
+     !threw && JSON.stringify(r.links) === '["button:tap-inline"]' && r.tab === 'train' && r.sub === 'history', { threw, r });
+}
+/* The week card renders only in the evening order. Moves this instance's clock to 20:00 Chicago on
+   the same calendar day; every other instance keeps the frozen midday. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Today(f2Evening);
+    const cs = controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'history');
+    r.hist = cs.map(c => c.tag + ':' + c.cls);
+    r.evening = /Good evening/.test(f2AppHtml(a));
+    const card = cs.find(c => c.cls.split(/\s+/).includes('card')) || null;
+    if(card) fireAction(a, 'click', fakeEl(card.data));
+    r.tab = a.TAB; r.sub = a.subState.train;
+  } catch(e){ threw = e.message; }
+  ok("DELEG-06: Today's evening week card is a whole-card button that opens History",
+     !threw && r.evening && r.hist.includes('button:card tap') && r.hist.includes('button:tap-inline') && r.hist.length === 2
+       && r.tab === 'train' && r.sub === 'history', { threw, r });
+}
+/* A blank DB on Today: nobody has weighed in, and the afternoon card is closed until toggled, which
+   renders both log rows. */
+function f2TodayWeighIn(){
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.go('today');
+  a.toggleAcc('weighin');
+  return a;
+}
+/* The decoded value of `attr` on the <input> whose id is `id` in rendered `html`, or null. A value
+   that broke out of its quotes ends the start tag early, so what is left no longer carries it. */
+function f2InputAttr(html, id, attr){
+  const tag = String(html || '').match(new RegExp('<input\\b[^>]*\\sid="' + id + '"[^>]*>'));
+  const m = tag ? tag[0].match(new RegExp('\\s' + attr + '="([^"]*)"')) : null;
+  return m ? m[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'").replace(/&amp;/g, '&') : null;
+}
+/* Enter-to-log (RESEARCH Pitfall 3). The box's action is keydown-only and forwards Enter to the Log
+   button's click handler; the button has no keydown handler, so Enter on the focused button (whose
+   click the browser synthesizes) cannot log a second time. Fired through the app's own listeners. */
+{
+  const r = {};
+  let threw = null;
+  let calls = [];
+  try {
+    const a = f2TodayWeighIn();
+    calls = spyOn(a, 'logWeight');
+    const cs = controlsIn(f2AppHtml(a));
+    const box = cs.find(c => c.data.action === 'enter' && c.data.enter === 'logWeight') || null;
+    const btn = cs.find(c => c.data.action === 'logWeight') || null;
+    r.box = box && box.tag; r.btn = btn && btn.tag;
+    if(box){
+      const el = fakeEl(box.data, { tagName: 'INPUT' });
+      fireListener(a, 'keydown', el, { key: 'Enter' }); r.enter = calls.length;
+      fireListener(a, 'keydown', el, { key: 'a' });     r.otherKey = calls.length;
+      fireListener(a, 'click', el);                      r.clickBox = calls.length;
+    }
+    if(btn){
+      const el = fakeEl(btn.data, { tagName: 'BUTTON' });
+      fireListener(a, 'click', el);                      r.click = calls.length;
+      fireListener(a, 'keydown', el, { key: 'Enter' }); r.enterOnButton = calls.length;
+    }
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: Enter in the weigh-in box logs once, and the Log button logs once',
+     !threw && r.box === 'input' && r.btn === 'button' && r.enter === 1 && r.otherKey === 1 && r.clickBox === 1
+       && r.click === 2 && r.enterOnButton === 2 && calls.every(c => c.length === 0), { threw, r, calls });
+}
+{
+  const r = {};
+  let threw = null;
+  let calls = [];
+  try {
+    const a = f2TodayWeighIn();
+    calls = spyOn(a, 'logPetWeight');
+    const html = f2AppHtml(a);
+    const petHint = name => name + "'s weight (" + a.DB.unit + ')';
+    r.hint = f2InputAttr(html, 'pet-input', 'placeholder') === petHint(a.DB.petName);
+    r.doubled = /&amp;(#39|quot|lt|gt|amp);/.test(html);
+    const cs = controlsIn(html);
+    const box = cs.find(c => c.data.action === 'enter' && c.data.enter === 'logPetWeight') || null;
+    const btn = cs.find(c => c.data.action === 'logPetWeight') || null;
+    r.box = box && box.tag; r.btn = btn && btn.tag;
+    if(box) fireListener(a, 'keydown', fakeEl(box.data, { tagName: 'INPUT' }), { key: 'Enter' });
+    r.afterEnter = JSON.stringify(calls);
+    if(btn) fireListener(a, 'click', fakeEl(btn.data, { tagName: 'BUTTON' }));
+    /* T-5-02: the pet name reaches the placeholder escaped exactly once: it decodes back to itself. */
+    a.DB.petName = 'Fr"><b>x';
+    a.render();
+    const hostile = f2AppHtml(a);
+    r.hostileRaw = hostile.includes('<b>x'); r.hostileEsc = f2InputAttr(hostile, 'pet-input', 'placeholder') === petHint('Fr"><b>x');
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: Enter in Today's pet weigh-in box passes one argument, as before",
+     !threw && r.hint && !r.doubled && r.box === 'input' && r.btn === 'button'
+       && r.afterEnter === '[["pet-input"]]' && JSON.stringify(calls) === '[["pet-input"],["pet-input"]]'
+       && !r.hostileRaw && r.hostileEsc, { threw, r, calls });
+}
+/* D-02: the old handler was two statements (set the Progress view, then navigate). One action runs
+   the chain. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.go('today');
+    const chart = prog => controlsIn(f2AppHtml(a)).find(c => c.data.action === 'openChart' && c.data.prog === prog) || null;
+    const pet = chart('pet');
+    r.pet = pet && pet.tag;
+    if(pet) fireAction(a, 'click', fakeEl(pet.data));
+    r.petTab = a.TAB; r.petSub = a.subState.train;
+    r.petShown = f2AppHtml(a).includes('id="pet-input"') && !f2AppHtml(a).includes('id="wt-input"');
+    a.go('today');
+    const body = chart('body');
+    r.body = body && body.tag;
+    if(body) fireAction(a, 'click', fakeEl(body.data));
+    r.bodyTab = a.TAB; r.bodySub = a.subState.train;
+    r.bodyShown = f2AppHtml(a).includes('id="wt-input"') && !f2AppHtml(a).includes('id="pet-input"');
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a Chart button sets the Progress view and opens it (D-02 chain)',
+     !threw && r.pet === 'button' && r.petTab === 'train' && r.petSub === 'progress' && r.petShown
+       && r.body === 'button' && r.bodyTab === 'train' && r.bodySub === 'progress' && r.bodyShown, { threw, r });
+}
+/* Pitfall 5: the checkbox sits inside a <label>, and a tap on the label clicks the checkbox. The
+   action is on the checkbox's change alone, so the forwarded click never toggles it a second time.
+   CLAUDE.md: absence never means "off", so un-ticking stores an explicit false. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.go('today');
+    const t = a.todayISO();
+    const head = controlsIn(f2AppHtml(a)).find(c => c.data.action === 'toggleAcc' && c.data.key === 'mob-today') || null;
+    r.head = head && head.tag;
+    r.closed = !controlsIn(f2AppHtml(a)).some(c => c.data.action === 'toggleMobility');
+    if(head) fireAction(a, 'click', fakeEl(head.data));
+    const cs = controlsIn(f2AppHtml(a));
+    const box = cs.find(c => c.data.action === 'toggleMobility') || null;
+    r.box = box && { tag: box.tag, type: box.type, i: box.data.i };
+    r.labels = cs.filter(c => c.tag === 'label').length;
+    r.before = JSON.stringify((a.DB.mobilityLog || {})[t] || null);
+    if(box){
+      const el = fakeEl(box.data);
+      fireAction(a, 'click', el);
+      r.afterClick = JSON.stringify((a.DB.mobilityLog || {})[t] || null);
+      fireAction(a, 'change', el);
+      const m1 = Object.assign({}, a.DB.mobilityLog[t]);
+      r.on = Object.keys(m1).length === 1 && Object.values(m1)[0] === true;
+      fireAction(a, 'change', el);
+      const m2 = a.DB.mobilityLog[t];
+      r.off = Object.keys(m2).length === 1 && Object.values(m2)[0] === false;
+    }
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: a mobility checkbox toggles once per change, never on the label's forwarded click",
+     !threw && r.head === 'button' && r.closed && !!r.box && r.box.tag === 'input' && r.box.type === 'checkbox'
+       && r.labels === 0 && r.afterClick === r.before && r.on && r.off, { threw, r });
+}
+/* The session button: no argument, as before, and the real toggle logs 'yoga' then an explicit
+   false (never a deleted key). */
+{
+  const r = {};
+  let threw = null;
+  let calls = [];
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.go('today');
+    a.toggleAcc('mob-today');
+    const t = a.todayISO();
+    const find = () => controlsIn(f2AppHtml(a)).find(c => c.data.action === 'toggleMobSession') || null;
+    const b1 = find();
+    r.tag = b1 && b1.tag;
+    if(b1) fireAction(a, 'click', fakeEl(b1.data));
+    r.on = a.DB.mobilityLog && a.DB.mobilityLog[t] ? a.DB.mobilityLog[t].__session : undefined;
+    const b2 = find();
+    if(b2) fireAction(a, 'click', fakeEl(b2.data));
+    r.off = a.DB.mobilityLog && a.DB.mobilityLog[t] && '__session' in a.DB.mobilityLog[t] ? a.DB.mobilityLog[t].__session : 'absent';
+    calls = spyOn(a, 'toggleMobSession');
+    const b3 = find();
+    if(b3) fireAction(a, 'click', fakeEl(b3.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the mobility session button toggles through the dispatcher with no argument',
+     !threw && r.tag === 'button' && r.on === 'yoga' && r.off === false && JSON.stringify(calls) === '[[]]', { threw, r, calls });
+}
+/* The shortcut cards and the two headers are real buttons (DELEG-06, D-11). Midday shows the
+   weather and cardio cards; the week card renders only in the evening order. */
+{
+  const r = {};
+  let threw = null;
+  const tap = c => !!c && c.tag === 'button' && c.cls.split(/\s+/).includes('tap');
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    setup(a, {});
+    a.go('today');
+    const html = f2AppHtml(a), cs = controlsIn(html);
+    r.weigh = tap(cs.find(c => c.data.action === 'toggleAcc' && c.data.key === 'weighin'));
+    r.mob = tap(cs.find(c => c.data.action === 'toggleAcc' && c.data.key === 'mob-today'));
+    const lawn = cs.filter(c => c.data.action === 'goSub' && c.data.tab === 'care' && c.data.sub === 'lawn');
+    r.lawn = lawn.length >= 2 && lawn.every(tap);
+    /* the weather card itself: a card button carrying the temperature */
+    r.weather = (html.match(/<button class="card tap"[^>]*data-sub="lawn">[\s\S]*?<\/button>/g) || []).some(s => /°/.test(s) && /Lawn →/.test(s));
+    const cardio = cs.filter(c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'cardio');
+    r.cardio = cardio.length === 1 && cardio.every(tap) && cardio[0].cls.split(/\s+/).includes('card');
+    const b = loadApp(APP_PATH);
+    b.DB = b.blank();
+    f2Evening(b);
+    b.go('today');
+    const week = controlsIn(f2AppHtml(b)).filter(c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'history'
+      && c.cls.split(/\s+/).includes('card'));
+    r.week = week.length === 1 && week.every(tap);
+  } catch(e){ threw = e.message; }
+  ok("DELEG-06: Today's weigh-in and mobility headers and the weather, week and cardio cards are buttons",
+     !threw && r.weigh && r.mob && r.lawn && r.weather && r.cardio && r.week, { threw, r });
+}
+
+/* Enter-to-add on the to-do box: the box forwards Enter to addTodo's click, which reads the box's
+   value itself. The harness's getElementById hands back the same element across renders, so the
+   box is emptied by hand between steps (a real re-render gives a fresh, empty box). */
+{
+  const r = {};
+  let threw = null;
+  let dones = [], adds = [];
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.go('today');
+    const inp = a.__sandbox.document.getElementById('todo-input');
+    const texts = () => a.liveTodos().map(t => t.text);
+    const cs0 = controlsIn(f2AppHtml(a));
+    const box = cs0.find(c => c.data.action === 'enter' && c.data.enter === 'addTodo') || null;
+    const add = cs0.find(c => c.data.action === 'addTodo') || null;
+    r.box = box && box.tag; r.add = add && add.tag;
+    if(box){
+      const el = fakeEl(box.data, { tagName: 'INPUT' });
+      inp.value = 'buy milk';
+      fireListener(a, 'keydown', el, { key: 'a' });     r.otherKey = texts();
+      fireListener(a, 'click', el);                      r.clickBox = texts();
+      fireListener(a, 'keydown', el, { key: 'Enter' }); r.enter = texts();
+      inp.value = '';
+      fireListener(a, 'keydown', el, { key: 'Enter' }); r.empty = texts();
+    }
+    if(add){ inp.value = 'call the vet'; fireListener(a, 'click', fakeEl(add.data, { tagName: 'BUTTON' })); inp.value = ''; }
+    r.added = texts();
+    const cs = controlsIn(f2AppHtml(a));
+    const done = cs.filter(c => c.data.action === 'doneTodo'), rm = cs.filter(c => c.data.action === 'removeTodo');
+    r.done = done.map(c => c.tag + ':' + c.type + ':' + c.data.i); r.rm = rm.map(c => c.tag + ':' + c.data.i);
+    if(done[0]){
+      const el = fakeEl(done[0].data);
+      fireAction(a, 'click', el); r.afterClick = texts();
+      fireAction(a, 'change', el); r.afterChange = texts();
+      r.journal = /buy milk/.test(a.DB.journal[a.todayISO()] || '');
+    }
+    const rm2 = controlsIn(f2AppHtml(a)).find(c => c.data.action === 'removeTodo') || null;
+    if(rm2) fireAction(a, 'click', fakeEl(rm2.data));
+    r.afterRemove = texts();
+    r.soft = a.DB.todos.length === 2 && a.DB.todos.every(t => t.deletedAt);
+    dones = spyOn(a, 'doneTodo');
+    fireAction(a, 'change', fakeEl({ action: 'doneTodo', i: '0' }));
+    /* addTodo reads the box itself and takes no argument, from either path */
+    adds = spyOn(a, 'addTodo');
+    if(add) fireListener(a, 'click', fakeEl(add.data, { tagName: 'BUTTON' }));
+    if(box) fireListener(a, 'keydown', fakeEl(box.data, { tagName: 'INPUT' }), { key: 'Enter' });
+  } catch(e){ threw = e.message; }
+  const J = x => JSON.stringify(x);
+  ok('DELEG-02: Enter in the to-do box adds one to-do, and ticking one fires once with a numeric index',
+     !threw && r.box === 'input' && r.add === 'button' && J(r.otherKey) === '[]' && J(r.clickBox) === '[]'
+       && J(r.enter) === '["buy milk"]' && J(r.empty) === '["buy milk"]' && J(r.added) === '["buy milk","call the vet"]'
+       && J(r.done) === '["input:checkbox:0","input:checkbox:1"]' && J(r.rm) === '["button:0","button:1"]'
+       && J(r.afterClick) === '["buy milk","call the vet"]' && J(r.afterChange) === '["call the vet"]' && r.journal
+       && J(r.afterRemove) === '[]' && r.soft && J(dones) === '[[0]]' && typeof (dones[0] || [])[0] === 'number'
+       && J(adds) === '[[],[]]',
+     { threw, r, dones, adds });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.DB.todos = Array.from({ length: 7 }, (_, k) => ({ text: 'task ' + k, created: dayOff(-k), mtime: 1 }));
+    a.go('today');
+    const count = () => controlsIn(f2AppHtml(a)).filter(c => c.data.action === 'doneTodo').length;
+    const more = () => controlsIn(f2AppHtml(a)).find(c => c.data.action === 'toggleAcc' && c.data.key === 'todos-all') || null;
+    r.before = count();
+    const m1 = more();
+    r.tag = m1 && m1.tag;
+    if(m1) fireAction(a, 'click', fakeEl(m1.data));
+    r.expanded = count();
+    const m2 = more();
+    if(m2) fireAction(a, 'click', fakeEl(m2.data));
+    r.collapsed = count();
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: Show more expands the to-do list through toggleAcc',
+     !threw && r.tag === 'button' && r.before === 5 && r.expanded === 7 && r.collapsed === 5, { threw, r });
+}
+/* A blank DB has never been backed up, so the backup banner shows. The storage banner is reached the
+   way a full device reaches it: localStorage.setItem throws a quota error, save() falls back to
+   handleQuotaFailure(), and that re-renders with the banner. */
+{
+  const r = {};
+  let threw = null;
+  let exports = [], snoozes = [];
+  try {
+    const a = loadApp(APP_PATH);
+    a.DB = a.blank();
+    a.go('today');
+    exports = spyOn(a, 'exportData'); snoozes = spyOn(a, 'snoozeBackup');
+    const cs = controlsIn(f2AppHtml(a));
+    r.banner = /Back up your data/.test(f2AppHtml(a));
+    const exp = cs.filter(c => c.data.action === 'exportData'), later = cs.filter(c => c.data.action === 'snoozeBackup');
+    const sync = cs.filter(c => c.data.action === 'go' && c.data.tab === 'settings');
+    r.tags = [exp, later, sync].map(l => l.map(c => c.tag).join(','));
+    exp.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+    later.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+    r.exports = exports.length; r.snoozes = snoozes.length;
+    if(sync[0]) fireAction(a, 'click', fakeEl(sync[0].data));
+    r.tab = a.TAB;
+
+    const b = loadApp(APP_PATH);
+    b.DB = b.blank();
+    b.DB.lastBackupAt = Date.now();          /* only the storage banner, so its buttons are the only ones */
+    b.go('today');
+    const ls = b.__sandbox.localStorage, setItem = ls.setItem;
+    ls.setItem = () => { const e = new Error('QuotaExceededError'); e.name = 'QuotaExceededError'; throw e; };
+    try { b.__sandbox.save(); } finally { ls.setItem = setItem; }
+    b.go('today');
+    const bh = f2AppHtml(b), bs = controlsIn(bh);
+    r.quota = /This device is out of storage/.test(bh) && !/Back up your data/.test(bh);
+    const qExports = spyOn(b, 'exportData');
+    const qExp = bs.filter(c => c.data.action === 'exportData'), qSet = bs.filter(c => c.data.action === 'go' && c.data.tab === 'settings');
+    r.qTags = [qExp, qSet].map(l => l.map(c => c.tag).join(','));
+    qExp.forEach(c => fireAction(b, 'click', fakeEl(c.data)));
+    r.qExports = JSON.stringify(qExports);
+    if(qSet[0]) fireAction(b, 'click', fakeEl(qSet[0].data));
+    r.qTab = b.TAB;
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: the backup and storage banners' buttons route through the dispatcher",
+     !threw && r.banner && JSON.stringify(r.tags) === '["button","button","button"]' && r.exports === 1 && r.snoozes === 1
+       && JSON.stringify(exports) === '[[]]' && JSON.stringify(snoozes) === '[[]]' && r.tab === 'settings'
+       && r.quota && JSON.stringify(r.qTags) === '["button","button"]' && r.qExports === '[[]]' && r.qTab === 'settings',
+     { threw, r, exports, snoozes });
+}
+
+/* ── Plan 05-06: the Log tab ── */
+/* The screen Ian is standing in front of mid-set. The stopwatch bar is static markup, so its controls
+   are read from the file, and every tap goes through the listener the app registered. */
+function f2StaticControl(name){
+  return controlsIn(f2Static(F2_RAW)).find(c => c.data.action === name) || null;
+}
+/* Train → Log on a fresh instance. With no draft this is the picker. */
+function f2Log(seed){
+  const a = loadApp(APP_PATH);
+  a.DB = populatedDB(a);
+  if(seed) seed(a);
+  a.go('train'); a.setSub('log');
+  return a;
+}
+/* swGuard, through the app's own non-passive pointerdown listener: with the keyboard up the tap is
+   preventDefault'ed, so focus stays in the weight or reps box; with it down, the focused element is
+   blurred, so the keyboard stays down. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    ['swToggle', 'swClear'].forEach(name => {
+      const c = f2StaticControl(name);
+      r[name] = { tag: c && c.tag };
+      if(!c) return;
+      const a = loadApp(APP_PATH);
+      let blurred = 0;
+      a.__sandbox.document.activeElement = { blur(){ blurred++; } };
+      a.__sandbox.visualViewport = { height: 400, offsetTop: 0 };
+      const up = fireListener(a, 'pointerdown', fakeEl(c.data));
+      r[name].up = up.defaultPrevented; r[name].blurUp = blurred;
+      delete a.__sandbox.visualViewport;
+      const down = fireListener(a, 'pointerdown', fakeEl(c.data));
+      r[name].down = down.defaultPrevented; r[name].blurDown = blurred;
+    });
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: the stopwatch holds focus with the keyboard up and lets it go with the keyboard down (swGuard through the dispatcher)',
+     !threw && ['swToggle', 'swClear'].every(n => r[n] && r[n].tag === 'button' && r[n].up === true && r[n].blurUp === 0
+       && r[n].down === false && r[n].blurDown === 1), { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  let toggles = [], clears = [];
+  try {
+    const a = loadApp(APP_PATH);
+    toggles = spyOn(a, 'swToggle'); clears = spyOn(a, 'swClear');
+    const t = f2StaticControl('swToggle'), c = f2StaticControl('swClear');
+    r.found = [!!t, !!c];
+    [t, c].forEach(x => { if(x) fireListener(a, 'pointerdown', fakeEl(x.data)); });
+    r.afterPointerdown = [toggles.length, clears.length];
+    if(t) fireListener(a, 'click', fakeEl(t.data));
+    if(c) fireListener(a, 'click', fakeEl(c.data));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a stopwatch tap toggles once, and Clear clears once',
+     !threw && JSON.stringify(r.found) === '[true,true]' && JSON.stringify(r.afterPointerdown) === '[0,0]'
+       && JSON.stringify(toggles) === '[[]]' && JSON.stringify(clears) === '[[]]', { threw, r, toggles, clears });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Log();
+    const rows = a.__sandbox.previewRows('PUSH 1');
+    const shown = () => f2AppHtml(a).includes(rows);
+    const bodies = () => f2AppHtml(a).split('<div class="phase-body">').length - 1;
+    const find = pred => controlsIn(f2AppHtml(a)).find(pred) || null;
+    const pv = find(c => c.data.action === 'togglePreview' && c.data.name === 'PUSH 1');
+    r.pv = pv && { tag: pv.tag, cls: pv.cls };
+    r.preview = [shown()];
+    if(pv){ fireListener(a, 'click', fakeEl(pv.data)); r.preview.push(shown()); fireListener(a, 'click', fakeEl(pv.data)); r.preview.push(shown()); }
+    const gd = find(c => c.data.action === 'toggleGuide' && c.data.i === '0');
+    r.gd = gd && gd.tag;
+    r.guide = [bodies()];
+    if(gd){ fireListener(a, 'click', fakeEl(gd.data)); r.guide.push(bodies()); fireListener(a, 'click', fakeEl(gd.data)); r.guide.push(bodies()); }
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a program preview and a guide section open and close through the dispatcher',
+     !threw && r.pv && r.pv.tag === 'button' && /(^|\s)tap(\s|$)/.test(r.pv.cls) && JSON.stringify(r.preview) === '[false,true,false]'
+       && r.gd === 'button' && JSON.stringify(r.guide) === '[0,1,0]', { threw, r });
+}
+/* Every Start and Skip on the picker, in both routine modes, passes its own card's name: the fixed
+   cards their workout, the Specialized options theirs, and every Specialized Skip SPECIALIZED.
+   4-day is the default mode (blank() and migration 11), so the 3-day instance sets it explicitly. */
+{
+  const r = {};
+  let threw = null;
+  let starts = [], skips = [], sStarts = [], sSkips = [];
+  try {
+    const a = f2Log(a => { a.DB.routineMode = '3day'; });   /* the fixed cards alone */
+    starts = spyOn(a, 'startWorkout'); skips = spyOn(a, 'skipDay');
+    const cs = controlsIn(f2AppHtml(a));
+    const st = cs.filter(c => c.data.action === 'startWorkout'), sk = cs.filter(c => c.data.action === 'skipDay');
+    r.st = st.map(c => c.tag + ':' + c.data.name); r.sk = sk.map(c => c.tag + ':' + c.data.name);
+    st.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+    sk.forEach(c => fireAction(a, 'click', fakeEl(c.data)));
+
+    const b = f2Log(b => { b.DB.routineMode = '4day'; });
+    sStarts = spyOn(b, 'startWorkout'); sSkips = spyOn(b, 'skipDay');
+    const bs = controlsIn(f2AppHtml(b));
+    const sst = bs.filter(c => c.data.action === 'startWorkout' && c.data.name.indexOf('SPECIALIZED') === 0);
+    const ssk = bs.filter(c => c.data.action === 'skipDay' && c.data.name.indexOf('SPECIALIZED') === 0);
+    r.sst = sst.map(c => c.tag + ':' + c.data.name); r.ssk = ssk.map(c => c.tag + ':' + c.data.name);
+    sst.forEach(c => fireAction(b, 'click', fakeEl(c.data)));
+    ssk.forEach(c => fireAction(b, 'click', fakeEl(c.data)));
+    r.PROGRAM = Object.keys(a.PROGRAM || {});
+  } catch(e){ threw = e.message; }
+  const names = l => (l || []).map(x => x.slice(x.indexOf(':') + 1));
+  const FIXED = ['PUSH 1', 'LEGS 1', 'PULL 1', 'PUSH 2', 'LEGS 2', 'PULL 2'];
+  const sNames = names(r.sst);
+  ok("DELEG-02: Start and Skip on the Log picker reuse Today's actions",
+     !threw && JSON.stringify(names(r.st)) === JSON.stringify(FIXED) && JSON.stringify(names(r.sk)) === JSON.stringify(FIXED)
+       && [r.st, r.sk, r.sst, r.ssk].every(l => (l || []).length && l.every(x => x.startsWith('button:')))
+       && JSON.stringify(starts) === JSON.stringify(FIXED.map(n => [n])) && JSON.stringify(skips) === JSON.stringify(FIXED.map(n => [n]))
+       && starts[0][0] === 'PUSH 1' && skips[0][0] === 'PUSH 1'
+       && sNames.length === 5 && new Set(sNames).size === 5 && sNames.every(n => r.PROGRAM.includes(n))
+       && sNames.includes('SPECIALIZED — CHEST & TRICEPS')
+       && JSON.stringify(sStarts) === JSON.stringify(sNames.map(n => [n]))
+       && names(r.ssk).every(n => n === 'SPECIALIZED') && JSON.stringify(sSkips) === JSON.stringify(names(r.ssk).map(n => [n])),
+     { threw, r, starts, skips, sStarts, sSkips });
+}
+/* The two documents the next agent learns from. CLAUDE.md must name the registry, the attribute and
+   the dispatcher the suite enforces, and each must exist in index.html: names only, never wording
+   (observation 18: two files agreeing on a name is a value comparison). The collection recipe is the
+   page a new collection's UI is copied from, so it must prescribe the delegated pattern and carry no
+   inline on-event attribute anywhere, scanned with the same scanner that guards index.html. */
+{
+  const claudeMdPath = APP_PATH.replace(/index\.html$/, 'CLAUDE.md');
+  const claudeMd = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
+  const named = ['ACTIONS', 'data-action', 'dispatchAction'].map(n => ({ n, inDoc: claudeMd.includes(n) }));
+  const live = { ACTIONS: !!f2app.ACTIONS && typeof f2app.ACTIONS === 'object', dispatchAction: typeof f2app.dispatchAction === 'function',
+                 dataAction: F2_RAW.includes('data-action="') };
+  ok('F2 rule: CLAUDE.md names the registry the suite enforces, and it exists in index.html',
+     named.every(x => x.inDoc) && Object.values(live).every(Boolean), { named, live });
+}
+{
+  const recipePath = APP_PATH.replace(/index\.html$/, 'docs/adding-a-collection.md');
+  const recipe = fs.existsSync(recipePath) ? fs.readFileSync(recipePath, 'utf8') : '';
+  const scan = typeof scanInlineHandlers === 'function' ? scanInlineHandlers : null;
+  /* The scanner wants whitespace before `on`; in Markdown the attribute usually follows a backtick or a
+     bracket, so a space goes in front of every `on<letters>=` that is not inside a longer word. */
+  const loosen = t => String(t).replace(/(?<![\w$-])(?=on[A-Za-z]+\s*=)/g, ' ');
+  const rows = scan ? scan(loosen(recipe)) : null;
+  const synthetic = scan ? scan(loosen('a checkbox `onchange="toggleX(i)"`')).length === 1 && scan(loosen('(onclick="x()")')).length === 1
+    && scan(loosen('button``data-action="x" and the phrase "on-event" and "reason="')).length === 0 : false;
+  ok('F2 rule: the collection recipe prescribes no inline on-event attribute',
+     recipe.length > 0 && Array.isArray(rows) && rows.length === 0 && recipe.includes('data-action') && synthetic,
+     { rows: (rows || []).slice(0, 5).map(r => r.event + '=' + r.was), mentionsDataAction: recipe.includes('data-action'), synthetic });
+}
+
+/* The active workout. Every check starts from populatedDB with a full local draft of PUSH 1 and
+   updatedAt 1000, on Train → Log. `seed(d, a)` edits the DB before it is installed. */
+function f2Mid(seed){
+  const a = loadApp(APP_PATH);
+  const d = populatedDB(a);
+  d.draft = fullDraft(a, 'PUSH 1');
+  d.updatedAt = 1000;
+  if(seed) seed(d, a);
+  a.DB = d;
+  a.go('train'); a.setSub('log');
+  return a;
+}
+/* Four earlier PUSH 1 sessions whose slot-0 best never beats the first one: isStalledSlot() is true
+   for slot 0, so the card offers the coach's Deload button. */
+function f2Stall(d, a){
+  const name = d.draft.entries[0].name;
+  [[-40, '185', '8'], [-35, '135', '5'], [-30, '135', '5'], [-25, '135', '5']].forEach(([off, w, r], n) => {
+    d.sessions.push({ id: 'st' + n, workout: 'PUSH 1', date: dayOff(off), endedAt: 10 + n, extras: {},
+      entries: [{ name, sets: [{ w, r, skipped: false }] }] });
+  });
+  d.sessions.sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
+}
+const f2Find = (a, pred) => controlsIn(f2AppHtml(a)).find(pred) || null;
+const f2At = (action, i, k) => c => c.data.action === action && (i === undefined || c.data.i === String(i)) && (k === undefined || c.data.k === String(k));
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid();
+    const spy = spyPushes(a);
+    const w = f2Find(a, f2At('setWeight', 0, 0)), rp = f2Find(a, f2At('setReps', 0, 0));
+    r.tags = [w && w.tag, rp && rp.tag];
+    if(w) fireListener(a, 'input', fakeEl(w.data, { value: '100' }));
+    if(rp) fireListener(a, 'input', fakeEl(rp.data, { value: '8' }));
+    const st = a.__stored();
+    r.stored = st && st.draft ? { w: st.draft.entries[0].sets[0].w, r: st.draft.entries[0].sets[0].r } : null;
+    r.updatedAt = a.DB.updatedAt; r.pushes = spy.n;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: typing a weight stores it on this device and pushes nothing',
+     !threw && JSON.stringify(r.tags) === '["input","input"]' && r.stored && r.stored.w === '100' && r.stored.r === '8'
+       && r.updatedAt === 1000 && r.pushes === 0, { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  const three = d => { d.draft.entries[0].sets = [0, 1, 2].map(() => ({ w: '', r: '', skipped: false, reason: '' })); };
+  try {
+    const a = f2Mid(three);
+    const w = f2Find(a, f2At('setWeight', 0, 0));
+    if(w) fireListener(a, 'input', fakeEl(w.data, { value: '100' }));
+    r.afterInput = a.DB.draft.entries[0].sets.map(s => s.w);
+    const b = f2Mid(three);
+    const bw = f2Find(b, f2At('setWeight', 0, 0));
+    if(bw) fireListener(b, 'change', fakeEl(bw.data, { value: '100' }));
+    r.afterChange = b.DB.draft.entries[0].sets.map(s => s.w);
+    r.found = !!w && !!bw;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: leaving the weight box rolls the weight into the empty sets below',
+     !threw && r.found && JSON.stringify(r.afterInput) === '["100","",""]' && JSON.stringify(r.afterChange) === '["100","100","100"]',
+     { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid();
+    const prompts = [];
+    a.__sandbox.prompt = msg => { prompts.push(msg); return null; };
+    const sel = f2Find(a, f2At('pickEx', 0));
+    r.tag = sel && sel.tag;
+    const before = a.DB.draft.entries[0].name;
+    const other = a.PROGRAM['PUSH 1'].slots[0].examples.find(x => x !== before);
+    if(sel){
+      fireListener(a, 'input', fakeEl(sel.data, { value: other }));
+      r.afterInput = a.DB.draft.entries[0].name;
+      fireListener(a, 'change', fakeEl(sel.data, { value: other }));
+      r.afterChange = a.DB.draft.entries[0].name;
+      const sel2 = f2Find(a, f2At('pickEx', 0));
+      fireListener(a, 'input', fakeEl(sel2.data, { value: '__custom' }));
+      r.promptsAfterInput = prompts.length;
+      fireListener(a, 'change', fakeEl(sel2.data, { value: '__custom' }));
+      r.promptsAfterChange = prompts.length;
+    }
+    r.before = before; r.other = other;
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: swapping an exercise runs on change only, once',
+     !threw && r.tag === 'select' && !!r.other && r.afterInput === r.before && r.afterChange === r.other
+       && r.promptsAfterInput === 0 && r.promptsAfterChange === 1, { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid(d => { d.draft.entries[0].sets = [0, 1].map(() => ({ w: '', r: '', skipped: false, reason: '' })); });
+    const prompts = [];
+    a.__sandbox.prompt = msg => { prompts.push(msg); return 'tired'; };
+    const sk = f2Find(a, f2At('skipSet', 0, 1));
+    r.tag = sk && sk.tag;
+    if(sk) fireListener(a, 'click', fakeEl(sk.data));
+    r.prompts = prompts.slice();
+    r.skipped = a.DB.draft.entries[0].sets.map(s => s.skipped);
+    const un = f2Find(a, f2At('unskipSet', 0, 1));
+    r.unTag = un && un.tag;
+    if(un) fireListener(a, 'click', fakeEl(un.data));
+    r.restored = a.DB.draft.entries[0].sets.map(s => s.skipped);
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: skipping a set asks about set 2, never set 11 (numeric index)',
+     !threw && r.tag === 'button' && r.prompts.length === 1 && /set 2\b/.test(r.prompts[0]) && !/set 11/.test(r.prompts[0])
+       && JSON.stringify(r.skipped) === '[false,true]' && r.unTag === 'button' && JSON.stringify(r.restored) === '[false,false]',
+     { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid();
+    const collapsedCard = () => f2Find(a, c => f2At('toggleExCollapse', 0)(c) && /(^|\s)tap(\s|$)/.test(c.cls));
+    const head = f2Find(a, c => f2At('toggleExCollapse', 0)(c) && !/(^|\s)tap(\s|$)/.test(c.cls));
+    r.head = head && head.tag;
+    r.before = !!collapsedCard();
+    if(head) fireListener(a, 'click', fakeEl(head.data));
+    const card = collapsedCard();
+    r.card = card && { tag: card.tag, cls: card.cls };
+    r.summary = /▾ expand/.test(f2AppHtml(a));
+    if(card) fireListener(a, 'click', fakeEl(card.data));
+    r.after = !!collapsedCard();
+    r.expanded = !!f2Find(a, f2At('setWeight', 0, 0));
+  } catch(e){ threw = e.message; }
+  ok('DELEG-02: a collapsed exercise expands and collapses again through the dispatcher',
+     !threw && r.head === 'button' && r.before === false && r.card && r.card.tag === 'button' && /(^|\s)tap(\s|$)/.test(r.card.cls)
+       && r.summary && r.after === false && r.expanded, { threw, r });
+}
+/* Every active-workout control, fired once, calls its function with exactly the arguments the inline
+   handler passed: numbers where it passed numbers, the element where it passed `this`, nothing where
+   it passed nothing. Two instances between them render every control: a stalled slot 0 with set 1
+   skipped, slot 1 collapsed and slot 2 deloaded; then a backdated draft with the stair stepper skipped. */
+const f2LogSpied = ['setVal', 'updTargetBadge', 'updPlates', 'rollWeight', 'repCheck', 'skipSet', 'rmSet', 'unskipSet',
+  'toggleExCollapse', 'pickEx', 'addSet', 'toggleWarm', 'setNote', 'stairVal', 'stairTimeSet', 'unskipStairs', 'skipStairs',
+  'setDraftDate', 'setDraftDur', 'setSessionNote', 'finishWorkout', 'discardWorkout', 'deloadExercise', 'undeloadExercise',
+  'exSet', 'exRoll', 'exRmSet', 'exPick', 'exAddSet', 'toggleAcc'];
+function f2MidBusy(d, a){
+  f2Stall(d, a);
+  d.draft.entries[0].sets = [{ w: '', r: '', skipped: false, reason: '' }, { w: '', r: '', skipped: true, reason: 'tired' }];
+  d.draft.entries[2].deload = true;
+}
+function f2MidPast(d){
+  d.draft.historical = true; d.draft.startedAt = null; d.draft.durationMin = '';
+  d.draft.stairs.skipped = true; d.draft.stairs.reason = 'knees';
+}
+{
+  const got = {}, missing = [];
+  let threw = null, busyStalled = null;
+  const run = (a, spies, label, pick, type, value) => {
+    const c = f2Find(a, pick);
+    if(!c){ missing.push(label); return; }
+    Object.values(spies).forEach(l => { l.length = 0; });
+    const el = fakeEl(c.data, { value: value === undefined ? '' : value });
+    fireListener(a, type, el);
+    const out = {};
+    Object.keys(spies).forEach(n => { if(spies[n].length) out[n] = spies[n].map(args => args.map(x => x === el ? '<el>' : x)); });
+    got[label] = { tag: c.tag, calls: out };
+  };
+  try {
+    const a = f2Mid(f2MidBusy);
+    busyStalled = a.__sandbox.isStalledSlot(a.DB.draft.entries[0].name, 'PUSH 1', 0);
+    a.__sandbox.toggleExCollapse(1);   /* slot 1 collapsed, re-rendered before any spy goes in */
+    const s = {}; f2LogSpied.forEach(n => { s[n] = spyOn(a, n); });
+    run(a, s, 'weight input', f2At('setWeight', 0, 0), 'input', '100');
+    run(a, s, 'weight change', f2At('setWeight', 0, 0), 'change', '100');
+    run(a, s, 'weight click', f2At('setWeight', 0, 0), 'click', '100');
+    run(a, s, 'reps input', f2At('setReps', 0, 0), 'input', '8');
+    run(a, s, 'reps change', f2At('setReps', 0, 0), 'change', '8');
+    run(a, s, 'skip set', f2At('skipSet', 0, 0), 'click');
+    run(a, s, 'remove set', f2At('rmSet', 0, 0), 'click');
+    run(a, s, 'undo skipped set', f2At('unskipSet', 0, 1), 'click');
+    run(a, s, 'collapse header', c => f2At('toggleExCollapse', 0)(c) && !/(^|\s)tap(\s|$)/.test(c.cls), 'click');
+    run(a, s, 'collapsed card', c => f2At('toggleExCollapse', 1)(c) && /(^|\s)tap(\s|$)/.test(c.cls), 'click');
+    run(a, s, 'exercise select change', f2At('pickEx', 0), 'change', 'DB bench press');
+    run(a, s, 'exercise select input', f2At('pickEx', 0), 'input', 'DB bench press');
+    run(a, s, 'add set', f2At('addSet', 0), 'click');
+    run(a, s, 'warm-up', f2At('toggleWarm', 0), 'click');
+    run(a, s, 'exercise note', f2At('setNote', 0), 'input', 'felt good');
+    run(a, s, 'deload', f2At('deloadExercise', 0), 'click');
+    run(a, s, 'undo deload', f2At('undeloadExercise', 2), 'click');
+    run(a, s, 'stairs level', c => c.data.action === 'stairVal' && c.data.field === 'level', 'input', '7');
+    run(a, s, 'stairs minutes', c => c.data.action === 'stairTimeSet' && c.data.part === 'm', 'input', '3');
+    run(a, s, 'stairs seconds', c => c.data.action === 'stairTimeSet' && c.data.part === 's', 'input', '20');
+    run(a, s, 'skip stairs', f2At('skipStairs'), 'click');
+    run(a, s, 'session note', f2At('setSessionNote'), 'input', 'solid');
+    run(a, s, 'finish', f2At('finishWorkout'), 'click');
+    run(a, s, 'discard', f2At('discardWorkout'), 'click');
+    const b = f2Mid(f2MidPast);
+    const t = {}; f2LogSpied.forEach(n => { t[n] = spyOn(b, n); });
+    run(b, t, 'undo skipped stairs', f2At('unskipStairs'), 'click');
+    run(b, t, 'backdated date', f2At('setDraftDate'), 'input', '2026-08-01');
+    run(b, t, 'backdated minutes', f2At('setDraftDur'), 'input', '45');
+  } catch(e){ threw = e.message; }
+  const want = {
+    'weight input': ['input', { setVal: [[0, 0, 'w', '100']], updTargetBadge: [[0, 0]], updPlates: [[0]] }],
+    'weight change': ['input', { rollWeight: [[0, 0, '100']] }],
+    'weight click': ['input', {}],
+    'reps input': ['input', { setVal: [[0, 0, 'r', '8']], updTargetBadge: [[0, 0]] }],
+    'reps change': ['input', { repCheck: [[0, 0]] }],
+    'skip set': ['button', { skipSet: [[0, 0]] }],
+    'remove set': ['button', { rmSet: [[0, 0]] }],
+    'undo skipped set': ['button', { unskipSet: [[0, 1]] }],
+    'collapse header': ['button', { toggleExCollapse: [[0]] }],
+    'collapsed card': ['button', { toggleExCollapse: [[1]] }],
+    'exercise select change': ['select', { pickEx: [[0, '<el>']] }],
+    'exercise select input': ['select', {}],
+    'add set': ['button', { addSet: [[0]] }],
+    'warm-up': ['button', { toggleWarm: [[0]] }],
+    'exercise note': ['input', { setNote: [[0, 'felt good']] }],
+    'deload': ['button', { deloadExercise: [[0]] }],
+    'undo deload': ['button', { undeloadExercise: [[2]] }],
+    'stairs level': ['input', { stairVal: [['level', '7']] }],
+    'stairs minutes': ['input', { stairTimeSet: [['m', '3']] }],
+    'stairs seconds': ['input', { stairTimeSet: [['s', '20']] }],
+    'skip stairs': ['button', { skipStairs: [[]] }],
+    'session note': ['textarea', { setSessionNote: [['solid']] }],
+    'finish': ['button', { finishWorkout: [[]] }],
+    'discard': ['button', { discardWorkout: [[]] }],
+    'undo skipped stairs': ['button', { unskipStairs: [[]] }],
+    'backdated date': ['input', { setDraftDate: [['2026-08-01']] }],
+    'backdated minutes': ['input', { setDraftDur: [['45']] }],
+  };
+  const wrong = Object.keys(want).filter(k => !got[k] || got[k].tag !== want[k][0] || JSON.stringify(got[k].calls) !== JSON.stringify(want[k][1]))
+    .map(k => ({ control: k, want: want[k], got: got[k] || null }));
+  ok('DELEG-02: every active-workout control calls its function with exactly the arguments the inline handler passed',
+     !threw && busyStalled === true && missing.length === 0 && wrong.length === 0, { threw, busyStalled, missing, wrong: wrong.slice(0, 4) });
+}
+/* D-09. Built from ordinary characters so no escaping in this file can mask the payload. */
+const EVIL = String.fromCharCode(34) + '><img src=x onerror=alert(1)>';
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid(d => {
+      d.draft.entries[0].sets[0].w = EVIL; d.draft.entries[0].sets[0].r = EVIL;
+      d.draft.stairs.level = EVIL;
+      d.draft.historical = true; d.draft.date = EVIL; d.draft.durationMin = EVIL;
+    });
+    const html = a.viewActive();
+    r.img = /<img/i.test(html);
+    r.escaped = html.split('&quot;&gt;&lt;img').length - 1;
+  } catch(e){ threw = e.message; }
+  ok('D-09: a hostile set, stairs, date or duration value renders escaped in the Log tab',
+     !threw && r.img === false && r.escaped >= 5, { threw, r });
+}
+
+/* The accessories. PUSH 1's assigned extra is `abs`, which is load-bearing (it has a weight column),
+   so one card exercises both setExtraWeight and setExtraReps. */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid();
+    const spy = spyPushes(a);
+    r.def = a.ACCESSORIES && a.ACCESSORIES.abs ? { days: a.ACCESSORIES.abs.days.includes('PUSH 1'), sec: a.ACCESSORIES.abs.unit === 'sec' } : null;
+    const hdr = f2Find(a, c => c.data.action === 'toggleAcc' && c.data.key === 'abs');
+    r.hdr = hdr && hdr.tag;
+    r.closed = !f2Find(a, c => c.data.action === 'exPick' && c.data.id === 'abs');
+    if(hdr) fireListener(a, 'click', fakeEl(hdr.data));
+    const at = (action, k) => f2Find(a, c => c.data.action === action && c.data.id === 'abs' && (k === undefined || c.data.k === String(k)));
+    const sel = at('exPick');
+    r.sel = sel && sel.tag;
+    const reps = at('setExtraReps', 0), wt = at('setExtraWeight', 0);
+    r.inputs = [reps && reps.tag, wt && wt.tag];
+    if(reps) fireListener(a, 'input', fakeEl(reps.data, { value: '12' }));
+    if(wt){ fireListener(a, 'input', fakeEl(wt.data, { value: '50' })); fireListener(a, 'change', fakeEl(wt.data, { value: '50' })); }
+    const st = a.__stored();
+    r.stored = st && st.draft && st.draft.extras.abs ? st.draft.extras.abs.sets.map(s => s.w + '/' + s.r) : null;
+    r.pushes = spy.n; r.updatedAt = a.DB.updatedAt;
+    const n0 = a.DB.draft.extras.abs.sets.length;
+    const add = at('exAddSet');
+    if(add) fireListener(a, 'click', fakeEl(add.data));
+    const n1 = a.DB.draft.extras.abs.sets.length;
+    const rm = at('exRmSet', n1 - 1);
+    if(rm) fireListener(a, 'click', fakeEl(rm.data));
+    r.counts = [n0, n1, a.DB.draft.extras.abs.sets.length];
+    const before = a.DB.draft.extras.abs.name;
+    const other = a.ACCESSORIES.abs.examples.find(x => x !== before);
+    const sel2 = at('exPick');
+    if(sel2){
+      fireListener(a, 'input', fakeEl(sel2.data, { value: other }));
+      r.afterInput = a.DB.draft.extras.abs.name === before;
+      fireListener(a, 'change', fakeEl(sel2.data, { value: other }));
+      r.afterChange = a.DB.draft.extras.abs.name === other;
+      r.pickEntry = Object.keys(a.ACTIONS.exPick || {});
+    }
+  } catch(e){ threw = e.message; }
+  ok("DELEG-02: an accessory's weight, reps, exercise and set buttons route through the dispatcher",
+     !threw && r.def && r.def.days && !r.def.sec && r.hdr === 'button' && r.closed && r.sel === 'select'
+       && JSON.stringify(r.inputs) === '["input","input"]'
+       && JSON.stringify(r.stored) === '["50/12","50/","50/"]' && r.pushes === 0 && r.updatedAt === 1000
+       && JSON.stringify(r.counts) === '[3,4,3]' && r.afterInput && r.afterChange && JSON.stringify(r.pickEntry) === '["change"]',
+     { threw, r });
+}
+/* Exact arguments for every accessory control: the accordion headers (accItem), the extras card's
+   header, boxes, select and buttons. The id is a string key; the set index is a number. */
+{
+  const got = {}, missing = [];
+  let threw = null;
+  try {
+    const a = f2Mid();
+    a.__sandbox.toggleAcc('abs');
+    const s = {}; f2LogSpied.forEach(n => { s[n] = spyOn(a, n); });
+    const fire = (label, pick, type, value) => {
+      const c = f2Find(a, pick);
+      if(!c){ missing.push(label); return; }
+      Object.values(s).forEach(l => { l.length = 0; });
+      const el = fakeEl(c.data, { value: value === undefined ? '' : value });
+      fireListener(a, type, el);
+      const out = {};
+      Object.keys(s).forEach(n => { if(s[n].length) out[n] = s[n].map(args => args.map(x => x === el ? '<el>' : x)); });
+      got[label] = { tag: c.tag, calls: out };
+    };
+    const ex = (action, k) => c => c.data.action === action && c.data.id === 'abs' && (k === undefined || c.data.k === String(k));
+    fire('warm-up accordion', c => c.data.action === 'toggleAcc' && c.data.key === 'warmup', 'click');
+    fire('cool-down accordion', c => c.data.action === 'toggleAcc' && c.data.key === 'stretch', 'click');
+    fire('extras header', c => c.data.action === 'toggleAcc' && c.data.key === 'abs', 'click');
+    fire('extra weight input', ex('setExtraWeight', 1), 'input', '50');
+    fire('extra weight change', ex('setExtraWeight', 1), 'change', '50');
+    fire('extra reps input', ex('setExtraReps', 1), 'input', '12');
+    fire('extra reps change', ex('setExtraReps', 1), 'change', '12');
+    fire('extra remove set', ex('exRmSet', 1), 'click');
+    fire('extra select change', ex('exPick'), 'change', 'Cable crunch');
+    fire('extra select input', ex('exPick'), 'input', 'Cable crunch');
+    fire('extra add set', ex('exAddSet'), 'click');
+  } catch(e){ threw = e.message; }
+  const want = {
+    'warm-up accordion': ['button', { toggleAcc: [['warmup']] }],
+    'cool-down accordion': ['button', { toggleAcc: [['stretch']] }],
+    'extras header': ['button', { toggleAcc: [['abs']] }],
+    'extra weight input': ['input', { exSet: [['abs', 1, 'w', '50']] }],
+    'extra weight change': ['input', { exRoll: [['abs', 1, '50']] }],
+    'extra reps input': ['input', { exSet: [['abs', 1, 'r', '12']] }],
+    'extra reps change': ['input', {}],
+    'extra remove set': ['button', { exRmSet: [['abs', 1]] }],
+    'extra select change': ['select', { exPick: [['abs', '<el>']] }],
+    'extra select input': ['select', {}],
+    'extra add set': ['button', { exAddSet: [['abs']] }],
+  };
+  const wrong = Object.keys(want).filter(k => !got[k] || got[k].tag !== want[k][0] || JSON.stringify(got[k].calls) !== JSON.stringify(want[k][1]))
+    .map(k => ({ control: k, want: want[k], got: got[k] || null }));
+  ok('DELEG-02: every accessory control calls its function with exactly the arguments the inline handler passed',
+     !threw && missing.length === 0 && wrong.length === 0, { threw, missing, wrong: wrong.slice(0, 4) });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Mid(d => { d.draft.extras.abs.sets[0].w = EVIL; d.draft.extras.abs.sets[0].r = EVIL; });
+    a.__sandbox.toggleAcc('abs');
+    const html = a.viewActive();
+    r.open = /data-action="exPick"/.test(html);
+    r.img = /<img/i.test(html);
+    r.escaped = html.split('&quot;&gt;&lt;img').length - 1;
+  } catch(e){ threw = e.message; }
+  ok('D-09: a hostile accessory value renders escaped', !threw && r.open && r.img === false && r.escaped >= 2, { threw, r });
+}
+
+/* ── Phase 5 code review (05-REVIEW.md) ── */
+/* WR-01. Nothing constrains DB.unit: validateBackup() accepts any value and normalize() keeps it. It
+   lands in the placeholder of every weigh-in box, on Today and on both Progress pages. A hostile unit
+   must stay inside that attribute, and Today's boxes must keep their Enter-to-log action (a break-out
+   pushes data-action out of the tag). */
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2TodayWeighIn();
+    a.DB.unit = EVIL;
+    a.render();
+    const holds = (html, id) => (f2InputAttr(html, id, 'placeholder') || '').includes(EVIL);
+    const home = f2AppHtml(a), cs = controlsIn(home);
+    r.todayWt = holds(home, 'wt-input'); r.todayPet = holds(home, 'pet-input');
+    r.enterWt = !!cs.find(c => c.tag === 'input' && c.data.action === 'enter' && c.data.enter === 'logWeight');
+    r.enterPet = !!cs.find(c => c.tag === 'input' && c.data.action === 'enter' && c.data.enter === 'logPetWeight');
+    a.go('train'); a.setSub('progress'); a.__sandbox.progSubTab('body');
+    r.body = holds(f2AppHtml(a), 'wt-input');
+    a.__sandbox.progSubTab('pet');
+    r.pet = holds(f2AppHtml(a), 'pet-input');
+  } catch(e){ threw = e.message; }
+  ok('D-09: a hostile weight unit stays inside every weigh-in placeholder, and Enter still logs from Today',
+     !threw && Object.values(r).length === 6 && Object.values(r).every(v => v === true), { threw, r });
+}
+/* WR-02. A merged backup keeps any string in a logged set's w and r, in durationMin and in workout
+   (validateBackup() checks shape, normalize() coerces none of them). fmtSet() returns them as they
+   are, so every place its text is put into markup escapes it. The duration payload closes the History
+   row's button, which would push the rest of the row out of the tap target. */
+const CLOSER = '</button>' + EVIL;
+function f2HostileSession(id, workout, date, name){
+  return { id, workout, date, endedAt: 50, startedAt: 40, durationMin: CLOSER, extras: {},
+    entries: [{ name, sets: [{ w: EVIL, r: EVIL, skipped: false }] }] };
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2History();
+    a.DB.sessions.push(f2HostileSession('hx', EVIL, dayOff(-1), 'Barbell bench press'));
+    a.__sandbox.toggleHist(a.DB.sessions.length - 1);
+    const html = f2AppHtml(a);
+    r.open = html.includes('data-action="changeSessionDate" data-idx="' + (a.DB.sessions.length - 1) + '"');
+    r.img = /<img/i.test(html);
+    r.closer = html.split('&lt;/button&gt;').length - 1;
+    r.escaped = html.split('&quot;&gt;&lt;img').length - 1;
+  } catch(e){ threw = e.message; }
+  ok('D-09: a hostile logged set, duration or workout name renders escaped in History',
+     !threw && r.open && r.img === false && r.closer >= 2 && r.escaped >= 5, { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    const a = f2Log(a => {
+      a.DB.sessions.push(f2HostileSession('px', 'PUSH 1', dayOff(-1), a.PROGRAM['PUSH 1'].slots[0].examples[0]));
+    });
+    a.__sandbox.togglePreview('PUSH 1');
+    const html = f2AppHtml(a);
+    r.open = /Last: /.test(html);
+    r.img = /<img/i.test(html);
+    r.escaped = html.split('&quot;&gt;&lt;img').length - 1;
+  } catch(e){ threw = e.message; }
+  ok("D-09: a hostile logged set renders escaped in the picker preview's last-time line",
+     !threw && r.open && r.img === false && r.escaped >= 2, { threw, r });
+}
+{
+  const r = {};
+  let threw = null;
+  try {
+    /* Slot 0 has an exact match in PUSH 1; slot 1's exercise was last done in another workout, so its
+       line takes the "elsewhere" branch. */
+    const a = f2Mid(d => {
+      d.sessions.push(f2HostileSession('ax', 'PUSH 1', dayOff(-1), d.draft.entries[0].name));
+      d.sessions.push(f2HostileSession('bx', 'LEGS 1', dayOff(-1), d.draft.entries[1].name));
+    });
+    const html = a.viewActive();
+    r.exact = /Last time \([^)]*\):/.test(html);
+    r.elsewhere = /Last time \([^)]*· LEGS 1\):/.test(html);
+    r.img = /<img/i.test(html);
+    r.escaped = html.split('&quot;&gt;&lt;img').length - 1;
+  } catch(e){ threw = e.message; }
+  ok("D-09: a hostile logged set renders escaped in the active workout's last-time lines",
+     !threw && r.exact && r.elsewhere && r.img === false && r.escaped >= 4, { threw, r });
+}
+/* WR-03. The converted-button reset gives button.tap width:100%. That is harmless on a button that is
+   itself the card, the row or the list item, but when the button is a flex ITEM that width becomes its
+   flex basis: it claims the whole row and squeezes its siblings to min-content (the Log picker's
+   "Start ▶" wrapped onto two lines). The suite has no layout engine, so this resolves the basis the
+   way the cascade does (inline style over the zero-specificity reset) for every tap button that is a
+   direct child of a flex container, on every rendered screen. Which classes are flex containers is
+   read from the app's own CSS. */
+function f2Decls(body){
+  const out = {};
+  String(body || '').split(';').forEach(d => { const i = d.indexOf(':'); if(i > 0) out[d.slice(0, i).trim().toLowerCase()] = d.slice(i + 1).trim().toLowerCase(); });
+  return out;
+}
+const F2_RULES = f2CssRules(F2_RAW);
+const F2_FLEX_CLASSES = F2_RULES.filter(r => /^\.[\w-]+$/.test(r.selector) && /^(inline-)?flex$/.test(f2Decls(r.body).display || ''))
+  .map(r => r.selector.slice(1));
+const F2_TAP_WIDTH = (F2_RULES.filter(r => r.selector === ':where(button.tap)').map(r => f2Decls(r.body).width).pop()) || 'auto';
+function f2FlexItemTapProblems(html){
+  const VOID = /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i;
+  const attr = (s, n) => { const m = s.match(new RegExp('\\s' + n + '="([^"]*)"')); return m ? m[1] : ''; };
+  const stack = [], bad = [];
+  const TAG = /<(\/?)([a-zA-Z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+  let m;
+  while((m = TAG.exec(String(html || '')))){
+    const [, close, name, rest] = m, tag = name.toLowerCase();
+    if(close){ const i = stack.map(x => x.tag).lastIndexOf(tag); if(i >= 0) stack.length = i; continue; }
+    const cls = attr(rest, 'class').split(/\s+/).filter(Boolean), style = f2Decls(attr(rest, 'style'));
+    const node = { tag, flex: /^(inline-)?flex$/.test(style.display || '') || cls.some(c => F2_FLEX_CLASSES.includes(c)) };
+    const parent = stack[stack.length - 1];
+    if(tag === 'button' && cls.includes('tap') && parent && parent.flex){
+      const flex = (style.flex || '').split(/\s+/).filter(Boolean);
+      const basis = style['flex-basis'] || (flex.length === 3 ? flex[2] : '') || style.width || F2_TAP_WIDTH;
+      if(basis === '100%') bad.push(`<button class="${cls.join(' ')}" data-action="${attr(rest, 'data-action')}">`);
+    }
+    if(!VOID.test(tag) && !/\/\s*$/.test(rest)) stack.push(node);
+  }
+  return bad;
+}
+{
+  const bad = [];
+  f2Corpus().forEach(({ label, html }) => f2FlexItemTapProblems(html).forEach(b => bad.push(label + ': ' + b)));
+  const picker = [];
+  ['with data', 'fresh install'].forEach(state => {
+    const shot = f2Corpus().find(c => c.label === `${state}: Train → Log`) || f2Corpus().find(c => c.label.startsWith(state + ':') && /togglePreview/.test(c.html));
+    picker.push(!!shot && /data-action="togglePreview"/.test(shot.html));
+  });
+  const synthetic = {
+    squeezed: f2FlexItemTapProblems('<div class="row"><button class="tap" data-action="x">a</button><div>b</div></div>').length === 1,
+    inlineFlex: f2FlexItemTapProblems('<span style="display:flex"><button class="tap">a</button></span>').length === 1,
+    contentWidth: f2FlexItemTapProblems('<div class="row"><button class="tap" style="width:auto">a</button></div>').length === 0,
+    autoBasis: f2FlexItemTapProblems('<div class="row"><button class="tap" style="flex:1 1 auto">a</button></div>').length === 0,
+    blockParent: f2FlexItemTapProblems('<div class="card"><button class="row tap">a</button></div>').length === 0,
+  };
+  ok('WR-03: no converted button that sits in a flex row takes the full-width reset as its flex basis (the Log picker keeps Start on one line)',
+     F2_FLEX_CLASSES.includes('row') && F2_TAP_WIDTH === '100%' && picker.every(Boolean) && bad.length === 0 && Object.values(synthetic).every(Boolean),
+     { bad: bad.slice(0, 5), picker, flexClasses: F2_FLEX_CLASSES.length, tapWidth: F2_TAP_WIDTH, synthetic });
+}
+/* WR-04. The dispatcher checks the action NAME as an own key of ACTIONS; the handler for the event
+   must be an own key of that action too. With an event handler planted on the app's own
+   Object.prototype, a click on a change-only control and a change on a click-only control must run
+   nothing, fired through the app's own listeners. The real event still works alongside, so the check
+   is not passing on a dead control. */
+{
+  const a = loadApp(APP_PATH);
+  const proto = a.ACTIONS ? Object.getPrototypeOf(a.ACTIONS) : null;
+  const planted = [];
+  const r = {};
+  let threw = null;
+  const done = spyOn(a, 'toggleIdeaDone'), removed = spyOn(a, 'removeIdea');
+  try {
+    if(proto){ proto.click = () => { planted.push('click'); }; proto.change = () => { planted.push('change'); }; }
+    const tick = fakeEl({ action: 'toggleIdeaDone', id: 'i1' }, { tagName: 'INPUT' });
+    fireListener(a, 'click', tick);
+    fireListener(a, 'change', tick);
+    const rm = fakeEl({ action: 'removeIdea', id: 'i2' }, { tagName: 'BUTTON' });
+    fireListener(a, 'change', rm);
+    fireListener(a, 'click', rm);
+  } catch(e){ threw = e.message; }
+  finally { if(proto){ delete proto.click; delete proto.change; } }
+  r.clean = !proto || (!Object.prototype.hasOwnProperty.call(proto, 'click') && !Object.prototype.hasOwnProperty.call(proto, 'change'));
+  ok('F2: an event handler inherited through Object.prototype never runs, even on a control whose action exists',
+     !threw && !!proto && planted.length === 0 && JSON.stringify(done) === '[["i1"]]' && JSON.stringify(removed) === '[["i2"]]' && r.clean,
+     { threw, planted, done, removed, r });
+}
+
+/* The phase's two closing properties, stated with no count. Every inventoried call site is an
+   action, and nothing in index.html (any event, any quoting, comments included) is an inline
+   on-event attribute any more. The synthetic line proves the scanner still sees one. */
+{
+  const unmapped = F2_INV.filter(r => !(r && (r.action || (Array.isArray(r.actions) && r.actions.length))));
+  ok('DELEG-02: every inventoried call site is now a delegated action',
+     !F2_INV_ERR && F2_INV.length > 0 && unmapped.length === 0,
+     unmapped.slice(0, 5).map(r => r && [r.fn, r.event, r.was].join(' | ')));
+}
+{
+  const scan = typeof scanInlineHandlers === 'function' ? scanInlineHandlers : null;
+  const rows = scan ? scan(F2_RAW) : null;
+  const synthetic = scan ? scan('<b onmouseover="x()">').length === 1 : false;
+  ok('DELEG-04: index.html has no inline on-event attribute left',
+     Array.isArray(rows) && rows.length === 0 && synthetic,
+     { rows: (rows || []).slice(0, 5).map(r => [r.fn, r.event, r.was].join(' | ')), synthetic });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

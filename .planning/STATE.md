@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 5
-current_phase_name: F2 — Event Delegation
-status: planning
-stopped_at: Completed 04-03-PLAN.md
-last_updated: "2026-09-23T12:04:14.814Z"
-last_activity: 2026-09-23
-last_activity_desc: Phase 04 complete, transitioned to Phase 5
+current_phase: 05
+current_phase_name: f2-event-delegation
+status: verifying
+stopped_at: Completed 05-06-PLAN.md; end-of-phase human checks pending (DELEG-06 keyboard pass, then DELEG-07 phone run post-deploy)
+last_updated: "2026-09-25T11:34:47.613Z"
+last_activity: 2026-09-25
+last_activity_desc: Phase 05 execution started
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 18
-  completed_plans: 18
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 24
+  completed_plans: 24
 ---
 
 # Project State
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-22)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 04 — draft-goes-device-local
+**Current focus:** Phase 05 — f2-event-delegation
 
 ## Current Position
 
-Phase: 5 — F2 — Event Delegation
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-23 — Phase 04 complete, transitioned to Phase 5
+Phase: 05 (f2-event-delegation) — EXECUTING
+Plan: 6 of 6
+Status: Phase complete — ready for verification
+Last activity: 2026-09-25 — Phase 05 execution started
 
 Progress: [██████████] 100%
 
@@ -78,6 +78,12 @@ Progress: [██████████] 100%
 | Phase 04 P01 | 17min | 2 tasks | 5 files |
 | Phase 04 P02 | 97min | 2 tasks | 3 files |
 | Phase 04 P03 | 3min | 2 tasks | 4 files |
+| Phase 05 P01 | 15min | 3 tasks | 7 files |
+| Phase 05 P02 | 16min | 3 tasks | 4 files |
+| Phase 05 P03 | 16min | 2 tasks | 4 files |
+| Phase 05 P04 | 19min | 2 tasks | 3 files |
+| Phase 05 P05 | 27min | 3 tasks | 3 files |
+| Phase 05 P06 | 26min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -129,6 +135,19 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 4, plan 04-01]: test harness fetch never settles, because a rejecting fetch spun an endless Lawn-tab weather retry in microtasks once async checks existed
 - [Phase ?]: 04-02: every site turning foreign data into DB reads keepLocalDraft(normalize(stripDraft(raw))); a dbAssignLines tripwire fails the suite on any unsanctioned DB assignment
 - [Phase ?]: 04-03: every draft-only function uses saveLocal(); only pickEx, exPick and finishWorkout still save() from a draft path, pinned by the DRAFT_PUSHERS allowlist
+- [Phase ?]: 05-01: ACTIONS is event-keyed (name -> {event: wrapper}); dispatchAction uses an own-key lookup; five non-passive document listeners; no boot-time validator
+- [Phase ?]: 05-01: the inventory ratchet matches callees as whole identifiers, and the dispatcher test poisons Object.prototype, because the mutation pass showed the substring and inherited-name forms passed vacuously
+- [Phase ?]: 05-01: F2 source checks read a fresh loadApp instance (f2app); f2Corpus() is cached on the function so later plans append states without a TDZ risk
+- [Phase ?]: 05-02: Settings and Ideas delegated; idea/exercise/cloud-version ids travel as data-id="${esc(id)}" and a hostile-id test proves each inert. The export-placement test counts controls whose action calls exportMarkdown instead of matching markup text
+- [Phase ?]: 05-02: the Ideas backdrop keeps its div exception with the e.target===el guard in its wrapper; trash and versions headers are <button class="row tap"> with block spans
+- [Phase ?]: 05-03: the enter action runs data-enter's target only if both the entry and its click are OWN properties (the plan's form read click through the prototype)
+- [Phase ?]: 05-03: the DELEG-03 ratchet counts wiring sites per mapped row, so a surviving same-name sibling cannot hide a dropped control
+- [Phase ?]: 05-04: a shared action whose other consumer lands in a later plan gets a stand-in-element check for that consumer's call shape (logPetWeight with no data-date-el)
+- [Phase ?]: 05-04: attribute values outside data-* that a plan escapes (D-09) get a hostile-value check; the D-03 check reads data-* only
+- [Phase ?]: 05-05: rows sharing handler text in one function convert in the same task, because the DELEG-03 ratchet counts inline occurrences (the week link and the evening week card)
+- [Phase ?]: 05-05: evening-only Today markup is reached with a per-instance clock (f2Evening), never by moving the shared frozen clock
+- [Phase ?]: 05-06: the DELEG-03 ratchet counts wiring sites per event (max over events), so one element whose action handles two events (stopwatch pointerdown+click, weight input+change) is one site
+- [Phase ?]: 05-06: every Log-tab and accessory control is pinned by an exact-arguments sweep (spy every callee, fire each rendered control once, compare the full call map)
 
 ### Pending Todos
 
@@ -153,6 +172,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-23T11:32:53.742Z
-Stopped at: Completed 04-03-PLAN.md
+Last session: 2026-09-25T11:34:47.589Z
+Stopped at: Completed 05-06-PLAN.md; end-of-phase human checks pending (DELEG-06 keyboard pass, then DELEG-07 phone run post-deploy)
 Resume file: None

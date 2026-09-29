@@ -54,6 +54,11 @@
 
     /* Buttons */
     button { font-family: inherit; }
+    /* Converted click targets (F2): a button that must look exactly like the div, span or link it
+       replaced. :where() has zero specificity, so .card, .row, .hist-item and .ex-body still win for
+       background, border, padding and display. */
+    :where(button.tap) { display: block; width: 100%; background: none; border: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: inherit; cursor: pointer; -webkit-appearance: none; appearance: none; }
+    :where(button.tap-inline) { display: inline; background: none; border: 0; padding: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; -webkit-appearance: none; appearance: none; }
     .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: none; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600; padding: 11px 16px; background: var(--btn-bg); color: var(--btn-fg); transition: opacity .15s; }
     .btn:active { opacity: .7; }
     .btn-block { width: 100%; }
@@ -273,21 +278,21 @@
     <span class="sw-label" data-ph="timer">Rest</span>
     <span class="sw-time" id="sw-time">0:00</span>
     <span class="sw-target" id="sw-target"></span>
-    <button class="sw-btn" id="sw-toggle" onpointerdown="swGuard(event)" onclick="swToggle()" data-ph="play"></button>
-    <button class="sw-btn sw-clear" onpointerdown="swGuard(event)" onclick="swClear()">Clear</button>
+    <button class="sw-btn" id="sw-toggle" data-action="swToggle" data-ph="play"></button>
+    <button class="sw-btn sw-clear" data-action="swClear">Clear</button>
   </div>
   <div class="tabbar-inner" id="tabbar"><!-- generated from TABS registry --></div>
 </div>
 
 <div class="toast" id="toast"></div>
 
-<button class="fab" id="idea-fab" onclick="openIdeas()" aria-label="Add an idea or feedback" data-ph="lightbulb"></button>
-<div class="modal-overlay" id="ideas-modal" onclick="if(event.target===this)closeIdeas()">
+<button class="fab" id="idea-fab" data-action="openIdeas" aria-label="Add an idea or feedback" data-ph="lightbulb"></button>
+<div class="modal-overlay" id="ideas-modal" data-action="ideasBackdrop">
   <div class="modal-card">
-    <div class="row" style="margin-bottom:12px"><h2 style="margin:0" data-ph="lightbulb">Ideas & feedback</h2><button class="sw-btn sw-clear" onclick="closeIdeas()">Close</button></div>
+    <div class="row" style="margin-bottom:12px"><h2 style="margin:0" data-ph="lightbulb">Ideas & feedback</h2><button class="sw-btn sw-clear" data-action="closeIdeas">Close</button></div>
     <textarea id="idea-input" rows="3" placeholder="An idea, bug, or thing to tweak — jot it while it's fresh…" style="resize:vertical;line-height:1.5;min-height:64px"></textarea>
-    <button class="btn btn-block" style="margin-top:10px" onclick="addIdea()">Add idea</button>
-    <div class="row" style="margin:16px 0 4px"><span class="muted" id="idea-count" style="font-size:12px"></span><button class="btn btn-sm btn-ghost" onclick="copyIdeas()" data-ph="copy">Copy all</button></div>
+    <button class="btn btn-block" style="margin-top:10px" data-action="addIdea">Add idea</button>
+    <div class="row" style="margin:16px 0 4px"><span class="muted" id="idea-count" style="font-size:12px"></span><button class="btn btn-sm btn-ghost" data-action="copyIdeas" data-ph="copy">Copy all</button></div>
     <div id="ideas-list"></div>
   </div>
 </div>
@@ -1002,6 +1007,9 @@ const ph = (name, cls) => PH[name]
 function fmtDur(ms){ const t=Math.max(0,Math.floor(ms/1000)); const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60; const pad=n=>String(n).padStart(2,'0'); return h? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`; }
 function fmtClock(ms){ return new Date(ms).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
 /* Format one logged set. Weight of 0 (with reps) = bodyweight → "BW". Blank weight → reps only. */
+/* Plain text, never markup: w and r are stored strings nothing type-checks (a restored backup can hold
+   anything), so every HTML sink wraps the result in esc(). Not escaped here, because the Markdown
+   exporter and setStatus's title escape it themselves and would escape it twice. */
 function fmtSet(w,r){ if(w===''||w==null) return `${r}`; return `${(+w===0?'BW':w)}×${r}`; }
 function fmtMS(total){ total=+total||0; const m=Math.floor(total/60), s=total%60; return `${m}:${String(s).padStart(2,'0')}`; }
 /* Estimated 1-rep max (Epley). BW(0) or blank → 0 (excluded from strength charts). */
@@ -1401,7 +1409,7 @@ TABS.forEach(t=>{ if(t.sub) subState[t.id]=t.sub[0][0]; });
 
 function buildTabBar(){
   document.getElementById('tabbar').innerHTML = TABS.map(t=>
-    `<button class="tab${t.id===TAB?' active':''}" data-tab="${t.id}" onclick="go('${t.id}')"><span class="ic">${ph(t.id===TAB ? t.icon+'-fill' : t.icon)}</span>${t.label}</button>`
+    `<button class="tab${t.id===TAB?' active':''}" data-action="go" data-tab="${esc(t.id)}"><span class="ic">${ph(t.id===TAB ? t.icon+'-fill' : t.icon)}</span>${t.label}</button>`
   ).join('');
 }
 /* Icons are Phosphor Regular when inactive and Fill when active, so the glyph itself has to be
@@ -1419,7 +1427,7 @@ function goSub(id, sub){ const t=tabDef(id); if(!t) return; if(t.sub && sub) sub
 /* Switch sub-view within the CURRENT tab (used by the segmented control). */
 function setSub(sub){ const t=tabDef(TAB); if(t && t.sub) subState[TAB]=sub; render(); window.scrollTo(0,0); }
 function segNav(items, active){
-  return `<div class="seg" style="margin-bottom:16px">${items.map(([k,label])=>`<button class="${k===active?'active':''}" onclick="setSub('${k}')">${label}</button>`).join('')}</div>`;
+  return `<div class="seg" style="margin-bottom:16px">${items.map(([k,label])=>`<button class="${k===active?'active':''}" data-action="setSub" data-sub="${esc(k)}">${label}</button>`).join('')}</div>`;
 }
 /* Whichever Progress chart is active — shared by render() and the theme-change redraw. */
 function drawActiveChart(){ if(TAB==='train' && subState.train==='progress'){ if(progSub==='strength') drawStrengthChart(); else if(progSub==='pet') drawPetChart(); else if(progSub==='body') drawChart(); } }
@@ -1436,8 +1444,8 @@ function render(){
       <h2>Something broke on this screen</h2>
       <p class="muted" style="line-height:1.5;margin:8px 0">${esc(e && e.message || String(e))}</p>
       <p class="muted" style="margin-bottom:12px">Your data is safe — export a copy, then reload.</p>
-      <button class="btn btn-block" onclick="exportData()">${ph('download-simple')}Export my data</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="location.reload()">Reload app</button>
+      <button class="btn btn-block" data-action="exportData">${ph('download-simple')}Export my data</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="reload">Reload app</button>
     </div>`;
   }
   if(typeof updateStopwatch==='function') updateStopwatch();
@@ -1475,7 +1483,11 @@ function weekTally(){
   const hb=liveHobbyLog().filter(h=>+monday(new Date(h.date+'T00:00'))===m).length;
   return `${wk} workout${wk!==1?'s':''} · ${hb} activit${hb!==1?'ies':'y'} · journaled ${journalWeekCount()}/7`;
 }
-const kicker = t => `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${t}</div>`;
+/* kicker(t, 'span') is the same element as a block span, for use inside a converted <button> (a div
+   is not valid there). Without a second argument the markup is exactly what it always was. */
+const kicker = (t, tag) => tag === 'span'
+  ? `<span class="muted" style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${t}</span>`
+  : `<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">${t}</div>`;
 function viewToday(){
   const nxt = nextWorkout();
   const nxtIsSpecialized = nxt === 'SPECIALIZED';
@@ -1497,97 +1509,100 @@ function viewToday(){
   const isWorkoutDay = WORKOUT_DAYS.includes(now.getDay());
   const cWorkout = DB.draft ? `<div class="card">
       <div class="row" style="margin-bottom:12px"><div>${kicker('Workout in progress')}<span class="pill ${accClass(PROGRAM[DB.draft.workout]?PROGRAM[DB.draft.workout].group:'push')}" style="margin-top:5px">${DB.draft.workout}</span></div><span class="muted">▶ active</span></div>
-      <button class="btn btn-block" onclick="goSub('train','log')">Resume ${DB.draft.workout} →</button>
+      <button class="btn btn-block" data-action="goSub" data-tab="train" data-sub="log">Resume ${DB.draft.workout} →</button>
     </div>` : !isWorkoutDay ? '' : nxtIsSpecialized ? `<div class="card">
       <div class="row" style="margin-bottom:12px"><div>${kicker(part==='evening'?'Next workout':'Today’s workout')}<div style="font-weight:700;margin-top:5px">Specialized — choose your focus</div></div><span class="muted">${last?'Last '+fmtDate(last.date):'—'}</span></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${SPECIALIZED_OPTIONS.map(o=>`<button class="btn btn-ghost btn-sm" onclick="startWorkout('${o.name}')">${o.label}</button>`).join('')}</div>
-      <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="skipDay('SPECIALIZED')">Skip this day</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">${SPECIALIZED_OPTIONS.map(o=>`<button class="btn btn-ghost btn-sm" data-action="startWorkout" data-name="${esc(o.name)}">${o.label}</button>`).join('')}</div>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="skipDay" data-name="SPECIALIZED">Skip this day</button>
       <p class="muted" style="font-size:11px;margin-top:8px">Tip: avoid Back the week it lands right after a Pull day — little recovery.</p>
     </div>` : `<div class="card">
       <div class="row" style="margin-bottom:12px"><div>${kicker(part==='evening'?'Next workout':'Today’s workout')}<span class="pill ${accClass(g)}" style="margin-top:5px">${nxt}</span></div><span class="muted">${last?'Last '+fmtDate(last.date):'—'}</span></div>
-      <button class="btn btn-block" onclick="startWorkout('${nxt}')">Start ${nxt} →</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="skipDay('${nxt}')">Skip this day</button>
+      <button class="btn btn-block" data-action="startWorkout" data-name="${esc(nxt)}">Start ${nxt} →</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="skipDay" data-name="${esc(nxt)}">Skip this day</button>
     </div>`;
   const cDo = `<div class="card">
       ${kicker('Do something — not the couch')}
       <div class="seg" style="margin:8px 0 12px">
-        <button class="${pickCat==='hobby'?'active':''}" onclick="setPickCat('hobby')">Hobby</button>
-        <button class="${pickCat==='productivity'?'active':''}" onclick="setPickCat('productivity')">Productivity</button>
+        <button class="${pickCat==='hobby'?'active':''}" data-action="setPickCat" data-cat="hobby">Hobby</button>
+        <button class="${pickCat==='productivity'?'active':''}" data-action="setPickCat" data-cat="productivity">Productivity</button>
       </div>
       <div style="text-align:center;padding:4px 0 12px"><div style="font-size:22px;font-weight:800;letter-spacing:-.3px">${pick?esc(pick):'Add some in Settings →'}</div></div>
-      <div class="row" style="gap:8px"><button class="btn btn-ghost" style="flex:1" onclick="shufflePick()">${ph('shuffle')}Something else</button><button class="btn" style="flex:1" onclick="didPick()">${ph('check')}I did it</button></div>
-      <select onchange="selectPick(this.value)" style="margin-top:10px" aria-label="Pick a specific item">${listFor(pickCat).map(h=>`<option ${h===pick?'selected':''}>${esc(h)}</option>`).join('')}</select>
+      <div class="row" style="gap:8px"><button class="btn btn-ghost" style="flex:1" data-action="shufflePick">${ph('shuffle')}Something else</button><button class="btn" style="flex:1" data-action="didPick">${ph('check')}I did it</button></div>
+      <select data-action="selectPick" style="margin-top:10px" aria-label="Pick a specific item">${listFor(pickCat).map(h=>`<option ${h===pick?'selected':''}>${esc(h)}</option>`).join('')}</select>
       <p class="muted" style="margin-top:12px;line-height:1.5">You'll always be tired, and there's always a reason not to. But you <strong>always feel better after</strong>. Start small — just begin.</p>
       ${catWeek?`<p class="muted" style="margin-top:6px;font-weight:600">✓ ${catWeek} ${pickCat==='hobby'?'hobbies':'chores'} this week</p>`:''}
     </div>`;
   const cJournal = `<div class="card">
       ${kicker('What did you do today?')}
-      <textarea id="journal-input" rows="3" placeholder="A few words about your day — wins, workouts, anything…" oninput="saveJournal(this.value)" style="resize:vertical;line-height:1.5;min-height:72px;margin-top:8px">${esc(DB.journal[todayISO()]||'')}</textarea>
-      <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <a onclick="goSub('train','history')" style="color:var(--link);cursor:pointer;font-weight:600">${part==='evening'?`${ph('calendar-blank')}Review your week →`:'See your week →'}</a></p>
+      <textarea id="journal-input" rows="3" placeholder="A few words about your day — wins, workouts, anything…" data-action="saveJournal" style="resize:vertical;line-height:1.5;min-height:72px;margin-top:8px">${esc(DB.journal[todayISO()]||'')}</textarea>
+      <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <button class="tap-inline" data-action="goSub" data-tab="train" data-sub="history" style="color:var(--link);cursor:pointer;font-weight:600">${part==='evening'?`${ph('calendar-blank')}Review your week →`:'See your week →'}</button></p>
     </div>`;
   /* Morning weigh-in — Ian and the cat in one card, because they happen at the same moment on the
      same scale. Inputs are inline (no trip to Progress) and open by default in the morning; later
      in the day the card collapses to the numbers with a ＋ Log toggle. The input ids match the
      Progress page's on purpose — the two views are never in the DOM at once, so logWeight() /
-     logPetWeight() work unchanged, falling back to today's date when there's no date field. */
+     logPetWeight() work unchanged, falling back to today's date when there's no date field.
+     logRow's act.enter / act.click are literal attribute fragments written at the two call sites
+     below. The hint is escaped here, at the sink, so callers pass plain text: it carries DB.unit,
+     which nothing constrains (a restored backup can hold any string), and the pet name. */
   const pw = latestPetWeight(), petToday = pw && pw.date===todayISO();
   const weighedIn = loggedToday && petToday;   // both of them — the card's job isn't done until it is
   const weighOpen = (part==='morning' && !weighedIn) || accOpen.has('weighin');
-  const logRow = (id, fn, hint) => `<div class="row" style="gap:8px;margin-top:8px">
-        <input type="number" inputmode="decimal" step="0.1" id="${id}" placeholder="${hint}" style="flex:1" onkeydown="if(event.key==='Enter')${fn}">
-        <button class="btn btn-sm" onclick="${fn}">Log</button>
+  const logRow = (id, act, hint) => `<div class="row" style="gap:8px;margin-top:8px">
+        <input type="number" inputmode="decimal" step="0.1" id="${esc(id)}" placeholder="${esc(hint)}" style="flex:1" ${act.enter}>
+        <button class="btn btn-sm" ${act.click}>Log</button>
       </div>`;
   const cWeighIn = `<div class="card">
-      <div class="row" style="cursor:pointer" onclick="toggleAcc('weighin')">
-        ${kicker(part==='morning'?'Morning weigh-in':'Weigh-in')}
+      <button class="row tap" style="cursor:pointer" data-action="toggleAcc" data-key="weighin">
+        ${kicker(part==='morning'?'Morning weigh-in':'Weigh-in', 'span')}
         <span class="muted">${ph(weighOpen?'caret-up':'caret-down')}</span>
-      </div>
+      </button>
       <div style="margin-top:8px">
         <div class="row">
           <div><div class="stat-big" style="font-size:26px">${avg!=null? avg.toFixed(1) : '—'} <span style="font-size:14px;color:var(--muted-2);font-weight:600">${DB.unit}</span></div>
           <div class="stat-sub">${avg!=null? '7-day average' : 'No weigh-ins yet'}${w?` · latest ${(+w.value).toFixed(1)}${loggedToday?' today':''}`:''}</div></div>
-          <button class="btn btn-sm btn-ghost" onclick="progSub='body';goSub('train','progress')">Chart</button>
+          <button class="btn btn-sm btn-ghost" data-action="openChart" data-prog="body">Chart</button>
         </div>
-        ${weighOpen && !loggedToday ? logRow('wt-input',"logWeight()",`Your weight (${DB.unit})`) : ''}
+        ${weighOpen && !loggedToday ? logRow('wt-input', { enter: 'data-action="enter" data-enter="logWeight"', click: 'data-action="logWeight"' }, `Your weight (${DB.unit})`) : ''}
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-3)">
         <div class="row">
           <div><div style="font-weight:700;font-size:15px">🐈 ${esc(petName())} — ${pw? `${(+pw.value).toFixed(1)} <span class="muted" style="font-size:12px;font-weight:600">${DB.unit}</span>` : '<span class="muted">no weigh-ins yet</span>'}</div>
           <div class="stat-sub">${pw? (petToday?'logged today':'last '+fmtDate(pw.date)) : 'weigh him on the same scale'}</div></div>
-          <button class="btn btn-sm btn-ghost" onclick="progSub='pet';goSub('train','progress')">Chart</button>
+          <button class="btn btn-sm btn-ghost" data-action="openChart" data-prog="pet">Chart</button>
         </div>
-        ${weighOpen && !petToday ? logRow('pet-input',"logPetWeight('pet-input')",`${esc(petName())}&#39;s weight (${DB.unit})`) : ''}
+        ${weighOpen && !petToday ? logRow('pet-input', { enter: 'data-action="enter" data-enter="logPetWeight" data-input="pet-input"', click: 'data-action="logPetWeight" data-input="pet-input"' }, `${petName()}'s weight (${DB.unit})`) : ''}
       </div>
     </div>`;
   const rainAt = rainTiming();
-  const cWeather = gl ? `<div class="card" style="cursor:pointer" onclick="goSub('care','lawn')"><div class="row">
-      <div><div style="font-weight:700;font-size:16px">${gl.icon} ${gl.temp}° · ${gl.text}</div>
-      <div class="muted" style="font-size:12px;margin-top:2px">H ${gl.hi}° / L ${gl.lo}°${rainAt?` · <span style="color:var(--accent-300);font-weight:600">rain ${rainAt}</span>`:(gl.rainProb>=40?` · ${gl.rainProb}% rain`:'')}${gl.loc?' · '+esc(gl.loc):''}</div></div>
-      <span class="muted">Lawn →</span></div></div>` : '';
+  const cWeather = gl ? `<button class="card tap" style="cursor:pointer" data-action="goSub" data-tab="care" data-sub="lawn"><span class="row">
+      <span style="display:block"><span style="display:block;font-weight:700;font-size:16px">${gl.icon} ${gl.temp}° · ${gl.text}</span>
+      <span class="muted" style="display:block;font-size:12px;margin-top:2px">H ${gl.hi}° / L ${gl.lo}°${rainAt?` · <span style="color:var(--accent-300);font-weight:600">rain ${rainAt}</span>`:(gl.rainProb>=40?` · ${gl.rainProb}% rain`:'')}${gl.loc?' · '+esc(gl.loc):''}</span></span>
+      <span class="muted">Lawn →</span></span></button>` : '';
   const cLawn = cLawnCard();
-  const cWeek = `<div class="card" style="cursor:pointer" onclick="goSub('train','history')"><div class="row">
-      <div>${kicker('This week')}<div style="font-weight:700;margin-top:4px">${weekTally()}</div></div><span class="muted">Review →</span></div></div>`;
+  const cWeek = `<button class="card tap" style="cursor:pointer" data-action="goSub" data-tab="train" data-sub="history"><span class="row">
+      <span style="display:block">${kicker('This week', 'span')}<span style="display:block;font-weight:700;margin-top:4px">${weekTally()}</span></span><span class="muted">Review →</span></span></button>`;
 
   const cw = weeklyCardio(), cardioPct = Math.min(100, Math.round(cw.min/CARDIO_GOAL*100));
-  const cCardio = `<div class="card" style="cursor:pointer" onclick="goSub('train','cardio')">
-      <div class="row"><div>${kicker('Cardio this week')}<div style="font-weight:700;margin-top:4px">${Math.round(cw.min)} / ${CARDIO_GOAL} min${cw.km>0?` · ${fmtDist(cw.km)}`:''}</div></div><span class="muted">Log →</span></div>
-      <div style="height:6px;background:var(--surface-3);border-radius:4px;margin-top:10px;overflow:hidden"><div style="height:100%;width:${cardioPct}%;background:var(--cardio-bar);border-radius:4px"></div></div>
-    </div>`;
+  const cCardio = `<button class="card tap" style="cursor:pointer" data-action="goSub" data-tab="train" data-sub="cardio">
+      <span class="row"><span style="display:block">${kicker('Cardio this week', 'span')}<span style="display:block;font-weight:700;margin-top:4px">${Math.round(cw.min)} / ${CARDIO_GOAL} min${cw.km>0?` · ${fmtDist(cw.km)}`:''}</span></span><span class="muted">Log →</span></span>
+      <span style="display:block;height:6px;background:var(--surface-3);border-radius:4px;margin-top:10px;overflow:hidden"><span style="display:block;height:100%;width:${cardioPct}%;background:var(--cardio-bar);border-radius:4px"></span></span>
+    </button>`;
 
   const mobIso = todayISO(), mobOpen = accOpen.has('mob-today'), streak = mobStreak();
   const sDone = STRETCH_ITEMS.filter(x=>mobToday()[x.n]).length, complete = dayComplete(mobIso), sess = hasMobSession(mobIso);
   const actWk = weeklyActivationDays();
   const mobStatus = complete ? (sess ? 'Done ✓ — yoga/session' : 'Done ✓') : `Stretches ${sDone}/${STRETCH_ITEMS.length}`;
   const cMobility = `<div class="card">
-      <div class="row" style="cursor:pointer" onclick="toggleAcc('mob-today')">
-        <div>${kicker('Core & mobility — pelvic tilt')}
-          <div style="font-weight:700;margin-top:4px">${mobStatus}${streak?` · 🔥 ${streak}-day streak`:''}</div>
-          <div class="muted" style="font-size:11px;margin-top:2px">Activation ${actWk}× this week — aim 3–4</div>
-        </div>
+      <button class="row tap" style="cursor:pointer" data-action="toggleAcc" data-key="mob-today">
+        <span style="display:block">${kicker('Core & mobility — pelvic tilt', 'span')}
+          <span style="display:block;font-weight:700;margin-top:4px">${mobStatus}${streak?` · 🔥 ${streak}-day streak`:''}</span>
+          <span class="muted" style="display:block;font-size:11px;margin-top:2px">Activation ${actWk}× this week — aim 3–4</span>
+        </span>
         <span class="muted">${ph(mobOpen?'caret-up':'caret-down')}</span>
-      </div>
+      </button>
       ${mobOpen?`<div style="margin-top:10px">
-        <button class="btn ${sess?'':'btn-ghost'} btn-block" onclick="toggleMobSession()">${sess?`${ph('check')}Yoga / full session logged — tap to undo`:`${ph('check')}Did yoga or a full mobility session`}</button>
+        <button class="btn ${sess?'':'btn-ghost'} btn-block" data-action="toggleMobSession">${sess?`${ph('check')}Yoga / full session logged — tap to undo`:`${ph('check')}Did yoga or a full mobility session`}</button>
         ${mobilityRows()}
       </div>`:`<p class="muted" style="margin-top:8px;font-size:12px">${complete?'Logged for today — nice.':'Stretch daily to fix the tilt — tap to check off.'}</p>`}
     </div>`;
@@ -1598,28 +1613,28 @@ function viewToday(){
   const cTodo = `<div class="card">
       ${kicker('To-do'+(todos.length?` · ${todos.length} open`:''))}
       <div class="row" style="gap:8px;margin:8px 0 ${todos.length?'10px':'0'}">
-        <input id="todo-input" placeholder="Add a task…" style="flex:1" onkeydown="if(event.key==='Enter')addTodo()">
-        <button class="btn" onclick="addTodo()">Add</button>
+        <input id="todo-input" placeholder="Add a task…" style="flex:1" data-action="enter" data-enter="addTodo">
+        <button class="btn" data-action="addTodo">Add</button>
       </div>
       ${shownTodos.map((t,i)=>{ const age=todoAge(t.created); return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-3)">
-        <input type="checkbox" onchange="doneTodo(${i})" style="margin-top:1px">
+        <input type="checkbox" data-action="doneTodo" data-i="${esc(i)}" style="margin-top:1px">
         <span style="flex:1;font-size:14px">${esc(t.text)}${age>0?` <span class="muted" style="font-size:11px">· ${age}d</span>`:''}</span>
-        <button class="x-set" onclick="removeTodo(${i})" title="remove">${ph('x')}</button>
+        <button class="x-set" data-action="removeTodo" data-i="${esc(i)}" title="remove">${ph('x')}</button>
       </div>`; }).join('')}
-      ${todos.length>TODO_CAP?`<button class="addset" onclick="toggleAcc('todos-all')">${todosExpanded?'Show less':`+ ${todos.length-TODO_CAP} more`}</button>`:''}
+      ${todos.length>TODO_CAP?`<button class="addset" data-action="toggleAcc" data-key="todos-all">${todosExpanded?'Show less':`+ ${todos.length-TODO_CAP} more`}</button>`:''}
       ${todos.length?'':'<p class="muted" style="margin-top:8px;font-size:12px">Nothing pending. Tasks roll over until you check them off — checking one logs it to your journal.</p>'}
     </div>`;
 
   const cQuota = quotaBannerShown ? `<div class="card" style="border:1.5px solid var(--danger-bd);background:rgba(255,107,107,.08)">
       <div style="font-weight:700;font-size:14px;color:var(--danger)">${ph('warning','lead')}This device is out of storage</div>
       <p class="muted" style="line-height:1.5;margin-top:4px">Recent changes may not be saved locally. Export a backup now, and make sure Cloud Sync is on so nothing is lost.</p>
-      <div class="row" style="gap:8px;margin-top:10px"><button class="btn" style="flex:1" onclick="exportData()">${ph('download-simple')}Export now</button><button class="btn btn-ghost" style="flex:1" onclick="go('settings')">Settings</button></div>
+      <div class="row" style="gap:8px;margin-top:10px"><button class="btn" style="flex:1" data-action="exportData">${ph('download-simple')}Export now</button><button class="btn btn-ghost" style="flex:1" data-action="go" data-tab="settings">Settings</button></div>
     </div>` : '';
   const cBackup = backupStale() ? `<div class="card" style="border:1.5px solid var(--warm-bd);background:var(--warm-bg)">
       <div style="font-weight:700;font-size:14px">${ph('warning','lead')}Back up your data</div>
       <p class="muted" style="line-height:1.5;margin-top:4px">${SYNC && SYNC.user ? 'Cloud Sync is on, but keeping an occasional downloadable copy means even a bad sync can’t cost you anything.' : 'Your data lives only on this device. Turn on <strong>Cloud Sync</strong> and it\'s backed up automatically — and available on your laptop too. A one-off export works as a fallback.'}</p>
-      <div class="row" style="gap:8px;margin-top:10px">${SYNC && SYNC.user ? '' : `<button class="btn" style="flex:1" onclick="go('settings')">${ph('cloud-arrow-up')}Set up sync</button>`}<button class="btn ${SYNC&&SYNC.user?'':'btn-ghost'}" style="flex:1" onclick="exportData()">${ph('download-simple')}Export</button></div>
-      <button class="btn btn-ghost btn-block" style="margin-top:8px" onclick="snoozeBackup()">Later</button>
+      <div class="row" style="gap:8px;margin-top:10px">${SYNC && SYNC.user ? '' : `<button class="btn" style="flex:1" data-action="go" data-tab="settings">${ph('cloud-arrow-up')}Set up sync</button>`}<button class="btn ${SYNC&&SYNC.user?'':'btn-ghost'}" style="flex:1" data-action="exportData">${ph('download-simple')}Export</button></div>
+      <button class="btn btn-ghost btn-block" style="margin-top:8px" data-action="snoozeBackup">Later</button>
     </div>` : '';
 
   const wDays = daysUntil(WEDDING_DATE);
@@ -1677,7 +1692,7 @@ function previewRows(name){
         </div>
         <span class="muted" style="white-space:nowrap;font-size:12px">${s.sets}×${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>
       </div>
-      ${lastStr?`<div class="muted" style="font-size:11px;margin-top:3px">Last: ${lastStr}${ref?' · '+fmtDate(ref.date):''}</div>`:''}
+      ${lastStr?`<div class="muted" style="font-size:11px;margin-top:3px">Last: ${esc(lastStr)}${ref?' · '+fmtDate(ref.date):''}</div>`:''}
     </div>`;
   }).join('');
 }
@@ -1687,12 +1702,12 @@ function viewPicker(){
     const open = previewOpen===name; const ls = lastSessionOf(name);
     return `<div class="card" style="padding:14px">
       <div class="row">
-        <div style="cursor:pointer;min-width:0" onclick="togglePreview('${name}')">
+        <button class="tap" style="cursor:pointer;min-width:0;width:auto;flex:1 1 auto" data-action="togglePreview" data-name="${esc(name)}">
           <span class="pill ${accClass(PROGRAM[name].group)}">${label}</span>
-          <div class="muted" style="margin-top:6px">${PROGRAM[name].slots.length} exercises${ls?' · last '+fmtDate(ls.date):''} ${ph(open?'caret-up':'caret-down')}</div>
-        </div>
+          <span class="muted" style="display:block;margin-top:6px">${PROGRAM[name].slots.length} exercises${ls?' · last '+fmtDate(ls.date):''} ${ph(open?'caret-up':'caret-down')}</span>
+        </button>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-sm btn-ghost" onclick="skipDay('${skipName}')">Skip</button>
+          <button class="btn btn-sm btn-ghost" data-action="skipDay" data-name="${esc(skipName)}">Skip</button>
           ${startBtn}
         </div>
       </div>
@@ -1700,12 +1715,12 @@ function viewPicker(){
     </div>`;
   };
   const cards = SEQUENCE.map(name=>
-    card(name, name, `<button class="btn btn-sm ${name===nxt?'':'btn-ghost'}" onclick="startWorkout('${name}')">${name===nxt?'Start ▶':'Start'}</button>`, name)
+    card(name, name, `<button class="btn btn-sm ${name===nxt?'':'btn-ghost'}" data-action="startWorkout" data-name="${esc(name)}">${name===nxt?'Start ▶':'Start'}</button>`, name)
   ).join('');
   const is4Day = DB.routineMode==='4day';
   const specializedSection = is4Day ? `<h2 style="margin-top:22px">Specialized — choose one${nxt==='SPECIALIZED'?' <span class="flag">suggested next</span>':''}</h2>
     ${SPECIALIZED_OPTIONS.map(o=>
-      card(o.name, o.label, `<button class="btn btn-sm btn-ghost" onclick="startWorkout('${o.name}')">Start</button>`, 'SPECIALIZED')
+      card(o.name, o.label, `<button class="btn btn-sm btn-ghost" data-action="startWorkout" data-name="${esc(o.name)}">Start</button>`, 'SPECIALIZED')
     ).join('')}
     <p class="muted" style="font-size:12px">Tip: avoid Back the week it lands right after a Pull day — little recovery.</p>` : '';
   const nxtLabel = nxt==='SPECIALIZED' ? 'Specialized (choose your focus)' : nxt;
@@ -1715,7 +1730,7 @@ function viewPicker(){
     ${specializedSection}
     <h2 style="margin-top:22px">${ph('book-open')}How this program works</h2>
     ${guideDisplay.map((s,i)=>{ const o=guideOpen.has(i); return `<div class="phase-card">
-      <button class="phase-header" onclick="toggleGuide(${i})"><span class="phase-title" style="font-size:14px">${s.t}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${o?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
+      <button class="phase-header" data-action="toggleGuide" data-i="${esc(i)}"><span class="phase-title" style="font-size:14px">${s.t}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${o?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
       ${o?`<div class="phase-body">${s.b}</div>`:''}
     </div>`; }).join('')}`;
 }
@@ -1775,9 +1790,9 @@ function viewActive(){
       const done = entry.sets.filter(x=>!x.skipped && x.r!=='');
       const summary = done.length ? done.map(x=>fmtSet(x.w,x.r)).join(', ') : 'no sets yet';
       return `<div class="ex-card"><div class="ex-accent ${barClass(g)}"></div>
-        <div class="ex-body" style="padding:11px 14px;cursor:pointer" onclick="toggleExCollapse(${i})">
-          <div class="row"><div style="min-width:0"><span style="font-weight:700;font-size:14px">${esc(entry.name)}</span> <span class="muted" style="font-size:12px">${done.length?'✓ ':''}${summary}</span></div><span class="muted" style="white-space:nowrap">▾ expand</span></div>
-        </div></div>`;
+        <button class="ex-body tap" style="padding:11px 14px;cursor:pointer" data-action="toggleExCollapse" data-i="${esc(i)}">
+          <span class="row"><span style="display:block;min-width:0"><span style="font-weight:700;font-size:14px">${esc(entry.name)}</span> <span class="muted" style="font-size:12px">${done.length?'✓ ':''}${esc(summary)}</span></span><span class="muted" style="white-space:nowrap">▾ expand</span></span>
+        </button></div>`;
     }
     /* "Last time" tracks the exercise actually selected, not just this slot's position — swap
        Barbell bench → DB bench and the barbell numbers must not follow you. Exact match in this
@@ -1789,13 +1804,13 @@ function viewActive(){
     const real = ref ? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
     let lastLine = `<span class="muted">No previous data — set your baseline.</span>`, flag='', noteHint='';
     if(ref){
-      lastLine = `Last time (${fmtDate(ref.date)}): <strong>${real.map(x=> fmtSet(x.w,x.r)).join(',  ')||'—'}</strong>`;
+      lastLine = `Last time (${fmtDate(ref.date)}): <strong>${esc(real.map(x=> fmtSet(x.w,x.r)).join(',  '))||'—'}</strong>`;
       const aw = addWeightInfo(s, ref, entry.name);
       flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${aw.newW} ${DB.unit}`:''}</span>` : '';
       if(ref.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(ref.entry.note)}</div>`;
     } else if(alt){
       const altReal = alt.entry.sets.filter(x=>!x.skipped && x.r!=='');
-      lastLine = `Last time (${fmtDate(alt.date)} · ${esc(alt.workout)}): <strong>${altReal.map(x=> fmtSet(x.w,x.r)).join(',  ')||'—'}</strong>`;
+      lastLine = `Last time (${fmtDate(alt.date)} · ${esc(alt.workout)}): <strong>${esc(altReal.map(x=> fmtSet(x.w,x.r)).join(',  '))||'—'}</strong>`;
       /* Only translate when those reps sit outside this slot's range — that's the case where the
          old load doesn't transfer. Same-range history speaks for itself. Display only, never
          pre-filled: a suggestion shouldn't quietly become a logged number. */
@@ -1806,21 +1821,21 @@ function viewActive(){
       if(alt.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(alt.entry.note)}</div>`;
     }
     let coachHint='';
-    if(entry.deload) coachHint = `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" onclick="undeloadExercise(${i})">undo</button></div>`;
-    else if(isStalledSlot(entry.name, name, i)) coachHint = `<div class="coach stall">⚠ Stalled — no new best for this exercise on ${name} in 3 sessions. <button class="coach-btn" onclick="deloadExercise(${i})">Deload −10%</button> or swap the exercise above.</div>`;
+    if(entry.deload) coachHint = `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`;
+    else if(isStalledSlot(entry.name, name, i)) coachHint = `<div class="coach stall">⚠ Stalled — no new best for this exercise on ${name} in 3 sessions. <button class="coach-btn" data-action="deloadExercise" data-i="${esc(i)}">Deload −10%</button> or swap the exercise above.</div>`;
     const opts = s.examples.map(e=>`<option ${e===entry.name?'selected':''}>${esc(e)}</option>`).join('') +
                  (s.examples.includes(entry.name)?'':`<option selected>${esc(entry.name)}</option>`) +
                  `<option value="__custom">+ Custom…</option>`;
     const setRows = entry.sets.map((st,k)=>{
-      if(st.skipped) return `<div class="skip-note"><span>${ph('skip-forward','lead')}Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipSet(${i},${k})">Undo</button></div>`;
+      if(st.skipped) return `<div class="skip-note"><span>${ph('skip-forward','lead')}Set ${k+1} skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button data-action="unskipSet" data-i="${esc(i)}" data-k="${esc(k)}">Undo</button></div>`;
       const [bt,bc,btitle] = setStatus(i,k);
       return `<div class="set-grid">
         <span class="set-no">${k+1}</span>
-        <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${st.w}" oninput="setVal(${i},${k},'w',this.value);updTargetBadge(${i},${k});updPlates(${i})" onchange="rollWeight(${i},${k},this.value)">
-        <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="${repHint(i,k)}" value="${st.r}" oninput="setVal(${i},${k},'r',this.value);updTargetBadge(${i},${k})" onchange="repCheck(${i},${k})">
+        <input type="number" inputmode="decimal" id="w-${i}-${k}" placeholder="0=BW" value="${esc(st.w)}" data-action="setWeight" data-i="${esc(i)}" data-k="${esc(k)}">
+        <input type="number" inputmode="numeric" id="r-${i}-${k}" placeholder="${esc(repHint(i,k))}" value="${esc(st.r)}" data-action="setReps" data-i="${esc(i)}" data-k="${esc(k)}">
         <span id="tgt-${i}-${k}" class="tgt-badge ${bc}" title="${esc(btitle||'')}">${bt}</span>
-        <button class="skip-set" onclick="skipSet(${i},${k})" title="skip this set">${ph('skip-forward')}</button>
-        <button class="x-set" onclick="rmSet(${i},${k})" title="remove set">${ph('x')}</button>
+        <button class="skip-set" data-action="skipSet" data-i="${esc(i)}" data-k="${esc(k)}" title="skip this set">${ph('skip-forward')}</button>
+        <button class="x-set" data-action="rmSet" data-i="${esc(i)}" data-k="${esc(k)}" title="remove set">${ph('x')}</button>
       </div>`;
     }).join('');
     return `<div class="ex-card">
@@ -1829,23 +1844,23 @@ function viewActive(){
         <div class="ex-head">
           <div><div class="ex-meta">${s.muscle} · ${s.movement}${s.note?' · '+s.note:''} · <a href="${gsearch(entry.name)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">how-to ${ph('arrow-square-out')}</a></div></div>
           <div style="text-align:right;white-space:nowrap">
-            <button class="skip-set" onclick="toggleExCollapse(${i})" title="collapse" style="font-size:16px;vertical-align:middle">${ph('caret-up')}</button>
+            <button class="skip-set" data-action="toggleExCollapse" data-i="${esc(i)}" title="collapse" style="font-size:16px;vertical-align:middle">${ph('caret-up')}</button>
             <span class="range-badge">${rangeText(rng)} reps</span>${flag?'<br>'+flag:''}
           </div>
         </div>
-        <select onchange="pickEx(${i},this)">${opts}</select>
+        <select data-action="pickEx" data-i="${esc(i)}">${opts}</select>
         <div class="lasttime">${lastLine}</div>
         ${noteHint}
         ${coachHint}
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
         ${setRows}
-        <button class="addset" onclick="addSet(${i})">+ Add set</button>
+        <button class="addset" data-action="addSet" data-i="${esc(i)}">+ Add set</button>
         ${isBarbell(entry.name)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'', barWeight(entry.name), barStyle(entry.name))}</div>`:''}
         ${i===0?`<div class="warm">
-          <button class="warm-toggle" onclick="toggleWarm(${i})">${ph('fire')}Warm-up ramp</button>
+          <button class="warm-toggle" data-action="toggleWarm" data-i="${esc(i)}">${ph('fire')}Warm-up ramp</button>
           <div class="warm-table hidden" id="warm-${i}"></div>
         </div>`:''}
-        <input type="text" placeholder="Note — pain, tempo, how it felt…" value="${esc(entry.note||'')}" oninput="setNote(${i},this.value)" style="margin-top:10px;font-size:13px;padding:7px 9px">
+        <input type="text" placeholder="Note — pain, tempo, how it felt…" value="${esc(entry.note||'')}" data-action="setNote" data-i="${esc(i)}" style="margin-top:10px;font-size:13px;padding:7px 9px">
       </div>
     </div>`;
   }).join('');
@@ -1860,7 +1875,7 @@ function viewActive(){
     : `First time — set your starting point. You'll go up 15s each session.`;
   const stairsCard = st.skipped
     ? `<div class="ex-card"><div class="ex-accent acc-bar-cardio"></div><div class="ex-body">
-        <div class="skip-note" style="margin:0"><span>${ph('skip-forward','lead')}Stair stepper skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button onclick="unskipStairs()">Undo</button></div>
+        <div class="skip-note" style="margin:0"><span>${ph('skip-forward','lead')}Stair stepper skipped${st.reason?': <em>'+esc(st.reason)+'</em>':''}</span><button data-action="unskipStairs">Undo</button></div>
       </div></div>`
     : `<div class="ex-card"><div class="ex-accent acc-bar-cardio"></div><div class="ex-body">
         <div class="ex-head">
@@ -1869,11 +1884,11 @@ function viewActive(){
         </div>
         <div class="lasttime">${stairLast}</div>
         <div class="stair-grid" style="grid-template-columns:1fr 1fr 1fr">
-          <div><label>Level</label><input type="number" inputmode="numeric" placeholder="lvl" value="${st.level}" oninput="stairVal('level',this.value)"></div>
-          <div><label>Min</label><input type="number" inputmode="numeric" placeholder="min" value="${stMin}" oninput="stairTimeSet('m',this.value)"></div>
-          <div><label>Sec</label><input type="number" inputmode="numeric" placeholder="sec" value="${stSec}" oninput="stairTimeSet('s',this.value)"></div>
+          <div><label>Level</label><input type="number" inputmode="numeric" placeholder="lvl" value="${esc(st.level)}" data-action="stairVal" data-field="level"></div>
+          <div><label>Min</label><input type="number" inputmode="numeric" placeholder="min" value="${esc(stMin)}" data-action="stairTimeSet" data-part="m"></div>
+          <div><label>Sec</label><input type="number" inputmode="numeric" placeholder="sec" value="${esc(stSec)}" data-action="stairTimeSet" data-part="s"></div>
         </div>
-        <button class="skip-set" style="font-size:12px;font-weight:600" onclick="skipStairs()">${ph('skip-forward')}skip stair stepper</button>
+        <button class="skip-set" style="font-size:12px;font-weight:600" data-action="skipStairs">${ph('skip-forward')}skip stair stepper</button>
       </div></div>`;
 
   const lblCss = 'font-size:10px;font-weight:700;color:var(--muted-2);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px';
@@ -1881,8 +1896,8 @@ function viewActive(){
     ? `<div>
         <h1><span class="pill ${accClass(g)}">${name}</span> <span class="muted" style="font-size:13px">· past entry</span></h1>
         <div class="stair-grid" style="margin-top:10px">
-          <div><label style="${lblCss}">Date</label><input type="date" value="${DB.draft.date}" max="${todayISO()}" oninput="setDraftDate(this.value)"></div>
-          <div><label style="${lblCss}">Minutes at gym (opt)</label><input type="number" inputmode="numeric" placeholder="min" value="${DB.draft.durationMin||''}" oninput="setDraftDur(this.value)"></div>
+          <div><label style="${lblCss}">Date</label><input type="date" value="${esc(DB.draft.date)}" max="${todayISO()}" data-action="setDraftDate"></div>
+          <div><label style="${lblCss}">Minutes at gym (opt)</label><input type="number" inputmode="numeric" placeholder="min" value="${esc(DB.draft.durationMin||'')}" data-action="setDraftDur"></div>
         </div>
       </div>`
     : `<div class="row" style="align-items:flex-start">
@@ -1899,10 +1914,10 @@ function viewActive(){
     <div style="margin-top:16px">${acc.warm}${cards}${acc.lifts}${stairsCard}${acc.cooldown}</div>
     <div class="card">
       <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Session note</div>
-      <textarea id="session-note" rows="2" placeholder="How did the session feel? Overall notes…" oninput="setSessionNote(this.value)" style="resize:vertical;line-height:1.5;min-height:56px">${esc(DB.draft.sessionNote||'')}</textarea>
+      <textarea id="session-note" rows="2" placeholder="How did the session feel? Overall notes…" data-action="setSessionNote" style="resize:vertical;line-height:1.5;min-height:56px">${esc(DB.draft.sessionNote||'')}</textarea>
     </div>
-    <button class="btn btn-block" style="margin-top:6px" onclick="finishWorkout()">${DB.draft.historical?'Save past workout':'Finish & save workout'}</button>
-    <button class="btn btn-danger btn-block" style="margin-top:10px" onclick="discardWorkout()">Discard</button>`;
+    <button class="btn btn-block" style="margin-top:6px" data-action="finishWorkout">${DB.draft.historical?'Save past workout':'Finish & save workout'}</button>
+    <button class="btn btn-danger btn-block" style="margin-top:10px" data-action="discardWorkout">Discard</button>`;
 }
 function setDraftDate(v){ DB.draft.date=v; saveLocal(); }
 function setDraftDur(v){ DB.draft.durationMin=v; saveLocal(); }
@@ -2086,33 +2101,33 @@ function renderWeekReview(){
     nW += sess.filter(s=>!s.skipped).length; nH += hb.length; if(note && note.trim()) nJ++;
     const tags = [];
     sess.forEach(s=> s.skipped
-      ? tags.push(`<span class="muted" style="font-size:11px">${ph('skip-forward','lead')}skipped ${s.workout}</span>`)
-      : tags.push(`<span class="pill ${accClass(PROGRAM[s.workout]?PROGRAM[s.workout].group:'push')}" style="font-size:9px;padding:2px 7px">${s.workout}</span>`));
+      ? tags.push(`<span class="muted" style="font-size:11px">${ph('skip-forward','lead')}skipped ${esc(s.workout)}</span>`)
+      : tags.push(`<span class="pill ${accClass(PROGRAM[s.workout]?PROGRAM[s.workout].group:'push')}" style="font-size:9px;padding:2px 7px">${esc(s.workout)}</span>`));
     hb.forEach(h=> tags.push(`<span style="font-size:11px">🎲 ${esc(h)}</span>`));
     if(wt) tags.push(`<span style="font-size:11px">⚖️ ${(+wt.value).toFixed(1)}</span>`);
     if(dayComplete(iso)) tags.push(`<span style="font-size:11px">🧎 ${hasMobSession(iso)?'session':mobDoneOn(iso)}</span>`);
     if(sess.some(s=>prIdx.sessionHasPR(s))) tags.push(`<span style="font-size:11px">🏆 PR</span>`);
     const hasNote = note && note.trim();
-    const editLink = iso => `<a onclick="editJournal('${iso}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${ph('note-pencil')}${hasNote?'Edit note':'Add note'}</a>`;
+    const editLink = iso => `<button class="tap-inline" data-action="editJournal" data-iso="${esc(iso)}" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${ph('note-pencil')}${hasNote?'Edit note':'Add note'}</button>`;
     let noteHTML;
     if(future){ noteHTML=''; }
     else if(editJournalDate===iso){
       noteHTML = `<div style="margin-top:6px">
-        <textarea id="journal-edit-${iso}" rows="3" placeholder="What did you do on this day?" oninput="saveJournalFor('${iso}',this.value)" style="resize:vertical;line-height:1.5;min-height:64px;font-size:13px">${esc(note||'')}</textarea>
-        <button class="btn btn-sm" style="margin-top:6px" onclick="closeJournalEdit()">Done</button>
+        <textarea id="journal-edit-${esc(iso)}" rows="3" placeholder="What did you do on this day?" data-action="saveJournalFor" data-iso="${esc(iso)}" style="resize:vertical;line-height:1.5;min-height:64px;font-size:13px">${esc(note||'')}</textarea>
+        <button class="btn btn-sm" style="margin-top:6px" data-action="closeJournalEdit">Done</button>
       </div>`;
     } else {
       noteHTML = `${hasNote?`<div style="font-size:13px;color:var(--text-2);line-height:1.5;margin-top:6px;white-space:pre-wrap">${esc(note)}</div>`:''}
-        <div style="margin-top:${hasNote?4:3}px">${editLink(iso)}${addActivityDate===iso?'':` <span style="color:var(--muted-3)">·</span> <a onclick="openActivityAdd('${iso}')" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">＋ Log activity</a>`}</div>`;
+        <div style="margin-top:${hasNote?4:3}px">${editLink(iso)}${addActivityDate===iso?'':` <span style="color:var(--muted-3)">·</span> <button class="tap-inline" data-action="openActivityAdd" data-iso="${esc(iso)}" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">＋ Log activity</button>`}</div>`;
     }
     let activityPanel='';
     if(!future && addActivityDate===iso){
       const items=listFor(actAddCat);
       const dayActs=(DB.hobbyLog||[]).map((h,idx)=>({h,idx})).filter(o=>isLive(o.h) && o.h.date===iso);
       activityPanel = `<div style="margin-top:8px;padding:10px;border:1px solid var(--border-2);border-radius:8px">
-        <div class="seg" style="margin:0 0 8px"><button class="${actAddCat==='hobby'?'active':''}" onclick="setActAddCat('hobby')">Hobby</button><button class="${actAddCat==='productivity'?'active':''}" onclick="setActAddCat('productivity')">Productivity</button></div>
-        <div class="row" style="gap:8px"><select id="act-item" style="flex:1">${items.map(x=>`<option>${esc(x)}</option>`).join('')}</select><button class="btn btn-sm" onclick="addActivityFor('${iso}')">Add</button><button class="btn btn-sm btn-ghost" onclick="cancelActivityAdd()">Done</button></div>
-        ${dayActs.length?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${dayActs.map(o=>`<span style="font-size:11px;background:var(--surface-3);border-radius:12px;padding:3px 9px">🎲 ${esc(o.h.item||o.h.hobby)} <span onclick="removeActivity(${o.idx})" style="cursor:pointer;color:var(--danger);font-weight:700;margin-left:2px">×</span></span>`).join('')}</div>`:''}
+        <div class="seg" style="margin:0 0 8px"><button class="${actAddCat==='hobby'?'active':''}" data-action="setActAddCat" data-cat="hobby">Hobby</button><button class="${actAddCat==='productivity'?'active':''}" data-action="setActAddCat" data-cat="productivity">Productivity</button></div>
+        <div class="row" style="gap:8px"><select id="act-item" style="flex:1">${items.map(x=>`<option>${esc(x)}</option>`).join('')}</select><button class="btn btn-sm" data-action="addActivityFor" data-iso="${esc(iso)}">Add</button><button class="btn btn-sm btn-ghost" data-action="cancelActivityAdd">Done</button></div>
+        ${dayActs.length?`<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">${dayActs.map(o=>`<span style="font-size:11px;background:var(--surface-3);border-radius:12px;padding:3px 9px">🎲 ${esc(o.h.item||o.h.hobby)} <button class="tap-inline" aria-label="Remove activity" data-action="removeActivity" data-idx="${esc(o.idx)}" style="cursor:pointer;color:var(--danger);font-weight:700;margin-left:2px">×</button></span>`).join('')}</div>`:''}
       </div>`;
     }
     return `<div style="padding:9px 0;border-bottom:1px solid var(--border-3)">
@@ -2126,9 +2141,9 @@ function renderWeekReview(){
   const title = reviewWeekOffset===0?'This week':reviewWeekOffset===-1?'Last week':`${-reviewWeekOffset} weeks ago`;
   return `<div class="card">
     <div class="row" style="margin-bottom:10px">
-      <button class="btn btn-ghost btn-sm" onclick="weekShift(-1)">${ph('caret-left')}</button>
+      <button class="btn btn-ghost btn-sm" data-action="weekShift" data-d="-1">${ph('caret-left')}</button>
       <div style="text-align:center"><div style="font-weight:700">${title}</div><div class="muted" style="font-size:11px">${label}</div></div>
-      <button class="btn btn-ghost btn-sm" onclick="weekShift(1)" ${reviewWeekOffset>=0?'disabled style="opacity:.35"':''}>${ph('caret-right')}</button>
+      <button class="btn btn-ghost btn-sm" data-action="weekShift" data-d="1" ${reviewWeekOffset>=0?'disabled style="opacity:.35"':''}>${ph('caret-right')}</button>
     </div>
     <div class="muted" style="font-size:12px;margin-bottom:4px">${nW} workout${nW!==1?'s':''} · ${nH} activit${nH!==1?'ies':'y'} · journaled ${nJ}/7</div>
     ${rows}
@@ -2161,10 +2176,10 @@ function renderSummary(){
 function viewHistory(){
   const summary = renderSummary();
   const back = `
-    <button class="btn btn-ghost btn-block" onclick="toggleBackdate()">＋ Add a past workout</button>
+    <button class="btn btn-ghost btn-block" data-action="toggleBackdate">＋ Add a past workout</button>
     ${showBackdate? `<div class="card" style="margin-top:10px">
       <div class="muted" style="font-weight:700;margin-bottom:10px">Which workout?</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${SEQUENCE.map(n=>`<button class="btn btn-ghost btn-sm" onclick="startBackdate('${n}')">${n}</button>`).join('')}${DB.routineMode==='4day'?SPECIALIZED_OPTIONS.map(o=>`<button class="btn btn-ghost btn-sm" onclick="startBackdate('${o.name}')">${o.label}</button>`).join(''):''}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">${SEQUENCE.map(n=>`<button class="btn btn-ghost btn-sm" data-action="startBackdate" data-name="${esc(n)}">${n}</button>`).join('')}${DB.routineMode==='4day'?SPECIALIZED_OPTIONS.map(o=>`<button class="btn btn-ghost btn-sm" data-action="startBackdate" data-name="${esc(o.name)}">${o.label}</button>`).join(''):''}</div>
       <p class="muted" style="margin-top:10px">Tip: enter your 5 oldest-first so each session sees the one before it as "last time".</p>
     </div>`:''}`;
   if(!liveSessions().length) return `<h2>Week in review</h2>${renderWeekReview()}<div style="margin:14px 0">${back}</div><div class="empty">No workouts logged yet.<br>Start one from the Workout tab, or add a past workout above.</div>`;
@@ -2174,18 +2189,18 @@ function viewHistory(){
     const open = openHist===idx;
     let right, detail='';
     const editRow = `<div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap;border-top:1px solid var(--border-3);padding-top:10px">
-        <label style="font-size:11px;font-weight:600;color:var(--muted)">Date <input type="date" value="${s.date}" max="${todayISO()}" onchange="changeSessionDate(${idx},this.value)" style="width:auto;display:inline-block;margin-left:4px;padding:6px 8px"></label>
-        ${s.skipped?'':`<button onclick="editSession(${idx})" style="background:none;border:none;color:var(--link);font-size:12px;font-weight:600;cursor:pointer;padding:0">${ph('pencil-simple')}Edit workout</button>`}
-        <button onclick="deleteSession(${idx})" style="background:none;border:none;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer;padding:0">Delete entry</button>
+        <label style="font-size:11px;font-weight:600;color:var(--muted)">Date <input type="date" value="${esc(s.date)}" max="${todayISO()}" data-action="changeSessionDate" data-idx="${esc(idx)}" style="width:auto;display:inline-block;margin-left:4px;padding:6px 8px"></label>
+        ${s.skipped?'':`<button data-action="editSession" data-idx="${esc(idx)}" style="background:none;border:none;color:var(--link);font-size:12px;font-weight:600;cursor:pointer;padding:0">${ph('pencil-simple')}Edit workout</button>`}
+        <button data-action="deleteSession" data-idx="${esc(idx)}" style="background:none;border:none;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer;padding:0">Delete entry</button>
       </div>`;
     if(s.skipped){
       right = `<span class="muted">Skipped ${ph(open?'caret-up':'caret-down')}</span>`;
       if(open) detail = `<div class="hist-detail">${ph('skip-forward','lead')}Day skipped${s.reason?': <em>'+esc(s.reason)+'</em>':''}${editRow}</div>`;
     } else {
-      right = `<span class="muted">${s.durationMin?s.durationMin+' min · ':''}${e_count(s)} sets ${ph(open?'caret-up':'caret-down')}</span>`;
+      right = `<span class="muted">${s.durationMin?esc(String(s.durationMin))+' min · ':''}${e_count(s)} sets ${ph(open?'caret-up':'caret-down')}</span>`;
       if(open){
         /* 🏆 sits on the set that actually set the record, so you can see which one it was. */
-        const setsOf = e => e.sets.map((x,k)=> x.skipped ? '<em>skip</em>' : fmtSet(x.w,x.r) + (prIdx.isPR(s, e, k) ? ' 🏆' : '')).join(', ');
+        const setsOf = e => e.sets.map((x,k)=> x.skipped ? '<em>skip</em>' : esc(fmtSet(x.w,x.r)) + (prIdx.isPR(s, e, k) ? ' 🏆' : '')).join(', ');
         const lines = (s.entries||[]).map(e=>{
           const setStr = setsOf(e);
           return `<strong>${esc(e.name)}</strong> — ${setStr||'—'}${e.deload?' <em>(deload)</em>':''}${e.note?` <span class="muted">· ${esc(e.note)}</span>`:''}`;
@@ -2199,15 +2214,15 @@ function viewHistory(){
         }
         if(dayComplete(s.date)) lines.push(`<strong>🧎 Mobility</strong> — ${hasMobSession(s.date)?'yoga / full session':mobDoneOn(s.date)+' done that day'}`);
         const noteStr = s.note ? `<div style="margin-top:8px;font-size:13px;color:var(--text-2);line-height:1.5;white-space:pre-wrap">📝 ${esc(s.note)}</div>` : '';
-        const timeStr = (s.startedAt&&s.endedAt) ? `<div class="muted" style="margin-top:8px">${fmtClock(s.startedAt)}–${fmtClock(s.endedAt)} · ${s.durationMin} min at the gym</div>` : '';
+        const timeStr = (s.startedAt&&s.endedAt) ? `<div class="muted" style="margin-top:8px">${fmtClock(s.startedAt)}–${fmtClock(s.endedAt)} · ${esc(String(s.durationMin))} min at the gym</div>` : '';
         detail = `<div class="hist-detail">${lines.join('<br>')}${noteStr}${timeStr}${editRow}</div>`;
       }
     }
     return `<div>
-      <div class="hist-item" onclick="toggleHist(${idx})">
-        <div><span class="pill ${accClass(g)}">${s.workout}</span> <span class="muted" style="margin-left:6px">${fmtDate(s.date)}</span>${prIdx.sessionHasPR(s)?' 🏆':''}</div>
+      <button class="hist-item tap" data-action="toggleHist" data-idx="${esc(idx)}">
+        <span style="display:block"><span class="pill ${accClass(g)}">${esc(s.workout)}</span> <span class="muted" style="margin-left:6px">${fmtDate(s.date)}</span>${prIdx.sessionHasPR(s)?' 🏆':''}</span>
         ${right}
-      </div>${detail}
+      </button>${detail}
     </div>`;
   }).join('');
   return `<p class="subtitle">${liveSessions().length} entries logged</p>
@@ -2250,17 +2265,17 @@ function progSubTab(t){ progSub=t; render(); }
 function selectExercise(m){ selectedExercise=m; render(); }
 function selectPR(i){ const p=exercisePRs()[i]; if(p) selectExercise(p.id); }
 function rangeSeg(){ return `<div class="seg" style="margin:14px 0 0">
-    <button class="${chartRange===30?'active':''}" onclick="setRange(30)">30d</button>
-    <button class="${chartRange===90?'active':''}" onclick="setRange(90)">90d</button>
-    <button class="${chartRange===365?'active':''}" onclick="setRange(365)">1y</button>
-    <button class="${chartRange===9999?'active':''}" onclick="setRange(9999)">All</button></div>`; }
+    <button class="${chartRange===30?'active':''}" data-action="setRange" data-range="30">30d</button>
+    <button class="${chartRange===90?'active':''}" data-action="setRange" data-range="90">90d</button>
+    <button class="${chartRange===365?'active':''}" data-action="setRange" data-range="365">1y</button>
+    <button class="${chartRange===9999?'active':''}" data-action="setRange" data-range="9999">All</button></div>`; }
 function viewWeight(){
   const sub = `<div class="seg" style="margin-top:14px">
-    <button class="${progSub==='body'?'active':''}" onclick="progSubTab('body')">Weight</button>
-    <button class="${progSub==='strength'?'active':''}" onclick="progSubTab('strength')">Strength</button>
-    <button class="${progSub==='volume'?'active':''}" onclick="progSubTab('volume')">Volume</button>
-    <button class="${progSub==='cardio'?'active':''}" onclick="progSubTab('cardio')">Cardio</button>
-    <button class="${progSub==='pet'?'active':''}" onclick="progSubTab('pet')">${esc(petName())}</button></div>`;
+    <button class="${progSub==='body'?'active':''}" data-action="progSubTab" data-sub="body">Weight</button>
+    <button class="${progSub==='strength'?'active':''}" data-action="progSubTab" data-sub="strength">Strength</button>
+    <button class="${progSub==='volume'?'active':''}" data-action="progSubTab" data-sub="volume">Volume</button>
+    <button class="${progSub==='cardio'?'active':''}" data-action="progSubTab" data-sub="cardio">Cardio</button>
+    <button class="${progSub==='pet'?'active':''}" data-action="progSubTab" data-sub="pet">${esc(petName())}</button></div>`;
   if(progSub==='strength') return viewStrength(sub);
   if(progSub==='volume') return viewVolume(sub);
   if(progSub==='cardio') return viewCardioTrend(sub);
@@ -2284,8 +2299,8 @@ function viewWeight(){
     ${sub}
     <div class="card">
       <div class="row">
-        <input type="number" inputmode="decimal" id="wt-input" placeholder="Weight (${DB.unit})" style="flex:1">
-        <button class="btn" onclick="logWeight()">Log</button>
+        <input type="number" inputmode="decimal" id="wt-input" placeholder="Weight (${esc(DB.unit)})" style="flex:1">
+        <button class="btn" data-action="logWeight">Log</button>
       </div>
       <div class="row" style="margin-top:8px">
         <label class="muted" style="font-size:12px;font-weight:600;flex:1">Date <input type="date" id="wt-date" value="${todayISO()}" max="${todayISO()}" style="width:auto;display:inline-block;margin-left:6px;padding:6px 8px"></label>
@@ -2310,8 +2325,8 @@ function viewPetWeight(sub){
     ${sub}
     <div class="card">
       <div class="row">
-        <input type="number" inputmode="decimal" step="0.1" id="pet-input" placeholder="${esc(petName())}'s weight (${DB.unit})" style="flex:1">
-        <button class="btn" onclick="logPetWeight('pet-input','pet-date')">Log</button>
+        <input type="number" inputmode="decimal" step="0.1" id="pet-input" placeholder="${esc(petName())}'s weight (${esc(DB.unit)})" style="flex:1">
+        <button class="btn" data-action="logPetWeight" data-input="pet-input" data-date-el="pet-date">Log</button>
       </div>
       <div class="row" style="margin-top:8px">
         <label class="muted" style="font-size:12px;font-weight:600;flex:1">Date <input type="date" id="pet-date" value="${todayISO()}" max="${todayISO()}" style="width:auto;display:inline-block;margin-left:6px;padding:6px 8px"></label>
@@ -2353,7 +2368,7 @@ function viewStrength(sub){
   const opts = loadEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(exLabel(m))}</option>`).join('')
     + bwEx.map(m=>`<option value="${esc(m)}" ${m===selectedExercise?'selected':''}>${esc(exLabel(m))} (reps)</option>`).join('');
   /* PRs are heaviest-load-ever now, so show the bar weight and what you hit it for, not an e1RM. */
-  const prs = exercisePRs().slice(0,12).map((p,i)=>`<div class="hist-item" style="cursor:pointer" onclick="selectPR(${i})"><span>${p.id===selectedExercise?ph('caret-right','lead'):''}${esc(p.name)}</span><span><strong>${p.v} ${DB.unit}</strong> <span class="muted">× ${esc(String(p.r))} · ${fmtDate(p.date)}</span></span></div>`).join('');
+  const prs = exercisePRs().slice(0,12).map((p,i)=>`<button class="hist-item tap" style="cursor:pointer" data-action="selectPR" data-i="${esc(i)}"><span>${p.id===selectedExercise?ph('caret-right','lead'):''}${esc(p.name)}</span><span><strong>${p.v} ${DB.unit}</strong> <span class="muted">× ${esc(String(p.r))} · ${fmtDate(p.date)}</span></span></button>`).join('');
   const hist = exerciseHistory(selectedExercise).slice(0,15);
   const histRows = hist.map(h=>`<div class="hist-item">
       <div style="min-width:0"><div style="font-weight:600;font-size:13px">${fmtDate(h.date)}${h.deload?' <em class="muted" style="font-size:11px">(deload)</em>':''}</div>
@@ -2362,7 +2377,7 @@ function viewStrength(sub){
     </div>`).join('');
   return `<h1>Progress</h1><p class="subtitle">${isReps?'Total reps per session':'Estimated 1-rep max per exercise'}</p>${sub}
     <div class="card">
-      <select onchange="selectExercise(this.value)">${opts}</select>
+      <select data-action="selectExercise">${opts}</select>
       ${rangeSeg()}
     </div>
     <div class="card">
@@ -2425,7 +2440,7 @@ function viewCardioTrend(sub){
 function weightList(){
   return DB.weights.map((w,i)=>({w,i})).filter(o=>isLive(o.w)).reverse().slice(0,12).map(({w,i})=>{
     const idx = i;
-    return `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" onclick="rmWeight(${idx})">${ph('x')}</button></span></div>`;
+    return `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" data-action="rmWeight" data-idx="${esc(idx)}">${ph('x')}</button></span></div>`;
   }).join('');
 }
 /* 7-day rolling average — smooths daily water-weight noise into the real signal.
@@ -2536,7 +2551,7 @@ function petMonthDelta(){
 }
 function petWeightList(){
   return (DB.petWeights||[]).map((w,i)=>({w,i})).filter(o=>isLive(o.w)).reverse().slice(0,12).map(({w,i})=>
-    `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" onclick="rmPetWeight(${i})">${ph('x')}</button></span></div>`
+    `<div class="hist-item"><span>${fmtDate(w.date)}</span><span><strong>${(+w.value).toFixed(1)} ${DB.unit}</strong> <button class="x-set" data-action="rmPetWeight" data-i="${esc(i)}">${ph('x')}</button></span></div>`
   ).join('');
 }
 function setPetName(v){ DB.petName = (v||'').trim() || 'Freddie'; save(); }
@@ -2588,12 +2603,12 @@ function exercisesCardHTML(){
       <select id="ex-merge-from" style="flex:1;min-width:130px">${opts}</select>
       <span class="muted" style="align-self:center;font-size:12px">into</span>
       <select id="ex-merge-into" style="flex:1;min-width:130px">${opts}</select>
-      <button class="btn btn-sm" onclick="doExMerge()">Merge</button>
+      <button class="btn btn-sm" data-action="doExMerge">Merge</button>
     </div>
     ${rows.map(r=>`<div class="hist-item">
       <span style="min-width:0"><strong style="font-size:13px">${esc(r.name)}</strong>
         <span class="muted" style="font-size:11px">· ${r.n} session${r.n===1?'':'s'}</span></span>
-      <button class="btn btn-sm btn-ghost" onclick="renameExercise('${esc(r.id)}')">${ph('pencil-simple')}Rename</button>
+      <button class="btn btn-sm btn-ghost" data-action="renameExercise" data-id="${esc(r.id)}">${ph('pencil-simple')}Rename</button>
     </div>`).join('')}
   </div>`;
 }
@@ -2694,7 +2709,7 @@ function toggleAcc(k){ accOpen.has(k)?accOpen.delete(k):accOpen.add(k); render()
 function accItem(key, title, bodyHTML){
   const open=accOpen.has(key);
   return `<div class="phase-card">
-    <button class="phase-header" onclick="toggleAcc('${key}')"><span class="phase-title" style="font-size:14px">${title}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
+    <button class="phase-header" data-action="toggleAcc" data-key="${esc(key)}"><span class="phase-title" style="font-size:14px">${title}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
     ${open?`<div class="phase-body">${bodyHTML}</div>`:''}
   </div>`;
 }
@@ -2778,7 +2793,7 @@ function weeklyActivationDays(){ const m=+monday(new Date()); let c=0;
   return c; }
 function mobilityRows(){ const m=mobToday();
   const row=(x,i)=>`<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-3);cursor:pointer">
-    <input type="checkbox" ${m[x.n]?'checked':''} onchange="toggleMobility(${i})">
+    <input type="checkbox" ${m[x.n]?'checked':''} data-action="toggleMobility" data-i="${esc(i)}">
     <span style="flex:1"><span style="font-weight:600;font-size:14px">${x.n}</span> · <a href="${gsearch(x.n)}" target="_blank" rel="noopener" style="color:var(--link);font-size:12px">how-to ${ph('arrow-square-out')}</a><div class="muted" style="font-size:12px">${x.t}</div></span>
   </label>`;
   const section=(title,group)=>`<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 2px">${title}</div>`
@@ -2799,17 +2814,17 @@ function extraCard(id){
   const cols = isSec ? '22px 1fr 26px' : '22px 1fr 1fr 26px';
   const rows=e.sets.map((st,k)=>`<div class="set-grid" style="grid-template-columns:${cols}">
       <span class="set-no">${k+1}</span>
-      ${isSec?'':`<input type="number" inputmode="decimal" id="ex-${id}-w-${k}" placeholder="0=BW" value="${st.w}" oninput="exSet('${id}',${k},'w',this.value)" onchange="exRoll('${id}',${k},this.value)">`}
-      <input type="number" inputmode="numeric" placeholder="${isSec?'sec':rangeTxt}" value="${st.r}" oninput="exSet('${id}',${k},'r',this.value)">
-      <button class="x-set" onclick="exRmSet('${id}',${k})">${ph('x')}</button>
+      ${isSec?'':`<input type="number" inputmode="decimal" id="ex-${id}-w-${k}" placeholder="0=BW" value="${esc(st.w)}" data-action="setExtraWeight" data-id="${esc(id)}" data-k="${esc(k)}">`}
+      <input type="number" inputmode="numeric" placeholder="${isSec?'sec':rangeTxt}" value="${esc(st.r)}" data-action="setExtraReps" data-id="${esc(id)}" data-k="${esc(k)}">
+      <button class="x-set" data-action="exRmSet" data-id="${esc(id)}" data-k="${esc(k)}">${ph('x')}</button>
     </div>`).join('');
   return `<div class="phase-card">
-    <button class="phase-header" onclick="toggleAcc('${id}')"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${ph(def.icon)}${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
+    <button class="phase-header" data-action="toggleAcc" data-key="${esc(id)}"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${ph(def.icon)}${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
     ${open?`<div class="phase-body">
-      <select onchange="exPick('${id}',this)" style="margin-bottom:8px">${opts}</select>
+      <select data-action="exPick" data-id="${esc(id)}" style="margin-bottom:8px">${opts}</select>
       <div class="set-grid" style="grid-template-columns:${cols};margin-bottom:4px"><span></span>${isSec?'':'<span class="colhead">Weight</span>'}<span class="colhead">${isSec?'Sec':'Reps'}</span><span></span></div>
       ${rows}
-      <button class="addset" onclick="exAddSet('${id}')">+ Add set</button>
+      <button class="addset" data-action="exAddSet" data-id="${esc(id)}">+ Add set</button>
     </div>`:''}
   </div>`;
 }
@@ -2826,13 +2841,13 @@ function skinTogglePhase(i){ skinOpenPhases.has(i)?skinOpenPhases.delete(i):skin
 function viewSkincare(){
   if(skinDay===null) skinDay = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()];
   const sub = `<div class="seg" style="margin-top:14px">
-    <button class="${skinSub==='routine'?'active':''}" onclick="skinSubTab('routine')">Routine</button>
-    <button class="${skinSub==='shaving'?'active':''}" onclick="skinSubTab('shaving')">Shaving</button></div>`;
+    <button class="${skinSub==='routine'?'active':''}" data-action="skinSubTab" data-sub="routine">Routine</button>
+    <button class="${skinSub==='shaving'?'active':''}" data-action="skinSubTab" data-sub="shaving">Shaving</button></div>`;
   if(skinSub==='shaving'){
     const phases = SHAVE_STEPS.map((p,pi)=>{
       const open=skinOpenPhases.has(pi);
       return `<div class="phase-card">
-        <button class="phase-header" onclick="skinTogglePhase(${pi})">
+        <button class="phase-header" data-action="skinTogglePhase" data-i="${esc(pi)}">
           <span style="display:flex;align-items:center;gap:10px"><span class="phase-num">${pi+1}</span><span class="phase-title">${p.phase}</span><span class="phase-count">${p.steps.length} steps</span></span>
           <span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span>
         </button>
@@ -2845,7 +2860,7 @@ function viewSkincare(){
   const dayBtns = days.map(d=>{
     const tags=SKIN_SCHEDULE[d].tags;
     const dot = tags.includes('retinol')?'<span class="day-dot dot-retinol"></span>':tags.includes('bha')?'<span class="day-dot dot-bha"></span>':'';
-    return `<button class="day-btn ${d===skinDay?'active':''}" onclick="skinSelectDay('${d}')">${d}${dot}</button>`;
+    return `<button class="day-btn ${d===skinDay?'active':''}" data-action="skinSelectDay" data-day="${esc(d)}">${d}${dot}</button>`;
   }).join('');
   const data=SKIN_SCHEDULE[skinDay];
   const badges = data.tags.map(t=> t==='retinol'?'<span class="badge badge-retinol">Retinol Night</span>':t==='bha'?'<span class="badge badge-bha">BHA Exfoliant</span>':'').join('');
@@ -2921,9 +2936,9 @@ function changeLawnLoc(){ DB.lawn=null; DB.wx=null; save(); render(); }
 function lawnSetup(){
   return `<h1>Lawn & Weather</h1><p class="subtitle">Set your location once for a local forecast and lawn-care timing.</p>
     <div class="card">
-      <button class="btn btn-block" onclick="useMyLocation()">${ph('map-pin')}Use my current location</button>
+      <button class="btn btn-block" data-action="useMyLocation">${ph('map-pin')}Use my current location</button>
       <p class="muted" style="text-align:center;margin:12px 0 8px">— or —</p>
-      <div class="row"><input id="loc-input" placeholder="City name, e.g. Madison" style="flex:1" onkeydown="if(event.key==='Enter')searchLocation()"><button class="btn" onclick="searchLocation()">Find</button></div>
+      <div class="row"><input id="loc-input" placeholder="City name, e.g. Madison" style="flex:1" data-action="enter" data-enter="searchLocation"><button class="btn" data-action="searchLocation">Find</button></div>
       <p class="muted" id="loc-msg" style="margin-top:10px"></p>
     </div>
     <p class="muted" style="text-align:center;font-size:12px">Weather needs internet. Data from open-meteo.com — free, no account, no tracking.</p>`;
@@ -3217,11 +3232,11 @@ function cLawnCard(full){
       if(f && f.next && f.next.k>0 && f.next.k<=3) due.push(`${ph('calendar-blank','lead')}${mowExpectText(f)}`);
     }
     if(!due.length) return '';
-    return `<div class="card" style="cursor:pointer" onclick="goSub('care','lawn')">
-      <div class="row"><div>${kicker('Lawn · heads up')}
-        ${due.map(d=>`<div style="font-size:13px;line-height:1.5;margin-top:4px">${d}</div>`).join('')}
-      </div><span class="muted">Lawn →</span></div>
-    </div>`;
+    return `<button class="card tap" style="cursor:pointer" data-action="goSub" data-tab="care" data-sub="lawn">
+      <span class="row"><span style="display:block">${kicker('Lawn · heads up', 'span')}
+        ${due.map(d=>`<span style="display:block;font-size:13px;line-height:1.5;margin-top:4px">${d}</span>`).join('')}
+      </span><span class="muted">Lawn →</span></span>
+    </button>`;
   }
   const t=todayISO(), log=(DB.lawnLog||{})[t]||{};
   /* Lead time to prep the mower. Skipped when mowing is already today's job (or already done) —
@@ -3233,15 +3248,15 @@ function cLawnCard(full){
   const anchor=(action)=>`<div class="muted" style="font-size:11px;margin-top:10px">Last done:
       <span class="row" style="display:inline-flex;gap:6px;margin-top:6px;flex-wrap:wrap">
         ${[['Today',0],['Yesterday',1],['2 days ago',2],['3 days ago',3]].map(([l,n])=>
-          `<button class="btn btn-ghost btn-sm" style="min-width:70px" onclick="setLawnDaysAgo('${action}',${n})">${l}</button>`).join('')}
+          `<button class="btn btn-ghost btn-sm" style="min-width:70px" data-action="setLawnDaysAgo" data-which="${esc(action)}" data-n="${esc(n)}">${l}</button>`).join('')}
       </span></div>`;
   /* Full block — the task is due (or the Lawn tab asked for everything). */
   const block=(label,r,which,since,doneLabel,btnLabel,action,cadence)=> `<div style="${sep}">
       <div style="font-size:13px;line-height:1.5">${ph(r.override?'warning':(r.recommend?'check-circle':'pause'),'lead')}<strong>${label}:</strong> ${esc(r.text)}</div>
       <div class="muted" style="font-size:11px;margin-top:3px">${r.unknown?'No history yet':'Last '+since}${cadence?' · '+cadence:''}</div>
       <div class="row" style="gap:8px;margin-top:10px">
-        <button class="btn ${log[which.log]?'':'btn-ghost'}" style="flex:1" onclick="toggleLawnLog('${which.log}')">${log[which.log]?`${ph('check')}${doneLabel}`:btnLabel}</button>
-        <button class="btn btn-ghost btn-sm" onclick="toggleLawnOverride('${which.ov}')">${r.override?`${ph('arrow-u-up-left')}Undo override`:'Override'}</button>
+        <button class="btn ${log[which.log]?'':'btn-ghost'}" style="flex:1" data-action="toggleLawnLog" data-which="${esc(which.log)}">${log[which.log]?`${ph('check')}${doneLabel}`:btnLabel}</button>
+        <button class="btn btn-ghost btn-sm" data-action="toggleLawnOverride" data-which="${esc(which.ov)}">${r.override?`${ph('arrow-u-up-left')}Undo override`:'Override'}</button>
       </div>
       ${r.unknown?anchor(action):''}
     </div>`;
@@ -3260,7 +3275,7 @@ function cLawnCard(full){
     : quiet(label, icon, r, next);
   return `<div class="card">
     ${full ? kicker('Lawn · '+st.season)
-           : `<div class="row" style="cursor:pointer" onclick="goSub('care','lawn')">${kicker('Lawn · '+st.season)}<span class="muted">Lawn →</span></div>`}
+           : `<button class="row tap" style="cursor:pointer" data-action="goSub" data-tab="care" data-sub="lawn">${kicker('Lawn · '+st.season, 'span')}<span class="muted">Lawn →</span></button>`}
     ${row('Watering','💧', st.water, {log:'watered', ov:'water'}, dsWithDate(st.dsWater), 'Watered', 'Mark watered', nextDueDay('water'), 'watered', waterCadence)}
     ${row('Mowing',  '🚜', st.mow,   {log:'mowed',   ov:'mow'},   dsWithDate(st.dsMow),   'Mowed',   'Mark mowed',   mowNext,               'mowed',   'about a week between mows')}
     ${asks?`<div class="muted" style="font-size:11px;margin-top:10px">Further back than 3 days? ${full?'Use the date picker with the history below.':'Care → Lawn has a date picker and a tappable 2-week history.'}</div>`:''}
@@ -3276,7 +3291,7 @@ function lawnHistory(){
   for(let n=0;n<14;n++){
     const d=new Date(); d.setDate(d.getDate()-n);
     const iso=d.toLocaleDateString('en-CA'), e=log[iso]||{};
-    const pill=(on,label,action,ov)=>`<button onclick="toggleLawnLog('${action}','${iso}')" title="${on?'Tap to remove':'Tap to log'}"
+    const pill=(on,label,action,ov)=>`<button data-action="toggleLawnLog" data-which="${esc(action)}" data-iso="${esc(iso)}" title="${on?'Tap to remove':'Tap to log'}"
         style="font-size:11px;font-weight:700;padding:5px 9px;border-radius:999px;cursor:pointer;
         border:1px solid ${on?'var(--accent)':'var(--border-3)'};background:${on?'var(--accent-muted)':'transparent'};
         color:${on?'var(--accent-300)':'var(--muted-2)'}">${label}${on&&ov?' *':''}</button>`;
@@ -3290,17 +3305,17 @@ function lawnHistory(){
     <p class="muted" style="font-size:12px;margin:6px 0 10px">Tap a day to add or correct it — forgot to log Sunday's mow? Fix it here and the schedule catches up. (* = logged against an override.)</p>
     <div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <input type="date" id="lawn-past-date" max="${todayISO()}" style="flex:1;min-width:130px;padding:8px">
-      <button class="btn btn-sm btn-ghost" onclick="logLawnPastDate('watered')">💧 Watered</button>
-      <button class="btn btn-sm btn-ghost" onclick="logLawnPastDate('mowed')">🚜 Mowed</button>
+      <button class="btn btn-sm btn-ghost" data-action="logLawnPastDate" data-which="watered">💧 Watered</button>
+      <button class="btn btn-sm btn-ghost" data-action="logLawnPastDate" data-which="mowed">🚜 Mowed</button>
     </div>
     ${rows.join('')}
   </div>`;
 }
 function viewLawn(){
   if(!DB.lawn || DB.lawn.lat==null) return lawnSetup();
-  const locBar=`<div class="row" style="margin-bottom:14px"><span class="muted">${ph('map-pin','lead')}${esc(DB.lawn.label||'My location')}</span><button class="btn btn-sm btn-ghost" onclick="changeLawnLoc()">Change</button></div>`;
+  const locBar=`<div class="row" style="margin-bottom:14px"><span class="muted">${ph('map-pin','lead')}${esc(DB.lawn.label||'My location')}</span><button class="btn btn-sm btn-ghost" data-action="changeLawnLoc">Change</button></div>`;
   const wx=DB.wx;
-  if(!wx || !wx.data) return `<h1>Lawn & Weather</h1>${locBar}<div class="empty">${weatherFetching?'Loading weather…':'<button class="btn btn-sm" onclick="fetchWeather()">Load weather</button>'}</div>`;
+  if(!wx || !wx.data) return `<h1>Lawn & Weather</h1>${locBar}<div class="empty">${weatherFetching?'Loading weather…':'<button class="btn btn-sm" data-action="fetchWeather">Load weather</button>'}</div>`;
   const d=wx.data, dy=d.daily, cur=d.current_weather, num=v=>(v==null?0:+v);
   const times=dy.time, today=todayISO();
   let ti=times.indexOf(today); if(ti<0) ti=times.length>1?1:0;
@@ -3333,7 +3348,7 @@ function viewLawn(){
       <div class="row"><div>
         <div class="stat-big" style="font-size:30px">${Math.round(num(cur?cur.temperature:HI[ti]))}°<span style="font-size:14px;color:var(--muted-2)">F</span></div>
         <div class="stat-sub">${cw.icon} ${cw.text} · H ${Math.round(num(HI[ti]))}° / L ${Math.round(num(LO[ti]))}°</div>
-      </div><button class="btn btn-sm btn-ghost" onclick="fetchWeather()">${ph('arrows-clockwise')}</button></div>
+      </div><button class="btn btn-sm btn-ghost" data-action="fetchWeather">${ph('arrows-clockwise')}</button></div>
       <div style="display:flex;gap:3px;margin-top:14px;overflow-x:auto">${strip}</div>
     </div>
     ${lawnSeason(new Date()) ? cLawnCard(true) : `<div class="card"><div class="muted" style="font-size:13px">${ph('snowflake','lead')}Off-season (Nov–Mar) — smart watering & mowing scheduling resumes in April. Forecast still available above.</div></div>`}
@@ -3351,13 +3366,13 @@ function viewData(){
     <h1>Settings</h1>
     <h2>Units</h2>
     <div class="card"><div class="seg" style="margin:0">
-      <button class="${DB.unit==='lb'?'active':''}" onclick="setUnit('lb')">lb</button>
-      <button class="${DB.unit==='kg'?'active':''}" onclick="setUnit('kg')">kg</button>
+      <button class="${DB.unit==='lb'?'active':''}" data-action="setUnit" data-unit="lb">lb</button>
+      <button class="${DB.unit==='kg'?'active':''}" data-action="setUnit" data-unit="kg">kg</button>
     </div></div>
     <h2>Routine</h2>
     <div class="card"><div class="seg" style="margin:0 0 10px">
-      <button class="${(DB.routineMode||'4day')==='3day'?'active':''}" onclick="setRoutineMode('3day')">3-Day PPL</button>
-      <button class="${(DB.routineMode||'4day')==='4day'?'active':''}" onclick="setRoutineMode('4day')">4-Day PPL</button>
+      <button class="${(DB.routineMode||'4day')==='3day'?'active':''}" data-action="setRoutineMode" data-mode="3day">3-Day PPL</button>
+      <button class="${(DB.routineMode||'4day')==='4day'?'active':''}" data-action="setRoutineMode" data-mode="4day">4-Day PPL</button>
     </div>
       <p class="muted" style="font-size:12px">4-Day adds a specialized 4th day each week — pick Chest & Triceps, Back, Shoulders, Biceps, or Legs fresh each time it comes up.</p>
     </div>
@@ -3371,7 +3386,7 @@ function viewData(){
     <h2>Pet</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Name on the daily pet weigh-in — shown on the Today card and the Progress sub-tab.</p>
-      <input id="petname-input" value="${esc(petName())}" placeholder="Freddie" onchange="setPetName(this.value);render()">
+      <input id="petname-input" value="${esc(petName())}" placeholder="Freddie" data-action="setPetName">
     </div>
     <h2>Cloud Sync</h2>
     ${syncCardHTML()}
@@ -3381,26 +3396,26 @@ function viewData(){
     <h2>Hobbies</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Fun things the Today tab rotates through.</p>
-      ${(DB.hobbies||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeItem('hobby',${i})">${ph('x')}</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
-      <div class="row" style="margin-top:12px"><input id="hobby-input" placeholder="Add a hobby…" style="flex:1"><button class="btn" onclick="addItem('hobby')">Add</button></div>
+      ${(DB.hobbies||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" data-action="removeItem" data-cat="hobby" data-i="${esc(i)}">${ph('x')}</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
+      <div class="row" style="margin-top:12px"><input id="hobby-input" placeholder="Add a hobby…" style="flex:1"><button class="btn" data-action="addItem" data-cat="hobby">Add</button></div>
     </div>
     <h2>Productivity</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:10px">Chores and house-keeping the Today tab rotates through.</p>
-      ${(DB.productivity||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" onclick="removeItem('productivity',${i})">${ph('x')}</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
-      <div class="row" style="margin-top:12px"><input id="productivity-input" placeholder="Add a chore…" style="flex:1"><button class="btn" onclick="addItem('productivity')">Add</button></div>
+      ${(DB.productivity||[]).map((h,i)=>`<div class="hist-item"><span>${esc(h)}</span><button class="x-set" data-action="removeItem" data-cat="productivity" data-i="${esc(i)}">${ph('x')}</button></div>`).join('')||'<span class="muted">None yet — add one below.</span>'}
+      <div class="row" style="margin-top:12px"><input id="productivity-input" placeholder="Add a chore…" style="flex:1"><button class="btn" data-action="addItem" data-cat="productivity">Add</button></div>
     </div>
     <h2>Backup</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:12px">A downloadable copy of your data — handy as an extra safety net even with Cloud Sync on.</p>
-      <button class="btn btn-block" onclick="exportData()">${ph('download-simple')}Export backup (.json)</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="exportMarkdown()">${ph('arrow-square-out')}Export for Claude (.md)</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="document.getElementById('imp').click()">${ph('upload-simple')}Import backup</button>
-      <input type="file" id="imp" accept="application/json" class="hidden" onchange="importData(this)">
+      <button class="btn btn-block" data-action="exportData">${ph('download-simple')}Export backup (.json)</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" data-action="exportMarkdown">${ph('arrow-square-out')}Export for Claude (.md)</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" data-action="pickImportFile">${ph('upload-simple')}Import backup</button>
+      <input type="file" id="imp" accept="application/json" class="hidden" data-action="importData">
     </div>
     <h2>Stats</h2>
     <div class="card"><p class="muted">${liveSessions().length} workouts · ${liveWeights().length} weigh-ins logged</p></div>
-    <div class="card"><button class="btn btn-danger btn-block" onclick="wipe()">Erase all data</button></div>`;
+    <div class="card"><button class="btn btn-danger btn-block" data-action="wipe">Erase all data</button></div>`;
 }
 function setUnit(u){ DB.unit=u; save(); render(); }
 function setRoutineMode(m){ DB.routineMode=m; save(); render(); }
@@ -3848,12 +3863,12 @@ function viewCardio(){
         <div><label>Type</label><select id="imp-type">${CARDIO_TYPES.map(t=>`<option ${t===pendingCardio.type?'selected':''}>${t}</option>`).join('')}</select></div>
       </div>
       <p class="muted" style="margin:10px 0">${fmtMin(pendingCardio.minutes)}${pendingCardio.distanceKm>0?` · ${fmtDist(pendingCardio.distanceKm)}`:''}</p>
-      <div class="row" style="gap:8px"><button class="btn" style="flex:1" onclick="confirmCardioImport()">Save</button><button class="btn btn-ghost" style="flex:1" onclick="discardCardioImport()">Discard</button></div>
+      <div class="row" style="gap:8px"><button class="btn" style="flex:1" data-action="confirmCardioImport">Save</button><button class="btn btn-ghost" style="flex:1" data-action="discardCardioImport">Discard</button></div>
     </div>` : '';
   const rows = list.length ? list.map(c=>`<div class="hist-item" style="cursor:default">
       <div><div style="font-weight:600">${esc(c.type)}${c.source==='strava'?' <span class="range-badge" style="font-size:10px">Strava</span>':''}</div>
         <div class="muted" style="font-size:12px">${fmtDate(c.date)} · ${fmtMin(c.minutes)}${c.distanceKm>0?` · ${fmtDist(c.distanceKm)}`:''}${c.note?' · '+esc(c.note):''}</div></div>
-      <button class="x-set" onclick="removeCardio('${c.id}')" title="delete">${ph('x')}</button>
+      <button class="x-set" data-action="removeCardio" data-id="${esc(c.id)}" title="delete">${ph('x')}</button>
     </div>`).join('') : '<p class="empty">No cardio logged yet. Add one below or import a Strava file.</p>';
   return `<h1>Cardio</h1>
     <div class="card">
@@ -3872,13 +3887,13 @@ function viewCardio(){
         <div><label>Distance (${u})</label><input type="number" inputmode="decimal" id="cardio-dist" placeholder="optional"></div>
       </div>
       <input id="cardio-note" placeholder="Note (optional)" style="margin-top:10px">
-      <button class="btn btn-block" style="margin-top:12px" onclick="addCardio()">Add cardio</button>
+      <button class="btn btn-block" style="margin-top:12px" data-action="addCardio">Add cardio</button>
     </div>
     <h2>Import from Strava</h2>
     <div class="card">
       <p class="muted" style="margin-bottom:12px;line-height:1.5">Upload a <strong>.gpx</strong> or <strong>.tcx</strong> from a Strava activity (activity page → <strong>⋯</strong> → Export), or the <strong>activities.csv</strong> from Strava's bulk “Export your data.” Distance &amp; time are read automatically — confirm the activity type before saving.</p>
-      <button class="btn btn-ghost btn-block" onclick="pickCardioFile()">${ph('upload-simple')}Choose Strava file</button>
-      <input type="file" id="cardio-file" accept=".gpx,.tcx,.csv" class="hidden" onchange="handleCardioFile(this)">
+      <button class="btn btn-ghost btn-block" data-action="pickCardioFile">${ph('upload-simple')}Choose Strava file</button>
+      <input type="file" id="cardio-file" accept=".gpx,.tcx,.csv" class="hidden" data-action="handleCardioFile">
     </div>
     <h2>History</h2>
     <div class="card">${rows}</div>`;
@@ -3912,7 +3927,7 @@ function viewSleep(){
   const rows=list.length ? list.map(s=>`<div class="hist-item" style="cursor:default">
       <div><div style="font-weight:600">${esc(String(Number(s.hours)))}h · quality ${esc(String(Number(s.quality)))}/5</div>
         <div class="muted" style="font-size:12px">${/^\d{4}-\d{2}-\d{2}$/.test(s.date)?fmtDate(s.date):esc(String(s.date||'?'))}${s.note?' · '+esc(s.note):''}</div></div>
-      ${safeId.test(String(s.id)) ? `<button class="x-set" onclick="removeSleep('${s.id}')" title="delete">${ph('x')}</button>` : ''}
+      ${safeId.test(String(s.id)) ? `<button class="x-set" data-action="removeSleep" data-id="${esc(s.id)}" title="delete">${ph('x')}</button>` : ''}
     </div>`).join('') : '<p class="empty">No sleep logged yet. Log last night above.</p>';
   return `<h1>Sleep</h1>
     <div class="card">
@@ -3929,7 +3944,7 @@ function viewSleep(){
         </select></div>
       </div>
       <input id="sleep-note" placeholder="Note (optional)" style="margin-top:10px">
-      <button class="btn btn-block" style="margin-top:12px" onclick="addSleep()">Add sleep</button>
+      <button class="btn btn-block" style="margin-top:12px" data-action="addSleep">Add sleep</button>
     </div>
     <h2>History</h2>
     <div class="card">${rows}</div>`;
@@ -4548,47 +4563,47 @@ function restoreDeleted(kind, i){
 function trashCardHTML(){
   const items = trashItems();
   if(!trashOpen){
-    return `<div class="card"><div class="row" style="cursor:pointer" onclick="toggleTrash()">
-      <div><div style="font-weight:700;font-size:14px">${ph('trash','lead')}Recently deleted</div>
-      <div class="muted" style="font-size:12px;margin-top:2px">${items.length? items.length+' item'+(items.length!==1?'s':'')+' — restorable for 30 days' : 'Nothing deleted recently'}</div></div>
-      <span class="muted">${ph('caret-down')}</span></div></div>`;
+    return `<div class="card"><button class="row tap" style="cursor:pointer" data-action="toggleTrash">
+      <span style="display:block"><span style="display:block;font-weight:700;font-size:14px">${ph('trash','lead')}Recently deleted</span>
+      <span class="muted" style="display:block;font-size:12px;margin-top:2px">${items.length? items.length+' item'+(items.length!==1?'s':'')+' — restorable for 30 days' : 'Nothing deleted recently'}</span></span>
+      <span class="muted">${ph('caret-down')}</span></button></div>`;
   }
   const rows = items.length ? items.map(o=>`<div class="hist-item" style="cursor:default">
       <div style="min-width:0"><div style="font-weight:600;font-size:13px">${esc(o.label)}</div>
         <div class="muted" style="font-size:11px">deleted ${new Date(o.at).toLocaleString()}</div></div>
-      <button class="btn btn-sm btn-ghost" onclick="restoreDeleted('${o.kind}',${o.i})">Restore</button>
+      <button class="btn btn-sm btn-ghost" data-action="restoreDeleted" data-kind="${esc(o.kind)}" data-i="${esc(o.i)}">Restore</button>
     </div>`).join('') : '<p class="muted" style="font-size:13px">Nothing deleted in the last 30 days.</p>';
   return `<div class="card">
-    <div class="row" style="cursor:pointer;margin-bottom:10px" onclick="toggleTrash()">
-      <div style="font-weight:700;font-size:14px">${ph('trash','lead')}Recently deleted</div><span class="muted">${ph('caret-up')}</span></div>
+    <button class="row tap" style="cursor:pointer;margin-bottom:10px" data-action="toggleTrash">
+      <span style="display:block;font-weight:700;font-size:14px">${ph('trash','lead')}Recently deleted</span><span class="muted">${ph('caret-up')}</span></button>
     ${rows}
     <p class="muted" style="font-size:11px;margin-top:10px">Deleted items stay hidden here for 30 days so a mis-tap is undoable, then their details are cleared.</p>
   </div>`;
 }
 function versionsCardHTML(){
   const snaps = loadSnaps();
-  const row = (when, label, sum, action) => `<div class="hist-item" style="cursor:default">
+  const row = (when, label, sum, act) => `<div class="hist-item" style="cursor:default">
       <div><div style="font-weight:600;font-size:13px">${new Date(when).toLocaleString()}</div>
         <div class="muted" style="font-size:11px">${esc(label||'auto')} · ${sum.sessions||0} workouts · ${sum.weights||0} weigh-ins${sum.latest?' · latest '+sum.latest:''}</div></div>
-      <button class="btn btn-sm btn-ghost" onclick="${action}">Restore</button>
+      <button class="btn btn-sm btn-ghost" ${act}>Restore</button>
     </div>`;
   if(!versionsOpen){
     const n = snaps.length + ((cloudVersionList||[]).length);
-    return `<div class="card"><div class="row" style="cursor:pointer" onclick="toggleVersions()">
-      <div><div style="font-weight:700;font-size:14px">${ph('clock-counter-clockwise','lead')}Version history</div>
-      <div class="muted" style="font-size:12px;margin-top:2px">${snaps.length} on this device${SYNC.user?' + cloud versions':''} — restore a previous state</div></div>
-      <span class="muted">${ph('caret-down')}</span></div></div>`;
+    return `<div class="card"><button class="row tap" style="cursor:pointer" data-action="toggleVersions">
+      <span style="display:block"><span style="display:block;font-weight:700;font-size:14px">${ph('clock-counter-clockwise','lead')}Version history</span>
+      <span class="muted" style="display:block;font-size:12px;margin-top:2px">${snaps.length} on this device${SYNC.user?' + cloud versions':''} — restore a previous state</span></span>
+      <span class="muted">${ph('caret-down')}</span></button></div>`;
   }
-  const localRows = snaps.length ? snaps.map((s,i)=>row(s.at, s.label, s.summary||{}, `restoreSnapshot(${i})`)).join('')
+  const localRows = snaps.length ? snaps.map((s,i)=>row(s.at, s.label, s.summary||{}, `data-action="restoreSnapshot" data-i="${esc(i)}"`)).join('')
                                  : '<p class="muted" style="font-size:13px">No local snapshots yet.</p>';
   let cloudRows;
   if(!SYNC.user) cloudRows = '<p class="muted" style="font-size:13px">Sign in to see cloud versions.</p>';
   else if(versionsLoading) cloudRows = '<p class="muted" style="font-size:13px">Loading…</p>';
   else if(!cloudVersionList || !cloudVersionList.length) cloudRows = `<p class="muted" style="font-size:13px">No cloud versions yet. If this stays empty, the Firestore rules need the <code>versions</code> subcollection allowed (see the app notes).</p>`;
-  else cloudRows = cloudVersionList.map(v=>row(v.at, v.label, v.summary||{}, `restoreCloudVersion('${v._id}')`)).join('');
+  else cloudRows = cloudVersionList.map(v=>row(v.at, v.label, v.summary||{}, `data-action="restoreCloudVersion" data-id="${esc(v._id)}"`)).join('');
   return `<div class="card">
-    <div class="row" style="cursor:pointer;margin-bottom:10px" onclick="toggleVersions()">
-      <div style="font-weight:700;font-size:14px">${ph('clock-counter-clockwise','lead')}Version history</div><span class="muted">${ph('caret-up')}</span></div>
+    <button class="row tap" style="cursor:pointer;margin-bottom:10px" data-action="toggleVersions">
+      <span style="display:block;font-weight:700;font-size:14px">${ph('clock-counter-clockwise','lead')}Version history</span><span class="muted">${ph('caret-up')}</span></button>
     <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:10px 0 4px">This device</div>
     ${localRows}
     <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 4px">Cloud (all devices)</div>
@@ -4609,23 +4624,23 @@ function syncCardHTML(){
     const stale = SYNC.needsUpdate ? `<div class="card" style="border:1.5px solid var(--warm-bd);background:var(--warm-bg)">
       <div style="font-weight:700;font-size:14px">${ph('warning','lead')}Sync paused — this device is out of date</div>
       <p class="muted" style="line-height:1.5;margin-top:4px">Another device is running a newer version of the app. Fully close and reopen this one to update, and syncing resumes on its own. Your data here is safe in the meantime.</p>
-      <button class="btn btn-block" style="margin-top:10px" onclick="location.reload()">${ph('arrows-clockwise')}Reload now</button>
+      <button class="btn btn-block" style="margin-top:10px" data-action="reload">${ph('arrows-clockwise')}Reload now</button>
     </div>` : '';
     return `${stale}<div class="card">
       <div class="row"><div><div style="font-weight:700">${ph('check-circle','lead')}Connected</div><div class="muted" style="font-size:12px">${esc(SYNC.user.email||'')}</div></div><span class="flag">${SYNC.needsUpdate?'Paused':(SYNC.pending?'Pending':'Sync on')}</span></div>
       <p class="muted" id="sync-last" style="margin:10px 0 4px">${SYNC.lastSyncAt?('Last synced: '+new Date(SYNC.lastSyncAt).toLocaleString()):'Not synced yet'}</p>
       <p class="muted" id="sync-status" style="margin:0 0 12px">${esc(SYNC.status||'')}</p>
-      <button class="btn btn-block" onclick="pushNow(false)">⟳ Check for updates</button>
+      <button class="btn btn-block" data-action="pushNow">⟳ Check for updates</button>
       <p class="muted" style="font-size:11px;margin-top:8px">Safe to tap anytime — it merges both devices and never replaces newer data.</p>
-      <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="syncSignOut()">Sign out</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:10px" data-action="syncSignOut">Sign out</button>
     </div>`;
   }
   return `<div class="card">
     <p class="muted" style="margin-bottom:12px">Sign in with the <strong>same email + password on every device</strong> to keep your data in sync. Your data is private to your login.</p>
     <input id="sync-email" type="email" placeholder="Email" autocomplete="username" style="margin-bottom:8px">
     <input id="sync-pass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password" style="margin-bottom:12px">
-    <button class="btn btn-block" onclick="syncSignIn(false)">Sign in</button>
-    <button class="btn btn-ghost btn-block" style="margin-top:10px" onclick="syncSignIn(true)">Create account</button>
+    <button class="btn btn-block" data-action="syncSignIn">Sign in</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:10px" data-action="syncCreateAccount">Create account</button>
     <p class="muted" id="sync-status" style="margin-top:10px">${esc(SYNC.status||'')}</p>
   </div>`;
 }
@@ -4660,17 +4675,17 @@ function renderIdeasList(){
   if(!box) return;
   box.innerHTML = list.length ? list.map(i=> i.id===editingIdeaId ? `<div class="idea-item">
     <div style="flex:1">
-      <textarea id="idea-edit-${i.id}" rows="3" style="resize:vertical;line-height:1.5;min-height:64px">${esc(i.text)}</textarea>
+      <textarea id="idea-edit-${esc(i.id)}" rows="3" style="resize:vertical;line-height:1.5;min-height:64px">${esc(i.text)}</textarea>
       <div class="row" style="gap:8px;margin-top:8px">
-        <button class="btn btn-sm" style="flex:1" onclick="saveEditIdea('${i.id}')">Save</button>
-        <button class="btn btn-sm btn-ghost" style="flex:1" onclick="cancelEditIdea()">Cancel</button>
+        <button class="btn btn-sm" style="flex:1" data-action="saveEditIdea" data-id="${esc(i.id)}">Save</button>
+        <button class="btn btn-sm btn-ghost" style="flex:1" data-action="cancelEditIdea" data-id="${esc(i.id)}">Cancel</button>
       </div>
     </div>
   </div>` : `<div class="idea-item${i.done?' done':''}">
-    <input type="checkbox" ${i.done?'checked':''} onchange="toggleIdeaDone('${i.id}')" style="margin-top:2px">
+    <input type="checkbox" ${i.done?'checked':''} data-action="toggleIdeaDone" data-id="${esc(i.id)}" style="margin-top:2px">
     <span class="txt">${esc(i.text)}<span class="muted" style="font-size:11px"> · ${fmtDate(i.date)}</span></span>
-    <button class="x-set" onclick="startEditIdea('${i.id}')" title="edit">${ph('pencil-simple')}</button>
-    <button class="x-set" onclick="removeIdea('${i.id}')" title="delete">${ph('x')}</button>
+    <button class="x-set" data-action="startEditIdea" data-id="${esc(i.id)}" title="edit">${ph('pencil-simple')}</button>
+    <button class="x-set" data-action="removeIdea" data-id="${esc(i.id)}" title="delete">${ph('x')}</button>
   </div>`).join('') : '<p class="muted" style="font-size:13px;padding:8px 0">No ideas yet — add one above while you\'re using the app.</p>';
 }
 function copyIdeas(){
@@ -4681,6 +4696,235 @@ function copyIdeas(){
   else fallbackCopy(text, done);
 }
 function fallbackCopy(text, cb){ try{ const ta=document.createElement('textarea'); ta.value=text; ta.style.cssText='position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); cb(); }catch(e){ toast('Copy failed'); } }
+
+/* ───────────────────────── Event delegation (F2) ───────────────────────── */
+/* Markup names an action with data-action (plus scalar data-* arguments), and this section is the
+   only code that turns a gesture into a call. There is one document listener per event type, and
+   each one hands the event to dispatchAction(), which finds the nearest element carrying an action
+   and runs that action's handler for the event that fired.
+
+   Entries are keyed by event type. A control that fires several events (a <select> fires input and
+   change, a checkbox fires click, input and change) runs only the handler for the one it fired, so
+   nothing runs twice.
+
+   Wrappers are thin. They decode data-* (Number() or unary plus on every index, because dataset
+   values are always strings), never touch DB, never persist, and call the existing function with
+   its existing signature. The functions they call own save() and saveLocal(), so the draft rules
+   in CLAUDE.md keep holding.
+
+   This section sits after every other top-level const in the file, and ACTIONS is read only when an
+   event fires. No event can fire before this script finishes, so nothing reads it at module
+   evaluation. There is deliberately no boot-time validator: a bad entry must break one control,
+   never the app, and never the Log tab mid-workout. The suite checks the registry instead.
+
+   Never stop propagation, never add a second listener for one of these events, and never defer a
+   wrapper (a timer, an await or an animation frame before the call). Clipboard, share and file
+   pickers need the tap's user activation, which lasts only while the event is being dispatched. */
+function dispatchAction(e){
+  let t = e.target;
+  if(t && t.nodeType === 3) t = t.parentElement;
+  const el = t && typeof t.closest === 'function' ? t.closest('[data-action]') : null;
+  if(!el || el.disabled) return;
+  const name = el.dataset.action;
+  if(!Object.prototype.hasOwnProperty.call(ACTIONS, name)) return;
+  /* The event's handler must be the action's own too: a plain lookup would reach Object.prototype, so
+     a click on a change-only control could run something inherited. */
+  const spec = ACTIONS[name];
+  const fn = Object.prototype.hasOwnProperty.call(spec, e.type) ? spec[e.type] : null;
+  if(typeof fn === 'function') fn(el, e);
+}
+const ACTIONS = {
+  /* App shell */
+  go:         { click: el => go(el.dataset.tab) },
+  setSub:     { click: el => setSub(el.dataset.sub) },
+  /* The render() error card */
+  exportData: { click: () => exportData() },
+  reload:     { click: () => location.reload() },
+  /* The Ideas sheet (static markup) and its list. The backdrop is a div around the whole sheet, so
+     dispatchAction resolves any tap inside the sheet that has no action of its own to it: only a
+     tap whose target IS the backdrop closes. Never contains(), because a re-render can detach the
+     target mid-dispatch. The ticked checkbox acts on change alone, which fires once per tick. */
+  openIdeas:      { click: () => openIdeas() },
+  ideasBackdrop:  { click: (el, e) => { if(e.target === el) closeIdeas(); } },
+  closeIdeas:     { click: () => closeIdeas() },
+  addIdea:        { click: () => addIdea() },
+  copyIdeas:      { click: () => copyIdeas() },
+  saveEditIdea:   { click: el => saveEditIdea(el.dataset.id) },
+  cancelEditIdea: { click: () => cancelEditIdea() },
+  toggleIdeaDone: { change: el => toggleIdeaDone(el.dataset.id) },
+  startEditIdea:  { click: el => startEditIdea(el.dataset.id) },
+  removeIdea:     { click: el => removeIdea(el.dataset.id) },
+  /* Settings. The pet name's old two-statement handler is one action that runs the whole chain
+     (D-02). Import is two controls: the button opens the picker by clicking the hidden file input
+     inside the tap, so the tap's user activation carries over, and the input's change runs the
+     import. The picker's own synthesized click on the input reaches this dispatcher too, and
+     importData has no click handler, so it does nothing. */
+  setUnit:        { click: el => setUnit(el.dataset.unit) },
+  setRoutineMode: { click: el => setRoutineMode(el.dataset.mode) },
+  setPetName:     { change: el => { setPetName(el.value); render(); } },
+  removeItem:     { click: el => removeItem(el.dataset.cat, +el.dataset.i) },
+  addItem:        { click: el => addItem(el.dataset.cat) },
+  exportMarkdown: { click: () => exportMarkdown() },
+  pickImportFile: { click: () => document.getElementById('imp').click() },
+  importData:     { change: el => importData(el) },
+  wipe:           { click: () => wipe() },
+  doExMerge:      { click: () => doExMerge() },
+  renameExercise: { click: el => renameExercise(el.dataset.id) },
+  /* Recently deleted, Version history and Cloud Sync. Restores take a NUMBER index or the exact
+     id; the functions they call own the confirm and the snapshot taken first. */
+  toggleTrash:         { click: () => toggleTrash() },
+  restoreDeleted:      { click: el => restoreDeleted(el.dataset.kind, +el.dataset.i) },
+  toggleVersions:      { click: () => toggleVersions() },
+  restoreSnapshot:     { click: el => restoreSnapshot(+el.dataset.i) },
+  restoreCloudVersion: { click: el => restoreCloudVersion(el.dataset.id) },
+  pushNow:             { click: () => pushNow(false) },
+  syncSignOut:         { click: () => syncSignOut() },
+  syncSignIn:          { click: () => syncSignIn(false) },
+  syncCreateAccount:   { click: () => syncSignIn(true) },
+  /* Care → Skin and Care → Sleep. skinOpenPhases is a Set of numbers, so the phase index is decoded
+     with a unary plus; a string would open a phase that then never closes. */
+  skinSubTab:      { click: el => skinSubTab(el.dataset.sub) },
+  skinTogglePhase: { click: el => skinTogglePhase(+el.dataset.i) },
+  skinSelectDay:   { click: el => skinSelectDay(el.dataset.day) },
+  removeSleep:     { click: el => removeSleep(el.dataset.id) },
+  addSleep:        { click: () => addSleep() },
+  /* Enter-to-submit. A text field carries data-action="enter" and names the action to run in
+     data-enter; only Enter runs it, and only an OWN registry entry with a click handler. This is the
+     one keydown handler in the registry: Enter on a focused button already fires click natively. */
+  enter: { keydown: (el, e) => { if(e.key !== 'Enter') return; const n = el.dataset.enter;
+    const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+    if(own(ACTIONS, n) && own(ACTIONS[n], 'click')) ACTIONS[n].click(el, e); } },
+  goSub: { click: el => goSub(el.dataset.tab, el.dataset.sub) },
+  /* Today, and the Log tab's picker (plan 05-06). startWorkout is a draft function: the wrapper only
+     decodes the name, and startWorkout itself keeps the draft device-local with saveLocal(). Workout
+     names travel as escaped data-name values, never inside a quoted handler. */
+  startWorkout: { click: el => startWorkout(el.dataset.name) },
+  skipDay:      { click: el => skipDay(el.dataset.name) },
+  setPickCat:   { click: el => setPickCat(el.dataset.cat) },
+  shufflePick:  { click: () => shufflePick() },
+  didPick:      { click: () => didPick() },
+  selectPick:   { change: el => selectPick(el.value) },
+  saveJournal:  { input: el => saveJournal(el.value) },
+  /* Accordions (Today's weigh-in, mobility and to-do cards; the Log tab's accessory and extras
+     cards in plan 05-06). openChart is the Chart buttons' old two-statement handler as one action
+     (D-02): it sets the Progress view, then opens Train → Progress. A mobility checkbox sits inside
+     a <label> that clicks it on a tap, so its action is on change alone. */
+  toggleAcc:        { click: el => toggleAcc(el.dataset.key) },
+  openChart:        { click: el => { progSub = el.dataset.prog; goSub('train', 'progress'); } },
+  toggleMobSession: { click: () => toggleMobSession() },
+  toggleMobility:   { change: el => toggleMobility(+el.dataset.i) },
+  /* Today's to-dos and the backup banner. doneTodo and removeTodo index the LIVE list, so the index
+     decodes with a unary plus; the tick box acts on change alone, which fires once per tick. The to-do
+     box's Enter reaches addTodo through the enter action, and addTodo reads the box itself. */
+  addTodo:      { click: () => addTodo() },
+  doneTodo:     { change: el => doneTodo(+el.dataset.i) },
+  removeTodo:   { click: el => removeTodo(+el.dataset.i) },
+  snoozeBackup: { click: () => snoozeBackup() },
+  /* Care → Lawn, and the lawn card Today also renders. toggleLawnLog logs today when it gets no
+     date, so a card button passes one argument and a history pill passes its own date: never an
+     undefined second argument. */
+  useMyLocation:      { click: () => useMyLocation() },
+  searchLocation:     { click: () => searchLocation() },
+  changeLawnLoc:      { click: () => changeLawnLoc() },
+  fetchWeather:       { click: () => fetchWeather() },
+  setLawnDaysAgo:     { click: el => setLawnDaysAgo(el.dataset.which, +el.dataset.n) },
+  toggleLawnLog:      { click: el => el.dataset.iso ? toggleLawnLog(el.dataset.which, el.dataset.iso) : toggleLawnLog(el.dataset.which) },
+  toggleLawnOverride: { click: el => toggleLawnOverride(el.dataset.which) },
+  logLawnPastDate:    { click: el => logLawnPastDate(el.dataset.which) },
+  /* Train → History and the week in review. weekShift adds its offset to a number, and toggleHist
+     compares openHist === i, so both decode with a unary plus: a string offset makes the week title
+     NaN, and a string index opens a row that never closes. The session date input sits inside a
+     <label>, which clicks the input on a tap, so its action lives on the input's change alone. */
+  editJournal:       { click: el => editJournal(el.dataset.iso) },
+  saveJournalFor:    { input: el => saveJournalFor(el.dataset.iso, el.value) },
+  closeJournalEdit:  { click: () => closeJournalEdit() },
+  openActivityAdd:   { click: el => openActivityAdd(el.dataset.iso) },
+  setActAddCat:      { click: el => setActAddCat(el.dataset.cat) },
+  addActivityFor:    { click: el => addActivityFor(el.dataset.iso) },
+  cancelActivityAdd: { click: () => cancelActivityAdd() },
+  removeActivity:    { click: el => removeActivity(+el.dataset.idx) },
+  weekShift:         { click: el => weekShift(+el.dataset.d) },
+  toggleBackdate:    { click: () => toggleBackdate() },
+  startBackdate:     { click: el => startBackdate(el.dataset.name) },
+  changeSessionDate: { change: el => changeSessionDate(+el.dataset.idx, el.value) },
+  editSession:       { click: el => editSession(+el.dataset.idx) },
+  deleteSession:     { click: el => deleteSession(+el.dataset.idx) },
+  toggleHist:        { click: el => toggleHist(+el.dataset.idx) },
+  /* Train → Progress and Train → Cardio. rangeSeg compares chartRange === 90 and selectPR indexes an
+     array, so the range and every index decode with a unary plus. logPetWeight is shared with Today's
+     weigh-in row: the Log button names both element ids and passes both, and a control with no
+     data-date-el passes the input id alone, never an undefined second argument. The Strava picker
+     clicks the hidden file input inside the tap; the input acts on change alone, so that synthesized
+     click does nothing. */
+  setRange:            { click: el => setRange(+el.dataset.range) },
+  progSubTab:          { click: el => progSubTab(el.dataset.sub) },
+  logWeight:           { click: () => logWeight() },
+  logPetWeight:        { click: el => el.dataset.dateEl ? logPetWeight(el.dataset.input, el.dataset.dateEl) : logPetWeight(el.dataset.input) },
+  selectPR:            { click: el => selectPR(+el.dataset.i) },
+  selectExercise:      { change: el => selectExercise(el.value) },
+  rmWeight:            { click: el => rmWeight(+el.dataset.idx) },
+  rmPetWeight:         { click: el => rmPetWeight(+el.dataset.i) },
+  confirmCardioImport: { click: () => confirmCardioImport() },
+  discardCardioImport: { click: () => discardCardioImport() },
+  removeCardio:        { click: el => removeCardio(el.dataset.id) },
+  addCardio:           { click: () => addCardio() },
+  pickCardioFile:      { click: () => pickCardioFile() },
+  handleCardioFile:    { change: el => handleCardioFile(el) },
+  /* The rest stopwatch (static markup). A tap reaches pointerdown before click: swGuard holds focus
+     in the weight or reps box while the keyboard is up (preventDefault, which is why no listener here
+     is ever passive) and blurs it while the keyboard is down. The click then toggles or clears. */
+  swToggle: { pointerdown: (el, e) => swGuard(e), click: () => swToggle() },
+  swClear:  { pointerdown: (el, e) => swGuard(e), click: () => swClear() },
+  /* The Log tab's workout picker. Start and Skip reuse startWorkout and skipDay above. guideOpen is a
+     Set of numbers, so the section index decodes with a unary plus; a string opens nothing. */
+  togglePreview: { click: el => togglePreview(el.dataset.name) },
+  toggleGuide:   { click: el => toggleGuide(+el.dataset.i) },
+  /* The active workout. Slot and set indexes decode with a unary plus: skipSet's prompt reads k+1,
+     and a string k asks about "set 11" when you meant set 2. Every function called here is a draft
+     function that owns its own saveLocal(); pickEx alone still save()s, because a custom name can add
+     a synced exercise-registry row (CLAUDE.md, the draft rule). The weight and reps boxes are one
+     element with two events: input stores the value as you type (and refreshes the badge and plate
+     text), change runs once on leaving the box (the weight rolls down, a reps entry starts the rest
+     clock). The exercise select acts on change alone, so "+ Custom…" prompts once. */
+  toggleExCollapse: { click: el => toggleExCollapse(+el.dataset.i) },
+  undeloadExercise: { click: el => undeloadExercise(+el.dataset.i) },
+  deloadExercise:   { click: el => deloadExercise(+el.dataset.i) },
+  addSet:           { click: el => addSet(+el.dataset.i) },
+  toggleWarm:       { click: el => toggleWarm(+el.dataset.i) },
+  unskipSet:        { click: el => unskipSet(+el.dataset.i, +el.dataset.k) },
+  skipSet:          { click: el => skipSet(+el.dataset.i, +el.dataset.k) },
+  rmSet:            { click: el => rmSet(+el.dataset.i, +el.dataset.k) },
+  setWeight: { input: el => { const i = +el.dataset.i, k = +el.dataset.k; setVal(i, k, 'w', el.value); updTargetBadge(i, k); updPlates(i); },
+               change: el => rollWeight(+el.dataset.i, +el.dataset.k, el.value) },
+  setReps:   { input: el => { const i = +el.dataset.i, k = +el.dataset.k; setVal(i, k, 'r', el.value); updTargetBadge(i, k); },
+               change: el => repCheck(+el.dataset.i, +el.dataset.k) },
+  pickEx:           { change: el => pickEx(+el.dataset.i, el) },
+  setNote:          { input: el => setNote(+el.dataset.i, el.value) },
+  unskipStairs:     { click: () => unskipStairs() },
+  skipStairs:       { click: () => skipStairs() },
+  stairVal:         { input: el => stairVal(el.dataset.field, el.value) },
+  stairTimeSet:     { input: el => stairTimeSet(el.dataset.part, el.value) },
+  setDraftDate:     { input: el => setDraftDate(el.value) },
+  setDraftDur:      { input: el => setDraftDur(el.value) },
+  setSessionNote:   { input: el => setSessionNote(el.value) },
+  finishWorkout:    { click: () => finishWorkout() },
+  discardWorkout:   { click: () => discardWorkout() },
+  /* The extras cards (abs, forearms, dead hang) inside the active workout; their headers and the
+     warm-up and cool-down accordions reuse toggleAcc. The accessory id is a string key and the set
+     index a number. The weight box stores on input and rolls down on change, like a main set; exPick
+     is the one extras path that still save()s (a custom name can add a synced registry row). */
+  setExtraWeight: { input: el => exSet(el.dataset.id, +el.dataset.k, 'w', el.value),
+                    change: el => exRoll(el.dataset.id, +el.dataset.k, el.value) },
+  setExtraReps:   { input: el => exSet(el.dataset.id, +el.dataset.k, 'r', el.value) },
+  exRmSet:        { click: el => exRmSet(el.dataset.id, +el.dataset.k) },
+  exPick:         { change: el => exPick(el.dataset.id, el) },
+  exAddSet:       { click: el => exAddSet(el.dataset.id) },
+};
+document.addEventListener('click', dispatchAction, { passive: false });
+document.addEventListener('change', dispatchAction, { passive: false });
+document.addEventListener('input', dispatchAction, { passive: false });
+document.addEventListener('keydown', dispatchAction, { passive: false });
+document.addEventListener('pointerdown', dispatchAction, { passive: false });
 
 /* ───────────────────────── Boot ───────────────────────── */
 /* The stopwatch bar, the idea FAB and its sheet live as static markup in <body>, so they can't

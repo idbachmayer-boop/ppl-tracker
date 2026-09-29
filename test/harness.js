@@ -50,11 +50,14 @@ function loadApp(htmlPath, seed, opts){
   if(opts && typeof opts.transform === 'function') code = opts.transform(code);
 
   const store = {};
+  /* document.addEventListener records { fn, opts } per event type, so a test can assert which
+     delegated listeners the app registered and fire the very listener a tap would reach. */
+  const listeners = {};
   if(seed) store['ppl_tracker_v1'] = typeof seed === 'string' ? seed : JSON.stringify(seed);
   const el = () => ({ innerHTML:'', textContent:'', value:'', style:{}, dataset:{},
     classList:{ add(){}, remove(){}, toggle(){} }, querySelector:()=>null, querySelectorAll:()=>[],
     addEventListener(){}, removeEventListener(){}, appendChild(){}, remove(){}, focus(){}, click(){},
-    setAttribute(){}, getAttribute(){ return ''; }, getContext(){ return null; } });
+    setSelectionRange(){}, setAttribute(){}, getAttribute(){ return ''; }, getContext(){ return null; } });
   const byId = new Map();
   const doc = {
     getElementById: id => { if(!byId.has(id)) byId.set(id, el()); return byId.get(id); },
@@ -63,7 +66,7 @@ function loadApp(htmlPath, seed, opts){
     createElement: el,
     body: el(),
     documentElement: el(),
-    addEventListener(){},
+    addEventListener(type, fn, opts){ (listeners[type] = listeners[type] || []).push({ fn, opts }); },
     head: el(),
   };
   const sandbox = {
@@ -138,15 +141,23 @@ function loadApp(htmlPath, seed, opts){
     'importMerge', 'importReplace', 'restoreSnapshot', 'restoreCloudVersion', 'loadCloudVersions', 'wipe',
     /* Which build a device is running (Settings → This version). */
     'BUILD', 'buildLabel',
+    /* Event delegation (Phase 5). ACTIONS is a const, reachable only through this export. */
+    'ACTIONS', 'dispatchAction', 'buildTabBar',
+    /* Settings and the Ideas sheet (plan 05-02). */
+    'renderIdeasList',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
     get DB(){ return DB; }, set DB(v){ DB = v; },
-    get fbDb(){ return fbDb; }, set fbDb(v){ fbDb = v; }
+    get TAB(){ return TAB; },
+    get fbDb(){ return fbDb; }, set fbDb(v){ fbDb = v; },
+    /* cloudVersionList is a let too, so it needs an accessor for the same reason as fbDb. */
+    get cloudVersionList(){ return cloudVersionList; }, set cloudVersionList(v){ cloudVersionList = v; }
   })`, sandbox);
   api.__sandbox = sandbox;
   api.__src = code;
   api.__stored = () => { try{ return JSON.parse(store['ppl_tracker_v1']); }catch(e){ return null; } };
+  api.__listeners = listeners;
   return api;
 }
 
@@ -189,6 +200,64 @@ function makeWx(opts){
   }};
 }
 
+/* Every inline on-event attribute in `raw`, in file order (Phase 5, DELEG-01). The same function
+   produced test/fixtures/handler-inventory.json from index.html before any handler was converted,
+   and the suite runs it over the live file, so the snapshot and the scan cannot disagree by
+   algorithm. Deliberately broad: any `on<letters>=` with any quoting, because Phase 7's CSP blocks
+   every inline handler, not only the five events the app uses today.
+     fn          the nearest column-0 `function NAME` / `async function NAME` above the match, or
+                 '(static markup)' when the scan reaches the `<script>` line first
+     event       the attribute's event name, lower-cased
+     tag         the last `<tagname` opening in the 400 characters before the attribute
+     was         the handler text for a double-quoted attribute (walking `${…}` nesting to the
+                 closing quote); null for any other quoting, which no inventory row can match
+     occurrence  1-based count per (fn, event, was)
+     calls       every dotted identifier followed by `(` inside `was`, except `if`, in order */
+function scanInlineHandlers(raw){
+  const lines = raw.split('\n');
+  const lineStarts = [0];
+  for(let i = 0; i < raw.length; i++) if(raw[i] === '\n') lineStarts.push(i + 1);
+  const lineOf = idx => {
+    let lo = 0, hi = lineStarts.length - 1;
+    while(lo < hi){ const mid = (lo + hi + 1) >> 1; if(lineStarts[mid] <= idx) lo = mid; else hi = mid - 1; }
+    return lo;
+  };
+  const enclosing = ln => {
+    for(let k = ln; k >= 0; k--){
+      const m = lines[k].match(/^(?:async\s+)?function\s+([A-Za-z0-9_$]+)/);
+      if(m) return m[1];
+      if(/^<script>/.test(lines[k])) break;
+    }
+    return '(static markup)';
+  };
+  const re = /\son([A-Za-z]+)\s*=\s*(["'`]|\$)/g, rows = [], seen = {};
+  let m;
+  while((m = re.exec(raw))){
+    const at = m.index + 1;                       // the `o` of `on`, past the leading whitespace
+    const event = m[1].toLowerCase(), opener = m[2];
+    let was = null;
+    if(opener === '"'){
+      const start = m.index + m[0].length;
+      let i = start, depth = 0;
+      while(i < raw.length){
+        if(raw[i] === '$' && raw[i+1] === '{'){ depth++; i += 2; continue; }
+        if(depth && raw[i] === '}'){ depth--; i++; continue; }
+        if(!depth && raw[i] === '"') break;
+        i++;
+      }
+      was = raw.slice(start, i);
+    }
+    const fn = enclosing(lineOf(at));
+    const key = fn + '|' + event + '|' + was;
+    seen[key] = (seen[key] || 0) + 1;
+    const tag = ([...raw.slice(Math.max(0, at - 400), at).matchAll(/<([a-zA-Z]+)[\s>]/g)].pop() || [])[1] || null;
+    const calls = was === null ? []
+      : [...was.matchAll(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\(/g)].map(x => x[1]).filter(n => n !== 'if');
+    rows.push({ fn, event, tag, was, occurrence: seen[key], calls });
+  }
+  return rows;
+}
+
 const APP_PATH = path.join(__dirname, '..', 'index.html');
 
-module.exports = { loadApp, makeWx, freezeRunnerClock, FROZEN_MS, APP_PATH };
+module.exports = { loadApp, makeWx, freezeRunnerClock, FROZEN_MS, APP_PATH, scanInlineHandlers };
