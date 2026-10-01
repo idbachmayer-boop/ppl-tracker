@@ -1,14 +1,14 @@
 ---
-status: partial
+status: complete
 phase: 05-f2-event-delegation
 source: [05-VERIFICATION.md]
 started: 2026-09-25T00:00:00Z
-updated: 2026-09-27T00:00:00Z
+updated: 2026-10-01T00:00:00Z
 ---
 
 ## Current Test
 
-[testing paused: 1 item blocked until deploy]
+[testing complete]
 
 ## Tests
 
@@ -34,17 +34,16 @@ result: pass
 
 ### 6. DELEG-07 real workout on Ian's phone (after deploy)
 expected: work through 05-DELEG-07-CHECKLIST.md during a real workout, starting with Settings → This version and the picker row layout.
-result: blocked
-blocked_by: release-build
-reason: "phase 5 is not deployed yet (origin/main at 2318b09); re-run the phone checklist after the PR merges and deploys"
+result: pass
+note: "export 2026-10-01 shows LEGS 1 on 2026-09-30 on build 286fbee, each set logged once"
 
 ## Summary
 
 total: 6
-passed: 5
+passed: 6
 issues: 0
 pending: 0
 skipped: 0
-blocked: 1
+blocked: 0
 
 ## Gaps
