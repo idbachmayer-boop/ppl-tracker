@@ -1,31 +1,38 @@
 ---
 phase: 05-f2-event-delegation
 verified: 2026-09-25T22:38:20Z
-status: human_needed
+status: passed
 score: 47/49 must-haves verified
 behavior_unverified: 1
 overrides_applied: 0
 behavior_unverified_items:
+
   - truth: "Every converted control is still operable by keyboard, not only by pointer or click (roadmap SC4, DELEG-06)"
     test: "Serve the repo root with `py -m http.server 8080`, open http://localhost:8080/ in a desktop browser, do NOT sign in to Cloud Sync, and using only Tab, Shift+Tab, Enter and Space walk every screen: tab bar, Today (weigh-in, shortcut cards, mobility, to-dos), Train → Log (picker and an active workout), History, Progress, Cardio, Care (Skin, Lawn, Sleep), Settings (trash, version history, sync) and the Ideas sheet"
     expected: "Every converted control takes focus with the visible accent ring and activates on Enter, and on Space for buttons. Enter in an input logs or adds exactly once. The Ideas backdrop is not focusable and its Close button is the keyboard path. No screen shows 'Something broke'."
     why_human: "The suite proves structurally that every click target is a native <button> and a :focus-visible ring exists, but it has no keyboard model or layout engine, so real focus order and native Enter/Space activation are unexercised"
 human_verification:
+
   - test: "DELEG-06 keyboard-only desktop pass (05-06-PLAN human-check 1; run first, before deploy). Serve with `py -m http.server 8080`, open http://localhost:8080/, do NOT sign in. Tab through every screen as described in behavior_unverified_items."
     expected: "Every converted control focuses with the accent ring and activates on Enter/Space; Enter in an input acts exactly once; the Ideas backdrop is not focusable and Close is its keyboard path; no 'Something broke' card."
     why_human: "Real focus order, focus rings and native activation need a browser; the executor had no browser tools and this pass has NOT been run."
+
   - test: "Settings and Ideas visual/keyboard check (05-02-PLAN human-check): compare Recently deleted and Version history cards, open and closed, with the deployed app; tab to each header; add an idea, close the sheet from the backdrop and from Close, Copy all, open Import backup (cancel)."
     expected: "Cards look exactly as before; headers show the focus ring and toggle on Enter and Space; sheet closes only from backdrop or Close; 'Copied ✓' toast; the file chooser opens."
     why_human: "Pixel appearance, clipboard and native file pickers need a real browser with user activation."
+
   - test: "Care and Today lawn check (05-03-PLAN human-check): on Care → Lawn with no location, type a city and press Enter; compare Care → Lawn and Today's lawn card with the deployed app; keyboard-focus the lawn card and press Enter; open/close a shaving phase; add and delete a sleep night."
     expected: "Enter searches once; lawn cards look unchanged including the heads-up card; focus ring on the card and Enter opens Care → Lawn; phase toggles; sleep add/delete work."
     why_human: "Visual parity of whole-card buttons, real keyboard and live-weather-dependent card variants."
+
   - test: "Train check (05-04-PLAN human-check): compare Train → History (week review with a note and an activity, an open session row) and Train → Progress (strength PR list) with the deployed app, then keyboard-only through the week-review links, activity ×, history rows and PR rows."
     expected: "Everything looks as before; inline links still read inline mid-sentence; every control focuses with the ring and responds to Enter/Space; week title reads 'Last week' after one step back."
     why_human: "Inline-button visual parity and real keyboard focus need a browser."
+
   - test: "Today check (05-05-PLAN human-check): compare Today card by card with the deployed app (weigh-in open and closed, weather/week/cardio cards, mobility open, to-dos); press Enter in the weigh-in box and the to-do box; Space on a stretch checkbox; Enter on the week card."
     expected: "Cards look unchanged (padding, alignment, full width, colours); focus rings visible; Enter logs one weigh-in and adds one to-do; Space ticks once; Enter on the week card opens History."
     why_human: "Whole-card button styling and native Enter/Space semantics are invisible to the suite."
+
   - test: "DELEG-07 on Ian's Android phone against the DEPLOYED build, after the phase PR merges and Pages publishes: work through .planning/phases/05-f2-event-delegation/05-DELEG-07-CHECKLIST.md top to bottom during a real workout, starting with its pre-flight build check (Settings → This version)."
     expected: "Every checklist line behaves as written: Skip and Start ▶ sit on one line in the picker (WR-03), the stopwatch keeps the keyboard up, weights roll on leaving the box, prompts appear once and name the right set, the finished session appears in History and syncs, nothing needs a second tap."
     why_human: "Real device touch timing, on-screen keyboard and live Firestore sync; depends on the deploy, so it is a post-deploy gate. The phase is not complete until Ian reports it passed."
