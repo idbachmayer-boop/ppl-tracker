@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 07
 current_phase_name: content-security-policy
 status: executing
-stopped_at: Phase 7 context gathered
-last_updated: "2026-10-02T12:19:44.218Z"
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-10-02T12:27:20.315Z"
 last_activity: 2026-10-02
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 31
-  completed_plans: 26
+  completed_plans: 27
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 ## Current Position
 
 Phase: 07 (content-security-policy) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 07
+Plan: 2 of 5
+Status: Ready to execute
 Last activity: 2026-10-02 — Phase 07 execution started
 
-Progress: [██████████] 100%
+Progress: [█████████░] 87%
 
 ## Performance Metrics
 
@@ -87,6 +87,7 @@ Progress: [██████████] 100%
 | Phase 05 P06 | 26min | 3 tasks | 7 files |
 | Phase 06 P01 | 15min | 2 tasks | 1 files |
 | Phase 06 P02 | 12min | 2 tasks | 4 files |
+| Phase 07 P01 | 5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -154,6 +155,9 @@ Recent decisions affecting current work:
 - [Phase ?]: 06-01: .gitattributes (* text=auto eol=lf) committed alone as C1 17b5a66; no whole-file diff because every blob was already LF; index.html blob unchanged so no sw.js bump
 - [Phase ?]: 06-01: other checkouts refresh to LF with lf-refresh.sh (park in a commit object, never git stash); script is in 06-01-SUMMARY.md Follow-ups
 - [Phase ?]: 06-02: the REPO-01 suite check asks git (check-attr eol, show :index.html) and never reads .gitattributes; a missing git or repository is a FAIL, never a skip
+- [Phase 07]: 07-01: the build stamp lives in <meta name="ppl-build"> in <head>; BUILD reads it at boot, so the deploy sed never touches the hashed inline script (D-08)
+- [Phase 07]: 07-01: deployStamp() replays the deploy job's own sed and throws on anything it cannot model, so a workflow edit fails the suite instead of drifting
+- [Phase 07]: 07-01: deployable unit (D-09) is 6f5365419670a8c0479e40e65ff3ca0c2f924e2c, stamp move only, no CSP code
 
 ### Pending Todos
 
@@ -178,6 +182,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-02T09:42:42.261Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-content-security-policy/07-CONTEXT.md
+Last session: 2026-10-02T12:27:20.291Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: None

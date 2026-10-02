@@ -235,12 +235,12 @@ Plans:
   4. After the policy is live, cloud sync is confirmed working by an actual sync check (e.g., a round-trip write observed in Firestore), never merely assumed because the app loads normally (CSP-06).
   5. `CLAUDE.md` documents the manual hash-regeneration command, so a future edit to the inline script cannot silently break the policy (CSP-07).
 
-**Plans**: 5 plans
+**Plans**: 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 07-01-PLAN.md — Tracer: the build stamp moves out of the inline script into `<meta name="ppl-build">`, BUILD reads it, the deploy sed and the tests follow, and red-proven guards keep the deploy rewrite out of hashed bytes (D-08)
+- [x] 07-01-PLAN.md — Tracer: the build stamp moves out of the inline script into `<meta name="ppl-build">`, BUILD reads it, the deploy sed and the tests follow, and red-proven guards keep the deploy rewrite out of hashed bytes (D-08)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -270,4 +270,4 @@ Phase 5 completes.
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
 | 5. F2 — Event Delegation | 6/6 | Complete    | 2026-10-01 |
 | 6. F4 — .gitattributes | 2/2 | In Progress|  |
-| 7. Content Security Policy | 0/TBD | Not started | - |
+| 7. Content Security Policy | 1/5 | In Progress|  |
