@@ -12,6 +12,7 @@
 const { loadApp, makeWx, freezeRunnerClock, APP_PATH, scanInlineHandlers } = require('./harness');
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 freezeRunnerClock();
 
@@ -80,6 +81,29 @@ console.log("\n── the repo keeps Ian's real backup out of git (T-01-12) ─�
   const lines = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8').split(/\r?\n/) : [];
   ok('gitignore: test/local/ is ignored', lines.includes('test/local/'));
   ok('gitignore: exported backups (ppl-backup-*.json) are ignored', lines.includes('ppl-backup-*.json'));
+}
+
+console.log('\n── git stores index.html as LF, whatever core.autocrlf says (REPO-01) ──');
+{
+  /* Windows working trees came out CRLF for months because nothing in the repo overrode each
+     machine's core.autocrlf. The attributes file at the repo root now does. This asks git for the
+     property it produces, and never reads that file's wording: the firestore.rules checks below
+     broke the day they pinned wording instead of a property. A missing git or a missing repository
+     is a FAIL, never a skip. CI has to prove this on every push, and skipLine is reserved for Ian's
+     local-only real backup. cwd is pinned to the repo root so the answer does not depend on where
+     node was started, and maxBuffer is raised because index.html would otherwise outgrow
+     execFileSync's default buffer. */
+  const root = path.join(__dirname, '..');
+  const git = args => execFileSync('git', args, { cwd: root, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+  let eol = null, blob = null, err = null;
+  try {
+    eol = git(['check-attr', '-z', 'eol', '--', 'index.html']).toString('utf8').split('\0')[2];
+    blob = git(['show', ':index.html']);
+  } catch(e){
+    err = String((e && e.stderr && e.stderr.toString()) || (e && e.message) || e);
+  }
+  ok('REPO-01: git resolves index.html to eol=lf', eol === 'lf', err || eol);
+  ok('REPO-01: the indexed index.html blob holds no carriage return', blob !== null && blob.indexOf(0x0d) === -1, err || (blob && blob.indexOf(0x0d)));
 }
 
 console.log('\n── the file itself ──');

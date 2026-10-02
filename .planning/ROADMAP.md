@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Export for Claude** - A Markdown export of live data, derived from the same registry and the same views, ready to paste into a Claude conversation. (completed 2026-09-18)
 - [x] **Phase 3: F3 — Adding a New Tracked Thing (Recipe)** - `CLAUDE.md` gets a numbered recipe for the next collection after `sleep`, written against the shipped registry. (completed 2026-09-22)
 - [x] **Phase 4: Draft Goes Device-Local** - The in-progress workout stops crossing the wire, closing a whole bug family at the source. (completed 2026-09-23)
-- [ ] **Phase 5: F2 — Event Delegation** - All 175 inline handler attributes become delegated listeners, which is what makes a real CSP possible.
+- [x] **Phase 5: F2 — Event Delegation** - All 175 inline handler attributes become delegated listeners, which is what makes a real CSP possible. (completed 2026-10-01)
 - [ ] **Phase 6: F4 — .gitattributes** - Git stores `index.html`'s bytes exactly, landed alone so the whole-file diff hides nothing.
 - [ ] **Phase 7: Content Security Policy** - A hash-based CSP ships without silently breaking the only off-device backup.
 
@@ -215,11 +215,12 @@ Plans:
   1. A `.gitattributes` file exists that makes git store `index.html` bytes exactly, ending `core.autocrlf` rewriting (REPO-01).
   2. The commit that adds `.gitattributes` contains nothing else — the resulting whole-file diff is isolated to its own commit, verifiable by inspecting that commit's file list (REPO-02).
 
-**Plans**: TBD
+**Plans**: 2/2 plans executed
 
 Plans:
 
-- [ ] 06-01: TBD
+- [x] 06-01-PLAN.md — `.gitattributes` (`* text=auto eol=lf`) lands alone as commit 1 (tracer), then this checkout is refreshed to LF through a guarded, lossless procedure
+- [x] 06-02-PLAN.md — `npm test` asks git whether index.html is stored as LF, and fails rather than skips (red-proven); docs updated; merge-commit and other-checkout follow-ups queued
 
 ### Phase 7: Content Security Policy
 
@@ -253,6 +254,6 @@ Phase 5 completes.
 | 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 5/5 | Complete    | 2026-09-22 |
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
-| 5. F2 — Event Delegation | 6/6 | In Progress|  |
-| 6. F4 — .gitattributes | 0/TBD | Not started | - |
+| 5. F2 — Event Delegation | 6/6 | Complete    | 2026-10-01 |
+| 6. F4 — .gitattributes | 2/2 | In Progress|  |
 | 7. Content Security Policy | 0/TBD | Not started | - |

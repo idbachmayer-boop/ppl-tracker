@@ -1,0 +1,2 @@
+# Git stores and checks out every text file as LF, whatever core.autocrlf says (REPO-01).
+* text=auto eol=lf

@@ -74,6 +74,13 @@ new draft function calls `save()`.
   worse than none, because it reads as authoritative. The suite asserts the security *property* (every
   `allow` gated on the caller owning the document, nothing granted unconditionally), never the exact
   wording — an earlier version pinned the variable name and broke the moment the file matched reality.
+- **Line endings:** `.gitattributes` makes git store and check out every text file as LF, whatever a
+  machine's `core.autocrlf` says. The suite asserts that property — git resolves `eol=lf` for
+  `index.html`, and its stored blob holds no carriage return — never the file's wording, and a missing
+  git fails rather than skips. A checkout made before the file landed keeps CRLF copies while
+  `git status` reports clean. The only rewrite that works is
+  `git rm -r --cached -q . && git reset -q --hard`, run from a tree with no tracked changes. Park
+  uncommitted work in a commit first, never in the shared stash.
 - **Icons:** Phosphor, inlined in the `PH` map. No CDN, no web font — offline-first. Emoji stay where
   they mark something logged, typed or celebrated.
 - **Theme:** "Nocturne". Colours come from the `:root` custom properties; don't hard-code hex.

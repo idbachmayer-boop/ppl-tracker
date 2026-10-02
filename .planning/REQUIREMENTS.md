@@ -75,13 +75,13 @@ Clean data out of the app and into Claude Desktop.
 - [x] **DELEG-03**: A static completeness check cross-references the pre-change inventory against the dispatcher, so a dropped call site fails the suite rather than the phone
 - [x] **DELEG-04**: No handler is left reachable only through a global function called by name from markup
 - [x] **DELEG-05**: Any `stopPropagation()` call that would break delegation is found and resolved
-- [ ] **DELEG-06**: Controls converted to delegation remain keyboard-operable
-- [ ] **DELEG-07**: The Log tab is manually verified end to end, being the screen Ian uses mid-workout
+- [x] **DELEG-06**: Controls converted to delegation remain keyboard-operable
+- [x] **DELEG-07**: The Log tab is manually verified end to end, being the screen Ian uses mid-workout
 
 ### Repository (REPO)
 
-- [ ] **REPO-01**: A `.gitattributes` file makes git store `index.html` bytes exactly, ending `core.autocrlf` rewriting
-- [ ] **REPO-02**: `.gitattributes` and the resulting whole-file diff land in a commit containing nothing else
+- [x] **REPO-01**: A `.gitattributes` file makes git store `index.html` bytes exactly, ending `core.autocrlf` rewriting
+- [x] **REPO-02**: `.gitattributes` and the resulting whole-file diff land in a commit containing nothing else (done in 06-01 as C1 `17b5a66`, which holds only `.gitattributes`; no whole-file diff arose because every blob was already LF. Whether it survives onto `main` is checked after the phase PR merges)
 
 ### Content Security Policy (CSP)
 
@@ -141,7 +141,7 @@ Populated during roadmap creation.
 | EXP-01 … EXP-08 | Phase 2 | Complete |
 | DOC-01 … DOC-04 | Phase 3 | Complete |
 | DRAFT-01 … DRAFT-05 | Phase 4 | Complete |
-| DELEG-01 … DELEG-07 | Phase 5 | Pending |
+| DELEG-01 … DELEG-07 | Phase 5 | Complete |
 | REPO-01 … REPO-02 | Phase 6 | Pending |
 | CSP-01 … CSP-07 | Phase 7 | Pending |
 

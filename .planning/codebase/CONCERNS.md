@@ -38,11 +38,11 @@
 - Impact: Knowledge transfer is implicit; mistakes repeat; onboarding time is longer.
 - Fix approach: Add a **Checklist: Adding a new tracked thing** section with numbered steps (create in blank(), add to SCHEMA, write migration if needed, add merge rule, add liveX filter, add validation in validateBackup()). Reference the war stories by incident name but give the recipe first.
 
-**F4: Line endings are unmanaged (intentional):**
-- Issue: `index.html` is CRLF on disk, tests are LF, no `.gitattributes`, and `core.autocrlf` rewrites on every touch. Adding `.gitattributes` with `* -text` would normalize but produce a 4,131-line diff.
-- Files: `index.html`, `.gitattributes` (missing)
+**F4: Line endings were unmanaged (RESOLVED 2026-10-01, Phase 6):**
+- Issue: Git already stored every tracked file as LF; the index was never CRLF. The CRLF existed only in Windows working trees, written there by the system-wide `core.autocrlf=true`, because no attributes file in the repo overrode each machine's setting. So `index.html` looked CRLF on disk on one machine and LF on another.
+- Files: `.gitattributes`, `test/app.test.js`
 - Impact: Noisy diffs, inconsistent editor line-ending handling, potential confusion on Windows/Unix checkouts.
-- Fix approach: Left untouched on purpose — it is a deliberate trade-off. F1–F3 yield more benefit than splitting the file.
+- Resolved: One rule, `* text=auto eol=lf`, landed alone as C1 (`17b5a66`), so git stores and checks out every text file as LF whatever `core.autocrlf` says. The predicted whole-file reformat diff never existed for that rule, because the index was already LF: C1 lists only `.gitattributes`. The suite asks git for the property on every run (`index.html` resolves to `eol=lf`, and its stored blob holds no carriage return), and fails rather than skips when git cannot answer. A checkout made before C1 keeps CRLF copies until it is refreshed; see CLAUDE.md § Conventions, **Line endings**.
 
 ## Known Bugs
 
