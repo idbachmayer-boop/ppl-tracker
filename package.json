@@ -3,6 +3,8 @@
   "private": true,
   "description": "Single-file workout + daily-life PWA. No dependencies, no build step — index.html is the app.",
   "scripts": {
-    "test": "node test/app.test.js"
+    "test": "node test/app.test.js",
+    "csp:hash": "node scripts/csp-hash.js",
+    "csp:check": "node scripts/csp-hash.js --check"
   }
 }
