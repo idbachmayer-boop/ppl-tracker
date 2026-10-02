@@ -3434,6 +3434,99 @@ console.log('\n── CSP hash tool (D-03, D-04, D-05) ──');
      pkg.scripts && pkg.scripts['csp:hash'] === 'node scripts/csp-hash.js' &&
      pkg.scripts['csp:check'] === 'node scripts/csp-hash.js --check' &&
      !('dependencies' in pkg) && !('devDependencies' in pkg), pkg.scripts);
+
+  /* D-05: the hash is computed over the LF bytes git stores and the browser hashes. A tool that
+     hashed raw CRLF bytes would pass on an LF checkout and blank the app from a Windows one, so the
+     real script must hash identically whichever line endings the working copy happens to hold. This
+     reads index.html's script, never its policy. */
+  const hashes = (() => { try{
+    return [rawHtml, rawHtml.replace(/\r?\n/g, '\r\n'), rawHtml.replace(/\r\n?/g, '\n')].map(inlineScriptHash);
+  }catch(e){ return ['threw: ' + e.message]; } })();
+  ok('CSP-TOOL: index.html hashes the same with LF or CRLF line endings, as git stores it and as Chrome reads it (D-05)',
+     hashes.length === 3 && hashes.every(h => h === hashes[0]) && /^sha256-/.test(hashes[0]), hashes);
+
+  {
+    const crlf = PAGE.replace(/\n/g, '\r\n');
+    const p = tmpPage('crlf', crlf);
+    try{
+      const w = runTool([p]);
+      const after = fs.readFileSync(p, 'utf8');
+      const crlfBefore = crlf.split('\r\n').length - 1, crlfAfter = after.split('\r\n').length - 1;
+      const loneLf = /(^|[^\r])\n/.test(after);
+      const token = scriptSrcOf(p);
+      ok('CSP-TOOL: csp:hash on a CRLF copy keeps its CRLF and writes the LF hash (D-05)',
+         w.status === 0 && crlfAfter === crlfBefore && !loneLf &&
+         JSON.stringify(token) === JSON.stringify([`'${inlineScriptHash(PAGE)}'`]),
+         { w, crlfBefore, crlfAfter, loneLf, token });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+
+  {
+    const p = tmpPage('twice', PAGE);
+    try{
+      const first = runTool([p]);
+      const between = fs.readFileSync(p);
+      const second = runTool([p]);
+      ok('CSP-TOOL: a second csp:hash run changes nothing',
+         first.status === 0 && second.status === 0 && second.stdout.startsWith('unchanged sha256-') &&
+         fs.readFileSync(p).equals(between), { first, second });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+
+  {
+    const p = tmpPage('scope', PAGE);
+    try{
+      const w = runTool([p]);
+      const token = `'${inlineScriptHash(PAGE)}'`;
+      const after = fs.readFileSync(p, 'utf8');
+      ok('CSP-TOOL: csp:hash changes only the hash token',
+         w.status === 0 && after !== PAGE && after.split(token).length === 2 &&
+         after.split(token).join("'sha256-stale'") === PAGE, { w });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+
+  /* Every page the tool cannot handle unambiguously. A guess on any of these either blanks the app
+     or edits a policy nobody asked it to edit, so it must refuse, say why, and touch nothing. */
+  const withCsp = content => PAGE.replace(CSP_LINE, `<meta http-equiv="Content-Security-Policy" content="${content}" />`);
+  const REFUSE = [
+    ['no CSP meta',                  PAGE.replace(CSP_LINE + '\n', ''),                                         true],
+    ['two sha256 tokens',            withCsp("default-src 'none'; script-src 'sha256-stale' 'sha256-other'"),   true],
+    ['a second inline script',       PAGE.replace('</body>', '<script>window.y = 2;</script>\n</body>'),         true],
+    ['a repeated script-src',        withCsp("default-src 'none'; script-src 'sha256-stale'; script-src 'self'"), true],
+    ['two CSP metas',                PAGE.replace(CSP_LINE, CSP_LINE + '\n' + CSP_LINE),                         true],
+    ['no sha256 token in script-src', withCsp("default-src 'none'; script-src 'self'"),                         false],
+  ];
+  const refusedBadly = [];
+  REFUSE.forEach(([label, text, alsoCheck], i) => {
+    const p = tmpPage('refuse-' + i, text);
+    try{
+      const before = fs.readFileSync(p);
+      (alsoCheck ? [[], ['--check']] : [[]]).forEach(extra => {
+        const r = runTool([...extra, p]);
+        if(r.status !== 1 || !r.stderr.trim() || !fs.readFileSync(p).equals(before))
+          refusedBadly.push({ label, mode: extra[0] || 'rewrite', status: r.status, stdout: r.stdout, stderr: r.stderr });
+      });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  });
+  /* A mistyped --check must never fall through to the rewrite. */
+  {
+    const p = tmpPage('typo', PAGE);
+    try{
+      const before = fs.readFileSync(p);
+      const r = runTool(['--chek', p]);
+      if(r.status !== 1 || !r.stderr.trim() || !fs.readFileSync(p).equals(before))
+        refusedBadly.push({ label: 'a mistyped flag', status: r.status, stdout: r.stdout, stderr: r.stderr });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+  ok('CSP-TOOL: every refusal exits 1, says why, and leaves the file byte-identical', refusedBadly.length === 0, refusedBadly);
+
+  const throwsOn = text => { try{ readPolicy(text); return false; }catch(e){ return true; } };
+  const loose = (() => { try{
+    return JSON.stringify(readPolicy(`<meta http-equiv="Content-Security-Policy" content="SCRIPT-SRC 'self'\n    'sha256-x';\n  default-src 'none';" />`));
+  }catch(e){ return 'threw: ' + e.message; } })();
+  ok('CSP-TOOL: readPolicy refuses a repeated directive and a second CSP meta',
+     throwsOn(REFUSE[3][1]) && throwsOn(REFUSE[4][1]) &&
+     loose === JSON.stringify({ 'script-src': ["'self'", "'sha256-x'"], 'default-src': ["'none'"] }), loose);
 }
 
 /* ── DRAFT: every draft edit stays on this device and survives a reopen (Phase 4, DRAFT-05/D-09) ──
