@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 06
 current_phase_name: f4-gitattributes
-status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-10-02T02:18:43.596Z"
+status: verifying
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-10-02T02:24:41.635Z"
 last_activity: 2026-10-01
 last_activity_desc: Phase 05 complete, transitioned to Phase 6
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 26
-  completed_plans: 25
+  completed_plans: 26
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 
 Phase: 06 (f4-gitattributes) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-01 — Phase 06 execution started
 
-Progress: [██████████] 96%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -86,6 +86,7 @@ Progress: [██████████] 96%
 | Phase 05 P05 | 27min | 3 tasks | 3 files |
 | Phase 05 P06 | 26min | 3 tasks | 7 files |
 | Phase 06 P01 | 15min | 2 tasks | 1 files |
+| Phase 06 P02 | 12min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -152,6 +153,7 @@ Recent decisions affecting current work:
 - [Phase ?]: 05-06: every Log-tab and accessory control is pinned by an exact-arguments sweep (spy every callee, fire each rendered control once, compare the full call map)
 - [Phase ?]: 06-01: .gitattributes (* text=auto eol=lf) committed alone as C1 17b5a66; no whole-file diff because every blob was already LF; index.html blob unchanged so no sw.js bump
 - [Phase ?]: 06-01: other checkouts refresh to LF with lf-refresh.sh (park in a commit object, never git stash); script is in 06-01-SUMMARY.md Follow-ups
+- [Phase ?]: 06-02: the REPO-01 suite check asks git (check-attr eol, show :index.html) and never reads .gitattributes; a missing git or repository is a FAIL, never a skip
 
 ### Pending Todos
 
@@ -176,6 +178,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-02T02:18:43.549Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-10-02T02:24:41.591Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
