@@ -175,3 +175,7 @@ None.
 07-04 adds the policy to index.html, runs `npm run csp:hash` to fill it in, adds the property tests
 against the real policy, and wires `node scripts/csp-hash.js --check` into the deploy job. CSP-01 and
 CSP-07 stay unticked until then.
+
+## Self-Check: PASSED
+
+All four files exist; commits 1dbdb46, d602994, 9e54e6d, d300ccf are in history.

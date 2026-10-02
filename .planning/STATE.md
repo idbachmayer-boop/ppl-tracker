@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 07
 current_phase_name: content-security-policy
 status: executing
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-10-02T12:27:20.315Z"
+stopped_at: Completed 07-03-PLAN.md
+last_updated: "2026-10-02T12:37:06.779Z"
 last_activity: 2026-10-02
 last_activity_desc: Phase 07 execution started
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 31
-  completed_plans: 27
+  completed_plans: 28
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 ## Current Position
 
 Phase: 07 (content-security-policy) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-10-02 — Phase 07 execution started
 
-Progress: [█████████░] 87%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
@@ -88,6 +88,7 @@ Progress: [█████████░] 87%
 | Phase 06 P01 | 15min | 2 tasks | 1 files |
 | Phase 06 P02 | 12min | 2 tasks | 4 files |
 | Phase 07 P01 | 5min | 2 tasks | 4 files |
+| Phase 07 P03 | 10 min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,8 @@ Recent decisions affecting current work:
 - [Phase 07]: 07-01: the build stamp lives in <meta name="ppl-build"> in <head>; BUILD reads it at boot, so the deploy sed never touches the hashed inline script (D-08)
 - [Phase 07]: 07-01: deployStamp() replays the deploy job's own sed and throws on anything it cannot model, so a workflow edit fails the suite instead of drifting
 - [Phase 07]: 07-01: deployable unit (D-09) is 6f5365419670a8c0479e40e65ff3ca0c2f924e2c, stamp move only, no CSP code
+- [Phase 07]: 07-03: csp-hash CLI refuses any flag but --check, so a typo never falls through to the rewrite
+- [Phase 07]: 07-03: --check reports two sha256 tokens as ambiguous (found 2), not stale, since csp:hash refuses that page
 
 ### Pending Todos
 
@@ -182,6 +185,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-02T12:27:20.291Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-10-02T12:37:06.728Z
+Stopped at: Completed 07-03-PLAN.md
 Resume file: None
