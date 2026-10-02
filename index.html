@@ -7,6 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="PPL" />
   <meta name="theme-color" content="#161826" />
+  <meta name="ppl-build" content="__BUILD_STAMP__" />
   <link rel="manifest" href="#" id="manifest-placeholder" />
   <title>PPL Tracker</title>
   <style>
@@ -477,11 +478,15 @@ const GUIDE = [
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
 const SCHEMA = 18;
-/* Which build is this? The deploy job swaps the placeholder below for "<ISO time> <short sha>" in the
-   published copy only, so Settings can say which version a device is actually running — a phone
-   still on a stale build has cost real confusion before. The placeholder must appear exactly once
-   in this file (a test enforces it); an unstamped copy is a local one, never a deploy. */
-const BUILD = '__BUILD_STAMP__';
+/* Which build is this? The deploy job stamps <meta name="ppl-build"> in <head> with
+   "<ISO time> <short sha>", in the published copy only, so Settings can say which version a device
+   is actually running — a phone still on a stale build has cost real confusion before.
+   The stamp lives outside this script on purpose. A hash-based Content-Security-Policy pins this
+   script's exact bytes, and any deploy-time rewrite inside it makes the browser refuse to run the
+   app: a blank page on the phone while every local check passes.
+   The placeholder appears exactly once in this file (a test enforces it); an unstamped copy reads
+   as a local one, never as a deploy. */
+const BUILD = (document.querySelector('meta[name="ppl-build"]') || {}).content || '';
 const DEFAULT_HOBBIES = ["🎨 Mini-painting","🏔️ Terrain crafting","🧹 Clean up the workspace","📦 Organize the basement","🛹 Learn to longboard","📖 Read a book outside","🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBY_SEED_V2 = ["🌿 Pull weeds","✂️ Edge & trim the lawn","🛏️ Clean the bedroom","🚿 Clean the bathroom","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie"];
 const HOBBIES_DEFAULT = ["🎨 Mini-painting","🏔️ Terrain crafting","🛹 Longboard","📖 Read a book outside","🧘 Do yoga with Rachel","🥏 Toss a disc with Rachel","📞 Make plans with Kevin","🎾 Throw the ball with Charlie","🐾 Play with Freddie"];

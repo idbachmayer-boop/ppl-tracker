@@ -44,6 +44,8 @@ function freezeRunnerClock(){ global.Date = FrozenDate; }
    second copy of index.html. */
 function loadApp(htmlPath, seed, opts){
   const src = fs.readFileSync(htmlPath, 'utf8');
+  const metas = {};
+  for(const mm of src.matchAll(/<meta\s+name="([^"]+)"\s+content="([^"]*)"/g)) metas[mm[1]] = mm[2];
   const m = [...src.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)];
   if(!m.length) throw new Error('no inline <script> found in ' + htmlPath);
   let code = m[m.length-1][1];
@@ -61,7 +63,13 @@ function loadApp(htmlPath, seed, opts){
   const byId = new Map();
   const doc = {
     getElementById: id => { if(!byId.has(id)) byId.set(id, el()); return byId.get(id); },
-    querySelector: () => el(),
+    /* BUILD reads <meta name="ppl-build">, so a meta selector answers from the HTML file loaded.
+       It keeps el()'s methods because the theme-color code calls setAttribute on what it gets. */
+    querySelector: sel => {
+      const q = /^meta\[name="([^"]+)"\]$/.exec(sel);
+      if(!q) return el();
+      return Object.prototype.hasOwnProperty.call(metas, q[1]) ? Object.assign(el(), { content: metas[q[1]] }) : null;
+    },
     querySelectorAll: () => [],
     createElement: el,
     body: el(),
