@@ -74,6 +74,7 @@ if(require.main === module){
   const have = (pol['script-src'] || []).filter(t => SHA.test(t));
 
   if(check){
+    if(have.length > 1) fail(`expected exactly one 'sha256-…' source in script-src, found ${have.length} in ${file}`);
     if(have.length === 1 && have[0] === `'${want}'`){ console.log('CSP hash OK ' + want); process.exit(0); }
     fail(`CSP hash stale: policy has ${have.join(' ') || 'none'}, the inline script is '${want}'. Run: npm run csp:hash`);
   }
