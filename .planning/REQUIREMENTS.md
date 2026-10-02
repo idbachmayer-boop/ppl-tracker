@@ -81,7 +81,7 @@ Clean data out of the app and into Claude Desktop.
 ### Repository (REPO)
 
 - [ ] **REPO-01**: A `.gitattributes` file makes git store `index.html` bytes exactly, ending `core.autocrlf` rewriting
-- [ ] **REPO-02**: `.gitattributes` and the resulting whole-file diff land in a commit containing nothing else
+- [x] **REPO-02**: `.gitattributes` and the resulting whole-file diff land in a commit containing nothing else (done in 06-01 as C1 `17b5a66`, which holds only `.gitattributes`; no whole-file diff arose because every blob was already LF. Whether it survives onto `main` is checked after the phase PR merges)
 
 ### Content Security Policy (CSP)
 

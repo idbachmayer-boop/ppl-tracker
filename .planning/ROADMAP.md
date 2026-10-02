@@ -215,11 +215,11 @@ Plans:
   1. A `.gitattributes` file exists that makes git store `index.html` bytes exactly, ending `core.autocrlf` rewriting (REPO-01).
   2. The commit that adds `.gitattributes` contains nothing else — the resulting whole-file diff is isolated to its own commit, verifiable by inspecting that commit's file list (REPO-02).
 
-**Plans**: 2 plans
+**Plans**: 1/2 plans executed
 
 Plans:
 
-- [ ] 06-01-PLAN.md — `.gitattributes` (`* text=auto eol=lf`) lands alone as commit 1 (tracer), then this checkout is refreshed to LF through a guarded, lossless procedure
+- [x] 06-01-PLAN.md — `.gitattributes` (`* text=auto eol=lf`) lands alone as commit 1 (tracer), then this checkout is refreshed to LF through a guarded, lossless procedure
 - [ ] 06-02-PLAN.md — `npm test` asks git whether index.html is stored as LF, and fails rather than skips (red-proven); docs updated; merge-commit and other-checkout follow-ups queued
 
 ### Phase 7: Content Security Policy
@@ -255,5 +255,5 @@ Phase 5 completes.
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 5/5 | Complete    | 2026-09-22 |
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
 | 5. F2 — Event Delegation | 6/6 | Complete    | 2026-10-01 |
-| 6. F4 — .gitattributes | 0/2 | Not started | - |
+| 6. F4 — .gitattributes | 1/2 | In Progress|  |
 | 7. Content Security Policy | 0/TBD | Not started | - |

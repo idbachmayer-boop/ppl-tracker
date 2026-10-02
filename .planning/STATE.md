@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 6
-current_phase_name: F4 — .gitattributes
-status: planning
-stopped_at: Completed 05-06-PLAN.md; end-of-phase human checks pending (DELEG-06 keyboard pass, then DELEG-07 phone run post-deploy)
-last_updated: "2026-10-01T12:22:45.101Z"
+current_phase: 06
+current_phase_name: f4-gitattributes
+status: executing
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-10-02T02:18:43.596Z"
 last_activity: 2026-10-01
 last_activity_desc: Phase 05 complete, transitioned to Phase 6
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 5
-  total_plans: 24
-  completed_plans: 24
+  total_plans: 26
+  completed_plans: 25
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-22)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 05 — f2-event-delegation
+**Current focus:** Phase 06 — f4-gitattributes
 
 ## Current Position
 
-Phase: 6 — F4 — .gitattributes
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-10-01 — Phase 05 complete, transitioned to Phase 6
+Phase: 06 (f4-gitattributes) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-10-01 — Phase 06 execution started
 
-Progress: [██████████] 100%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -85,6 +85,7 @@ Progress: [██████████] 100%
 | Phase 05 P04 | 19min | 2 tasks | 3 files |
 | Phase 05 P05 | 27min | 3 tasks | 3 files |
 | Phase 05 P06 | 26min | 3 tasks | 7 files |
+| Phase 06 P01 | 15min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -149,6 +150,8 @@ Recent decisions affecting current work:
 - [Phase ?]: 05-05: evening-only Today markup is reached with a per-instance clock (f2Evening), never by moving the shared frozen clock
 - [Phase ?]: 05-06: the DELEG-03 ratchet counts wiring sites per event (max over events), so one element whose action handles two events (stopwatch pointerdown+click, weight input+change) is one site
 - [Phase ?]: 05-06: every Log-tab and accessory control is pinned by an exact-arguments sweep (spy every callee, fire each rendered control once, compare the full call map)
+- [Phase ?]: 06-01: .gitattributes (* text=auto eol=lf) committed alone as C1 17b5a66; no whole-file diff because every blob was already LF; index.html blob unchanged so no sw.js bump
+- [Phase ?]: 06-01: other checkouts refresh to LF with lf-refresh.sh (park in a commit object, never git stash); script is in 06-01-SUMMARY.md Follow-ups
 
 ### Pending Todos
 
@@ -173,6 +176,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-25T11:34:47.589Z
-Stopped at: Completed 05-06-PLAN.md; end-of-phase human checks pending (DELEG-06 keyboard pass, then DELEG-07 phone run post-deploy)
+Last session: 2026-10-02T02:18:43.549Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None
