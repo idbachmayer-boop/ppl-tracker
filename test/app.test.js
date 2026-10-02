@@ -3311,6 +3311,23 @@ console.log('\n── Build stamp ──');
   const metaAt = src.indexOf('<meta name="ppl-build" content="__BUILD_STAMP__"');
   ok('BUILD: the stamp marker appears exactly once, as the ppl-build meta\'s content inside <head>',
      hits === 1 && metaAt >= 0 && metaAt < src.indexOf('</head>'), { hits });
+
+  /* The deploy job rewrites the published copy after these tests run, so nothing ever tests the
+     bytes it uploads. These three checks are the only thing standing between a future workflow edit
+     and a hash-pinned script that production refuses to run: a blank page on the phone while every
+     local check passes (D-08). */
+  const inlineBodies = h => [...h.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)].map(mm => mm[1]);
+  const srcScripts = inlineBodies(src);
+  ok('BUILD: no inline script contains the stamp marker, so the deploy rewrite cannot reach hashed bytes (D-08)',
+     srcScripts.length > 0 && srcScripts.every(b => !b.includes('__BUILD_STAMP__')), { scripts: srcScripts.length });
+  let stamped = null, stampErr = null;
+  try{ stamped = deployStamp(src, '2026-09-23T19:05:00Z', 'e50bb0b'); }catch(e){ stampErr = e.message; }
+  const stampedMetaAt = stamped === null ? -1 : stamped.indexOf('<meta name="ppl-build" content="2026-09-23T19:05:00Z e50bb0b"');
+  ok('BUILD: the deploy job holds exactly one stamp sed, and it rewrites the ppl-build meta',
+     !stampErr && stampedMetaAt >= 0 && stampedMetaAt < stamped.indexOf('</head>'), stampErr || { stampedMetaAt });
+  ok('BUILD: the deploy stamp leaves the inline script byte-identical (D-08)',
+     !stampErr && stamped !== src && inlineBodies(stamped).join('\0') === srcScripts.join('\0'),
+     stampErr || (stamped === src ? 'the replay changed nothing' : 'an inline script changed'));
   const yml = fs.readFileSync(path.join(path.dirname(APP_PATH), '.github', 'workflows', 'deploy.yml'), 'utf8');
   const deployJob = yml.slice(yml.indexOf('\n  deploy:'));
   ok('BUILD: the deploy job stamps the placeholder before uploading the site',
