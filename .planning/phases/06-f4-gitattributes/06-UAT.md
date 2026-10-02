@@ -1,5 +1,5 @@
 ---
-status: testing
+status: complete
 phase: 06-f4-gitattributes
 source: [06-VERIFICATION.md]
 started: 2026-10-01T00:00:00Z
@@ -8,12 +8,7 @@ updated: 2026-10-02T00:00:00Z
 
 ## Current Test
 
-number: 3
-name: Other checkouts refreshed to LF
-expected: |
-  After pulling main into the main checkout and the other worktrees and running the guarded
-  lf-refresh.sh, `git ls-files --eol | grep -v w/lf` prints nothing; uncommitted work is restored unchanged.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -27,14 +22,15 @@ result: pass
 
 ### 3. Other checkouts refreshed to LF
 expected: After pulling main into the main checkout (C:/Users/idbac/Projects/ppl-tracker) and the other worktrees, running the guarded lf-refresh.sh from 06-01-SUMMARY.md § Follow-ups, then `git ls-files --eol | grep -v 'w/lf'`, prints nothing; uncommitted work (e.g. the main checkout's modified .planning/config.json) is restored unchanged.
-result: [pending]
+result: pass
+note: main checkout fast-forwarded to e35f560; all four checkouts report 0 non-LF text files; config.json edits preserved (already identical on main)
 
 ## Summary
 
 total: 3
-passed: 2
+passed: 3
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
