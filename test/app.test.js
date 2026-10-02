@@ -13,6 +13,7 @@ const { loadApp, makeWx, freezeRunnerClock, APP_PATH, scanInlineHandlers } = req
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { inlineScriptHash, readPolicy } = require('../scripts/csp-hash');
 
 freezeRunnerClock();
 
@@ -3352,6 +3353,87 @@ console.log('\n── Build stamp ──');
      !threw && html.includes('Updated Sep 23, 2026, 2:05 PM · e50bb0b') && html.includes('This version'), threw);
   ok('BUILD: an unstamped copy shows the local label in Settings',
      a.viewData().includes('Local copy, not a deployed build'));
+}
+
+/* ── CSP hash tool: the command that keeps the policy's script hash honest (D-03, D-04, D-05) ──
+   Phase 7's Content-Security-Policy pins the one inline script by its sha256, so a single changed
+   byte in that script blanks the app on every device until the hash is regenerated. These checks pin
+   the tool that regenerates it (npm run csp:hash) and the check that catches a stale one
+   (npm run csp:check). The algorithm is anchored to a hash Chrome itself reported for a CRLF,
+   non-ASCII script, so it cannot pass by agreeing with itself. Every page here is a synthetic temp
+   file: the real policy, and the checks that read it, arrive with the CSP commit and must leave with
+   it if that commit is ever reverted. */
+console.log('\n── CSP hash tool (D-03, D-04, D-05) ──');
+{
+  const os = require('os');
+  const TOOL = path.join(path.dirname(APP_PATH), 'scripts', 'csp-hash.js');
+  const runTool = args => {
+    try{
+      const stdout = execFileSync(process.execPath, [TOOL, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      return { status: 0, stdout, stderr: '' };
+    }catch(e){
+      return { status: e.status, stdout: String(e.stdout || ''), stderr: String(e.stderr || '') };
+    }
+  };
+  const tmpPage = (name, text) => {
+    const p = path.join(os.tmpdir(), 'ppl-csp-' + process.pid + '-' + name + '.html');
+    fs.writeFileSync(p, text);
+    return p;
+  };
+  const CSP_LINE = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-stale'" />`;
+  const PAGE = ['<!DOCTYPE html>', '<html>', '<head>', '<meta charset="UTF-8" />', CSP_LINE, '</head>',
+                '<body>', '<script>', 'window.x = 1;', '</script>', '</body>', '</html>', ''].join('\n');
+  const scriptSrcOf = file => { const pol = readPolicy(fs.readFileSync(file, 'utf8')); return pol && pol['script-src']; };
+
+  /* Chrome 2026-10-02 refused this script, served with CRLF line endings, and named the hash it
+     wanted: the LF-normalised one. Hashing the raw CRLF bytes gives sha256-dwJuaNwq… instead. */
+  const VECTOR = '\r\n  // 💪 emoji and CRLF line endings\r\n  window.x = "é";\r\n';
+  let vecHash = null;
+  try{ vecHash = inlineScriptHash('<script>' + VECTOR + '</script>'); }catch(e){ vecHash = 'threw: ' + e.message; }
+  ok('CSP-TOOL: the hash matches what Chrome computes for a CRLF, non-ASCII script',
+     vecHash === 'sha256-FkXmCGIFCB9jt8LEY2DLQI+fJjqrioS0k5jyDB0+5gY=', vecHash);
+
+  const refusal = html => { try{ return 'hashed: ' + inlineScriptHash(html); }catch(e){ return e.message; } };
+  const none = refusal('<html><head><script src="x.js"></script></head><body></body></html>');
+  const two = refusal(PAGE.replace('</body>', '<script type="application/json">{}</script>\n</body>'));
+  ok('CSP-TOOL: a page with no inline script, or two, is refused rather than hashed',
+     /found 0\b/.test(none) && /found 2\b/.test(two), { none, two });
+
+  const policyJson = (() => { try{ return JSON.stringify(readPolicy(PAGE)); }catch(e){ return 'threw: ' + e.message; } })();
+  const noMeta = (() => { try{ return readPolicy(PAGE.replace(CSP_LINE + '\n', '')); }catch(e){ return 'threw: ' + e.message; } })();
+  ok('CSP-TOOL: readPolicy reads directives as token lists, and null without a CSP meta',
+     policyJson === JSON.stringify({ 'default-src': ["'none'"], 'script-src': ["'sha256-stale'"] }) && noMeta === null,
+     { policyJson, noMeta });
+
+  {
+    const p = tmpPage('stale', PAGE);
+    try{
+      const before = fs.readFileSync(p);
+      const r = runTool(['--check', p]);
+      ok('CSP-TOOL: csp:check fails on a stale hash, names npm run csp:hash, and leaves the file alone (D-03)',
+         r.status === 1 && r.stderr.includes('npm run csp:hash') && fs.readFileSync(p).equals(before), r);
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+
+  {
+    const p = tmpPage('rewrite', PAGE);
+    try{
+      const want = inlineScriptHash(PAGE);
+      const w = runTool([p]);
+      const after = scriptSrcOf(p);
+      const c = runTool(['--check', p]);
+      ok('CSP-TOOL: csp:hash writes the current hash, then csp:check passes (D-04)',
+         w.status === 0 && w.stdout.startsWith('updated sha256-') &&
+         JSON.stringify(after) === JSON.stringify([`'${want}'`]) &&
+         c.status === 0 && c.stdout.startsWith('CSP hash OK'), { w, after, c });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(APP_PATH), 'package.json'), 'utf8'));
+  ok('CSP-TOOL: package.json runs the tool as csp:hash and csp:check, and still declares no dependencies (D-04)',
+     pkg.scripts && pkg.scripts['csp:hash'] === 'node scripts/csp-hash.js' &&
+     pkg.scripts['csp:check'] === 'node scripts/csp-hash.js --check' &&
+     !('dependencies' in pkg) && !('devDependencies' in pkg), pkg.scripts);
 }
 
 /* ── DRAFT: every draft edit stays on this device and survives a reopen (Phase 4, DRAFT-05/D-09) ──
