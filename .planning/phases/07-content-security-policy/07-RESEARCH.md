@@ -519,18 +519,25 @@ the app renders a blank page everywhere, the phone included. `npm test` fails wi
 | A4 | `ubuntu-latest` plus `actions/setup-node@v4` node 20 runs `scripts/csp-hash.js` (CommonJS, built-ins only) | Deploy check | Very low (the test job already does exactly this) |
 | A5 | Email/password sign-in does not check Firebase "authorized domains", so a signed-in local pass on `http://localhost:<port>` would work | Open Question 2 | If wrong, the optional local signed-in pass fails; nothing ships broken |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Allow or block the mobile-only gapi script and auth iframe?**
    - Known: the SDK loads them on mobile, Safari and iOS. The failure is swallowed and auth init completes when blocked (verified). Allowing them narrowly is clean (verified).
    - Unclear: whether Ian wants `script-src` to name anything beyond D-01's "inline hash plus the Firebase path".
    - Recommendation: allow them, path-restricted (it is Firebase's own auth path, loaded by the Firebase SDK). If the planner wants Ian to confirm, keep it to one sentence. The alternative is a CSP error on every phone load.
+   - **RESOLVED:** D-10. Allow them, path-restricted (07-04).
 2. **Optional signed-in local pass before production (CSP-05+)?**
    - Known: the signed-out probe never reaches identitytoolkit, securetoken or Firestore.
    - Option: Ian signs in once on `http://localhost:<port>` in the browser pane with a **fresh profile** (no local data, so no first-link prompt), confirms "Synced", then signs out. The transactional union merge makes this safe, but it is a real device touching the real doc, so it needs a human gate.
    - Recommendation: offer it as a `checkpoint:human-verify`. D-06's live round trip remains the required proof either way.
+   - **RESOLVED:** an optional signed-in pass in 07-05 Task 2, the pre-push human-action gate.
 3. **Ship the stamp move in its own deploy before the CSP deploy?** Recommended, so that the CSP go-live changes one variable and Settings → This version is proven to work from the meta first. Same PR with separate commits is acceptable. Revert the CSP commit itself (`git revert <csp-sha>`), not the merge.
+   - **RESOLVED:** D-09. The stamp ships first (07-01, 07-02), and the CSP follows in 07-04 and 07-05.
 4. **A fresh sign-in during CSP-06?** The D-06 round trip on already-signed-in devices exercises token refresh, user reload and Firestore, but not `signInWithPassword`. Recommend a sign-out and sign-in on the PC as part of the CSP-06 check (low risk: same uid, so `firstLink` is false).
+   - **RESOLVED:** a sign-out and sign-in on the PC in 07-05 Task 3's CSP-06 human check.
+
+There is no fifth numbered question. The reCAPTCHA Enterprise risk (Pitfall 6, Assumption A3) is
+**RESOLVED** by the CLAUDE.md CSP note in 07-04.
 
 ## Environment Availability
 
