@@ -3280,16 +3280,54 @@ asyncBlock('DRAFT old cloud doc through the cloud-copy choice', async () => {
      !firstBad && runs === LOCAL_SHAPES.length, firstBad || { runs });
 }
 
+/* Replay the deploy job's stamp on an HTML string. The replay reads the workflow's own sed, so the
+   test and the deploy cannot drift apart: the old replay mirrored the sed by hand, and would have
+   kept passing after the workflow changed. Anything it cannot model (shell syntax left over, a search
+   text that is missing or doubled, more or fewer than one sed) throws instead of replaying wrongly. */
+function deployStamp(html, iso, sha7){
+  const yml = fs.readFileSync(path.join(path.dirname(APP_PATH), '.github', 'workflows', 'deploy.yml'), 'utf8');
+  const job = yml.slice(yml.indexOf('\n  deploy:'));
+  const seds = [...job.matchAll(/sed -i "s\/((?:[^\/\\]|\\.)*)\/((?:[^\/\\]|\\.)*)\/" index\.html/g)];
+  if(seds.length !== 1) throw Error('expected one stamp sed in the deploy job, found ' + seds.length);
+  const search = seds[0][1].replace(/\\"/g, '"');
+  const repl = seds[0][2].replace(/\\"/g, '"')
+    .replace(/\$\(date [^)]*\)/, () => iso)
+    .split('${GITHUB_SHA::7}').join(sha7);
+  for(const part of [search, repl])
+    if(/[$\\]/.test(part)) throw Error('stamp sed holds shell syntax the replay does not model: ' + part);
+  const n = html.split(search).length - 1;
+  if(n !== 1) throw Error('stamp sed search text ' + JSON.stringify(search) + ' occurs ' + n + ' times, expected 1');
+  return html.replace(search, () => repl);
+}
+
 /* ── Build stamp: Settings says which build this device is running ──
    The deploy job replaces the placeholder in the published copy. These checks keep the placeholder
-   stampable (exactly one, in the BUILD literal), keep the deploy step aimed at it, and boot a copy
+   stampable (exactly one, in the ppl-build meta), keep the deploy step aimed at it, and boot a copy
    stamped the way the deploy stamps it. */
 console.log('\n── Build stamp ──');
 {
   const src = fs.readFileSync(APP_PATH, 'utf8');
   const hits = src.split('__BUILD_STAMP__').length - 1;
-  ok('BUILD: the placeholder appears exactly once, as the BUILD literal',
-     hits === 1 && /const BUILD = '__BUILD_STAMP__';/.test(src), { hits });
+  const metaAt = src.indexOf('<meta name="ppl-build" content="__BUILD_STAMP__"');
+  ok('BUILD: the stamp marker appears exactly once, as the ppl-build meta\'s content inside <head>',
+     hits === 1 && metaAt >= 0 && metaAt < src.indexOf('</head>'), { hits });
+
+  /* The deploy job rewrites the published copy after these tests run, so nothing ever tests the
+     bytes it uploads. These three checks are the only thing standing between a future workflow edit
+     and a hash-pinned script that production refuses to run: a blank page on the phone while every
+     local check passes (D-08). */
+  const inlineBodies = h => [...h.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)].map(mm => mm[1]);
+  const srcScripts = inlineBodies(src);
+  ok('BUILD: no inline script contains the stamp marker, so the deploy rewrite cannot reach hashed bytes (D-08)',
+     srcScripts.length > 0 && srcScripts.every(b => !b.includes('__BUILD_STAMP__')), { scripts: srcScripts.length });
+  let stamped = null, stampErr = null;
+  try{ stamped = deployStamp(src, '2026-09-23T19:05:00Z', 'e50bb0b'); }catch(e){ stampErr = e.message; }
+  const stampedMetaAt = stamped === null ? -1 : stamped.indexOf('<meta name="ppl-build" content="2026-09-23T19:05:00Z e50bb0b"');
+  ok('BUILD: the deploy job holds exactly one stamp sed, and it rewrites the ppl-build meta',
+     !stampErr && stampedMetaAt >= 0 && stampedMetaAt < stamped.indexOf('</head>'), stampErr || { stampedMetaAt });
+  ok('BUILD: the deploy stamp leaves the inline script byte-identical (D-08)',
+     !stampErr && stamped !== src && inlineBodies(stamped).join('\0') === srcScripts.join('\0'),
+     stampErr || (stamped === src ? 'the replay changed nothing' : 'an inline script changed'));
   const yml = fs.readFileSync(path.join(path.dirname(APP_PATH), '.github', 'workflows', 'deploy.yml'), 'utf8');
   const deployJob = yml.slice(yml.indexOf('\n  deploy:'));
   ok('BUILD: the deploy job stamps the placeholder before uploading the site',
@@ -3304,12 +3342,11 @@ console.log('\n── Build stamp ──');
   ok('BUILD: a malformed stamp falls back to the local label',
      ['', null, 'garbage', 'not-a-date e50bb0b', '2026-09-23T19:05:00Z <b>x</b>'].every(s => a.buildLabel(s) === 'Local copy, not a deployed build'));
 
-  /* Replay the deploy: stamp a temp copy exactly as the workflow's sed does, then boot it. */
+  /* Replay the deploy: stamp a temp copy with the workflow's own sed (deployStamp), then boot it. */
   const os = require('os');
   const tmp = path.join(os.tmpdir(), `ppl-stamped-${process.pid}.html`);
-  fs.writeFileSync(tmp, src.replace("'__BUILD_STAMP__'", "'2026-09-23T19:05:00Z e50bb0b'"));
   let html = '', threw = null;
-  try{ html = loadApp(tmp).viewData(); }catch(e){ threw = e.message; }
+  try{ fs.writeFileSync(tmp, deployStamp(src, '2026-09-23T19:05:00Z', 'e50bb0b')); html = loadApp(tmp).viewData(); }catch(e){ threw = e.message; }
   finally { try{ fs.unlinkSync(tmp); }catch(e){} }
   ok('BUILD: a stamped copy boots and Settings shows its version',
      !threw && html.includes('Updated Sep 23, 2026, 2:05 PM · e50bb0b') && html.includes('This version'), threw);

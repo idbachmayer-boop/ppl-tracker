@@ -235,11 +235,25 @@ Plans:
   4. After the policy is live, cloud sync is confirmed working by an actual sync check (e.g., a round-trip write observed in Firestore), never merely assumed because the app loads normally (CSP-06).
   5. `CLAUDE.md` documents the manual hash-regeneration command, so a future edit to the inline script cannot silently break the policy (CSP-07).
 
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
+**Wave 1**
 
-- [ ] 07-01: TBD
+- [ ] 07-01-PLAN.md — Tracer: the build stamp moves out of the inline script into `<meta name="ppl-build">`, BUILD reads it, the deploy sed and the tests follow, and red-proven guards keep the deploy rewrite out of hashed bytes (D-08)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 07-02-PLAN.md — The stamp move ships alone: Ian pushes it, confirms Settings → This version on the PC and the phone, and the live bytes prove the script is untouched (D-09; human-action gate)
+- [ ] 07-03-PLAN.md — Zero-dependency `scripts/csp-hash.js` with `npm run csp:hash` / `csp:check`, pinned to Chrome's own hash and CRLF-safe; inert until the CSP lands (D-03, D-04, D-05)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 07-04-PLAN.md — Tracer: the CSP ships as one revertable commit (policy, property checks, deploy `--check`, CLAUDE.md note); every guard red-proven, zero violations in Chrome on desktop and Android UAs, revert rehearsed green (CSP-01..05, CSP-07; D-01, D-02, D-06, D-07, D-10)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 07-05-PLAN.md — Go-live: pre-flight against the live stamp-only build, Ian's CSP-05 DevTools pass and push, live `--check` and live-URL probes; CSP-06 signed-in round trip queued with revert-on-failure (human-action gate)
 
 ## Progress
 
