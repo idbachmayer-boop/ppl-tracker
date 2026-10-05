@@ -13,6 +13,7 @@ const { loadApp, makeWx, freezeRunnerClock, APP_PATH, scanInlineHandlers } = req
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { inlineScriptHash, readPolicy } = require('../scripts/csp-hash');
 
 freezeRunnerClock();
 
@@ -3352,6 +3353,348 @@ console.log('\n── Build stamp ──');
      !threw && html.includes('Updated Sep 23, 2026, 2:05 PM · e50bb0b') && html.includes('This version'), threw);
   ok('BUILD: an unstamped copy shows the local label in Settings',
      a.viewData().includes('Local copy, not a deployed build'));
+}
+
+/* ── CSP hash tool: the command that keeps the policy's script hash honest (D-03, D-04, D-05) ──
+   Phase 7's Content-Security-Policy pins the one inline script by its sha256, so a single changed
+   byte in that script blanks the app on every device until the hash is regenerated. These checks pin
+   the tool that regenerates it (npm run csp:hash) and the check that catches a stale one
+   (npm run csp:check). The algorithm is anchored to a hash Chrome itself reported for a CRLF,
+   non-ASCII script, so it cannot pass by agreeing with itself. Every page here is a synthetic temp
+   file: the real policy, and the checks that read it, arrive with the CSP commit and must leave with
+   it if that commit is ever reverted. */
+console.log('\n── CSP hash tool (D-03, D-04, D-05) ──');
+{
+  const os = require('os');
+  const TOOL = path.join(path.dirname(APP_PATH), 'scripts', 'csp-hash.js');
+  const runTool = args => {
+    try{
+      const stdout = execFileSync(process.execPath, [TOOL, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      return { status: 0, stdout, stderr: '' };
+    }catch(e){
+      return { status: e.status, stdout: String(e.stdout || ''), stderr: String(e.stderr || '') };
+    }
+  };
+  const tmpPage = (name, text) => {
+    const p = path.join(os.tmpdir(), 'ppl-csp-' + process.pid + '-' + name + '.html');
+    fs.writeFileSync(p, text);
+    return p;
+  };
+  const CSP_LINE = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-stale'" />`;
+  const PAGE = ['<!DOCTYPE html>', '<html>', '<head>', '<meta charset="UTF-8" />', CSP_LINE, '</head>',
+                '<body>', '<script>', 'window.x = 1;', '</script>', '</body>', '</html>', ''].join('\n');
+  const scriptSrcOf = file => { const pol = readPolicy(fs.readFileSync(file, 'utf8')); return pol && pol['script-src']; };
+
+  /* Chrome 2026-10-02 refused this script, served with CRLF line endings, and named the hash it
+     wanted: the LF-normalised one. Hashing the raw CRLF bytes gives sha256-dwJuaNwq… instead. */
+  const VECTOR = '\r\n  // 💪 emoji and CRLF line endings\r\n  window.x = "é";\r\n';
+  let vecHash = null;
+  try{ vecHash = inlineScriptHash('<script>' + VECTOR + '</script>'); }catch(e){ vecHash = 'threw: ' + e.message; }
+  ok('CSP-TOOL: the hash matches what Chrome computes for a CRLF, non-ASCII script',
+     vecHash === 'sha256-FkXmCGIFCB9jt8LEY2DLQI+fJjqrioS0k5jyDB0+5gY=', vecHash);
+
+  const refusal = html => { try{ return 'hashed: ' + inlineScriptHash(html); }catch(e){ return e.message; } };
+  const none = refusal('<html><head><script src="x.js"></script></head><body></body></html>');
+  const two = refusal(PAGE.replace('</body>', '<script type="application/json">{}</script>\n</body>'));
+  ok('CSP-TOOL: a page with no inline script, or two, is refused rather than hashed',
+     /found 0\b/.test(none) && /found 2\b/.test(two), { none, two });
+
+  const policyJson = (() => { try{ return JSON.stringify(readPolicy(PAGE)); }catch(e){ return 'threw: ' + e.message; } })();
+  const noMeta = (() => { try{ return readPolicy(PAGE.replace(CSP_LINE + '\n', '')); }catch(e){ return 'threw: ' + e.message; } })();
+  ok('CSP-TOOL: readPolicy reads directives as token lists, and null without a CSP meta',
+     policyJson === JSON.stringify({ 'default-src': ["'none'"], 'script-src': ["'sha256-stale'"] }) && noMeta === null,
+     { policyJson, noMeta });
+
+  {
+    const p = tmpPage('stale', PAGE);
+    try{
+      const before = fs.readFileSync(p);
+      const r = runTool(['--check', p]);
+      ok('CSP-TOOL: csp:check fails on a stale hash, names npm run csp:hash, and leaves the file alone (D-03)',
+         r.status === 1 && r.stderr.includes('npm run csp:hash') && fs.readFileSync(p).equals(before), r);
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+
+  {
+    const p = tmpPage('rewrite', PAGE);
+    try{
+      const want = inlineScriptHash(PAGE);
+      const w = runTool([p]);
+      const after = scriptSrcOf(p);
+      const c = runTool(['--check', p]);
+      ok('CSP-TOOL: csp:hash writes the current hash, then csp:check passes (D-04)',
+         w.status === 0 && w.stdout.startsWith('updated sha256-') &&
+         JSON.stringify(after) === JSON.stringify([`'${want}'`]) &&
+         c.status === 0 && c.stdout.startsWith('CSP hash OK'), { w, after, c });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(path.dirname(APP_PATH), 'package.json'), 'utf8'));
+  ok('CSP-TOOL: package.json runs the tool as csp:hash and csp:check, and still declares no dependencies (D-04)',
+     pkg.scripts && pkg.scripts['csp:hash'] === 'node scripts/csp-hash.js' &&
+     pkg.scripts['csp:check'] === 'node scripts/csp-hash.js --check' &&
+     !('dependencies' in pkg) && !('devDependencies' in pkg), pkg.scripts);
+
+  /* D-05: the hash is computed over the LF bytes git stores and the browser hashes. A tool that
+     hashed raw CRLF bytes would pass on an LF checkout and blank the app from a Windows one, so the
+     real script must hash identically whichever line endings the working copy happens to hold. This
+     reads index.html's script, never its policy. */
+  const hashes = (() => { try{
+    return [rawHtml, rawHtml.replace(/\r?\n/g, '\r\n'), rawHtml.replace(/\r\n?/g, '\n')].map(inlineScriptHash);
+  }catch(e){ return ['threw: ' + e.message]; } })();
+  ok('CSP-TOOL: index.html hashes the same with LF or CRLF line endings, as git stores it and as Chrome reads it (D-05)',
+     hashes.length === 3 && hashes.every(h => h === hashes[0]) && /^sha256-/.test(hashes[0]), hashes);
+
+  {
+    const crlf = PAGE.replace(/\n/g, '\r\n');
+    const p = tmpPage('crlf', crlf);
+    try{
+      const w = runTool([p]);
+      const after = fs.readFileSync(p, 'utf8');
+      const crlfBefore = crlf.split('\r\n').length - 1, crlfAfter = after.split('\r\n').length - 1;
+      const loneLf = /(^|[^\r])\n/.test(after);
+      const token = scriptSrcOf(p);
+      ok('CSP-TOOL: csp:hash on a CRLF copy keeps its CRLF and writes the LF hash (D-05)',
+         w.status === 0 && crlfAfter === crlfBefore && !loneLf &&
+         JSON.stringify(token) === JSON.stringify([`'${inlineScriptHash(PAGE)}'`]),
+         { w, crlfBefore, crlfAfter, loneLf, token });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+
+  {
+    const p = tmpPage('twice', PAGE);
+    try{
+      const first = runTool([p]);
+      const between = fs.readFileSync(p);
+      const second = runTool([p]);
+      ok('CSP-TOOL: a second csp:hash run changes nothing',
+         first.status === 0 && second.status === 0 && second.stdout.startsWith('unchanged sha256-') &&
+         fs.readFileSync(p).equals(between), { first, second });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+
+  {
+    const p = tmpPage('scope', PAGE);
+    try{
+      const w = runTool([p]);
+      const token = `'${inlineScriptHash(PAGE)}'`;
+      const after = fs.readFileSync(p, 'utf8');
+      ok('CSP-TOOL: csp:hash changes only the hash token',
+         w.status === 0 && after !== PAGE && after.split(token).length === 2 &&
+         after.split(token).join("'sha256-stale'") === PAGE, { w });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+
+  /* Every page the tool cannot handle unambiguously. A guess on any of these either blanks the app
+     or edits a policy nobody asked it to edit, so it must refuse, say why, and touch nothing. */
+  const withCsp = content => PAGE.replace(CSP_LINE, `<meta http-equiv="Content-Security-Policy" content="${content}" />`);
+  const REFUSE = [
+    ['no CSP meta',                  PAGE.replace(CSP_LINE + '\n', ''),                                         true],
+    ['two sha256 tokens',            withCsp("default-src 'none'; script-src 'sha256-stale' 'sha256-other'"),   true],
+    ['a second inline script',       PAGE.replace('</body>', '<script>window.y = 2;</script>\n</body>'),         true],
+    ['a repeated script-src',        withCsp("default-src 'none'; script-src 'sha256-stale'; script-src 'self'"), true],
+    ['two CSP metas',                PAGE.replace(CSP_LINE, CSP_LINE + '\n' + CSP_LINE),                         true],
+    ['no sha256 token in script-src', withCsp("default-src 'none'; script-src 'self'"),                         false],
+  ];
+  const refusedBadly = [];
+  REFUSE.forEach(([label, text, alsoCheck], i) => {
+    const p = tmpPage('refuse-' + i, text);
+    try{
+      const before = fs.readFileSync(p);
+      (alsoCheck ? [[], ['--check']] : [[]]).forEach(extra => {
+        const r = runTool([...extra, p]);
+        if(r.status !== 1 || !r.stderr.trim() || !fs.readFileSync(p).equals(before))
+          refusedBadly.push({ label, mode: extra[0] || 'rewrite', status: r.status, stdout: r.stdout, stderr: r.stderr });
+      });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  });
+  /* A mistyped --check must never fall through to the rewrite. */
+  {
+    const p = tmpPage('typo', PAGE);
+    try{
+      const before = fs.readFileSync(p);
+      const r = runTool(['--chek', p]);
+      if(r.status !== 1 || !r.stderr.trim() || !fs.readFileSync(p).equals(before))
+        refusedBadly.push({ label: 'a mistyped flag', status: r.status, stdout: r.stdout, stderr: r.stderr });
+    } finally { try{ fs.unlinkSync(p); }catch(e){} }
+  }
+  ok('CSP-TOOL: every refusal exits 1, says why, and leaves the file byte-identical', refusedBadly.length === 0, refusedBadly);
+
+  const throwsOn = text => { try{ readPolicy(text); return false; }catch(e){ return true; } };
+  const loose = (() => { try{
+    return JSON.stringify(readPolicy(`<meta http-equiv="Content-Security-Policy" content="SCRIPT-SRC 'self'\n    'sha256-x';\n  default-src 'none';" />`));
+  }catch(e){ return 'threw: ' + e.message; } })();
+  ok('CSP-TOOL: readPolicy refuses a repeated directive and a second CSP meta',
+     throwsOn(REFUSE[3][1]) && throwsOn(REFUSE[4][1]) &&
+     loose === JSON.stringify({ 'script-src': ["'self'", "'sha256-x'"], 'default-src': ["'none'"] }), loose);
+}
+
+/* ── Content Security Policy: what the page is allowed to load, run and talk to (CSP-01..CSP-07) ──
+   esc() is the first line of defence and has known holes (see Conventions in CLAUDE.md). The policy
+   is the second: script-src admits only the one inline script, by its sha256, plus exact paths for
+   the Firebase SDK and the auth loader it fetches on phones, so a missed escape can no longer run
+   script. connect-src lists every host the app talks to, so logged data cannot be posted anywhere
+   else. The price is that the policy can kill the app or sync silently, which is why everything it
+   depends on is pinned here.
+
+   These checks parse the policy into directives and assert properties, never its wording. The
+   firestore.rules checks near the top of this file broke the day they pinned wording; a reordered
+   or rewrapped policy must stay green, and a widened one must not.
+
+   When one goes red:
+   - the script hash is stale: run `npm run csp:hash` and commit the result. Any edit to the inline
+     script does this, even whitespace, and a stale hash is a blank app on every device.
+   - the SDK version path: a Firebase SDK bump changes the policy's gstatic path in the same commit.
+   - a host the script names is missing from connect-src: add it, then re-run the headless probe on
+     a desktop and an Android user agent (07-RESEARCH.md § Code Examples, "CSP-05 probe").
+
+   The meta, these checks, the deploy job's hash check and the CLAUDE.md note are one commit, so a
+   single revert removes the whole CSP and leaves the suite green. Keep it that way. */
+console.log('\n── Content Security Policy (CSP-01..CSP-07) ──');
+{
+  let pol = {}, polErr = null;
+  try{ pol = readPolicy(rawHtml) || {}; }catch(e){ polErr = e.message; }
+  const dir = d => pol[d] || [];
+  const inlines = [...rawHtml.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)];
+  const scriptBody = inlines.length === 1 ? inlines[0][1] : '';
+  const yml = fs.readFileSync(path.join(path.dirname(APP_PATH), '.github', 'workflows', 'deploy.yml'), 'utf8');
+  const deployJob = yml.slice(yml.indexOf('\n  deploy:'));
+  const isScheme = t => /^[a-z][a-z0-9+.-]*:$/i.test(t);
+
+  ok('CSP-01: the policy parses: one CSP meta, no repeated directive',
+     polErr === null && (rawHtml.match(/http-equiv="Content-Security-Policy"/gi) || []).length === 1,
+     polErr || { metas: (rawHtml.match(/http-equiv="Content-Security-Policy"/gi) || []).length });
+
+  /* A meta policy does not apply to anything parsed before it. */
+  const metaAt = rawHtml.search(/<meta\s+http-equiv="Content-Security-Policy"/i);
+  const firstOf = ['<script', '<style', '<link'].map(t => [t, rawHtml.indexOf(t)]);
+  ok('CSP-01: the CSP meta sits in <head> before every <script>, <style> and <link>',
+     metaAt > 0 && metaAt < rawHtml.indexOf('</head>') && firstOf.every(([, at]) => at === -1 || at > metaAt),
+     { metaAt, firstOf });
+
+  const shaTokens = dir('script-src').filter(t => /^'sha256-/.test(t));
+  let scriptHash;
+  try{ scriptHash = inlineScriptHash(rawHtml); }catch(e){ scriptHash = 'threw: ' + e.message; }
+  ok("CSP-01: the policy's script hash matches the inline script (stale? run npm run csp:hash)",
+     shaTokens.length === 1 && shaTokens[0] === "'" + scriptHash + "'",
+     { policy: shaTokens, script: scriptHash, fix: 'npm run csp:hash' });
+
+  /* The landmine's regression test. The deploy job rewrites the published copy after this suite
+     runs, so the only way to test the bytes it uploads is to replay its own sed (deployStamp). */
+  let stampOk = false, stampDetail;
+  try{
+    const stamped = deployStamp(rawHtml, '2026-09-23T19:05:00Z', 'e50bb0b');
+    const stampedHash = inlineScriptHash(stamped);
+    const samePolicy = JSON.stringify(readPolicy(stamped)) === JSON.stringify(pol);
+    stampOk = !polErr && shaTokens.length === 1 && shaTokens[0] === "'" + stampedHash + "'" && samePolicy;
+    stampDetail = { stampedHash, policy: shaTokens, samePolicy };
+  }catch(e){ stampDetail = e.message; }
+  ok('CSP-01: a deploy-stamped copy keeps the policy and its hash (D-08)', stampOk, stampDetail);
+
+  /* The deploy job verifies the bytes it is about to publish. It never computes a hash: that is
+     done by hand and committed. */
+  const sedAt = deployJob.indexOf('sed -i');
+  const nodeAt = deployJob.indexOf('actions/setup-node');
+  const checkHit = /node scripts\/csp-hash\.js --check|npm run csp:check/.exec(deployJob);
+  const checkAt = checkHit ? checkHit.index : -1;
+  const uploadAt = deployJob.indexOf('upload-pages-artifact');
+  ok('CSP-01: the deploy job checks the published hash after stamping and before upload (D-04)',
+     sedAt > 0 && nodeAt > sedAt && checkAt > nodeAt && uploadAt > checkAt,
+     { sedAt, nodeAt, checkAt, uploadAt });
+
+  const scriptSrcs = [...rawHtml.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/gi)].map(m => m[1]);
+  const gstaticTokens = dir('script-src').filter(t => /^https:\/\/www\.gstatic\.com/i.test(t));
+  const policyVersion = gstaticTokens.length === 1
+    ? (/^https:\/\/www\.gstatic\.com\/firebasejs\/(\d+\.\d+\.\d+)\/$/.exec(gstaticTokens[0]) || [])[1] : undefined;
+  const tagVersions = scriptSrcs.filter(u => u.startsWith('https://www.gstatic.com/'))
+    .map(u => (/^https:\/\/www\.gstatic\.com\/firebasejs\/(\d+\.\d+\.\d+)\//.exec(u) || [, u])[1]);
+  ok('CSP-02: script-src allows the Firebase SDK only by the exact version path every SDK tag loads (D-07)',
+     !!policyVersion && tagVersions.length > 0 && tagVersions.every(v => v === policyVersion),
+     { policy: gstaticTokens, tags: tagVersions });
+
+  /* A token ending in / covers by prefix, a bare origin covers the whole origin, anything else
+     covers only that exact URL. */
+  const covers = (tok, url) => {
+    if(!/^https:\/\//i.test(tok)) return false;
+    if(/^https:\/\/[^/]+\/?$/i.test(tok)){ const o = tok.replace(/\/$/, ''); return url === o || url.startsWith(o + '/'); }
+    return tok.endsWith('/') ? url.startsWith(tok) : url === tok;
+  };
+  const uncovered = scriptSrcs.filter(u => !dir('script-src').some(t => covers(t, u)));
+  ok('CSP-02: every external script the page loads is covered by script-src',
+     scriptSrcs.length > 0 && uncovered.length === 0, { uncovered });
+
+  const INVENTORY = ['https://identitytoolkit.googleapis.com', 'https://securetoken.googleapis.com',
+                     'https://firestore.googleapis.com', 'https://api.open-meteo.com', 'https://geocoding-api.open-meteo.com'];
+  ok('CSP-03: connect-src holds the hand inventory: Firebase Auth, token and Firestore hosts, and both weather hosts',
+     INVENTORY.every(h => dir('connect-src').includes(h)),
+     { missing: INVENTORY.filter(h => !dir('connect-src').includes(h)) });
+
+  /* The one exception: www.google.com is only the how-to search link, an <a target="_blank">. A
+     top-level navigation is outside every fetch directive, so connect-src has no say in it. */
+  const NAVIGATION_ONLY = ['https://www.google.com'];
+  const named = [...new Set((scriptBody.match(/\b(?:https|wss):\/\/[a-z0-9.-]+/gi) || []).map(s => s.toLowerCase()))];
+  const drift = named.filter(o => !dir('connect-src').includes(o) && !NAVIGATION_ONLY.includes(o));
+  ok('CSP-03: every https origin the inline script names is in connect-src, except the navigation-only search link',
+     named.length > 0 && drift.length === 0, { drift, named });
+
+  /* On Android, iOS and Safari the auth SDK opens a hidden iframe on authDomain at start-up. */
+  const authDomain = (/authDomain:\s*"([^"]+)"/.exec(scriptBody) || [])[1];
+  const handler = authDomain ? 'https://' + authDomain + '/__/auth/' : null;
+  const frameSrc = dir('frame-src');
+  ok('CSP-03: frame-src allows only the auth handler path on firebaseConfig.authDomain (D-10)',
+     !!handler && frameSrc.length > 0 && frameSrc.every(t => t.startsWith(handler)) && frameSrc.includes(handler),
+     { authDomain, frameSrc });
+
+  /* No whole-host source: a host serves more than the one file we want from it. The two auth
+     loader paths are the scripts the SDK injects on phones, signed in or not. */
+  const urlSources = dir('script-src').filter(t => /^https:\/\//i.test(t));
+  const unpathed = urlSources.filter(t => !/^https:\/\/[^/]+\/./i.test(t));
+  const AUTH_LOADER = ['https://apis.google.com/js/api.js', 'https://apis.google.com/_/scs/abc-static/'];
+  ok('CSP-03: every URL source in script-src is path-restricted, and the mobile auth loader paths are allowed (D-10)',
+     urlSources.length > 0 && unpathed.length === 0 && AUTH_LOADER.every(t => dir('script-src').includes(t)),
+     { unpathed, missing: AUTH_LOADER.filter(t => !dir('script-src').includes(t)) });
+
+  /* Deliberate: the markup carries inline style= attributes, and removing them is a deferred idea. */
+  ok("CSP-04: style-src keeps 'self' and 'unsafe-inline', on purpose",
+     dir('style-src').includes("'self'") && dir('style-src').includes("'unsafe-inline'"), dir('style-src'));
+
+  /* 'self' would admit every repo on the same github.io host; 'strict-dynamic' would make browsers
+     ignore the SDK path and block the SDK tags. */
+  const FORBIDDEN = ["'unsafe-inline'", "'unsafe-eval'", "'unsafe-hashes'", "'strict-dynamic'", "'self'", "'wasm-unsafe-eval'"];
+  const badScript = dir('script-src').filter(t => FORBIDDEN.includes(t.toLowerCase()) || t.includes('*') || isScheme(t));
+  ok("CSP: script-src has no unsafe keyword, no 'strict-dynamic', no 'self', no wildcard and no bare scheme",
+     !polErr && dir('script-src').length > 0 && badScript.length === 0, badScript);
+
+  const loose = [];
+  Object.keys(pol).forEach(d => pol[d].forEach(t => {
+    const allowedScheme = (d === 'img-src' && t.toLowerCase() === 'data:') || (d === 'manifest-src' && t.toLowerCase() === 'blob:');
+    if(t.includes('*') || (isScheme(t) && !allowedScheme)) loose.push(d + ' ' + t);
+  }));
+  ok('CSP: no directive uses a wildcard, and bare schemes appear only as data: in img-src and blob: in manifest-src',
+     !polErr && Object.keys(pol).length > 0 && loose.length === 0, loose);
+
+  const NONE = ['default-src', 'object-src', 'base-uri', 'form-action'];
+  ok("D-02: default-src, object-src, base-uri and form-action are exactly 'none'",
+     NONE.every(d => JSON.stringify(dir(d)) === JSON.stringify(["'none'"])),
+     NONE.filter(d => JSON.stringify(dir(d)) !== JSON.stringify(["'none'"])));
+
+  /* These do nothing in a <meta> policy. Present, they read as protection that does not exist. */
+  const IGNORED = ['frame-ancestors', 'report-uri', 'report-to', 'sandbox'];
+  ok('D-02: no directive a meta policy ignores (frame-ancestors, report-uri, report-to, sandbox)',
+     !polErr && !IGNORED.some(d => d in pol), IGNORED.filter(d => d in pol));
+
+  ok("D-01: img-src covers 'self' and data:, manifest-src blob:, worker-src 'self'",
+     dir('img-src').includes("'self'") && dir('img-src').includes('data:') &&
+     dir('manifest-src').includes('blob:') && dir('worker-src').includes("'self'"),
+     { img: dir('img-src'), manifest: dir('manifest-src'), worker: dir('worker-src') });
+
+  /* CLAUDE.md is how the next person learns the hash exists. It must name the command package.json
+     actually defines, not one that was renamed out from under it. */
+  const pkgScripts = JSON.parse(fs.readFileSync(path.join(path.dirname(APP_PATH), 'package.json'), 'utf8')).scripts || {};
+  const hashKey = Object.keys(pkgScripts).find(k => pkgScripts[k] === 'node scripts/csp-hash.js');
+  const claudeMd = fs.readFileSync(APP_PATH.replace(/index\.html$/, 'CLAUDE.md'), 'utf8');
+  ok('CSP-07: CLAUDE.md names the regeneration command package.json defines',
+     !!hashKey && claudeMd.includes('npm run ' + hashKey), { hashKey });
 }
 
 /* ── DRAFT: every draft edit stays on this device and survives a reopen (Phase 4, DRAFT-05/D-09) ──
