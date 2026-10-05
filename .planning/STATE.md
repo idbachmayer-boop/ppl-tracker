@@ -5,10 +5,10 @@ milestone_name: milestone
 current_phase: 07
 current_phase_name: content-security-policy
 status: executing
-stopped_at: Completed 07-04-PLAN.md
-last_updated: "2026-10-05T09:42:43.733Z"
+stopped_at: 07-05 Task 3 failed (live manifest-src violation); revert of ebc5723 recommended, awaiting Ian
+last_updated: "2026-10-05T11:49:19.094Z"
 last_activity: 2026-10-05
-last_activity_desc: 07-02 complete (stamp move live alone, D-09 gate passed)
+last_activity_desc: 07-05 Task 3 failed (live manifest-src CSP violation), revert of ebc5723 recommended
 progress:
   total_phases: 7
   completed_phases: 6
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 
 Phase: 07 (content-security-policy) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Blocked — 07-05 Task 3 failed, revert of ebc5723 recommended (Ian decides)
 Last activity: 2026-10-05 — 07-02 complete: stamp move live alone on main (58d8988), D-09 gate passed
 
 Progress: [██████████] 97%
@@ -177,6 +177,7 @@ Recent decisions affecting current work:
 - [Phase 1]: The planner's two flagged items are resolved — SLEEP-02 confirmed (2026-09-12), REG-14 deletion deferred by Ian (2026-09-14; see Decisions and Pending Todos). The planner also documented a pre-existing gap: the three date-keyed map collections are not order-independent across three devices, because a day carries no timestamp of its own. Plan 01-04 records it and does not change behaviour.
 - [Phase 1]: Shipping SCHEMA 18 is one-way — the cloud copy is stamped 18 and older builds refuse to sync. No plan pushes to `main`; the code goes through a PR after the phase.
 - [Phase 7]: A CSP that blocks `gstatic.com` fails silently — the app keeps working on localStorage with cloud sync dead and no visible error. Verify sync explicitly after the policy ships.
+- 07-05 Task 3 FAILED: live URL shows one CSP violation (manifest-src blocks the <link rel=manifest href="#"> placeholder fetch of the page URL). Bytes/policy/stamp checks pass; app boots, SW ready. Plan rule: revert ebc5723 on main (git revert --no-edit ebc57234a496f73df95e828a57412c44ddb52031, push). Ian decides; executor reverted nothing.
 
 ## Deferred Items
 
@@ -190,6 +191,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-05T09:42:43.710Z
-Stopped at: Completed 07-04-PLAN.md
-Resume file: None
+Last session: 2026-10-05T11:49:19.069Z
+Stopped at: 07-05 Task 3 failed (live manifest-src violation); revert of ebc5723 recommended, awaiting Ian
+Resume file: .planning/phases/07-content-security-policy/07-05-SUMMARY.md
