@@ -235,7 +235,7 @@ Plans:
   4. After the policy is live, cloud sync is confirmed working by an actual sync check (e.g., a round-trip write observed in Firestore), never merely assumed because the app loads normally (CSP-06).
   5. `CLAUDE.md` documents the manual hash-regeneration command, so a future edit to the inline script cannot silently break the policy (CSP-07).
 
-**Plans**: 2/5 plans executed
+**Plans**: 3/5 plans executed
 
 Plans:
 **Wave 1**
@@ -244,7 +244,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 07-02-PLAN.md — The stamp move ships alone: Ian pushes it, confirms Settings → This version on the PC and the phone, and the live bytes prove the script is untouched (D-09; human-action gate)
+- [x] 07-02-PLAN.md — The stamp move ships alone: Ian pushes it, confirms Settings → This version on the PC and the phone, and the live bytes prove the script is untouched (D-09; human-action gate)
 - [x] 07-03-PLAN.md — Zero-dependency `scripts/csp-hash.js` with `npm run csp:hash` / `csp:check`, pinned to Chrome's own hash and CRLF-safe; inert until the CSP lands (D-03, D-04, D-05)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -270,4 +270,4 @@ Phase 5 completes.
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
 | 5. F2 — Event Delegation | 6/6 | Complete    | 2026-10-01 |
 | 6. F4 — .gitattributes | 2/2 | In Progress|  |
-| 7. Content Security Policy | 2/5 | In Progress|  |
+| 7. Content Security Policy | 3/5 | In Progress|  |
