@@ -235,7 +235,7 @@ Plans:
   4. After the policy is live, cloud sync is confirmed working by an actual sync check (e.g., a round-trip write observed in Firestore), never merely assumed because the app loads normally (CSP-06).
   5. `CLAUDE.md` documents the manual hash-regeneration command, so a future edit to the inline script cannot silently break the policy (CSP-07).
 
-**Plans**: 3/5 plans executed
+**Plans**: 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -249,7 +249,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 07-04-PLAN.md — Tracer: the CSP ships as one revertable commit (policy, property checks, deploy `--check`, CLAUDE.md note); every guard red-proven, zero violations in Chrome on desktop and Android UAs, revert rehearsed green (CSP-01..05, CSP-07; D-01, D-02, D-06, D-07, D-10)
+- [x] 07-04-PLAN.md — Tracer: the CSP ships as one revertable commit (policy, property checks, deploy `--check`, CLAUDE.md note); every guard red-proven, zero violations in Chrome on desktop and Android UAs, revert rehearsed green (CSP-01..05, CSP-07; D-01, D-02, D-06, D-07, D-10)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -270,4 +270,4 @@ Phase 5 completes.
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
 | 5. F2 — Event Delegation | 6/6 | Complete    | 2026-10-01 |
 | 6. F4 — .gitattributes | 2/2 | In Progress|  |
-| 7. Content Security Policy | 3/5 | In Progress|  |
+| 7. Content Security Policy | 4/5 | In Progress|  |

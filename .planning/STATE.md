@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 07
 current_phase_name: content-security-policy
 status: executing
-stopped_at: Completed 07-02-PLAN.md
-last_updated: "2026-10-05T09:28:54.296Z"
+stopped_at: Completed 07-04-PLAN.md
+last_updated: "2026-10-05T09:42:43.733Z"
 last_activity: 2026-10-05
 last_activity_desc: 07-02 complete (stamp move live alone, D-09 gate passed)
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 31
-  completed_plans: 29
+  completed_plans: 30
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 ## Current Position
 
 Phase: 07 (content-security-policy) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-10-05 — 07-02 complete: stamp move live alone on main (58d8988), D-09 gate passed
 
-Progress: [█████████░] 94%
+Progress: [██████████] 97%
 
 ## Performance Metrics
 
@@ -90,6 +90,7 @@ Progress: [█████████░] 94%
 | Phase 07 P01 | 5min | 2 tasks | 4 files |
 | Phase 07 P03 | 10 min | 2 tasks | 3 files |
 | Phase 07 P02 | ~15min executor (spans 2026-10-02..05, waiting on Ian) | 3 tasks | 0 files |
+| Phase 07 P04 | 12 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -163,6 +164,8 @@ Recent decisions affecting current work:
 - [Phase 07]: 07-03: csp-hash CLI refuses any flag but --check, so a typo never falls through to the rewrite
 - [Phase 07]: 07-03: --check reports two sha256 tokens as ambiguous (found 2), not stale, since csp:hash refuses that page
 - [Phase 07]: 07-02: stamp move shipped alone as merge commit 58d8988 (PR #10); PC and phone read 58d8988; live inline script byte-identical to repo, so the D-09 gate is passed and CSP code may be pushed
+- [Phase 7, plan 07-04]: the CSP ships as one commit ebc5723 (revert target); policy exactly as RESEARCH verified, with hash-only script-src plus exact SDK and mobile auth-loader paths
+- [Phase 7, plan 07-04]: the headless-Chrome service-worker abort is Windows path length in the Chrome profile (212+ chars aborts), not CSP; probes need a short --user-data-dir
 
 ### Pending Todos
 
@@ -187,6 +190,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-05T09:28:54.270Z
-Stopped at: Completed 07-02-PLAN.md
+Last session: 2026-10-05T09:42:43.710Z
+Stopped at: Completed 07-04-PLAN.md
 Resume file: None
