@@ -235,7 +235,7 @@ Plans:
   4. After the policy is live, cloud sync is confirmed working by an actual sync check (e.g., a round-trip write observed in Firestore), never merely assumed because the app loads normally (CSP-06).
   5. `CLAUDE.md` documents the manual hash-regeneration command, so a future edit to the inline script cannot silently break the policy (CSP-07).
 
-**Plans**: 4/5 plans executed
+**Plans**: 7 plans (4 complete; 07-05 failed and reverted; 07-06 and 07-07 close the gap)
 
 Plans:
 **Wave 1**
@@ -253,7 +253,15 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 07-05-PLAN.md — Go-live: pre-flight against the live stamp-only build, Ian's CSP-05 DevTools pass and push, live `--check` and live-URL probes; CSP-06 signed-in round trip queued with revert-on-failure (human-action gate)
+- [ ] 07-05-PLAN.md — Go-live: pre-flight against the live stamp-only build, Ian's CSP-05 DevTools pass and push, live `--check` and live-URL probes; CSP-06 signed-in round trip queued with revert-on-failure (human-action gate). Failed at Task 3 (live manifest-src violation); CSP reverted on main (a122a2e); closed by 07-06/07-07
+
+**Wave 5** *(gap closure; blocked on Wave 4)*
+
+- [ ] 07-06-PLAN.md — Tracer: reproduce the live manifest-src violation on localhost (split delivery), drop the manifest link's href with a suite check refusing it back, then re-apply the CSP as its own commit patch-identical to ebc5723; Chrome proofs at both delivery speeds, stamped copy, revert rehearsal that keeps the fix (CSP-01..05, CSP-07; D-01..D-07)
+
+**Wave 6** *(gap closure; blocked on Wave 5)*
+
+- [ ] 07-07-PLAN.md — Re-run the go-live: pre-flight (main unmoved, tip clean at both speeds), Ian's DevTools pass with a throttled reload and push, live `--check` plus probes of both live URLs requiring zero violations; CSP-06 round trip queued, revert of the new CSP commit on failure (human-action gate)
 
 ## Progress
 
@@ -270,4 +278,4 @@ Phase 5 completes.
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
 | 5. F2 — Event Delegation | 6/6 | Complete    | 2026-10-01 |
 | 6. F4 — .gitattributes | 2/2 | In Progress|  |
-| 7. Content Security Policy | 4/5 | In Progress|  |
+| 7. Content Security Policy | 4/7 | In Progress|  |
