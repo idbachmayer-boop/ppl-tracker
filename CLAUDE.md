@@ -15,11 +15,6 @@ A red suite blocks the deploy in CI. Run it locally first anyway — the feedbac
 failure names the behaviour that broke. Add checks for what you change; the suite is the only thing
 standing between a refactor and two months of training data.
 
-If you changed the inline `<script>` in `index.html` at all, even whitespace, run `npm run csp:hash`
-first. The Content-Security-Policy pins that script by sha256, and a stale hash makes every browser
-refuse to run it: a blank app everywhere, the phone included. `npm test` fails and names the command
-when the hash is stale.
-
 ## Rules that exist because breaking them cost real data
 
 **Sync is a union merge, never an overwrite.** On 2026-07-25 a stale device blind-wrote the cloud and
@@ -86,21 +81,6 @@ new draft function calls `save()`.
   `git status` reports clean. The only rewrite that works is
   `git rm -r --cached -q . && git reset -q --hard`, run from a tree with no tracked changes. Park
   uncommitted work in a commit first, never in the shared stash.
-- **Content-Security-Policy:** a `<meta>` policy right after `<meta charset>`, built up from
-  `default-src 'none'`. `script-src` is the inline script's sha256 plus exact paths only: the
-  Firebase SDK's version path, and the two Google auth-loader paths the SDK fetches on phones.
-  `npm run csp:hash` rewrites the hash, `npm run csp:check` verifies it, and the deploy job runs the
-  check after stamping and never computes a hash. The build stamp lives in `<meta name="ppl-build">`,
-  never in the script, because anything that rewrites the script after hashing blanks the app.
-  `style-src` keeps `'unsafe-inline'` on purpose: the markup carries inline `style=` attributes, and
-  removing them is out of scope (CSP-04). Each of these needs a policy change and a re-run of the
-  headless probe on a desktop and an Android user agent
-  (`.planning/phases/07-content-security-policy/07-RESEARCH.md` § Code Examples): a Firebase SDK
-  version bump (the suite fails until the path matches), a new fetch host (the suite fails), and
-  enabling reCAPTCHA Enterprise for email/password or adding Google sign-in in the Firebase console.
-  That last one makes sign-in load a `www.google.com` script the policy blocks, and no test can see
-  a console change. The suite asserts parsed directives, never the policy's wording. Rollback is
-  reverting the CSP commit, never the stamp move, and never a hotfix forward when sync breaks.
 - **Icons:** Phosphor, inlined in the `PH` map. No CDN, no web font — offline-first. Emoji stay where
   they mark something logged, typed or celebrated.
 - **Theme:** "Nocturne". Colours come from the `:root` custom properties; don't hard-code hex.
