@@ -1,4 +1,4 @@
-REVERT NOW: git revert --no-edit ebc57234a496f73df95e828a57412c44ddb52031 on main, then push
+REVERTED 2026-10-06: Ian ran git revert of ebc5723 on main (a122a2e); live site has no CSP, stamp a122a2e
 
 ---
 phase: 07-content-security-policy
@@ -420,3 +420,10 @@ never hotfix forward.
 
 - SUMMARY exists at the plan path; commits fb2f718, ebc5723 and 443d781 (MAIN, the merge commit; also confirmed via the GitHub API) all resolve. Nothing was fetched into this checkout.
 - Task 3 itself FAILED its pass criteria (one live manifest-src violation); the self-check covers the record, not the outcome.
+
+## Revert executed (D-06)
+
+- 2026-10-06: Ian chose the plan's rule (Option A) and ran `git revert --no-edit ebc57234a496f73df95e828a57412c44ddb52031` on `main`, pushed as `a122a2e`.
+- Deploy run 37459352872 finished green. The live page now has 0 CSP metas and stamp `2026-10-06T11:53:14Z a122a2e`. The stamp move stayed live.
+- The phase branch merged `main` back (2aef531), so it carries the revert. Suite there: 908 passed, 0 failed, 2 skipped (the pre-CSP count). `scripts/csp-hash.js` and its tests remain.
+- Re-ship needs a gap-closure plan: fix the `<link rel="manifest" href="#">` placeholder (index.html:12) so no non-blob manifest fetch happens before the script swaps in the blob, add a suite check for it, add a live-URL probe step before go-live is judged, then reinstate the policy as a new single revertable commit.

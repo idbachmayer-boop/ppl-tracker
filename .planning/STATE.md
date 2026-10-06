@@ -29,8 +29,8 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 
 Phase: 07 (content-security-policy) — EXECUTING
 Plan: 5 of 5
-Status: Blocked — 07-05 Task 3 failed, revert of ebc5723 recommended (Ian decides)
-Last activity: 2026-10-05 — 07-02 complete: stamp move live alone on main (58d8988), D-09 gate passed
+Status: Gaps — CSP reverted on main 2026-10-06 (a122a2e) after a live manifest-src violation; needs gap-closure plan before re-ship
+Last activity: 2026-10-06 — CSP reverted on main (a122a2e); stamp move stays live
 
 Progress: [██████████] 97%
 
@@ -177,6 +177,7 @@ Recent decisions affecting current work:
 - [Phase 1]: The planner's two flagged items are resolved — SLEEP-02 confirmed (2026-09-12), REG-14 deletion deferred by Ian (2026-09-14; see Decisions and Pending Todos). The planner also documented a pre-existing gap: the three date-keyed map collections are not order-independent across three devices, because a day carries no timestamp of its own. Plan 01-04 records it and does not change behaviour.
 - [Phase 1]: Shipping SCHEMA 18 is one-way — the cloud copy is stamped 18 and older builds refuse to sync. No plan pushes to `main`; the code goes through a PR after the phase.
 - [Phase 7]: A CSP that blocks `gstatic.com` fails silently — the app keeps working on localStorage with cloud sync dead and no visible error. Verify sync explicitly after the policy ships.
+- [Phase 7]: 2026-10-05 the live CSP blocked the early fetch of `<link rel="manifest" href="#">` (manifest-src blob: only); localhost checks never saw it. Reverted 2026-10-06. Re-ship must fix the placeholder and probe the live URL before judging go-live.
 - 07-05 Task 3 FAILED: live URL shows one CSP violation (manifest-src blocks the <link rel=manifest href="#"> placeholder fetch of the page URL). Bytes/policy/stamp checks pass; app boots, SW ready. Plan rule: revert ebc5723 on main (git revert --no-edit ebc57234a496f73df95e828a57412c44ddb52031, push). Ian decides; executor reverted nothing.
 
 ## Deferred Items
