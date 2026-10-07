@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 07
 current_phase_name: content-security-policy
 status: executing
-stopped_at: 07-05 Task 3 failed (live manifest-src violation); revert of ebc5723 recommended, awaiting Ian
-last_updated: "2026-10-05T11:49:19.094Z"
-last_activity: 2026-10-05
-last_activity_desc: 07-05 Task 3 failed (live manifest-src CSP violation), revert of ebc5723 recommended
+stopped_at: Completed 07-06-PLAN.md
+last_updated: "2026-10-07T12:29:29.934Z"
+last_activity: 2026-10-07
+last_activity_desc: 07-06 executed (manifest fix cbf17b5, CSP re-applied 643c628); 07-07 go-live next
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 31
-  completed_plans: 30
+  total_plans: 33
+  completed_plans: 32
 ---
 
 # Project State
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 ## Current Position
 
 Phase: 07 (content-security-policy) — EXECUTING
-Plan: 5 of 5
-Status: Gaps — CSP reverted on main 2026-10-06 (a122a2e) after a live manifest-src violation; needs gap-closure plan before re-ship
-Last activity: 2026-10-06 — CSP reverted on main (a122a2e); stamp move stays live
+Plan: 6 of 7
+Status: 07-06 done — manifest fix cbf17b5 and CSP re-applied as 643c628 (patch-identical to ebc5723); 07-07 go-live next
+Last activity: 2026-10-07 — 07-06 executed: manifest href removed, CSP re-applied locally, split-delivery probes clean
 
 Progress: [██████████] 97%
 
@@ -91,6 +91,7 @@ Progress: [██████████] 97%
 | Phase 07 P03 | 10 min | 2 tasks | 3 files |
 | Phase 07 P02 | ~15min executor (spans 2026-10-02..05, waiting on Ian) | 3 tasks | 0 files |
 | Phase 07 P04 | 12 min | 2 tasks | 4 files |
+| Phase 07 P06 | 13min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -166,6 +167,8 @@ Recent decisions affecting current work:
 - [Phase 07]: 07-02: stamp move shipped alone as merge commit 58d8988 (PR #10); PC and phone read 58d8988; live inline script byte-identical to repo, so the D-09 gate is passed and CSP code may be pushed
 - [Phase 7, plan 07-04]: the CSP ships as one commit ebc5723 (revert target); policy exactly as RESEARCH verified, with hash-only script-src plus exact SDK and mobile auth-loader paths
 - [Phase 7, plan 07-04]: the headless-Chrome service-worker abort is Windows path length in the Chrome profile (212+ chars aborts), not CSP; probes need a short --user-data-dir
+- [Phase 7, plan 07-06]: the manifest link carries no href (cbf17b5, survives a CSP revert); the CSP is re-applied as 643c628, patch-identical to ebc5723 (patch-id 299764c8), the new revert target
+- [Phase 7, plan 07-06]: CSP checks must include split delivery (SLOW_MS=3000) on desktop and Android; localhost one-write delivery hides fetches that race the inline script
 
 ### Pending Todos
 
@@ -177,8 +180,7 @@ Recent decisions affecting current work:
 - [Phase 1]: The planner's two flagged items are resolved — SLEEP-02 confirmed (2026-09-12), REG-14 deletion deferred by Ian (2026-09-14; see Decisions and Pending Todos). The planner also documented a pre-existing gap: the three date-keyed map collections are not order-independent across three devices, because a day carries no timestamp of its own. Plan 01-04 records it and does not change behaviour.
 - [Phase 1]: Shipping SCHEMA 18 is one-way — the cloud copy is stamped 18 and older builds refuse to sync. No plan pushes to `main`; the code goes through a PR after the phase.
 - [Phase 7]: A CSP that blocks `gstatic.com` fails silently — the app keeps working on localStorage with cloud sync dead and no visible error. Verify sync explicitly after the policy ships.
-- [Phase 7]: 2026-10-05 the live CSP blocked the early fetch of `<link rel="manifest" href="#">` (manifest-src blob: only); localhost checks never saw it. Reverted 2026-10-06. Re-ship must fix the placeholder and probe the live URL before judging go-live.
-- 07-05 Task 3 FAILED: live URL shows one CSP violation (manifest-src blocks the <link rel=manifest href="#"> placeholder fetch of the page URL). Bytes/policy/stamp checks pass; app boots, SW ready. Plan rule: revert ebc5723 on main (git revert --no-edit ebc57234a496f73df95e828a57412c44ddb52031, push). Ian decides; executor reverted nothing.
+- [Phase 7]: 07-06 fixed the manifest cause (MANIFEST_SHA cbf17b5: the manifest link has no href; suite refuses one) and re-applied the CSP (CSP_SHA2 643c628, patch-identical to ebc5723, the new revert target). Clean in Chrome with split delivery on desktop and Android. Waiting on 07-07's go-live (push, live-URL probe, CSP-06 round trip).
 
 ## Deferred Items
 
@@ -192,6 +194,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-05T11:49:19.069Z
-Stopped at: 07-05 Task 3 failed (live manifest-src violation); revert of ebc5723 recommended, awaiting Ian
-Resume file: .planning/phases/07-content-security-policy/07-05-SUMMARY.md
+Last session: 2026-10-07T12:29:29.904Z
+Stopped at: Completed 07-06-PLAN.md
+Resume file: None
