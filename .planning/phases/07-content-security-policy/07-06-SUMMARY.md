@@ -274,3 +274,9 @@ None. No new network endpoint, auth path or trust-boundary surface was added. Th
 - CSP-05: the human DevTools pass and the live-URL probe after deploy (URL mode, desktop and Android).
 - CSP-06: the signed-in round trip. The signed-out probes cannot reach identitytoolkit, securetoken or Firestore.
 - The push, PR and merge. Nothing here was pushed, and `main` was not touched.
+
+## Self-Check: PASSED
+
+- Commits found: cbf17b5, 643c628, 2927c00 (and the docs commit 204792e).
+- Files found: index.html, test/app.test.js, 07-RESEARCH.md, this SUMMARY.
+- Final tree: `928 passed, 0 failed, 2 skipped`; `npm run csp:check` OK with ebc5723's token; `git diff --name-only 643c628 HEAD` lists only `.planning/` paths.
