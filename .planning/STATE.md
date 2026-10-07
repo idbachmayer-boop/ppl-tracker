@@ -11,9 +11,9 @@ last_activity: 2026-10-07
 last_activity_desc: 07-06 executed (manifest fix cbf17b5, CSP re-applied 643c628); 07-07 go-live next
 progress:
   total_phases: 7
-  completed_phases: 7
+  completed_phases: 6
   total_plans: 33
-  completed_plans: 33
+  completed_plans: 32
 ---
 
 # Project State
