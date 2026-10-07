@@ -3355,6 +3355,33 @@ console.log('\n── Build stamp ──');
      a.viewData().includes('Local copy, not a deployed build'));
 }
 
+/* ── PWA manifest: no fetch can race the inline script ──
+   In 07-05 the CSP went live and the live site logged one violation. The manifest link's static
+   href="#" resolved to the page's own URL, Chrome fetched it while the inline script was still
+   arriving, and `manifest-src blob:` blocked it. Localhost never showed it, because there the whole
+   file arrives at once and the script has already swapped in the blob. So the link carries no href in
+   the markup, and the inline script gives it the blob: URL at boot: the only manifest the browser
+   ever fetches. These checks live outside the CSP block on purpose, so the fix and its guard stay if
+   the CSP commit is ever reverted. */
+console.log('\n── PWA manifest: no fetch can race the inline script ──');
+{
+  const relOf = tag => { const m = /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(tag);
+    return m ? (m[1] ?? m[2] ?? m[3]).split(/\s+/).map(s => s.toLowerCase()) : []; };
+  const manifestLinks = [...rawHtml.matchAll(/<link\b[^>]*>/gi)].map(mm => mm[0]).filter(t => relOf(t).includes('manifest'));
+  ok('MANIFEST: exactly one <link rel="manifest">, and it has no href, so nothing is fetched as a manifest before the inline script supplies one (07-05)',
+     manifestLinks.length === 1 && manifestLinks.every(t => !/\shref\s*=/i.test(t)), manifestLinks);
+
+  /* The link the markup leaves empty must be the one the script fills: read its id from the markup,
+     never from here. */
+  const idm = manifestLinks.length ? /\bid\s*=\s*"([^"]+)"/i.exec(manifestLinks[0]) : null;
+  const id = idm ? idm[1] : null;
+  let href = null, threw = null;
+  if(id){ try{ href = loadApp(APP_PATH).__sandbox.document.getElementById(id).href; }catch(e){ threw = e.message; } }
+  ok('MANIFEST: at boot the inline script gives that link a blob: URL',
+     !threw && !!id && typeof href === 'string' && href.startsWith('blob:'),
+     threw || (id ? { id, href } : { id: null, href: null }));
+}
+
 /* ── CSP hash tool: the command that keeps the policy's script hash honest (D-03, D-04, D-05) ──
    Phase 7's Content-Security-Policy pins the one inline script by its sha256, so a single changed
    byte in that script blanks the app on every device until the hash is regenerated. These checks pin
