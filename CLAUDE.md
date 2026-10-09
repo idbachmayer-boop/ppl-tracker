@@ -164,7 +164,7 @@ contract, the hand-written UI pattern, and the test walkthrough.
 ## After shipping
 
 Append a dated entry to the changelog in Ian's vault at
-`C:\Main Vault\50-59 Projects & Events\56. Software Projects\PPL Tracker App.md`,
+`C:\Main Vault\50-59 Projects & Events\53. Software Projects\PPL Tracker App.md`,
 and update its **Current Features** section when the change is structural. Write for a human skimming
 later: what changed and why it matters, not how the code does it.
 
