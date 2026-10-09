@@ -235,7 +235,7 @@ Plans:
   4. After the policy is live, cloud sync is confirmed working by an actual sync check (e.g., a round-trip write observed in Firestore), never merely assumed because the app loads normally (CSP-06).
   5. `CLAUDE.md` documents the manual hash-regeneration command, so a future edit to the inline script cannot silently break the policy (CSP-07).
 
-**Plans**: 6/7 plans executed (07-01..04 and 07-06 complete; 07-05 failed and reverted; 07-07 ships the re-ship)
+**Plans**: 7/7 plans executed (07-01..04, 07-06 and 07-07 complete; 07-05 failed at Task 3 and was closed by 07-06/07-07; CSP live on main as f71c6e4, CSP-06 round trip pending as UAT)
 
 Plans:
 **Wave 1**
@@ -261,7 +261,7 @@ Plans:
 
 **Wave 6** *(gap closure; blocked on Wave 5)*
 
-- [ ] 07-07-PLAN.md — Re-run the go-live: pre-flight (main unmoved, tip clean at both speeds), Ian's DevTools pass with a throttled reload and push, live `--check` plus probes of both live URLs requiring zero violations; CSP-06 round trip queued, revert of the new CSP commit on failure (human-action gate)
+- [x] 07-07-PLAN.md — Re-run the go-live: pre-flight (main unmoved, tip clean at both speeds), Ian's DevTools pass with a throttled reload and push, live `--check` plus probes of both live URLs requiring zero violations; CSP-06 round trip queued, revert of the new CSP commit on failure (human-action gate)
 
 ## Progress
 
@@ -278,4 +278,4 @@ Phase 5 completes.
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
 | 5. F2 — Event Delegation | 6/6 | Complete    | 2026-10-01 |
 | 6. F4 — .gitattributes | 2/2 | In Progress|  |
-| 7. Content Security Policy | 6/7 | In Progress|  |
+| 7. Content Security Policy | 7/7 | In Progress|  |

@@ -350,3 +350,10 @@ None. This plan changes no repo files outside `.planning/`.
 ## Threat Flags
 
 None. No new surface; every check was a read-only GET or a signed-out headless load.
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/07-content-security-policy/07-07-SUMMARY.md`
+- FOUND (local): `bfa22f9`, `bf0bc94` (Task 1 records), `32795de` (Task 3 record), `643c628` (CSP_SHA2), `cbf17b5` (MANIFEST_SHA)
+- FOUND (remote, `gh api`): `f71c6e4` (the merge commit on `main`; not fetched locally, by design)
+- No `REVERT NOW` line: every Task 3 criterion passed.

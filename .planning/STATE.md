@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 07
 current_phase_name: content-security-policy
 status: executing
-stopped_at: "07-07 Task 2 checkpoint: awaiting Ian's DevTools pass (throttled reload), push, PR and merge of the CSP re-ship"
-last_updated: "2026-10-07T12:35:03.607Z"
-last_activity: 2026-10-07
-last_activity_desc: 07-06 executed (manifest fix cbf17b5, CSP re-applied 643c628); 07-07 go-live next
+stopped_at: Completed 07-07-PLAN.md; CSP-06 signed-in round trip pending as end-of-phase UAT
+last_updated: "2026-10-09T12:49:59.537Z"
+last_activity: 2026-10-09
+last_activity_desc: 07-07 executed; CSP live on main (f71c6e4, PR #12), live probes clean; CSP-06 round trip pending as UAT
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 33
-  completed_plans: 32
+  completed_plans: 33
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 ## Current Position
 
 Phase: 07 (content-security-policy) — EXECUTING
-Plan: 6 of 7
-Status: 07-06 done — manifest fix cbf17b5 and CSP re-applied as 643c628 (patch-identical to ebc5723); 07-07 go-live next
-Last activity: 2026-10-07 — 07-06 executed: manifest href removed, CSP re-applied locally, split-delivery probes clean
+Plan: 7 of 7
+Status: 07-07 done — the CSP is live on main (merge commit f71c6e4, PR #12); live bytes and both live URLs clean on desktop and Android. All 7 plans executed; phase awaits the CSP-06 signed-in round trip (end-of-phase UAT) and verification
+Last activity: 2026-10-09 — 07-07 executed: deploy --check green, live --check OK, four live-URL probes with 0 violations and one page fetch
 
-Progress: [██████████] 97%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -92,6 +92,7 @@ Progress: [██████████] 97%
 | Phase 07 P02 | ~15min executor (spans 2026-10-02..05, waiting on Ian) | 3 tasks | 0 files |
 | Phase 07 P04 | 12 min | 2 tasks | 4 files |
 | Phase 07 P06 | 13min | 3 tasks | 5 files |
+| Phase 07 P07 | ~9min executor (spans 2026-10-07..09, waiting on Ian) | 3 tasks | 0 files |
 
 ## Accumulated Context
 
@@ -169,6 +170,7 @@ Recent decisions affecting current work:
 - [Phase 7, plan 07-04]: the headless-Chrome service-worker abort is Windows path length in the Chrome profile (212+ chars aborts), not CSP; probes need a short --user-data-dir
 - [Phase 7, plan 07-06]: the manifest link carries no href (cbf17b5, survives a CSP revert); the CSP is re-applied as 643c628, patch-identical to ebc5723 (patch-id 299764c8), the new revert target
 - [Phase 7, plan 07-06]: CSP checks must include split delivery (SLOW_MS=3000) on desktop and Android; localhost one-write delivery hides fetches that race the inline script
+- [Phase 7, plan 07-07]: the CSP is live on main as merge commit f71c6e4 (PR #12); live bytes pass --check with CSP_SHA2's policy, and both live URLs are clean in Chrome on desktop and Android with one page fetch and a blob: manifest
 
 ### Pending Todos
 
@@ -180,7 +182,7 @@ Recent decisions affecting current work:
 - [Phase 1]: The planner's two flagged items are resolved — SLEEP-02 confirmed (2026-09-12), REG-14 deletion deferred by Ian (2026-09-14; see Decisions and Pending Todos). The planner also documented a pre-existing gap: the three date-keyed map collections are not order-independent across three devices, because a day carries no timestamp of its own. Plan 01-04 records it and does not change behaviour.
 - [Phase 1]: Shipping SCHEMA 18 is one-way — the cloud copy is stamped 18 and older builds refuse to sync. No plan pushes to `main`; the code goes through a PR after the phase.
 - [Phase 7]: A CSP that blocks `gstatic.com` fails silently — the app keeps working on localStorage with cloud sync dead and no visible error. Verify sync explicitly after the policy ships.
-- [Phase 7]: 07-06 fixed the manifest cause (MANIFEST_SHA cbf17b5: the manifest link has no href; suite refuses one) and re-applied the CSP (CSP_SHA2 643c628, patch-identical to ebc5723, the new revert target). Clean in Chrome with split delivery on desktop and Android. Waiting on 07-07's go-live (push, live-URL probe, CSP-06 round trip).
+- [Phase 7]: 07-06 fixed the manifest cause (MANIFEST_SHA cbf17b5: the manifest link has no href; suite refuses one) and re-applied the CSP (CSP_SHA2 643c628, patch-identical to ebc5723, the new revert target). Clean in Chrome with split delivery on desktop and Android. 07-07 took it live: main f71c6e4 (PR #12), live --check OK, both live URLs clean on desktop and Android. Only the CSP-06 signed-in round trip on Ian's PC and phone remains; on failure revert 643c628 on main, never hotfix forward.
 
 ## Deferred Items
 
@@ -194,6 +196,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-07T12:35:03.582Z
-Stopped at: 07-07 Task 2 checkpoint: awaiting Ian's DevTools pass (throttled reload), push, PR and merge of the CSP re-ship
-Resume file: .planning/phases/07-content-security-policy/07-07-PLAN.md
+Last session: 2026-10-09T12:49:59.485Z
+Stopped at: Completed 07-07-PLAN.md; CSP-06 signed-in round trip pending as end-of-phase UAT
+Resume file: None
