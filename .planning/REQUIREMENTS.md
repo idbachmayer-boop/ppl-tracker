@@ -90,7 +90,7 @@ Clean data out of the app and into Claude Desktop.
 - [x] **CSP-03**: `connect-src` covers Firebase's runtime endpoints and the weather API hosts, inventoried by hand rather than by grepping `index.html` — they are internal to the SDK and to `fetch` calls and do not appear in the file (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
 - [x] **CSP-04**: `style-src` retains `'unsafe-inline'` as a documented, deliberate decision, because inline-style removal is out of scope (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
 - [x] **CSP-05**: The policy is verified locally against a static file server with the DevTools console clean of violations before it is pushed — meta CSP has no report-only mode, so this local pass is the only pre-production check available (Ian's DevTools pass before the 07-07 push; confirmed live in 07-07: `f71c6e4`, both live URLs clean on desktop and Android)
-- [ ] **CSP-06**: Cloud sync is confirmed working after the policy is live, not assumed — a blocked Firebase script fails silently while the app keeps working on localStorage
+- [x] **CSP-06**: Cloud sync is confirmed working after the policy is live, not assumed — a blocked Firebase script fails silently while the app keeps working on localStorage (human-verified by Ian, 2026-10-09, on main `f71c6e4` with the CSP live: PC and phone both showed This version ending `f71c6e4`; after a sign-out and sign-in on the PC a test weigh-in appeared on the phone and its deletion propagated; the live DevTools console showed no Content Security Policy line on a normal and a 3G-throttled reload)
 - [x] **CSP-07**: The hash-regeneration step is documented as a manual command in `CLAUDE.md`, so a future edit to the inline script does not silently break the policy (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
 
 ## v2 Requirements
@@ -143,7 +143,7 @@ Populated during roadmap creation.
 | DRAFT-01 … DRAFT-05 | Phase 4 | Complete |
 | DELEG-01 … DELEG-07 | Phase 5 | Complete |
 | REPO-01 … REPO-02 | Phase 6 | Pending |
-| CSP-01 … CSP-07 | Phase 7 | Pending |
+| CSP-01 … CSP-07 | Phase 7 | Complete |
 
 **Coverage:**
 
