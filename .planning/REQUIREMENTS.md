@@ -85,13 +85,13 @@ Clean data out of the app and into Claude Desktop.
 
 ### Content Security Policy (CSP)
 
-- [x] **CSP-01**: A `<meta http-equiv="Content-Security-Policy">` policy ships, using a hash-based `script-src` for the inline script block (implemented in the repo by 07-04, `ebc5723`; live verification in 07-05)
-- [x] **CSP-02**: The policy allow-lists `https://www.gstatic.com` so the three Firebase SDK scripts keep loading (implemented in the repo by 07-04, `ebc5723`; live verification in 07-05)
-- [x] **CSP-03**: `connect-src` covers Firebase's runtime endpoints and the weather API hosts, inventoried by hand rather than by grepping `index.html` — they are internal to the SDK and to `fetch` calls and do not appear in the file (implemented in the repo by 07-04, `ebc5723`; live verification in 07-05)
-- [x] **CSP-04**: `style-src` retains `'unsafe-inline'` as a documented, deliberate decision, because inline-style removal is out of scope (implemented in the repo by 07-04, `ebc5723`; live verification in 07-05)
+- [x] **CSP-01**: A `<meta http-equiv="Content-Security-Policy">` policy ships, using a hash-based `script-src` for the inline script block (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
+- [x] **CSP-02**: The policy allow-lists `https://www.gstatic.com` so the three Firebase SDK scripts keep loading (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
+- [x] **CSP-03**: `connect-src` covers Firebase's runtime endpoints and the weather API hosts, inventoried by hand rather than by grepping `index.html` — they are internal to the SDK and to `fetch` calls and do not appear in the file (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
+- [x] **CSP-04**: `style-src` retains `'unsafe-inline'` as a documented, deliberate decision, because inline-style removal is out of scope (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
 - [ ] **CSP-05**: The policy is verified locally against a static file server with the DevTools console clean of violations before it is pushed — meta CSP has no report-only mode, so this local pass is the only pre-production check available
 - [ ] **CSP-06**: Cloud sync is confirmed working after the policy is live, not assumed — a blocked Firebase script fails silently while the app keeps working on localStorage
-- [x] **CSP-07**: The hash-regeneration step is documented as a manual command in `CLAUDE.md`, so a future edit to the inline script does not silently break the policy (implemented in the repo by 07-04, `ebc5723`; live verification in 07-05)
+- [x] **CSP-07**: The hash-regeneration step is documented as a manual command in `CLAUDE.md`, so a future edit to the inline script does not silently break the policy (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
 
 ## v2 Requirements
 

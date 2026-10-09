@@ -55,6 +55,17 @@ jobs:
           test "$(grep -c '__BUILD_STAMP__' index.html)" = 1
           sed -i "s/content=\"__BUILD_STAMP__\"/content=\"$(date -u +%Y-%m-%dT%H:%M:%SZ) ${GITHUB_SHA::7}\"/" index.html
           grep -q '<meta name="ppl-build" content="[0-9T:Z-]* [0-9a-f]\{7\}"' index.html
+      # Verify, never compute. The Content-Security-Policy pins the inline script by sha256, and that
+      # hash is made by hand with `npm run csp:hash` and committed. This fails the deploy if the
+      # stamped copy's inline script no longer matches its policy, so a page every browser would
+      # refuse to run (a blank app) can never be published. It lives in the CSP commit, so reverting
+      # the CSP removes it too.
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check the published script still matches its CSP hash
+        run: node scripts/csp-hash.js --check
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload site artifact

@@ -486,6 +486,58 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 ```
 **Pass criteria:** `violations: []` and `security: []` with `mobile=0` **and** `mobile=1`. Also `booted: true`, `firebaseApps: 1`, `sw` contains `"ready":true`, and `hosts` lists only expected origins. Optional extra: pass `jsExpr` that `fetch`es both open-meteo URLs and `https://example.com/`. Expect 200, 200, and a blocked third (verified).
 
+### CSP-05 probe, hardened after the 07-05 live failure (use this one)
+The probe above serves the whole page from localhost in one write, so the browser has the inline script before it acts on anything in `<head>`. The live site does not deliver it that way: the head and body markup arrive while the 380 KB inline script is still streaming. In 07-05 the CSP went live with exactly that blind spot. The manifest link's `href="#"` resolved to the page URL, Chrome fetched it before the script swapped in the blob, and `manifest-src blob:` blocked it. Every localhost check had been clean. This version adds split delivery (`SLOW_MS`), which reproduces that ordering on localhost, plus the effective manifest, a URL mode for the live site, and a short profile root. Recreate it in the session scratchpad; do not commit it.
+
+```js
+const http=require('http'),fs=require('fs'),path=require('path'),{spawn}=require('child_process');
+const [dir,port,mobile,wait,expr]=[process.argv[2],+process.argv[3],process.argv[4]==='1',+process.argv[5]||12000,process.argv[6]];
+const URLMODE=String(dir).startsWith("https:");   // URL mode: probe a live site, no local server
+const SLOW=process.env.SLOW_MS, LOCALPATH=process.env.LOCALPATH||'/index.html';
+const srv=URLMODE?{close(){}}:http.createServer((q,r)=>{let p=decodeURIComponent(new URL(q.url,'http://x').pathname);if(p.endsWith('/'))p+='index.html';
+  const f=path.join(dir,p);if(!fs.existsSync(f)){r.writeHead(404);return r.end();}
+  r.writeHead(200,{'Content-Type':{'.html':'text/html; charset=utf-8','.js':'text/javascript'}[path.extname(f)]||'application/octet-stream','Cache-Control':'no-store'});
+  if(SLOW&&f.endsWith('index.html')){   // split delivery: every byte before the inline script, then the rest SLOW_MS later (the live site's shape)
+    const b=fs.readFileSync(f),m=/<script(?![^>]*src=)[^>]*>/.exec(b.toString('latin1'));const cut=m?m.index:b.length;
+    r.write(b.subarray(0,cut));return setTimeout(()=>r.end(b.subarray(cut)),+SLOW);}
+  fs.createReadStream(f).pipe(r);}).listen(port,'127.0.0.1');
+const CHROME='C:/Program Files/Google/Chrome/Application/chrome.exe', dbg=port+1000;   // machine-specific path
+const ch=spawn(CHROME,['--headless=new','--remote-debugging-port='+dbg,'--user-data-dir='+path.join(process.env.PROFILE_ROOT||__dirname,'prof-'+port+'-'+Date.now()),'--no-first-run','about:blank'],{stdio:'ignore'});
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+(async()=>{let ws;for(let i=0;i<50&&!ws;i++){await sleep(200);try{ws=(await(await fetch(`http://127.0.0.1:${dbg}/json`)).json()).find(t=>t.type==='page').webSocketDebuggerUrl;}catch(e){}}
+  const s=new WebSocket(ws);await new Promise(r=>s.onopen=r);let id=0;const pend=new Map(),out={violations:[],security:[],exceptions:[],hosts:{}};
+  s.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pend.has(m.id)){pend.get(m.id)(m);pend.delete(m.id);return;}
+    if(m.method==='Runtime.consoleAPICalled'){const t=m.params.args.map(a=>a.value??a.description).join(' ');if(t.startsWith('CSPV '))out.violations.push(t.slice(5));}
+    if(m.method==='Log.entryAdded'&&m.params.entry.source==='security')out.security.push(m.params.entry.text.slice(0,400));
+    if(m.method==='Runtime.exceptionThrown')out.exceptions.push(m.params.exceptionDetails.text);
+    if(m.method==='Network.requestWillBeSent'){const u=m.params.request.url;const k=/^(data|blob):/.test(u)?u.slice(0,5):(()=>{const x=new URL(u);return x.origin+x.pathname.split('/').slice(0,3).join('/');})();out.hosts[k]=(out.hosts[k]||0)+1;}};
+  const send=(method,params={})=>new Promise(r=>{const i=++id;pend.set(i,r);s.send(JSON.stringify({id:i,method,params}));});
+  out.chrome=(await send('Browser.getVersion')).result?.product;
+  for(const d of['Runtime','Log','Network','Page'])await send(d+'.enable');
+  if(mobile)await send('Emulation.setUserAgentOverride',{userAgent:'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36'});
+  await send('Page.addScriptToEvaluateOnNewDocument',{source:"document.addEventListener('securitypolicyviolation',e=>console.log('CSPV '+e.effectiveDirective+' '+e.blockedURI))"});
+  await send('Page.navigate',{url:URLMODE?dir:`http://127.0.0.1:${port}${LOCALPATH}`});await sleep(wait);
+  const ev=async x=>(await send('Runtime.evaluate',{expression:x,awaitPromise:true,returnByValue:true})).result.result.value;
+  out.facts={booted:await ev("document.getElementById('app').innerHTML.length>100"),firebaseApps:await ev("window.firebase?firebase.apps.length:-1"),sw:await ev("JSON.stringify(window.SW_STATE)"),custom:expr?await ev(expr):undefined};
+  const am=(await send('Page.getAppManifest')).result||{};out.appManifest={url:am.url,errors:am.errors,hasData:!!am.data};   // the manifest Chrome actually uses
+  console.log(JSON.stringify(out,null,1));s.close();ch.kill();srv.close();process.exit(0);})();
+```
+
+Usage: `node probe.js <siteDir|https-URL> <port> <mobile 0|1> <waitMs> [jsExpr]`. Environment:
+
+- `PROFILE_ROOT`: where Chrome's profile goes. Keep it short and outside the session scratchpad, e.g. a fresh `mkdir -p` directory under `C:/Users/idbac/AppData/Local/Temp/p7sw/`. A long profile path makes service-worker registration abort (07-04 deviation 1).
+- `SLOW_MS`: split delivery. Writes every byte before the first inline `<script>` tag, waits this many ms, then sends the rest. Use `3000`.
+- `LOCALPATH`: the path a local run navigates to. Defaults to `/index.html`.
+- URL mode: a first argument starting with `https:` skips the local server and loads that URL (the live check after a deploy).
+
+**GREEN** (every clean run): `violations: []`, `security: []` and `exceptions: []`; `facts.booted: true`, `facts.firebaseApps: 1`, `facts.sw` containing `"ready":true`; `appManifest.url` starting with `blob:`, `appManifest.hasData: true`, and every `appManifest.errors[].message` containing `start_url` (Pitfall 4's noise); the page URL counted exactly 1 in `hosts`; and every `hosts` origin one of 127.0.0.1, `https://www.gstatic.com/firebasejs/10.14.1` and `blob:`, plus `https://apis.google.com` and `https://ppl-tracker-a1d87.firebaseapp.com` on Android (and the two open-meteo hosts in a foreign-host run).
+
+**RED** (a run meant to reproduce the 07-05 failure): `violations` is exactly `["manifest-src http://127.0.0.1:<port>/index.html"]`, and the page URL counts 2 in `hosts`.
+
+A policy change is judged four ways before it ships: normal speed and `SLOW_MS=3000`, each on desktop and the Android user agent. After the deploy, run it once more on the live URL in URL mode. A normal-speed localhost run alone is not a pass.
+
+07-06 evidence (Chrome/154.0.8037.98): ebc5723's page, the one that failed live, was clean at normal speed and RED under `SLOW_MS=3000`, matching the live record; the same page without the manifest href was GREEN both ways, on desktop and Android.
+
 ### CLAUDE.md wording (CSP-07; placement: "Before every push" + a Conventions bullet)
 ```markdown
 If you edited the inline `<script>` in `index.html` at all (even whitespace), run `npm run csp:hash` first.

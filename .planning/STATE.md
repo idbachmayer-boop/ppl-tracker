@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 07
 current_phase_name: content-security-policy
 status: executing
-stopped_at: Completed 07-04-PLAN.md
-last_updated: "2026-10-05T09:42:43.733Z"
-last_activity: 2026-10-05
-last_activity_desc: 07-02 complete (stamp move live alone, D-09 gate passed)
+stopped_at: "07-07 Task 2 checkpoint: awaiting Ian's DevTools pass (throttled reload), push, PR and merge of the CSP re-ship"
+last_updated: "2026-10-07T12:35:03.607Z"
+last_activity: 2026-10-07
+last_activity_desc: 07-06 executed (manifest fix cbf17b5, CSP re-applied 643c628); 07-07 go-live next
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 31
-  completed_plans: 30
+  total_plans: 33
+  completed_plans: 32
 ---
 
 # Project State
@@ -28,9 +28,9 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 ## Current Position
 
 Phase: 07 (content-security-policy) — EXECUTING
-Plan: 5 of 5
-Status: Ready to execute
-Last activity: 2026-10-05 — 07-02 complete: stamp move live alone on main (58d8988), D-09 gate passed
+Plan: 6 of 7
+Status: 07-06 done — manifest fix cbf17b5 and CSP re-applied as 643c628 (patch-identical to ebc5723); 07-07 go-live next
+Last activity: 2026-10-07 — 07-06 executed: manifest href removed, CSP re-applied locally, split-delivery probes clean
 
 Progress: [██████████] 97%
 
@@ -91,6 +91,7 @@ Progress: [██████████] 97%
 | Phase 07 P03 | 10 min | 2 tasks | 3 files |
 | Phase 07 P02 | ~15min executor (spans 2026-10-02..05, waiting on Ian) | 3 tasks | 0 files |
 | Phase 07 P04 | 12 min | 2 tasks | 4 files |
+| Phase 07 P06 | 13min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -166,6 +167,8 @@ Recent decisions affecting current work:
 - [Phase 07]: 07-02: stamp move shipped alone as merge commit 58d8988 (PR #10); PC and phone read 58d8988; live inline script byte-identical to repo, so the D-09 gate is passed and CSP code may be pushed
 - [Phase 7, plan 07-04]: the CSP ships as one commit ebc5723 (revert target); policy exactly as RESEARCH verified, with hash-only script-src plus exact SDK and mobile auth-loader paths
 - [Phase 7, plan 07-04]: the headless-Chrome service-worker abort is Windows path length in the Chrome profile (212+ chars aborts), not CSP; probes need a short --user-data-dir
+- [Phase 7, plan 07-06]: the manifest link carries no href (cbf17b5, survives a CSP revert); the CSP is re-applied as 643c628, patch-identical to ebc5723 (patch-id 299764c8), the new revert target
+- [Phase 7, plan 07-06]: CSP checks must include split delivery (SLOW_MS=3000) on desktop and Android; localhost one-write delivery hides fetches that race the inline script
 
 ### Pending Todos
 
@@ -177,6 +180,7 @@ Recent decisions affecting current work:
 - [Phase 1]: The planner's two flagged items are resolved — SLEEP-02 confirmed (2026-09-12), REG-14 deletion deferred by Ian (2026-09-14; see Decisions and Pending Todos). The planner also documented a pre-existing gap: the three date-keyed map collections are not order-independent across three devices, because a day carries no timestamp of its own. Plan 01-04 records it and does not change behaviour.
 - [Phase 1]: Shipping SCHEMA 18 is one-way — the cloud copy is stamped 18 and older builds refuse to sync. No plan pushes to `main`; the code goes through a PR after the phase.
 - [Phase 7]: A CSP that blocks `gstatic.com` fails silently — the app keeps working on localStorage with cloud sync dead and no visible error. Verify sync explicitly after the policy ships.
+- [Phase 7]: 07-06 fixed the manifest cause (MANIFEST_SHA cbf17b5: the manifest link has no href; suite refuses one) and re-applied the CSP (CSP_SHA2 643c628, patch-identical to ebc5723, the new revert target). Clean in Chrome with split delivery on desktop and Android. Waiting on 07-07's go-live (push, live-URL probe, CSP-06 round trip).
 
 ## Deferred Items
 
@@ -190,6 +194,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-05T09:42:43.710Z
-Stopped at: Completed 07-04-PLAN.md
-Resume file: None
+Last session: 2026-10-07T12:35:03.582Z
+Stopped at: 07-07 Task 2 checkpoint: awaiting Ian's DevTools pass (throttled reload), push, PR and merge of the CSP re-ship
+Resume file: .planning/phases/07-content-security-policy/07-07-PLAN.md
