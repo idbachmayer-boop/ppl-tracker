@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 6
-current_phase_name: F4 — .gitattributes
-status: verifying
+current_phase: 7
+current_phase_name: Content Security Policy
+status: milestone_audit
 stopped_at: Completed 07-07-PLAN.md; CSP-06 signed-in round trip pending as end-of-phase UAT
-last_updated: "2026-10-09T17:22:35.393Z"
+last_updated: "2026-10-09T17:30:03.216Z"
 last_activity: 2026-10-09
 last_activity_desc: "Phase 7 complete: CSP live (f71c6e4), CSP-06 UAT passed, verification passed"
 progress:
   total_phases: 7
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 33
   completed_plans: 33
 ---
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-09-22)
 
 ## Current Position
 
-Phase: 6 — F4 — .gitattributes
-Plan: 2 of 2 (executed)
-Status: Phase 6 executed 2026-10-01, awaiting its human verification (merge-commit only); Phase 7 complete 2026-10-09 (CSP live as f71c6e4, CSP-06 UAT passed)
-Last activity: 2026-10-09 — Phase 7 complete, transitioned to Phase 6
+Phase: 7 of 7 — all v1.0 phases complete
+Plan: 33 of 33 plans complete
+Status: v1.0 phases 1–7 complete (phase 6 UAT 3/3 on 2026-10-02, recorded 2026-10-09; phase 7 2026-10-09). Next: milestone audit
+Last activity: 2026-10-09 — Phase 6 verification canonicalized to passed (UAT was 3/3); milestone audit next
 
 Progress: [██████████] 100%
 
@@ -38,7 +38,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 31
+- Total plans completed: 33
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -52,6 +52,7 @@ Progress: [██████████] 100%
 | 04 | 3 | - | - |
 | 05 | 6 | - | - |
 | 7 | 7 | - | - |
+| 6 | 2 | - | - |
 
 **Recent Trend:**
 

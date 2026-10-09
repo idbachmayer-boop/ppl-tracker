@@ -30,7 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: F3 — Adding a New Tracked Thing (Recipe)** - `CLAUDE.md` gets a numbered recipe for the next collection after `sleep`, written against the shipped registry. (completed 2026-09-22)
 - [x] **Phase 4: Draft Goes Device-Local** - The in-progress workout stops crossing the wire, closing a whole bug family at the source. (completed 2026-09-23)
 - [x] **Phase 5: F2 — Event Delegation** - All 175 inline handler attributes become delegated listeners, which is what makes a real CSP possible. (completed 2026-10-01)
-- [ ] **Phase 6: F4 — .gitattributes** - Git stores `index.html`'s bytes exactly, landed alone so the whole-file diff hides nothing.
+- [x] **Phase 6: F4 — .gitattributes** - Git stores `index.html`'s bytes exactly, landed alone so the whole-file diff hides nothing. (completed 2026-10-02)
 - [x] **Phase 7: Content Security Policy** - A hash-based CSP ships without silently breaking the only off-device backup. (completed 2026-10-09)
 
 ## Phase Details
@@ -277,5 +277,5 @@ Phase 5 completes.
 | 3. F3 — Adding a New Tracked Thing (Recipe) | 5/5 | Complete    | 2026-09-22 |
 | 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
 | 5. F2 — Event Delegation | 6/6 | Complete    | 2026-10-01 |
-| 6. F4 — .gitattributes | 2/2 | In Progress|  |
+| 6. F4 — .gitattributes | 2/2 | Complete    | 2026-10-02 |
 | 7. Content Security Policy | 7/7 | Complete    | 2026-10-09 |

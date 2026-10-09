@@ -142,7 +142,7 @@ Populated during roadmap creation.
 | DOC-01 … DOC-04 | Phase 3 | Complete |
 | DRAFT-01 … DRAFT-05 | Phase 4 | Complete |
 | DELEG-01 … DELEG-07 | Phase 5 | Complete |
-| REPO-01 … REPO-02 | Phase 6 | Pending |
+| REPO-01 … REPO-02 | Phase 6 | Complete |
 | CSP-01 … CSP-07 | Phase 7 | Complete |
 
 **Coverage:**
