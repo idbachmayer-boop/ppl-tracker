@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
-current_phase: 8
-current_phase_name: Progression Correctness
-status: planning
+current_phase: 08
+current_phase_name: progression-correctness
+status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-10-10T11:07:34.209Z"
-last_activity: 2026-10-09
-last_activity_desc: "v1.1 roadmap drafted: Phases 8-13, 36/36 requirements mapped"
+last_updated: "2026-10-10T11:49:29.868Z"
+last_activity: 2026-10-10
+last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** v1.1 Training accuracy, lawn & sleep: roadmap proposed (Phases 8-13), awaiting Ian's approval. First up: Phase 8, Progression Correctness (scope: `.planning/v1.1-BRIEF.md`)
+**Current focus:** Phase 08 — progression-correctness
 
 ## Current Position
 
-Phase: 8 of 13 (Progression Correctness)
-Plan: — (not planned yet)
-Status: Ready to plan, once Ian approves the roadmap
-Last activity: 2026-10-09 — v1.1 roadmap drafted: Phases 8-13, 36/36 requirements mapped
+Phase: 08 (progression-correctness) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 08
+Last activity: 2026-10-10 — Phase 08 execution started
 
 Progress: [░░░░░░░░░░] 0% (v1.1: 0 of 6 phases complete)
 
