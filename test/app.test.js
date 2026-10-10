@@ -7784,6 +7784,121 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
        !card.includes('class="flag"') && draftW().every(w => w === '25') && !!aw && aw.allTop === false,
        { flag: flagOf(card), w: draftW(), aw });
   }
+
+  /* D-01: a blank set is recorded at finish as an entry-level blankSets count, because finishWorkout
+     drops blank rows. Each case starts from one all-top baseline and finishes today's LAT through
+     the real draft functions. `rows` holds [w, r] per set on the card; null leaves that set blank. */
+  const clone = v => JSON.parse(JSON.stringify(v));
+  const TOP3 = [[25, 20], [25, 20], [25, 20]];
+  const finishLat = (rows, before) => {
+    latRun([ latSess(dayOff(-7), TOP3) ]);
+    latCard(LAT);
+    if(before) before();
+    rows.forEach((v, k) => { if(v){ P.setVal(LAT, k, 'w', String(v[0])); P.setVal(LAT, k, 'r', String(v[1])); } });
+    P.finishWorkout();
+    return todayRow();
+  };
+  {
+    const row = finishLat([[25, 20], [25, 20], null]), e = row && row.entries[LAT];
+    const card = latCard(LAT);
+    ok('D-01: a set left blank at finish is stored as blankSets 1, and the next LAT card has no ⬆ Add weight',
+       !!e && e.blankSets === 1 && e.sets.length === 2 && !card.includes('class="flag"'),
+       { blankSets: e && e.blankSets, sets: e && e.sets.length, flag: flagOf(card) });
+  }
+  {
+    const row = finishLat(TOP3), e = row && row.entries[LAT];
+    ok('D-01: a workout with every set filled stores no blankSets key',
+       !!e && !('blankSets' in e) && e.sets.length === 3, e);
+  }
+  {
+    finishLat([[25, 20], [25, 20], [25, 20], [25, 20]], () => S.addSet(LAT));
+    const flag = flagOf(latCard(LAT));
+    ok('D-01: a set added with + Add set counts: four sets at the top earn ⬆ Add weight → 30',
+       flag !== null && flag.includes('30'), flag);
+    finishLat([[25, 20], [25, 20], [25, 20], [25, 19]], () => S.addSet(LAT));
+    const card = latCard(LAT);
+    ok('D-01: an added set below the top blocks ⬆ Add weight',
+       !card.includes('class="flag"'), flagOf(card));
+  }
+  {
+    const row = finishLat([[25, 20], [25, 20]], () => S.rmSet(LAT, 2)), e = row && row.entries[LAT];
+    const flag = flagOf(latCard(LAT));
+    ok('D-01: a set removed with rmSet is not missing: two sets at the top earn ⬆ Add weight → 30, with no blankSets',
+       !!e && !('blankSets' in e) && e.sets.length === 2 && flag !== null && flag.includes('30'),
+       { e, flag });
+  }
+  {
+    const row = finishLat([[25, 20], [25, 20], null]);
+    const id = row && row.id;
+    let threw = null, draftRows = null, draftBlank = -1;
+    try{
+      S.editSession(P.DB.sessions.findIndex(s => s.id === id));
+      draftRows = P.DB.draft.entries[LAT].sets.length;
+      draftBlank = P.DB.draft.entries[LAT].sets.filter(x => !x.skipped && x.w === '' && x.r === '').length;
+      P.finishWorkout();
+    }catch(e){ threw = String(e && e.stack || e); }
+    const same = P.DB.sessions.filter(s => s.id === id && !s.deletedAt);
+    const e = same.length === 1 ? same[0].entries[LAT] : null;
+    const card = latCard(LAT);
+    ok('D-01: editSession shows the blank set again, and re-saving keeps blankSets 1 on the same row with no ⬆ Add weight',
+       !threw && draftRows === 3 && draftBlank === 1 && same.length === 1 && !!e && e.blankSets === 1 && !card.includes('class="flag"'),
+       { threw, draftRows, draftBlank, rows: same.length, blankSets: e && e.blankSets, flag: flagOf(card) });
+  }
+
+  /* D-09: the verdict judges the latest attempt on the card, even one with nothing worked, while the
+     Last time line keeps showing the last real attempt. */
+  const lastTop = [P.__sandbox.fmtSet('25', '20'), P.__sandbox.fmtSet('25', '20'), P.__sandbox.fmtSet('25', '20')].join(',  ');
+  {
+    latRun([ latSess(dayOff(-14), TOP3), latSess(dayOff(-7), [[0, 0, true], [0, 0, true], [0, 0, true]]) ]);
+    const card = latCard(LAT);
+    ok('D-09: a later LAT entry with every set skipped gives no ⬆ Add weight, and Last time still shows the all-top sets',
+       !card.includes('class="flag"') && card.includes(lastTop), { flag: flagOf(card) });
+  }
+  {
+    latRun([ latSess(dayOff(-14), TOP3), latSess(dayOff(-7), [], { blankSets: 3 }) ]);
+    const card = latCard(LAT);
+    ok('D-09: a later LAT entry left fully blank (sets [] and blankSets 3) gives no ⬆ Add weight, and Last time still shows the all-top sets',
+       !card.includes('class="flag"') && card.includes(lastTop), { flag: flagOf(card) });
+  }
+  {
+    latRun([ latSess(dayOff(-14), TOP3), latSess(dayOff(-7), []) ]);
+    const flag = flagOf(latCard(LAT));
+    ok('D-07/D-09: a legacy later entry with sets [] and no blankSets was never on the card, so the all-top attempt still earns ⬆ Add weight',
+       flag !== null && flag.includes('30'), flag);
+  }
+
+  // D-01 / T-8-04: sessions merge as whole rows by mtime, so a stale copy cannot drop the marker.
+  {
+    const base = latSess(dayOff(-3), [[25, 20], [25, 20]], { blankSets: 1 });
+    const localRow = Object.assign(clone(base), { mtime: 2000 });
+    const staleRow = Object.assign(clone(base), { mtime: 1000 }); delete staleRow.entries[LAT].blankSets;
+    const local = Object.assign(P.blank(), { sessions: [localRow], updatedAt: 100 });
+    const stale = Object.assign(P.blank(), { sessions: [staleRow], updatedAt: 9000 });
+    const keeps = db => { const rows = (db.sessions || []).filter(s => s.id === base.id);
+      return rows.length === 1 && rows[0].entries[LAT].blankSets === 1; };
+    const once = P.mergeDB(clone(stale), clone(local));
+    const twice = P.mergeDB(clone(stale), clone(once));
+    ok('D-01: a stale-device merge replay keeps blankSets 1, and replaying the stale copy again still keeps it',
+       keeps(once) && keeps(twice),
+       { once: (once.sessions || []).map(s => s.entries[LAT].blankSets), twice: (twice.sessions || []).map(s => s.entries[LAT].blankSets) });
+  }
+
+  // T-8-02: blankSets from a hand-edited backup or an old sync can hold anything.
+  {
+    const verdictFor = bs => { latRun([ latSess(dayOff(-7), TOP3, { blankSets: bs }) ]); return flagOf(latCard(LAT)); };
+    const abc = verdictFor('abc'), neg = verdictFor(-2), huge = verdictFor(1e9);
+    ok('T-8-02: a garbage blankSets of \'abc\' or -2 does not block ⬆ Add weight, and 1e9 blocks it',
+       abc !== null && neg !== null && huge === null, { abc, neg, huge });
+    let threw = null, added = -1;
+    try{
+      const idx = P.DB.sessions.findIndex(s => s.workout === LW && s.entries && s.entries[LAT] && s.entries[LAT].blankSets === 1e9);
+      S.editSession(idx);
+      added = P.DB.draft.entries[LAT].sets.filter(x => !x.skipped && x.w === '' && x.r === '').length;
+    }catch(e){ threw = String(e && e.stack || e); }
+    ok('T-8-02: editSession on a blankSets 1e9 row adds at most 20 blank rows and does not throw',
+       !threw && added > 0 && added <= 20, { threw, added });
+    P.DB.draft = null;
+  }
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
