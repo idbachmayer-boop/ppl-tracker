@@ -8143,6 +8143,30 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
     ok('PROG: the guide\'s How to progress states the stall rule, that a blank set blocks Add weight, and the bodyweight belt',
        /3 sessions/.test(line) && /left blank/.test(line) && /belt/.test(line) && /lighter/.test(line), line.slice(0, 80));
   }
+
+  /* WR-01: a Finish that throws part-way leaves the draft as it was. If finishWorkout dropped the blank
+     row from the draft before the throw, the retry would count no blank set, store no blankSets, and
+     the workout with a set left blank would earn ⬆ Add weight. exercisePRs throws once here. */
+  {
+    latRun([ latSess(dayOff(-7), TOP3) ]);
+    latCard(LAT);
+    P.setVal(LAT, 0, 'w', '25'); P.setVal(LAT, 0, 'r', '20');
+    P.setVal(LAT, 1, 'w', '25'); P.setVal(LAT, 1, 'r', '20');
+    const realPRs = S.exercisePRs;
+    let calls = 0, first = null, retry = null, draftAfter = null;
+    S.exercisePRs = function(){ if(calls++ === 0) throw new Error('exercisePRs failed once'); return realPRs.apply(this, arguments); };
+    try{ P.finishWorkout(); }catch(e){ first = String(e && e.message || e); }
+    const de = P.DB.draft && P.DB.draft.entries[LAT];
+    draftAfter = de ? { rows: de.sets.length, blankSets: 'blankSets' in de } : null;
+    try{ P.finishWorkout(); }catch(e){ retry = String(e && e.stack || e); }
+    S.exercisePRs = realPRs;
+    const row = todayRow(), e = row && row.entries[LAT];
+    const card = latCard(LAT);
+    ok('WR-01: a Finish that throws part-way leaves the draft with its 3 rows and no blankSets, and the retry stores blankSets 1 with no ⬆ Add weight next time',
+       first !== null && !!draftAfter && draftAfter.rows === 3 && draftAfter.blankSets === false &&
+       !retry && !!e && e.blankSets === 1 && e.sets.length === 2 && !card.includes('class="flag"'),
+       { first, draftAfter, retry, blankSets: e && e.blankSets, sets: e && e.sets.length, flag: flagOf(card) });
+  }
   P.DB.draft = null;
 }
 

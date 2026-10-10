@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-B00JKvY5YExrWss26Qpe/jr/VuxWjevL64PhOKrTjfY=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-bfoEllOPFkPVvlFFWR+jOJrTWglF605Zy0KGEC+u3Oc=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -2107,14 +2107,17 @@ function finishWorkout(){
   // keep skipped sets (they carry a reason); drop sets with no reps (incl. pre-filled-weight-only).
   // A dropped blank set still blocks ⬆ Add weight (D-01), so count it first: blankSets lives only on
   // the new row built here, never on an existing one, and a re-save that filled the blanks clears it.
-  d.entries.forEach(e=>{
+  // The row is built from copies, so d.entries is untouched until the save commits: if anything below
+  // throws, the draft keeps its blank rows and a retry counts them again.
+  const entries = d.entries.map(e=>{
     const blank = e.sets.filter(s=> !s.skipped && s.r==='').length;
-    e.sets = e.sets.filter(s=> s.skipped || s.r!==''); e.sets.forEach(s=>delete s._cel);
-    if(blank>0) e.blankSets = blank; else delete e.blankSets;
+    const out = Object.assign({}, e, { sets: e.sets.filter(s=> s.skipped || s.r!=='').map(s=>{ const c=Object.assign({}, s); delete c._cel; return c; }) });
+    if(blank>0) out.blankSets = blank; else delete out.blankSets;
+    return out;
   });
   /* Stamp identity at save time so a session is self-describing the moment it's written, rather than
      leaning on name resolution forever. */
-  d.entries.forEach(e=>{ if(e.name && !e.exId) e.exId = exEnsure(e.name); });
+  entries.forEach(e=>{ if(e.name && !e.exId) e.exId = exEnsure(e.name); });
   Object.keys(x).forEach(w=>{ const e=x[w]; if(e && e.name && !e.exId) e.exId = exEnsure(e.name); });
   Object.keys(x).forEach(w=>{ x[w].sets = x[w].sets.filter(s=> s.r!==''); });
   const endedAt = Date.now(), hist = d.historical;
@@ -2126,7 +2129,7 @@ function finishWorkout(){
     endedAt: hist ? null : endedAt,
     durationMin: hist ? (d.durationMin? +d.durationMin : null)
                       : (d.startedAt ? Math.max(1, Math.round((endedAt-d.startedAt)/60000)) : null),
-    entries:d.entries, stairs:d.stairs, extras:x, note:(d.sessionNote||'').trim()
+    entries, stairs:d.stairs, extras:x, note:(d.sessionNote||'').trim()
   };
   if(d.editRef) DB.sessions = DB.sessions.filter(z=> z.id!==d.editRef); // editing → drop the original before re-inserting
   // PR detection: an exercise whose heaviest set this session beats its prior all-time heaviest.
