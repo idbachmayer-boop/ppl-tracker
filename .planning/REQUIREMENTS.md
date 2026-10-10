@@ -21,14 +21,14 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
 - [x] **PROG-01**: The app suggests adding weight to a slot only when every planned set for that slot
   was done (none skipped, none missing) and each one reached the top of the rep range at the working
   weight. Two sets at the top plus one skipped set does not suggest adding weight.
-- [ ] **PROG-02**: A session counts as progress on an exercise when, compared with the previous session
+- [x] **PROG-02**: A session counts as progress on an exercise when, compared with the previous session
   of that exercise, total reps across all sets went up by at least 1, or the weight went up.
-- [ ] **PROG-03**: An exercise is flagged as stalled only after 3 sessions in a row with no progress,
+- [x] **PROG-03**: An exercise is flagged as stalled only after 3 sessions in a row with no progress,
   each measured against the session before it, never against the all-time best. Extra reps on sets 2
   and 3 count as progress, so a DB lateral raise that gains reps on later sets is not flagged.
-- [ ] **PROG-04**: Progress and stall history follow the exercise's identity (`exKey`), not its exact
+- [x] **PROG-04**: Progress and stall history follow the exercise's identity (`exKey`), not its exact
   name, so a renamed or merged exercise keeps its history.
-- [ ] **PROG-05**: Bodyweight exercises are checked for stalls too, with progress meaning +1 total rep.
+- [x] **PROG-05**: Bodyweight exercises are checked for stalls too, with progress meaning +1 total rep.
   When every set reaches the top of the range, the app shows "add weight (belt) or harder variation"
   with no number.
 
@@ -164,10 +164,10 @@ proposed and awaiting Ian's approval.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PROG-01 | Phase 8 | Complete |
-| PROG-02 | Phase 8 | Pending |
-| PROG-03 | Phase 8 | Pending |
-| PROG-04 | Phase 8 | Pending |
-| PROG-05 | Phase 8 | Pending |
+| PROG-02 | Phase 8 | Complete |
+| PROG-03 | Phase 8 | Complete |
+| PROG-04 | Phase 8 | Complete |
+| PROG-05 | Phase 8 | Complete |
 | EQUIP-01 | Phase 9 | Pending |
 | EQUIP-02 | Phase 9 | Pending |
 | EQUIP-03 | Phase 9 | Pending |
