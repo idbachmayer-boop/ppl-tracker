@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-aeisIZbg//DtG1hL1bKt+jtvSPhmOMb8vLkkysHxfhQ=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-NMZm/vwV5gWNVtXXQww6FbPEgbIEnoSKMqxuD3aC2sg=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1843,7 +1843,8 @@ function viewActive(){
     if(ref){
       lastLine = `Last time (${fmtDate(ref.date)}): <strong>${esc(real.map(x=> fmtSet(x.w,x.r)).join(',  '))||'—'}</strong>`;
       const aw = addWeightInfo(name, i, entry.name);
-      flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${esc(aw.newW)} ${esc(DB.unit)}`:''}</span>` : '';
+      /* Bodyweight (weight 0 or blank) at the top has no next number to suggest (PROG-05, D-08). */
+      flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${esc(aw.newW)} ${esc(DB.unit)}`:' (belt) or harder variation'}</span>` : '';
       if(ref.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(ref.entry.note)}</div>`;
     } else if(alt){
       const altReal = alt.entry.sets.filter(x=>!x.skipped && x.r!=='');
