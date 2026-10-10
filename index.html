@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-GjG+Q1zZ2Jof/k0x6hZPVBwSSKkZz9nY5e7wh07TQxk=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-vIizx9pDW8e7DQXXv28JrxiESnjc7wUnpzuz431d1vM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -913,7 +913,7 @@ function lastRealEntry(workout, slotIndex, exName){
     if(s.workout!==workout || s.skipped || !s.entries) continue;
     const e=s.entries[slotIndex];
     if(exName!=null && (!e || exKey(e)!==exKey(exName))) continue;
-    if(e && !e.deload && e.sets && e.sets.some(x=>!x.skipped && x.r!=='')) return {entry:e, date:s.date}; // deloads never reset the baseline
+    if(e && !e.deload && Array.isArray(e.sets) && e.sets.some(x=>!x.skipped && x.r!=='')) return {entry:e, date:s.date}; // deloads never reset the baseline
   }
   return null;
 }
@@ -926,7 +926,7 @@ function lastAnywhere(exName){
   for(let i=ls.length-1;i>=0;i--){
     const s=ls[i];
     if(s.skipped) continue;
-    const hits = sessionExercises(s).filter(e=> exKey(e)===exKey(exName) && !e.deload && e.sets && e.sets.some(x=>!x.skipped && x.r!==''));
+    const hits = sessionExercises(s).filter(e=> exKey(e)===exKey(exName) && !e.deload && Array.isArray(e.sets) && e.sets.some(x=>!x.skipped && x.r!==''));
     if(hits.length) return {entry:hits[hits.length-1], date:s.date, workout:s.workout};
   }
   return null;
@@ -1243,7 +1243,7 @@ function undeloadExercise(i){ DB.draft.entries[i].deload=false; saveLocal(); ren
 /* All logged exercises in a session = main entries + abs/forearms accessories. */
 function sessionExercises(s){
   const list = (s.entries||[]).slice();
-  if(s.extras) Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.name && e.sets && e.sets.length) list.push(e); });
+  if(s.extras) Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.name && Array.isArray(e.sets) && e.sets.length) list.push(e); });
   return list;
 }
 /* ── Exercise identity ───────────────────────────────────────────────────────────────────────

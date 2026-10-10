@@ -8100,18 +8100,26 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
          stalled === false && S.stallStreak(LW, LAT, LATN) === 2, { stalled, streak: S.stallStreak(LW, LAT, LATN) });
     }
 
-    // T-8-08: garbage from a hand-edited backup never throws, never prints NaN, and gives a boolean.
+    /* T-8-08: garbage from a hand-edited backup never throws, never prints NaN, and gives a boolean.
+       WR-04: the non-array sets sits on the LATEST session too, so lastRealEntry and lastAnywhere,
+       which scan from the newest session, actually read it; an accessory whose sets is not an array
+       reaches sessionExercises the same way. */
     {
-      let threw = null, res = null, card = '';
+      let threw = null, res = null, card = '', any = 'unset', accIn = null;
       try{
         const list = latDays([[['abc', 20], [25, 'x'], [25, 18]], B, B, B]);
         list[1].entries[LAT].sets = 'not an array';
+        list[list.length - 1].entries[LAT].sets = 'not an array';
+        list[list.length - 1].extras = { abs: { name: LATN, sets: 'not an array' } };
         latRun(list);
         res = S.isStalledSlot(LATN, LW, LAT);
+        any = S.lastAnywhere(LATN);
+        const last = P.DB.sessions[P.DB.sessions.length - 1];
+        accIn = P.sessionExercises(last).some(e => e.sets === 'not an array' && e === (last.extras || {}).abs);
         card = latCard(LAT);
       }catch(e){ threw = String(e && e.stack || e); }
-      ok('T-8-08: weight \'abc\', reps \'x\' and an entry whose sets is not an array give a boolean, no throw, and no NaN on the card',
-         !threw && typeof res === 'boolean' && card.length > 0 && !card.includes('NaN'), { threw, res });
+      ok('T-8-08/WR-04: weight \'abc\', reps \'x\' and a latest entry and accessory whose sets is not an array give a boolean, no throw, no NaN on the card, and sessionExercises leaves the accessory out',
+         !threw && typeof res === 'boolean' && any !== 'unset' && accIn === false && card.length > 0 && !card.includes('NaN'), { threw, res, accIn });
     }
 
     // D-07: the verdict is computed, never stored, and a boot rewrites no pre-phase session.
