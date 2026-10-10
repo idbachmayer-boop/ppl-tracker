@@ -8035,6 +8035,114 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
     ok('D-06: never compared with the all-time best — 40 lb at 20/20/20, then 25 lb gaining 1 rep each time is not stalled',
        r.stalled === false && r.streak === 0, r);
   }
+
+  /* Identity, separate slots, bodyweight, soft delete, hostile data, and nothing stored. */
+  {
+    const B = w25([20, 18, 16]);
+    const FLAT4 = [B, B, B, B];
+
+    // D-04: each workout and slot keeps its own streak.
+    const P2 = 'PUSH 2', LAT2 = P.PROGRAM[P2].slots.findIndex(s => s.examples.includes(LATN));
+    latRun(latDays(FLAT4).concat([latSess(dayOff(-2), B, { workout: P2, slot: LAT2 })]));
+    const s1 = S.isStalledSlot(LATN, LW, LAT), s2 = S.isStalledSlot(LATN, P2, LAT2);
+    ok('D-04: 3 flats after a baseline in PUSH 1 stall PUSH 1\'s lateral raise, and PUSH 2\'s own slot is not stalled',
+       LAT2 >= 0 && s1 === true && s2 === false, { LAT2, s1, s2 });
+
+    // PROG-04: alias spellings that resolve to one exKey share one streak.
+    const ALT = '  db LATERAL   Raise ';
+    latRun(latDays(FLAT4, [{}, { name: ALT }, {}, { name: ALT }]));
+    const sameKey = P.exKey(ALT) === P.exKey(LATN);
+    ok('PROG-04: a baseline plus 3 flats whose entries alternate between spellings of one exKey is stalled',
+       sameKey && S.isStalledSlot(LATN, LW, LAT) === true, { sameKey, keys: [P.exKey(ALT), P.exKey(LATN)], streak: S.stallStreak(LW, LAT, LATN) });
+
+    /* PROG-04: a renamed exercise keeps its registry id, so its history follows the new name. Seeded
+       on settled data, the way a rename really happens: the boot's registry migration stamps exId
+       from the typed name, so a fixture seeded at _schema:16 cannot carry a pre-set id through it.
+       The two older entries keep their old typed name under the same exId, and the registry row is
+       renamed the way renameExercise does it. */
+    latRun(latDays(FLAT4));
+    const latId = P.exIdByName(LATN);
+    const OLD = 'Dumbbell side raise (old name)', NEW = 'Side raise';
+    P.DB.sessions.slice(0, 2).forEach(s => { s.entries[LAT].name = OLD; });
+    const row = P.exRow(latId);
+    if(row){ row.name = NEW; row.aliases.push(P.normEx(NEW)); }
+    ok('PROG-04: a baseline plus 3 flats where the older entries carry the same exId under an old display name is stalled under the current name',
+       !!latId && P.DB.sessions[0].entries[LAT].exId === latId && P.exKey(NEW) === latId && S.isStalledSlot(NEW, LW, LAT) === true,
+       { latId, exId0: P.DB.sessions[0].entries[LAT].exId, key: P.exKey(NEW), streak: S.stallStreak(LW, LAT, NEW) });
+
+    // PROG-04: merging two exercises joins their streaks.
+    const OTHER = 'Lean-away lateral raise';
+    latRun(latDays(FLAT4, [{}, {}, { name: OTHER }, { name: OTHER }]));
+    const keepId = P.exIdByName(LATN), secondId = P.exEnsure(OTHER);
+    const before = S.isStalledSlot(LATN, LW, LAT);
+    const merged = P.exMerge(secondId, keepId);
+    const after = S.isStalledSlot(LATN, LW, LAT);
+    ok('PROG-04: a baseline and 1 flat, then 2 flats under a second exercise, is not stalled until exMerge folds the second into the first',
+       !!keepId && !!secondId && keepId !== secondId && merged === true && before === false && after === true,
+       { keepId, secondId, merged, before, after });
+
+    // PROG-05 / D-08: bodyweight stalls on reps alone, and +1 rep clears it.
+    [['0', 'weight 0'], ['', 'a blank weight']].forEach(([w, label]) => {
+      const BW = [[w, 12], [w, 12], [w, 12]], BW1 = [[w, 13], [w, 12], [w, 12]];
+      const stalled = latStall(latDays([BW, BW, BW, BW]));
+      const cleared = latStall(latDays([BW, BW, BW, BW, BW1]));
+      ok(`PROG-05/D-08: bodyweight (${label}) at 12/12/12 four times is stalled, and a session with +1 rep clears it`,
+         stalled === true && cleared === false, { stalled, cleared });
+    });
+
+    // T-8-10: a soft-deleted session never counts toward a streak.
+    {
+      const list = latDays(FLAT4);
+      Object.assign(list[2], { deletedAt: Date.now(), mtime: Date.now() });
+      const stalled = latStall(list);
+      ok('T-8-10: a baseline plus 3 flats with one flat soft-deleted is not stalled (liveSessions only)',
+         stalled === false && S.stallStreak(LW, LAT, LATN) === 2, { stalled, streak: S.stallStreak(LW, LAT, LATN) });
+    }
+
+    // T-8-08: garbage from a hand-edited backup never throws, never prints NaN, and gives a boolean.
+    {
+      let threw = null, res = null, card = '';
+      try{
+        const list = latDays([[['abc', 20], [25, 'x'], [25, 18]], B, B, B]);
+        list[1].entries[LAT].sets = 'not an array';
+        latRun(list);
+        res = S.isStalledSlot(LATN, LW, LAT);
+        card = latCard(LAT);
+      }catch(e){ threw = String(e && e.stack || e); }
+      ok('T-8-08: weight \'abc\', reps \'x\' and an entry whose sets is not an array give a boolean, no throw, and no NaN on the card',
+         !threw && typeof res === 'boolean' && card.length > 0 && !card.includes('NaN'), { threw, res });
+    }
+
+    // D-07: the verdict is computed, never stored, and a boot rewrites no pre-phase session.
+    {
+      latRun(latDays(FLAT4));
+      latCard(LAT);
+      const snap = canon(clone(P.DB.sessions));
+      let threw = null;
+      try{
+        S.isStalledSlot(LATN, LW, LAT);
+        S.addWeightInfo(LW, LAT, LATN);
+        P.viewActive();
+      }catch(e){ threw = String(e && e.stack || e); }
+      ok('D-07: isStalledSlot, addWeightInfo and viewActive leave every session unchanged — no verdict is stored',
+         !threw && canon(P.DB.sessions) === snap, { threw });
+
+      P.DB.draft = null;
+      const settled = clone(P.DB);
+      const booted = P.normalize(clone(settled));
+      const noBlank = settled.sessions.every(s => s.entries.every(e => !('blankSets' in e)));
+      ok('D-07: booting data already at the current SCHEMA rewrites no session — no blankSets added, no mtime changed',
+         settled._schema === P.SCHEMA && noBlank && canon(booted.sessions) === canon(settled.sessions),
+         { schema: settled._schema, SCHEMA: P.SCHEMA, noBlank });
+    }
+  }
+
+  // The in-app guide states the rules the code applies.
+  {
+    const line = (rawHtml.split('\n').find(l => l.includes('t:"How to progress"')) || '');
+    ok('PROG: the guide\'s How to progress states the stall rule, that a blank set blocks Add weight, and the bodyweight belt',
+       /3 sessions/.test(line) && /left blank/.test(line) && /belt/.test(line) && /lighter/.test(line), line.slice(0, 80));
+  }
   P.DB.draft = null;
 }
 
