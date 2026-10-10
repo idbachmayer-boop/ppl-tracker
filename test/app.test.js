@@ -7743,7 +7743,7 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
     P.__sandbox.startWorkout(workout);
     return P.viewActive().split('<div class="ex-card">')[i + 1] || '';
   };
-  const flagOf = card => { const m = /<span class="flag">([^<]*)<\/span>/.exec(card); return m ? m[1] : null; };
+  const flagOf = card => { const m = /<span class="flag">([\s\S]*?)<\/span>/.exec(card); return m ? m[1] : null; };
   const draftW = (i = LAT) => P.DB.draft.entries[i].sets.map(x => x.w);
   const todayRow = () => P.DB.sessions.find(s => s.workout === LW && s.date === P.todayISO() && !s.deletedAt);
 
@@ -7899,6 +7899,53 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
        !threw && added > 0 && added <= 20, { threw, added });
     P.DB.draft = null;
   }
+
+  // D-02: every worked set must be at the working weight (the heaviest set).
+  {
+    latRun([ latSess(dayOff(-7), [[30, 20], [30, 20], [25, 20]]) ]);
+    const card = latCard(LAT), aw = S.addWeightInfo(LW, LAT, 'DB lateral raise');
+    ok('D-02: 30/30/25 lb all at the top gives no ⬆ Add weight',
+       !card.includes('class="flag"') && !!aw && aw.allTop === false, { flag: flagOf(card), aw });
+    latRun([ latSess(dayOff(-7), [[30, 20], [30, 20], [30, 20]]) ]);
+    const flag = flagOf(latCard(LAT));
+    ok('D-02: 30/30/30 lb all at the top gives ⬆ Add weight → 35', flag !== null && flag.includes('35'), flag);
+  }
+
+  // PROG-05 / D-08: bodyweight (weight 0 or blank) at the top gets a belt or a harder variation, no number.
+  [['0', 'weight 0'], ['', 'a blank weight']].forEach(([w, label]) => {
+    latRun([ latSess(dayOff(-7), [[w, 20], [w, 20], [w, 20]]) ]);
+    const flag = flagOf(latCard(LAT));
+    ok(`PROG-05/D-08: bodyweight at the top (${label}) suggests a belt or a harder variation with no number, and the prefill writes none`,
+       flag !== null && flag.includes('belt') && flag.includes('harder variation') && !/[0-9]/.test(flag) && draftW().every(x => x === w),
+       { flag, w: draftW() });
+  });
+  {
+    latRun([ latSess(dayOff(-7), [['0', 20], ['0', 20], ['0', 19]]) ]);
+    const card = latCard(LAT);
+    ok('PROG-05/D-08: bodyweight at 20, 20 and 19 gives no add-weight flag', !card.includes('class="flag"'), flagOf(card));
+  }
+
+  // T-8-01: the flag escapes what it prints.
+  {
+    latRun([ latSess(dayOff(-7), TOP3) ]);
+    P.DB.unit = '<img src=x>';
+    const flag = flagOf(latCard(LAT));
+    P.DB.unit = 'lb';
+    ok('T-8-01: a hostile unit renders escaped inside the add-weight flag',
+       flag !== null && flag.includes('&lt;img') && !flag.includes('<img'), flag);
+  }
+
+  // T-8-03: garbage weights from a hand-edited backup never throw or print NaN.
+  {
+    let threw = null, card = '';
+    try{
+      latRun([ latSess(dayOff(-7), [['abc', 20], ['abc', 20], ['abc', 20]]) ]);
+      card = latCard(LAT);
+    }catch(e){ threw = String(e && e.stack || e); }
+    ok('T-8-03: LAT sets with weight \'abc\' do not throw, and the card prints no NaN',
+       !threw && card.length > 0 && !card.includes('NaN'), { threw, flag: flagOf(card) });
+  }
+  P.DB.draft = null;
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
