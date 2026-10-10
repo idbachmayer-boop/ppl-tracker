@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Nw5jh/JeJpDSYItCr6FJJ52mvE7ySXo1646f8nZCpkU=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-51ZaOYRqkERotmLmNAdtXKPve9IShFb4+of/HgnVay8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1088,13 +1088,44 @@ function updPlates(i){ const el=document.getElementById(`plates-${i}`); if(!el) 
   const ws=DB.draft.entries[i].sets.filter(s=>!s.skipped && s.w!=='' && +s.w>0).map(s=>+s.w);
   el.innerHTML = ws.length ? platesText(Math.max(...ws), bar, barStyle(name)) : ''; }
 const INCREMENT = { lb:5, kg:2.5 };
-/* Should we bump the load, and to what? Uses the last real entry's worked sets. */
-function addWeightInfo(slot, ref, name){
-  if(!ref) return null;
-  const rng=effRange(slot, name), real=ref.entry.sets.filter(x=>!x.skipped && x.r!=='');
-  if(!real.length) return null;
-  const lastW=Math.max(0, ...real.map(x=> x.w===''?0:+x.w));
-  return { allTop: real.every(x=> +x.r >= rng.hi), lastW, newW: lastW+(INCREMENT[DB.unit]||5), hasLoad: lastW>0 };
+/* Should we bump the load, and to what? The verdict judges the latest attempt on the card for this
+   exercise in this slot (even one where every set was skipped or left blank, D-09): every set done
+   (no skipped set, no blank set, D-01), every set at the working weight (the heaviest, D-02), and
+   every set at the top of the range. Computed at render time, never stored. */
+function setWeightNum(x){ const v = (!x || x.w==='' || x.w==null) ? 0 : +x.w; return isFinite(v) && v>0 ? v : 0; }
+function workedSets(e){ return (e && Array.isArray(e.sets) ? e.sets : []).filter(x=> x && !x.skipped && x.r!=='' && x.r!=null); }
+/* The one seam Phase 9 (EQUIP-04) replaces: only the body changes, so `name` is kept though unused. */
+function weightStep(name){ return INCREMENT[DB.unit] || 5; }
+/* Unlike lastRealEntry, an entry with no worked set still counts here, as long as it was on the card
+   (it holds sets, or blankSets says its sets were left blank). lastRealEntry keeps feeding Last time
+   and the prefilled weights. */
+function lastAttemptEntry(workout, slotIndex, exName){
+  const ls = liveSessions(), key = exKey(exName);
+  for(let i=ls.length-1;i>=0;i--){
+    const s=ls[i];
+    if(s.workout!==workout || s.skipped || !Array.isArray(s.entries)) continue;
+    const e=s.entries[slotIndex];
+    if(!e || exKey(e)!==key || e.deload) continue;
+    if((Array.isArray(e.sets) && e.sets.length) || +e.blankSets > 0) return {entry:e, date:s.date};
+  }
+  return null;
+}
+function addWeightVerdict(entry, rng){
+  if(!entry) return null;
+  const sets = Array.isArray(entry.sets) ? entry.sets : [];
+  const worked = workedSets(entry);
+  const blocked = sets.some(x=> x && x.skipped) || (+entry.blankSets > 0) || !worked.length;
+  const W = worked.length ? Math.max(0, ...worked.map(setWeightNum)) : 0;
+  const allTop = !blocked && worked.every(x=> setWeightNum(x)===W && +x.r >= rng.hi);
+  return { allTop, lastW:W, hasLoad: W>0 };
+}
+function addWeightInfo(workout, slotIndex, name){
+  const prog = PROGRAM[workout], slot = prog && prog.slots ? prog.slots[slotIndex] : null;
+  if(!slot) return null;
+  const att = lastAttemptEntry(workout, slotIndex, name);
+  if(!att) return null;
+  const v = addWeightVerdict(att.entry, effRange(slot, name));
+  return { allTop:v.allTop, lastW:v.lastW, newW: v.lastW + weightStep(name), hasLoad:v.hasLoad };
 }
 /* Per-set "beat last time" badge: ✓ beat, = tied, '' under (compared at the matched weight). */
 function badgeState(st, t){
@@ -1751,7 +1782,7 @@ function startWorkout(name){
       entries: PROGRAM[name].slots.map((s,i)=>{
         const ref = lastRealEntry(name,i);
         const exName = ref? ref.entry.name : s.examples[0];
-        const aw = addWeightInfo(s, ref, exName);
+        const aw = addWeightInfo(name, i, exName);
         const real = ref? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
         return { name: exName, note:'', sets: Array.from({length:s.sets},(_,k)=>{
           let w='';
@@ -1811,8 +1842,8 @@ function viewActive(){
     let lastLine = `<span class="muted">No previous data — set your baseline.</span>`, flag='', noteHint='';
     if(ref){
       lastLine = `Last time (${fmtDate(ref.date)}): <strong>${esc(real.map(x=> fmtSet(x.w,x.r)).join(',  '))||'—'}</strong>`;
-      const aw = addWeightInfo(s, ref, entry.name);
-      flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${aw.newW} ${DB.unit}`:''}</span>` : '';
+      const aw = addWeightInfo(name, i, entry.name);
+      flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${esc(aw.newW)} ${esc(DB.unit)}`:''}</span>` : '';
       if(ref.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(ref.entry.note)}</div>`;
     } else if(alt){
       const altReal = alt.entry.sets.filter(x=>!x.skipped && x.r!=='');

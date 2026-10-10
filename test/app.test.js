@@ -7711,6 +7711,81 @@ function f2FlexItemTapProblems(html){
      { rows: (rows || []).slice(0, 5).map(r => [r.fn, r.event, r.was].join(' | ')), synthetic });
 }
 
+/* ── PROG: add weight and stall follow what was lifted ──
+   Ian's rule (Sep 21): "each lift needs to have all sets done for me to progress." These checks drive
+   the real flow (latRun seeds history, startWorkout builds the next draft, viewActive renders the card,
+   finishWorkout stores the row) on an instance of their own, so the shared `app` state never moves.
+   The builders are reused by 08-02 for the stall rule:
+     latSess(date, sets, o)  one session with an entry for every slot of o.workout (default PUSH 1); the
+                             target slot (o.slot, default the DB lateral raise slot) gets the [w, r,
+                             skipped] triples, every other slot `sets: []`. Options: name, deload,
+                             skippedDay, blankSets, exId, workout, slot.
+     latRun(list)            replaces P.DB with those sessions, seeded at _schema:16 so the registry
+                             migration stamps real exercise ids.
+     latCard(i, workout)     rebuilds the draft from history and returns the i-th exercise card. */
+console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01..05) ──');
+{
+  const P = loadApp(APP_PATH); spyPushes(P);
+  const LW = 'PUSH 1';
+  const LAT = P.PROGRAM[LW].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+  let latN = 0;
+  const latSess = (date, sets, o = {}) => {
+    const wk = o.workout || LW, slotIdx = o.slot != null ? o.slot : LAT;
+    return { id: 'prog' + (latN++), workout: wk, date, endedAt: 1, extras: {}, skipped: !!o.skippedDay,
+      entries: P.PROGRAM[wk].slots.map((s, i) => i !== slotIdx ? { name: s.examples[0], sets: [] }
+        : Object.assign({ name: o.name || 'DB lateral raise',
+            sets: sets.map(([w, r, sk]) => ({ w: sk ? '' : String(w), r: sk ? '' : String(r), skipped: !!sk, reason: '' })) },
+          o.deload ? { deload: true } : {}, o.blankSets != null ? { blankSets: o.blankSets } : {}, o.exId ? { exId: o.exId } : {})) };
+  };
+  const latRun = list => { P.DB = P.normalize(Object.assign(P.blank(), { _schema: 16, sessions: list, draft: null, unit: 'lb' })); };
+  const latCard = (i, workout = LW) => {
+    P.DB.draft = null;
+    P.__sandbox.startWorkout(workout);
+    return P.viewActive().split('<div class="ex-card">')[i + 1] || '';
+  };
+  const flagOf = card => { const m = /<span class="flag">([^<]*)<\/span>/.exec(card); return m ? m[1] : null; };
+  const draftW = (i = LAT) => P.DB.draft.entries[i].sets.map(x => x.w);
+  const todayRow = () => P.DB.sessions.find(s => s.workout === LW && s.date === P.todayISO() && !s.deletedAt);
+
+  const S = P.__sandbox;
+  ok('PROG: the progression helpers exist',
+     ['addWeightVerdict', 'lastAttemptEntry', 'weightStep', 'workedSets', 'setWeightNum', 'addWeightInfo'].every(n => typeof S[n] === 'function'),
+     ['addWeightVerdict', 'lastAttemptEntry', 'weightStep', 'workedSets', 'setWeightNum', 'addWeightInfo'].filter(n => typeof S[n] !== 'function'));
+
+  // Positive control: every set done, at 25 and at the top of 15-20, earns the bump to 30.
+  latRun([ latSess(dayOff(-7), [[25, 20], [25, 20], [25, 20]]) ]);
+  {
+    const card = latCard(LAT), flag = flagOf(card);
+    ok('PROG-01: every set at the top earns ⬆ Add weight with the next weight, and the prefill bumps',
+       LAT >= 0 && flag !== null && flag.includes('30') && draftW().length === 3 && draftW().every(w => w === '30'),
+       { LAT, flag, w: draftW() });
+  }
+
+  // The reported bug, end to end: two sets at the top plus one skipped set, then the next workout.
+  {
+    let threw = null;
+    try{
+      P.setVal(LAT, 0, 'w', '25');
+      P.setVal(LAT, 0, 'r', '20');
+      P.setVal(LAT, 1, 'w', '25');
+      P.setVal(LAT, 1, 'r', '20');
+      S.skipSet(LAT, 2);
+      P.finishWorkout();
+    }catch(e){ threw = String(e && e.stack || e); }
+    const row = todayRow(), e = row && row.entries[LAT];
+    const worked = e ? e.sets.filter(x => !x.skipped) : [];
+    ok('PROG-01: the finished row stores LAT as 25×20, 25×20 plus one skipped set',
+       !threw && !!e && worked.length === 2 && worked.every(x => x.w === '25' && x.r === '20') &&
+       e.sets.filter(x => x.skipped === true).length === 1,
+       { threw, sets: e && e.sets });
+    const card = latCard(LAT);
+    const aw = S.addWeightInfo(LW, LAT, 'DB lateral raise');
+    ok('PROG-01: a skipped set means no ⬆ Add weight next time, and the prefill keeps last time\'s 25',
+       !card.includes('class="flag"') && draftW().every(w => w === '25') && !!aw && aw.allTop === false,
+       { flag: flagOf(card), w: draftW(), aw });
+  }
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
