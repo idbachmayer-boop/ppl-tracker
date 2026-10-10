@@ -5,15 +5,15 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 08
 current_phase_name: progression-correctness
 status: executing
-stopped_at: Phase 8 context gathered
-last_updated: "2026-10-10T11:49:29.868Z"
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-10-10T11:58:03.236Z"
 last_activity: 2026-10-10
 last_activity_desc: Phase 08 execution started
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 ## Current Position
 
 Phase: 08 (progression-correctness) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 08
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-10-10 — Phase 08 execution started
 
-Progress: [░░░░░░░░░░] 0% (v1.1: 0 of 6 phases complete)
+Progress: [███░░░░░░░] 33% (v1.1: 0 of 6 phases complete)
 
 ## Performance Metrics
 
@@ -96,6 +96,7 @@ Progress: [░░░░░░░░░░] 0% (v1.1: 0 of 6 phases complete)
 | Phase 07 P04 | 12 min | 2 tasks | 4 files |
 | Phase 07 P06 | 13min | 3 tasks | 5 files |
 | Phase 07 P07 | ~9min executor (spans 2026-10-07..09, waiting on Ian) | 3 tasks | 0 files |
+| Phase 08 P01 | 12min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,8 @@ The full v1.0 decision log lives in PROJECT.md (Key Decisions) and in
 SUMMARY files under `.planning/milestones/v1.0-phases/`.
 
 - [v1.1 roadmap, proposed 2026-10-09]: Six phases, 8-13, one per brief phase and in the brief's order. Phases 8-10 are verified with a real workout on Ian's phone plus the suite; Phases 11-13 with automated checks plus a quick look on the phone. Phase 9 takes `SCHEMA` 19 (equipment migration), Phase 11 the next number (new rain-history collection).
+- [08-01]: An exercise left untouched at finish stores blankSets = its prefilled set count, so the next card gives no add-weight suggestion for it (D-09); Last time still shows the last real attempt
+- [08-01]: addWeightInfo is now (workout, slotIndex, name) over lastAttemptEntry; lastRealEntry unchanged; weightStep(name) is the Phase 9 EQUIP-04 seam
 
 ### Pending Todos
 
@@ -147,9 +150,9 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-10T11:07:34.201Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-progression-correctness/08-CONTEXT.md
+Last session: 2026-10-10T11:58:03.225Z
+Stopped at: Completed 08-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 

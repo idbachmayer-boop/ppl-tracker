@@ -18,7 +18,7 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
 
 ### Progression and stall (PROG)
 
-- [ ] **PROG-01**: The app suggests adding weight to a slot only when every planned set for that slot
+- [x] **PROG-01**: The app suggests adding weight to a slot only when every planned set for that slot
   was done (none skipped, none missing) and each one reached the top of the rep range at the working
   weight. Two sets at the top plus one skipped set does not suggest adding weight.
 - [ ] **PROG-02**: A session counts as progress on an exercise when, compared with the previous session
@@ -163,7 +163,7 @@ proposed and awaiting Ian's approval.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROG-01 | Phase 8 | Pending |
+| PROG-01 | Phase 8 | Complete |
 | PROG-02 | Phase 8 | Pending |
 | PROG-03 | Phase 8 | Pending |
 | PROG-04 | Phase 8 | Pending |
