@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
 status: planning
-last_updated: "2026-10-10T02:48:06.556Z"
+last_updated: "2026-10-10T02:57:22.000Z"
 last_activity: 2026-10-09
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** v1.1 Training accuracy, lawn & sleep: defining requirements and roadmap (scope: `.planning/v1.1-BRIEF.md`)
+**Current focus:** v1.1 Training accuracy, lawn & sleep: roadmap proposed (Phases 8-13), awaiting Ian's approval. First up: Phase 8, Progression Correctness (scope: `.planning/v1.1-BRIEF.md`)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-10-09 — Milestone v1.1 started
+Phase: 8 of 13 (Progression Correctness)
+Plan: — (not planned yet)
+Status: Ready to plan, once Ian approves the roadmap
+Last activity: 2026-10-09 — v1.1 roadmap drafted: Phases 8-13, 36/36 requirements mapped
+
+Progress: [░░░░░░░░░░] 0% (v1.1: 0 of 6 phases complete)
 
 ## Performance Metrics
 
@@ -99,6 +101,8 @@ The full v1.0 decision log lives in PROJECT.md (Key Decisions) and in
 `.planning/milestones/v1.0-ROADMAP.md` (Milestone Summary). Per-plan decisions are in the archived
 SUMMARY files under `.planning/milestones/v1.0-phases/`.
 
+- [v1.1 roadmap, proposed 2026-10-09]: Six phases, 8-13, one per brief phase and in the brief's order. Phases 8-10 are verified with a real workout on Ian's phone plus the suite; Phases 11-13 with automated checks plus a quick look on the phone. Phase 9 takes `SCHEMA` 19 (equipment migration), Phase 11 the next number (new rain-history collection).
+
 ### Pending Todos
 
 - [v1.0 Phase 1, plan 01-07 Task 2]: Delete the ten legacy data-layer functions once SCHEMA 18 has run on the phone for a few days (Ian's call, 2026-09-14). Precondition met (01-06 PASS). Follow `milestones/v1.0-phases/01-f1-the-collections-registry/01-07-PLAN.md` Task 2 exactly: its own commit, retarget the synthetic differentials to the goldens, make golden() refuse regeneration, convert the real-backup block to invariants, and add the "legacy scaffolding is gone" check.
@@ -106,7 +110,14 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 
 ### Blockers/Concerns
 
-None open. The v1.0 concerns (Phase 1 merge risk, the SCHEMA 18 one-way ship, CSP silently killing sync) are resolved: the real-backup differential passed, SCHEMA 18 shipped, and the CSP-06 signed-in round trip passed on `f71c6e4`. Revert target if the CSP ever has to come out: `643c628` on `main`, never a hotfix forward.
+No blockers. Open questions for discuss-phase, raised while drafting the v1.1 roadmap (details in the ROADMAP.md phase notes):
+
+- Phase 9: `DB.exercises` is not a `COLLECTIONS` entry, and `mergeDB()` appears to take the whole array from the side with the newer `updatedAt`, so an equipment edit could lose to the other device's next save. Check before planning; the stale-device replay test must cover that path.
+- Phase 9: the brief states steps in lb; kg behaviour (`INCREMENT.kg` is 2.5) is undecided.
+- Phase 11: rain rows come from the weather fetch, but derived data uses `saveLocal()`. Decide how a rain row persists and reaches the cloud without letting a stale device look newest. The weather cache keeps only 3 past days.
+- Phase 12: Ian chooses whether `wipe()` goes through `keepLocalDraft()` or becomes the documented exception (SLP-03).
+
+The v1.0 concerns (Phase 1 merge risk, the SCHEMA 18 one-way ship, CSP silently killing sync) are resolved: the real-backup differential passed, SCHEMA 18 shipped, and the CSP-06 signed-in round trip passed on `f71c6e4`. Revert target if the CSP ever has to come out: `643c628` on `main`, never a hotfix forward.
 
 ## Deferred Items
 
@@ -124,16 +135,16 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 | Category | Item | Status |
 |----------|------|--------|
-| deferred_item | Phase 04: Lawn tab re-fetches weather in a tight loop while offline (04-REVIEW WR-01/WR-05) | Open; scheduled for v1.1 phase 4 |
+| deferred_item | Phase 04: Lawn tab re-fetches weather in a tight loop while offline (04-REVIEW WR-01/WR-05) | Open; scheduled for v1.1 Phase 11 (LAWN-06, LAWN-07) |
 | deferred_item | Phase 05 #1: `dispatchAction` looked up the event handler through the prototype chain | Resolved (05-REVIEW-FIX WR-04) |
 | deferred_item | Phase 05 #2: logged set values rendered as HTML text without `esc()` | Resolved (05-REVIEW-FIX WR-02) |
-| tech_debt | Local Erase (`wipe()`) drops the in-progress draft without `keepLocalDraft()` | Open; scheduled for v1.1 phase 5 |
+| tech_debt | Local Erase (`wipe()`) drops the in-progress draft without `keepLocalDraft()` | Open; scheduled for v1.1 Phase 12 (SLP-03) |
 | tech_debt | Remaining v1.0 audit debt (12 ranked items) | See `milestones/v1.0-MILESTONE-AUDIT.md` |
 
 ## Session Continuity
 
 Last session: 2026-10-09
-Stopped at: v1.0 Collections & lockdown completed and archived
+Stopped at: v1.1 roadmap drafted (Phases 8-13, 36/36 requirements mapped); awaiting Ian's approval
 Resume file: None
 
 ## Operator Next Steps

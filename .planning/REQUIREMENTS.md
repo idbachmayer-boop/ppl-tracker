@@ -158,16 +158,53 @@ From `STATE.md` and `milestones/v1.0-MILESTONE-AUDIT.md`:
 
 ## Traceability
 
-Which phases cover which requirements. Filled during roadmap creation.
+Which phases cover which requirements. Filled during roadmap creation (2026-10-09); the roadmap is
+proposed and awaiting Ian's approval.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| PROG-01 | Phase 8 | Pending |
+| PROG-02 | Phase 8 | Pending |
+| PROG-03 | Phase 8 | Pending |
+| PROG-04 | Phase 8 | Pending |
+| PROG-05 | Phase 8 | Pending |
+| EQUIP-01 | Phase 9 | Pending |
+| EQUIP-02 | Phase 9 | Pending |
+| EQUIP-03 | Phase 9 | Pending |
+| EQUIP-04 | Phase 9 | Pending |
+| EQUIP-05 | Phase 9 | Pending |
+| EQUIP-06 | Phase 9 | Pending |
+| LOG-01 | Phase 10 | Pending |
+| LOG-02 | Phase 10 | Pending |
+| LOG-03 | Phase 10 | Pending |
+| LOG-04 | Phase 10 | Pending |
+| LOG-05 | Phase 10 | Pending |
+| LAWN-01 | Phase 11 | Pending |
+| LAWN-02 | Phase 11 | Pending |
+| LAWN-03 | Phase 11 | Pending |
+| LAWN-04 | Phase 11 | Pending |
+| LAWN-05 | Phase 11 | Pending |
+| LAWN-06 | Phase 11 | Pending |
+| LAWN-07 | Phase 11 | Pending |
+| SLP-01 | Phase 12 | Pending |
+| SLP-02 | Phase 12 | Pending |
+| SLP-03 | Phase 12 | Pending |
+| STR-01 | Phase 13 | Pending |
+| STR-02 | Phase 13 | Pending |
+| STR-03 | Phase 13 | Pending |
+| STR-04 | Phase 13 | Pending |
+| STR-05 | Phase 13 | Pending |
+| INT-01 | Phase 13 | Pending |
+| INT-02 | Phase 13 | Pending |
+| INT-03 | Phase 13 | Pending |
+| INT-04 | Phase 13 | Pending |
+| INT-05 | Phase 13 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 36 total (PROG 5, EQUIP 6, LOG 5, LAWN 7, SLP 3, STR 5, INT 5)
-- Mapped to phases: 0
-- Unmapped: 36 (roadmap pending)
+- Mapped to phases: 36 (Phase 8: 5, Phase 9: 6, Phase 10: 5, Phase 11: 7, Phase 12: 3, Phase 13: 10)
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-09*
-*Last updated: 2026-10-09 after initial definition*
+*Last updated: 2026-10-09 after roadmap creation (Phases 8-13, proposed)*
