@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-51ZaOYRqkERotmLmNAdtXKPve9IShFb4+of/HgnVay8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-aeisIZbg//DtG1hL1bKt+jtvSPhmOMb8vLkkysHxfhQ=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -2069,8 +2069,14 @@ function finishWorkout(){
   const x = d.extras || {};
   const hasExtra = Object.keys(x).some(w=> x[w].sets.some(s=> s.r!==''));
   if(!hasEx && !hasStairs && !hasExtra){ alert('Log at least one set (with reps) before saving.'); return; }
-  // keep skipped sets (they carry a reason); drop sets with no reps (incl. pre-filled-weight-only)
-  d.entries.forEach(e=>{ e.sets = e.sets.filter(s=> s.skipped || s.r!==''); e.sets.forEach(s=>delete s._cel); });
+  // keep skipped sets (they carry a reason); drop sets with no reps (incl. pre-filled-weight-only).
+  // A dropped blank set still blocks ⬆ Add weight (D-01), so count it first: blankSets lives only on
+  // the new row built here, never on an existing one, and a re-save that filled the blanks clears it.
+  d.entries.forEach(e=>{
+    const blank = e.sets.filter(s=> !s.skipped && s.r==='').length;
+    e.sets = e.sets.filter(s=> s.skipped || s.r!==''); e.sets.forEach(s=>delete s._cel);
+    if(blank>0) e.blankSets = blank; else delete e.blankSets;
+  });
   /* Stamp identity at save time so a session is self-describing the moment it's written, rather than
      leaning on name resolution forever. */
   d.entries.forEach(e=>{ if(e.name && !e.exId) e.exId = exEnsure(e.name); });
@@ -2286,9 +2292,14 @@ function editSession(idx){
   DB.draft = {
     workout:s.workout, date:s.date, historical:true, startedAt:null, durationMin:(s.durationMin||''),
     editRef: s.id,
+    /* blankSets comes back as blank rows (capped at 20, since a backup can hold anything), so Ian sees
+       them and finishWorkout recounts on the re-save. The draft never carries the count itself. */
     entries: PROGRAM[s.workout].slots.map((sl,i)=>{ const e=(s.entries||[])[i];
-      return e ? { name:e.name, note:e.note||'', deload:!!e.deload, sets:(e.sets||[]).map(x=>({w:x.w,r:x.r,skipped:!!x.skipped,reason:x.reason||''})) }
-               : { name:sl.examples[0], note:'', sets:[] }; }),
+      if(!e) return { name:sl.examples[0], note:'', sets:[] };
+      const nb = +e.blankSets, k = isFinite(nb) ? Math.min(20, Math.max(0, Math.floor(nb))) : 0;
+      return { name:e.name, note:e.note||'', deload:!!e.deload,
+               sets:(Array.isArray(e.sets)?e.sets:[]).map(x=>({w:x.w,r:x.r,skipped:!!x.skipped,reason:x.reason||''}))
+                 .concat(Array.from({length:k}, ()=>({w:'',r:'',skipped:false,reason:''}))) }; }),
     stairs: s.stairs ? { level:s.stairs.level, seconds:s.stairs.seconds, skipped:!!s.stairs.skipped, reason:s.stairs.reason||'' } : { level:'', seconds:'', skipped:false, reason:'' },
     extras: s.extras ? JSON.parse(JSON.stringify(s.extras)) : blankExtras(s.workout),
     sessionNote: s.note || ''
