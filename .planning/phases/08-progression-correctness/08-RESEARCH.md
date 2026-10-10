@@ -592,9 +592,12 @@ the old rule. Rewrite it so it doesn't mislead the next reader.
 | A4 | Accessory extras (abs, forearms) stay out of scope: no `blankSets`, no stall | Pattern 4 | They never had stall or add-weight logic, so nothing regresses. |
 | A5 | Banner copy: "⚠ Stalled — no extra rep or weight on {workout} for 3 sessions." | Discretion | Copy only |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Which entry does the add-weight verdict judge?**
+   - RESOLVED: by D-09 in 08-CONTEXT.md. Judge the latest non-deload entry that was on the card, even
+     when every set was skipped or left blank, and keep `lastRealEntry` for "Last time" and the prefill.
+     This is implemented as `lastAttemptEntry` in 08-01 Task 1 and pinned by 08-01 Task 2's tests.
    - What we know: `lastRealEntry` skips entries with no worked set, so a fully skipped or fully blank
      exercise is invisible to it. D-01 says a skipped or blank set blocks. LOG-05 (Phase 10) says a
      skipped exercise blocks next time.
@@ -611,6 +614,10 @@ the old rule. Rewrite it so it doesn't mislead the next reader.
 2. **Does the in-app guide (GUIDE "How to progress", index.html:473) need a line about skipped or blank
    sets and the stall rule?** Optional copy. Recommend adding "with no set skipped or left blank, all at
    the same weight" and one sentence on the stall rule, so the guide keeps matching the code.
+   - RESOLVED: by D-10 together with 08-02 Task 3's GUIDE update. The "How to progress" entry gains the
+     add-weight wording (no set skipped or left blank, all at the same weight), a stall sentence (3
+     sessions in a row, deloads, skipped days and sessions with a skipped set don't count, per D-10),
+     and a bodyweight line.
 
 ## Environment Availability
 
