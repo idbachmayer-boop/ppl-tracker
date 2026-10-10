@@ -7174,13 +7174,15 @@ function f2Mid(seed){
   a.go('train'); a.setSub('log');
   return a;
 }
-/* Four earlier PUSH 1 sessions whose slot-0 best never beats the first one: isStalledSlot() is true
-   for slot 0, so the card offers the coach's Deload button. */
+/* A baseline and three flat sessions in PUSH 1 slot 0: populatedDB's s1 (dayOff(-9), 135×8 and
+   135×7) is the baseline, and these three repeat it exactly — the same weight with no extra rep, each
+   compared with the session before. That is 3 flat in a row, so isStalledSlot() is true for slot 0
+   and the card offers the coach's Deload button. */
 function f2Stall(d, a){
   const name = d.draft.entries[0].name;
-  [[-40, '185', '8'], [-35, '135', '5'], [-30, '135', '5'], [-25, '135', '5']].forEach(([off, w, r], n) => {
+  [-8, -6, -4].forEach((off, n) => {
     d.sessions.push({ id: 'st' + n, workout: 'PUSH 1', date: dayOff(off), endedAt: 10 + n, extras: {},
-      entries: [{ name, sets: [{ w, r, skipped: false }] }] });
+      entries: [{ name, sets: [{ w: '135', r: '8', skipped: false }, { w: '135', r: '7', skipped: false }] }] });
   });
   d.sessions.sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
 }
@@ -7944,6 +7946,45 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
     }catch(e){ threw = String(e && e.stack || e); }
     ok('T-8-03: LAT sets with weight \'abc\' do not throw, and the card prints no NaN',
        !threw && card.length > 0 && !card.includes('NaN'), { threw, flag: flagOf(card) });
+  }
+
+  /* ── the stall rule (08-02): progress is judged session to session ──
+     A session is progress when its working weight went up, or stayed the same with at least +1 total
+     rep. Three flat sessions in a row after a baseline is a stall. `latStall(list)` seeds the history
+     and asks the real rule for the LAT slot. */
+  const LATN = 'DB lateral raise';
+  const latStall = list => { latRun(list); return S.isStalledSlot(LATN, LW, LAT); };
+  const latDays = (seq, o) => seq.map((sets, n) => latSess(dayOff(-40 + 3 * n), sets, (o && o[n]) || {}));
+  const w25 = reps => reps.map(r => [25, r]);
+  ok('PROG: the stall helpers exist, and the old e1RM series helper is gone',
+     ['sessionSummary', 'compareSessions', 'slotHistory', 'stallStreak', 'isStalledSlot'].every(n => typeof S[n] === 'function') && typeof S.slotE1rmSeries !== 'function',
+     ['sessionSummary', 'compareSessions', 'slotHistory', 'stallStreak', 'isStalledSlot'].filter(n => typeof S[n] !== 'function'));
+
+  // PROG-03, the reported false warning: reps gained only on sets 2 and 3.
+  {
+    const stalled = latStall(latDays([w25([20, 17, 15]), w25([20, 18, 15]), w25([20, 18, 16]), w25([20, 19, 16])]));
+    const card = latCard(LAT);
+    ok('PROG-03: DB lateral raise at 25 lb, 20/17/15 → 20/18/15 → 20/18/16 → 20/19/16, is not stalled and its card shows no ⚠ Stalled',
+       stalled === false && card.length > 0 && !card.includes('coach stall'), { stalled, streak: S.stallStreak(LW, LAT, LATN) });
+  }
+  // PROG-03 / D-06: a baseline and three flats is a stall, with the Deload button on the card.
+  {
+    const B = w25([20, 18, 16]);
+    const stalled = latStall(latDays([B, B, B, B]));
+    const card = latCard(LAT);
+    ok('PROG-03/D-06: a baseline plus 3 flat sessions (25 lb, 20/18/16 four times) is stalled, and the card shows ⚠ Stalled with Deload −10%',
+       stalled === true && card.includes('coach stall') && card.includes('data-action="deloadExercise"'),
+       { stalled, streak: S.stallStreak(LW, LAT, LATN) });
+    ok('PROG-03: the stall banner says why, and names the workout',
+       /no extra rep or weight for 3 sessions in a row on PUSH 1/.test(card), (/<div class="coach stall">([\s\S]*?)<button/.exec(card) || [])[1]);
+    ok('PROG-03/D-06: a baseline plus 2 flats is not stalled', latStall(latDays([B, B, B])) === false, S.stallStreak(LW, LAT, LATN));
+  }
+  // PROG-02: the comparison itself.
+  {
+    const c = S.compareSessions;
+    const got = [c({W:25,reps:50}, {W:30,reps:40}), c({W:25,reps:50}, {W:25,reps:51}), c({W:25,reps:50}, {W:25,reps:50}), c({W:25,reps:50}, {W:20,reps:60})];
+    ok('PROG-02: heavier is progress, the same weight with +1 total rep is progress, the same total is flat, and lighter is lighter',
+       got.join() === 'progress,progress,flat,lighter', got);
   }
   P.DB.draft = null;
 }
