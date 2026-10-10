@@ -1,44 +1,45 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-current_phase: 07
-current_phase_name: content-security-policy
+milestone: v1.1
+milestone_name: Training accuracy, lawn & sleep
+current_phase: 08
+current_phase_name: progression-correctness
 status: executing
-stopped_at: "07-07 Task 2 checkpoint: awaiting Ian's DevTools pass (throttled reload), push, PR and merge of the CSP re-ship"
-last_updated: "2026-10-07T12:35:03.607Z"
-last_activity: 2026-10-07
-last_activity_desc: 07-06 executed (manifest fix cbf17b5, CSP re-applied 643c628); 07-07 go-live next
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-10-10T12:07:38.930Z"
+last_activity: 2026-10-10
+last_activity_desc: Phase 08 execution started
 progress:
-  total_phases: 7
-  completed_phases: 6
-  total_plans: 33
-  completed_plans: 32
+  total_phases: 6
+  completed_phases: 0
+  total_plans: 3
+  completed_plans: 2
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-22)
+See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 07 — content-security-policy
+**Current focus:** Phase 08 — progression-correctness
 
 ## Current Position
 
-Phase: 07 (content-security-policy) — EXECUTING
-Plan: 6 of 7
-Status: 07-06 done — manifest fix cbf17b5 and CSP re-applied as 643c628 (patch-identical to ebc5723); 07-07 go-live next
-Last activity: 2026-10-07 — 07-06 executed: manifest href removed, CSP re-applied locally, split-delivery probes clean
+Phase: 08 (progression-correctness) — EXECUTING
+Plan: 3 of 3
+Status: Ready to execute
+Last activity: 2026-10-10 — Phase 08 execution started
 
-Progress: [██████████] 97%
+Progress: [███████░░░] 67% (v1.1: 0 of 6 phases complete)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 24
+- Total plans completed: 33
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -51,6 +52,8 @@ Progress: [██████████] 97%
 | 03 | 5 | - | - |
 | 04 | 3 | - | - |
 | 05 | 6 | - | - |
+| 7 | 7 | - | - |
+| 6 | 2 | - | - |
 
 **Recent Trend:**
 
@@ -92,95 +95,39 @@ Progress: [██████████] 97%
 | Phase 07 P02 | ~15min executor (spans 2026-10-02..05, waiting on Ian) | 3 tasks | 0 files |
 | Phase 07 P04 | 12 min | 2 tasks | 4 files |
 | Phase 07 P06 | 13min | 3 tasks | 5 files |
+| Phase 07 P07 | ~9min executor (spans 2026-10-07..09, waiting on Ian) | 3 tasks | 0 files |
+| Phase 08 P01 | 12min | 3 tasks | 2 files |
+| Phase 08 P02 | 8 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
+The full v1.0 decision log lives in PROJECT.md (Key Decisions) and in
+`.planning/milestones/v1.0-ROADMAP.md` (Milestone Summary). Per-plan decisions are in the archived
+SUMMARY files under `.planning/milestones/v1.0-phases/`.
 
-- [Phase 1]: `COLLECTIONS` declared before `let DB = load()`, adjacent to `SCHEMA`/`KEY`, before `MIGRATIONS` — values must be literals or hoisted-function references only, never a `const` arrow or a forward `const` reference (TDZ contract from research/SUMMARY.md).
-- [Phase 1]: Each hand-written function replaced by the registry (`mergeDB_v0` etc.) is kept renamed and differential-tested against its replacement over a real exported backup plus per-incident synthetic fixtures; legacy is deleted only in a later commit, never the same one.
-- [Phase 1]: The `gen`-mismatch wholesale-replace stays a hard early `return` in `mergeDB()`, untouched by the derived per-collection loop — folding it in silently disables "Erase all data" and Import→Replace.
-- [Phase 1]: `merge` is an explicit required field on every collection; map collections (`journal`, `mobilityLog`, `lawnLog`) take the whole inner object from the newer side, never a union of inner keys.
-- [Phase 1]: A row rewrite is permitted only with all four guards — `touch()`, persist immediately, idempotent, stale-device merge replay test.
-- [Phase 1]: The real-backup fixture (REG-13) stays LOCAL ONLY in a git-ignored folder — the repo and the live site are public, so a committed backup would publish Ian's journal, weights and notes. Committed tests use synthetic per-incident fixtures; the real-data differential runs only when the local file is present and skips loudly, never silently, when it is absent. (Ian, 2026-09-11)
-- [Phase 1]: Planned without CONTEXT.md and without a UI-SPEC (`--skip-ui`) — the sleep view copies an existing log screen rather than a written design contract. (Ian, 2026-09-11)
-- [Phase 7]: Meta CSP has no report-only mode; local DevTools verification against a static file server is the only pre-production check, and cloud sync must be actively confirmed working after the policy goes live, not assumed.
-- [Phase 1, plan 01-01]: COLLECTIONS is declared as dead data only in this plan — no consumer (blank, liveX, validateBackup, mergeDB) reads it yet; migration happens one collection per commit in plans 01-02 and 01-03.
-- [Phase 1, plan 01-01]: cardio, ideas, todos and hobbyLog deliberately declare no sortBy in COLLECTIONS — the hand-written merge never sorted them, so declaring one would change stored order.
-- [Phase 1, plan 01-01]: columns/format validation was deliberately deferred from Task 1 to Task 2 so the module-eval placement contract and merge-strategy refusal could land first, independently of REG-17's export metadata.
-- [Phase ?]: REG-08 shape prologue kept as three ordered COLLECTIONS passes (required lists, optional lists, maps) rather than one combined loop, to guarantee legacy fault-precedence regardless of registry declaration order
-- [Phase ?]: liveOf(name) throws on an undeclared/non-soft-list name instead of defaulting to permissive behavior, closing the gap Pitfall 6 warned about
-- [Phase ?]: [Phase 1, plan 01-03]: mergeDB_legacy copies the pre-phase mergeDB verbatim (comments included) with the single sanctioned edit blank() -> blank_legacy(), preserving the exact historical code the incidents were fixed against.
-- [Phase ?]: [Phase 1, plan 01-03]: Sort invariants (weights/petWeights by date, sessions via sessionSort) moved into mergeCollections, dispatched from each COLLECTIONS entry's declared sortBy, rather than staying hand-written in mergeDB -- a deliberate departure from 01-PATTERNS.md so plan 01-05's sleep collection needs no mergeDB edit.
-- [Phase ?]: [Phase 1, plan 01-03]: ROW_FOR's row factories are keyed by exactly the fields each list's real key function reads, so the REG-13 fixtures exercise the actual sessKey/cardioKey/ideaKey/todoKey/hobbyKey composite-key logic rather than bypassing it.
-- [Phase ?]: [Phase 1, plan 01-04]: Property tests for the merge (idempotence/commutativity/associativity) are written at the mergeDB() level, never on raw mergeUnion/mergeDateMap — per PITFALLS Pitfall 5, only mergeDB owns recomputing which side is newer.
-- [Phase ?]: [Phase 1, plan 01-04]: Map collections (mobilityLog, lawnLog) are not associative today because a map day carries no per-day mtime; documented via a fixed counterexample rather than patched, per PITFALLS Pitfall 5 and the plan's explicit prohibition.
-- [Phase ?]: [Phase 1, plan 01-05]: sleep is declared last in COLLECTIONS on one line, keeping every existing collection's validation precedence and merge order unchanged, verified by a structural test rather than only by placement.
-- [Phase ?]: [Phase 1, plan 01-05]: SLEEP-02 confirmed by Ian, 2026-09-12 — the sleep form conventions (date defaults to today, hours 0-24 in 0.25 steps, quality integer 1-5 default 3, optional trimmed note, multiple entries per date via id key) are no longer an open flagged assumption.
-- [Phase ?]: [Phase 1, plan 01-05]: SLEEP-05's proof boots a fresh probe instance via test/harness.js's opts.transform rather than adding a permanent fixture collection to the real registry, since existing devices only ever gain a collection through the SCHEMA/MIGRATIONS ritual, never through a derived consumer.
-- [Phase 1, plan 01-06]: REG-13's real-backup differential ran to completion over Ian's actual exported backup (225602 bytes, _schema 17) on 2026-09-14 — 30 real-backup PASS lines, 0 FAIL, suite at 653 passed / 0 failed / 0 skipped. Plan 01-07's legacy-function deletion precondition is now met.
-- [Phase 1, plan 01-05]: SLEEP-02's form conventions (date defaults to today; hours >0 and <=24 in 0.25 steps; quality 1–5 default 3; note optional and trimmed; multiple entries per date) confirmed by Ian at the Task 2 visual checkpoint. (Ian, 2026-09-12)
-- [Phase 1, plan 01-07]: Legacy-function deletion (REG-14, Task 2) DEFERRED — "keep for now". The precondition is met, but the ten `_legacy` twins stay until SCHEMA 18 has shipped and run on the phone for a few days. Task 1's 540 goldens are committed, so the differential outlives the legacy code whenever it goes. REG-14 holds: nothing was deleted early. (Ian, 2026-09-14)
-- [Phase ?]: [Phase 2, plan 02-01]: COLLECTIONS.columns promoted in place to {field,label,unit}[] rather than a parallel label/unit map (D-08); Task 1's collectionProblems() rewrite already satisfied every Task 2 behavior bullet, so Task 2 landed as test-only coverage.
-- [Phase ?]: [Phase 2, plan 02-02]: dayFlagRows' bookkeeping-key filter and strict-true filter are two chained .filter() calls, never folded into one condition (RESEARCH Pitfall 3)
-- [Phase ?]: [Phase 2, plan 02-02]: COLLECTIONS.cardio's columns array is reformatted across multiple lines (unlike every other one-line entry) so each zeroIsMissing:true declaration is independently greppable
-- [Phase ?]: [Phase 2, plan 02-03]: buildMarkdownExport() computes every section's {spec,rows} exactly once; both the header's date-range/row-count line and the tables read from that same array (EXP-08 concurrency)
-- [Phase ?]: [Phase 2, plan 02-03]: exportMarkdown() returns 'share' as soon as navigator.share() is called, regardless of eventual resolution; exportShareFailed() is the single funnel for every non-cancel outcome (D-01)
-- [Phase ?]: [Phase 3, plan 03-01]: docs/adding-a-collection.md states no field count in prose (03-RESEARCH.md's '9 items; 10 array entries' note was a miscount); the divergence test compares sets, so no number is needed.
-- [Phase ?]: [Phase 3, plan 03-01]: CLAUDE.md's new 'Adding a new tracked thing' section carries only step 1 in this plan; remaining numbered steps deferred to plan 03-03 per the plan's explicit scope boundary.
-- [Phase ?]: [Phase 3, plan 03-02]: recipeProbeMap is its own independent Dry Run A probe (separate transform/line/instance from SLEEP-05's probe/probeList/probeMap), preserving SLEEP-05's own 'two lines added' reconstruction assertion.
-- [Phase ?]: [Phase 3, plan 03-02]: Dry Run A's mergeDB() fixtures vary a top-level updatedAt, not a per-day mtime, matching how mergeDateMap()'s replace-whole branch is actually driven; DOC-04's data-layer half is proven, Dry Run B (plan 03-05) covers the remaining UI step.
-- [Phase ?]: [Phase 3, plan 03-03]: CLAUDE.md's step 4 required-test categories and docs/adding-a-collection.md's test-walkthrough subheadings are matched one-for-one, in order, so the spine and companion doc cannot silently drift into different category counts.
-- [Phase ?]: [Phase 3, plan 03-03]: the copy-paste example registry entry uses placeholder label 'REPLACE ME' rather than a plausible real collection name, to avoid implying a decision Ian hasn't made.
-- [Phase ?]: [Phase 3, plan 03-04]: Task 1 decision (Ian, 2026-09-21) — option-a: CLAUDE.md quotes index.html's own COLLECTIONS registry comment block verbatim (source path index.html), trimmed to the placement/TDZ sentences only; no looseness note needed since option-a already reads 'after SCHEMA/KEY'.
-- [Phase ?]: [Phase 3, plan 03-04]: docBlock() generalized to take a fence language tag rather than adding a second fenced-block extractor for the js-fenced copy-paste registry entry.
-- [Phase ?]: [Phase 3, plan 03-05]: Dry Run B's cold walk found 8 recipe gaps — most consequential: bumping SCHEMA silently stales the committed merge-golden.json fixture and the INTRODUCED_AT boot table, and the hand-written-UI pattern (generalized from sleep) was wrong for a map collection. All closed in CLAUDE.md/docs/adding-a-collection.md; npm test stayed at the 748/0/2 baseline throughout.
-- [Phase ?]: [Phase 3, plan 03-05]: RESEARCH.md Q1 (preserve scratch-branch diff vs. narrative record) left at its default — narrative record — per the plan; surfaced for Ian rather than decided silently.
-- [Phase ?]: [Phase 4, plan 04-01]: the draft is removed from every mergeDB result and reattached from this device in adoptMerged(); snapshots, cloud versions and backups exclude it
-- [Phase ?]: [Phase 4, plan 04-01]: test harness fetch never settles, because a rejecting fetch spun an endless Lawn-tab weather retry in microtasks once async checks existed
-- [Phase ?]: 04-02: every site turning foreign data into DB reads keepLocalDraft(normalize(stripDraft(raw))); a dbAssignLines tripwire fails the suite on any unsanctioned DB assignment
-- [Phase ?]: 04-03: every draft-only function uses saveLocal(); only pickEx, exPick and finishWorkout still save() from a draft path, pinned by the DRAFT_PUSHERS allowlist
-- [Phase ?]: 05-01: ACTIONS is event-keyed (name -> {event: wrapper}); dispatchAction uses an own-key lookup; five non-passive document listeners; no boot-time validator
-- [Phase ?]: 05-01: the inventory ratchet matches callees as whole identifiers, and the dispatcher test poisons Object.prototype, because the mutation pass showed the substring and inherited-name forms passed vacuously
-- [Phase ?]: 05-01: F2 source checks read a fresh loadApp instance (f2app); f2Corpus() is cached on the function so later plans append states without a TDZ risk
-- [Phase ?]: 05-02: Settings and Ideas delegated; idea/exercise/cloud-version ids travel as data-id="${esc(id)}" and a hostile-id test proves each inert. The export-placement test counts controls whose action calls exportMarkdown instead of matching markup text
-- [Phase ?]: 05-02: the Ideas backdrop keeps its div exception with the e.target===el guard in its wrapper; trash and versions headers are <button class="row tap"> with block spans
-- [Phase ?]: 05-03: the enter action runs data-enter's target only if both the entry and its click are OWN properties (the plan's form read click through the prototype)
-- [Phase ?]: 05-03: the DELEG-03 ratchet counts wiring sites per mapped row, so a surviving same-name sibling cannot hide a dropped control
-- [Phase ?]: 05-04: a shared action whose other consumer lands in a later plan gets a stand-in-element check for that consumer's call shape (logPetWeight with no data-date-el)
-- [Phase ?]: 05-04: attribute values outside data-* that a plan escapes (D-09) get a hostile-value check; the D-03 check reads data-* only
-- [Phase ?]: 05-05: rows sharing handler text in one function convert in the same task, because the DELEG-03 ratchet counts inline occurrences (the week link and the evening week card)
-- [Phase ?]: 05-05: evening-only Today markup is reached with a per-instance clock (f2Evening), never by moving the shared frozen clock
-- [Phase ?]: 05-06: the DELEG-03 ratchet counts wiring sites per event (max over events), so one element whose action handles two events (stopwatch pointerdown+click, weight input+change) is one site
-- [Phase ?]: 05-06: every Log-tab and accessory control is pinned by an exact-arguments sweep (spy every callee, fire each rendered control once, compare the full call map)
-- [Phase ?]: 06-01: .gitattributes (* text=auto eol=lf) committed alone as C1 17b5a66; no whole-file diff because every blob was already LF; index.html blob unchanged so no sw.js bump
-- [Phase ?]: 06-01: other checkouts refresh to LF with lf-refresh.sh (park in a commit object, never git stash); script is in 06-01-SUMMARY.md Follow-ups
-- [Phase ?]: 06-02: the REPO-01 suite check asks git (check-attr eol, show :index.html) and never reads .gitattributes; a missing git or repository is a FAIL, never a skip
-- [Phase 07]: 07-01: the build stamp lives in <meta name="ppl-build"> in <head>; BUILD reads it at boot, so the deploy sed never touches the hashed inline script (D-08)
-- [Phase 07]: 07-01: deployStamp() replays the deploy job's own sed and throws on anything it cannot model, so a workflow edit fails the suite instead of drifting
-- [Phase 07]: 07-01: deployable unit (D-09) is 6f5365419670a8c0479e40e65ff3ca0c2f924e2c, stamp move only, no CSP code
-- [Phase 07]: 07-03: csp-hash CLI refuses any flag but --check, so a typo never falls through to the rewrite
-- [Phase 07]: 07-03: --check reports two sha256 tokens as ambiguous (found 2), not stale, since csp:hash refuses that page
-- [Phase 07]: 07-02: stamp move shipped alone as merge commit 58d8988 (PR #10); PC and phone read 58d8988; live inline script byte-identical to repo, so the D-09 gate is passed and CSP code may be pushed
-- [Phase 7, plan 07-04]: the CSP ships as one commit ebc5723 (revert target); policy exactly as RESEARCH verified, with hash-only script-src plus exact SDK and mobile auth-loader paths
-- [Phase 7, plan 07-04]: the headless-Chrome service-worker abort is Windows path length in the Chrome profile (212+ chars aborts), not CSP; probes need a short --user-data-dir
-- [Phase 7, plan 07-06]: the manifest link carries no href (cbf17b5, survives a CSP revert); the CSP is re-applied as 643c628, patch-identical to ebc5723 (patch-id 299764c8), the new revert target
-- [Phase 7, plan 07-06]: CSP checks must include split delivery (SLOW_MS=3000) on desktop and Android; localhost one-write delivery hides fetches that race the inline script
+- [v1.1 roadmap, proposed 2026-10-09]: Six phases, 8-13, one per brief phase and in the brief's order. Phases 8-10 are verified with a real workout on Ian's phone plus the suite; Phases 11-13 with automated checks plus a quick look on the phone. Phase 9 takes `SCHEMA` 19 (equipment migration), Phase 11 the next number (new rain-history collection).
+- [08-01]: An exercise left untouched at finish stores blankSets = its prefilled set count, so the next card gives no add-weight suggestion for it (D-09); Last time still shows the last real attempt
+- [08-01]: addWeightInfo is now (workout, slotIndex, name) over lastAttemptEntry; lastRealEntry unchanged; weightStep(name) is the Phase 9 EQUIP-04 seam
+- [08-02]: stall judged session to session per workout+slot+exKey; heavier or +1 total rep is progress, lighter restarts, 3 flat in a row after a baseline is stalled, never against an all-time best
+- [08-02]: a deload, skipped day, empty entry, skipped set or blankSets>0 pauses the stall streak (blank set = planner's reading of D-10 with D-01, confirm on phone in 08-03)
 
 ### Pending Todos
 
-- [Phase 1, plan 01-07 Task 2]: Delete the ten legacy data-layer functions once SCHEMA 18 has shipped and been used on the phone for a few days (Ian's call, 2026-09-14). Precondition already met (01-06 PASS). Follow 01-07-PLAN.md Task 2 exactly: own commit, retarget synthetic differentials to the goldens, make golden() refuse regeneration, convert the real-backup block to invariants, add the "legacy scaffolding is gone" check.
+- [v1.0 Phase 1, plan 01-07 Task 2]: Delete the ten legacy data-layer functions once SCHEMA 18 has run on the phone for a few days (Ian's call, 2026-09-14). Precondition met (01-06 PASS). Follow `milestones/v1.0-phases/01-f1-the-collections-registry/01-07-PLAN.md` Task 2 exactly: its own commit, retarget the synthetic differentials to the goldens, make golden() refuse regeneration, convert the real-backup block to invariants, and add the "legacy scaffolding is gone" check.
+- CSP-test hardening (07-REVIEW WR-01..03): run as a separate quick task, per the v1.1 brief.
 
 ### Blockers/Concerns
 
-- [Phase 1]: Highest-risk phase in the milestone — the only one touching the merge/soft-delete/migration code paths that already caused the 2026-07-25 blind-write and Migration-15 incidents. Do not relax the differential-test-before-delete discipline under time pressure.
-- [Phase 1]: The planner's two flagged items are resolved — SLEEP-02 confirmed (2026-09-12), REG-14 deletion deferred by Ian (2026-09-14; see Decisions and Pending Todos). The planner also documented a pre-existing gap: the three date-keyed map collections are not order-independent across three devices, because a day carries no timestamp of its own. Plan 01-04 records it and does not change behaviour.
-- [Phase 1]: Shipping SCHEMA 18 is one-way — the cloud copy is stamped 18 and older builds refuse to sync. No plan pushes to `main`; the code goes through a PR after the phase.
-- [Phase 7]: A CSP that blocks `gstatic.com` fails silently — the app keeps working on localStorage with cloud sync dead and no visible error. Verify sync explicitly after the policy ships.
-- [Phase 7]: 07-06 fixed the manifest cause (MANIFEST_SHA cbf17b5: the manifest link has no href; suite refuses one) and re-applied the CSP (CSP_SHA2 643c628, patch-identical to ebc5723, the new revert target). Clean in Chrome with split delivery on desktop and Android. Waiting on 07-07's go-live (push, live-URL probe, CSP-06 round trip).
+No blockers. Open questions for discuss-phase, raised while drafting the v1.1 roadmap (details in the ROADMAP.md phase notes):
+
+- Phase 9: `DB.exercises` is not a `COLLECTIONS` entry, and `mergeDB()` appears to take the whole array from the side with the newer `updatedAt`, so an equipment edit could lose to the other device's next save. Check before planning; the stale-device replay test must cover that path.
+- Phase 9: the brief states steps in lb; kg behaviour (`INCREMENT.kg` is 2.5) is undecided.
+- Phase 11: rain rows come from the weather fetch, but derived data uses `saveLocal()`. Decide how a rain row persists and reaches the cloud without letting a stale device look newest. The weather cache keeps only 3 past days.
+- Phase 12: Ian chooses whether `wipe()` goes through `keepLocalDraft()` or becomes the documented exception (SLP-03).
+
+The v1.0 concerns (Phase 1 merge risk, the SCHEMA 18 one-way ship, CSP silently killing sync) are resolved: the real-backup differential passed, SCHEMA 18 shipped, and the CSP-06 signed-in round trip passed on `f71c6e4`. Revert target if the CSP ever has to come out: `643c628` on `main`, never a hotfix forward.
 
 ## Deferred Items
 
@@ -192,8 +139,24 @@ Items acknowledged and carried forward from previous milestone close:
 | Export | EXP-09 (recent-detail-plus-aggregate windowing) | Deferred to v2 | 2026-09-10 |
 | Deploy | DEPLOY-01 (CI publishes served surface only) | Deferred to v2 | 2026-09-10 |
 
+Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` reported 15
+`deferred_items` lines; they are the bullets of three entries in the phase 4 and 5
+`deferred-items.md` files, now under `milestones/v1.0-phases/`):
+
+| Category | Item | Status |
+|----------|------|--------|
+| deferred_item | Phase 04: Lawn tab re-fetches weather in a tight loop while offline (04-REVIEW WR-01/WR-05) | Open; scheduled for v1.1 Phase 11 (LAWN-06, LAWN-07) |
+| deferred_item | Phase 05 #1: `dispatchAction` looked up the event handler through the prototype chain | Resolved (05-REVIEW-FIX WR-04) |
+| deferred_item | Phase 05 #2: logged set values rendered as HTML text without `esc()` | Resolved (05-REVIEW-FIX WR-02) |
+| tech_debt | Local Erase (`wipe()`) drops the in-progress draft without `keepLocalDraft()` | Open; scheduled for v1.1 Phase 12 (SLP-03) |
+| tech_debt | Remaining v1.0 audit debt (12 ranked items) | See `milestones/v1.0-MILESTONE-AUDIT.md` |
+
 ## Session Continuity
 
-Last session: 2026-10-07T12:35:03.582Z
-Stopped at: 07-07 Task 2 checkpoint: awaiting Ian's DevTools pass (throttled reload), push, PR and merge of the CSP re-ship
-Resume file: .planning/phases/07-content-security-policy/07-07-PLAN.md
+Last session: 2026-10-10T12:07:38.920Z
+Stopped at: Completed 08-02-PLAN.md
+Resume file: None
+
+## Operator Next Steps
+
+- Approve the v1.1 roadmap (Phases 8-13), then `/gsd-discuss-phase 8`

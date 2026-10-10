@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Nw5jh/JeJpDSYItCr6FJJ52mvE7ySXo1646f8nZCpkU=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-vIizx9pDW8e7DQXXv28JrxiESnjc7wUnpzuz431d1vM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -470,7 +470,7 @@ const SHAVE_STEPS = [
 const GUIDE = [
   { t:"The split & schedule", b:`<p><strong>Push / Pull / Legs</strong>, 3 days a week, with at least <strong>1 rest day between every session</strong>. Recommended order: <strong>Push → Legs → Pull</strong> (gives the upper body more recovery).</p><p>It runs on a <strong>2-week cycle</strong> — week 1 uses version 1 of each day, week 2 uses version 2, then it repeats. The app rotates you through this automatically and suggests your next session.</p>` },
   { t:"Rep ranges & how hard to push", b:`<p>Every exercise has a target <strong>rep range</strong>. Take each set to <strong>failure</strong> — <em>unless</em> you reach the <strong>top of the range</strong>, then stop even if you have more in the tank (extra reps just fatigue you for the next set).</p>` },
-  { t:"How to progress", b:`<ul><li><strong>Each session:</strong> beat the last one by at least <strong>1 rep</strong> on any set.</li><li><strong>Tiebreaker:</strong> total reps — 10+9+8 (27) → 10+10+8 (28) still counts as progress.</li><li><strong>Add weight</strong> once you hit the top of the range on <strong>all sets</strong> — add the smallest plate and start the range over. The app flags this with the green <strong>⬆ Add weight</strong> tag.</li></ul><p>Progress naturally slows as you get more advanced. That's expected and normal.</p>` },
+  { t:"How to progress", b:`<ul><li><strong>Each session:</strong> beat the last one by at least <strong>1 rep</strong> in total at the same weight, or lift more weight.</li><li><strong>Tiebreaker:</strong> total reps — 10+9+8 (27) → 10+10+8 (28) still counts as progress.</li><li><strong>Add weight</strong> once <strong>every set</strong> reaches the top of the range — no set skipped or left blank, all at the same weight. Add the smallest plate and start the range over. The app flags this with the green <strong>⬆ Add weight</strong> tag.</li><li><strong>Stalled:</strong> 3 sessions in a row without an extra rep or more weight, each compared with the session before. Deloads, skipped days and sessions with a skipped or blank set don't count, and a lighter session starts the count again. The app shows <strong>⚠ Stalled</strong> with a Deload −10% button.</li><li><strong>Bodyweight:</strong> at the top of the range on every set, add a belt or move to a harder variation.</li></ul><p>Progress naturally slows as you get more advanced. That's expected and normal.</p>` },
   { t:"Warm-up", b:`<p><strong>General:</strong> get genuinely warm — loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles), optionally 5–10 min of easy cardio.</p><p><strong>First-exercise ramp:</strong> empty bar → ~50% → ~75% → working sets. The <strong>🔥 Warm-up ramp</strong> on the first exercise does this math for you — you don't need to ramp every exercise.</p>` },
   { t:"Cardio", b:`<p>Aim for <strong>~150 min/week</strong> of easy, steady-state cardio (fast walking is the top pick) over 2+ sessions, at a pace where you could still hold a conversation. Keep it separate from lifting when you can. Your <strong>stair-stepper finisher</strong> counts toward this.</p>` },
   { t:"Optional add-ons", b:`<p>Not part of the core routine — add if you want:</p><ul><li><strong>Abs:</strong> 3 sets of 8–15 reps, 2–4×/week (machine/cable crunch, weighted sit-up).</li><li><strong>Forearms:</strong> wrist curls, grippers, or rice-bucket work — not right before a workout.</li></ul>` }
@@ -913,7 +913,7 @@ function lastRealEntry(workout, slotIndex, exName){
     if(s.workout!==workout || s.skipped || !s.entries) continue;
     const e=s.entries[slotIndex];
     if(exName!=null && (!e || exKey(e)!==exKey(exName))) continue;
-    if(e && !e.deload && e.sets && e.sets.some(x=>!x.skipped && x.r!=='')) return {entry:e, date:s.date}; // deloads never reset the baseline
+    if(e && !e.deload && Array.isArray(e.sets) && e.sets.some(x=>!x.skipped && x.r!=='')) return {entry:e, date:s.date}; // deloads never reset the baseline
   }
   return null;
 }
@@ -926,7 +926,7 @@ function lastAnywhere(exName){
   for(let i=ls.length-1;i>=0;i--){
     const s=ls[i];
     if(s.skipped) continue;
-    const hits = sessionExercises(s).filter(e=> exKey(e)===exKey(exName) && !e.deload && e.sets && e.sets.some(x=>!x.skipped && x.r!==''));
+    const hits = sessionExercises(s).filter(e=> exKey(e)===exKey(exName) && !e.deload && Array.isArray(e.sets) && e.sets.some(x=>!x.skipped && x.r!==''));
     if(hits.length) return {entry:hits[hits.length-1], date:s.date, workout:s.workout};
   }
   return null;
@@ -1088,13 +1088,44 @@ function updPlates(i){ const el=document.getElementById(`plates-${i}`); if(!el) 
   const ws=DB.draft.entries[i].sets.filter(s=>!s.skipped && s.w!=='' && +s.w>0).map(s=>+s.w);
   el.innerHTML = ws.length ? platesText(Math.max(...ws), bar, barStyle(name)) : ''; }
 const INCREMENT = { lb:5, kg:2.5 };
-/* Should we bump the load, and to what? Uses the last real entry's worked sets. */
-function addWeightInfo(slot, ref, name){
-  if(!ref) return null;
-  const rng=effRange(slot, name), real=ref.entry.sets.filter(x=>!x.skipped && x.r!=='');
-  if(!real.length) return null;
-  const lastW=Math.max(0, ...real.map(x=> x.w===''?0:+x.w));
-  return { allTop: real.every(x=> +x.r >= rng.hi), lastW, newW: lastW+(INCREMENT[DB.unit]||5), hasLoad: lastW>0 };
+/* Should we bump the load, and to what? The verdict judges the latest attempt on the card for this
+   exercise in this slot (even one where every set was skipped or left blank, D-09): every set done
+   (no skipped set, no blank set, D-01), every set at the working weight (the heaviest, D-02), and
+   every set at the top of the range. Computed at render time, never stored. */
+function setWeightNum(x){ const v = (!x || x.w==='' || x.w==null) ? 0 : +x.w; return isFinite(v) && v>0 ? v : 0; }
+function workedSets(e){ return (e && Array.isArray(e.sets) ? e.sets : []).filter(x=> x && !x.skipped && x.r!=='' && x.r!=null); }
+/* The one seam Phase 9 (EQUIP-04) replaces: only the body changes, so `name` is kept though unused. */
+function weightStep(name){ return INCREMENT[DB.unit] || 5; }
+/* Unlike lastRealEntry, an entry with no worked set still counts here, as long as it was on the card
+   (it holds sets, or blankSets says its sets were left blank). lastRealEntry keeps feeding Last time
+   and the prefilled weights. */
+function lastAttemptEntry(workout, slotIndex, exName){
+  const ls = liveSessions(), key = exKey(exName);
+  for(let i=ls.length-1;i>=0;i--){
+    const s=ls[i];
+    if(s.workout!==workout || s.skipped || !Array.isArray(s.entries)) continue;
+    const e=s.entries[slotIndex];
+    if(!e || exKey(e)!==key || e.deload) continue;
+    if((Array.isArray(e.sets) && e.sets.length) || +e.blankSets > 0) return {entry:e, date:s.date};
+  }
+  return null;
+}
+function addWeightVerdict(entry, rng){
+  if(!entry) return null;
+  const sets = Array.isArray(entry.sets) ? entry.sets : [];
+  const worked = workedSets(entry);
+  const blocked = sets.some(x=> x && x.skipped) || (+entry.blankSets > 0) || !worked.length;
+  const W = worked.length ? Math.max(0, ...worked.map(setWeightNum)) : 0;
+  const allTop = !blocked && worked.every(x=> setWeightNum(x)===W && +x.r >= rng.hi);
+  return { allTop, lastW:W, hasLoad: W>0 };
+}
+function addWeightInfo(workout, slotIndex, name){
+  const prog = PROGRAM[workout], slot = prog && prog.slots ? prog.slots[slotIndex] : null;
+  if(!slot) return null;
+  const att = lastAttemptEntry(workout, slotIndex, name);
+  if(!att) return null;
+  const v = addWeightVerdict(att.entry, effRange(slot, name));
+  return { allTop:v.allTop, lastW:v.lastW, newW: v.lastW + weightStep(name), hasLoad:v.hasLoad };
 }
 /* Per-set "beat last time" badge: ✓ beat, = tied, '' under (compared at the matched weight). */
 function badgeState(st, t){
@@ -1144,24 +1175,58 @@ function updTargetBadge(i,k){
   const el=document.getElementById(`tgt-${i}-${k}`); if(!el) return;
   const [t,c,title]=setStatus(i,k); el.textContent=t; el.className='tgt-badge '+c; el.title=title||'';
 }
-/* Stall = no new best e1RM in the last 3 real (non-deload) sessions of THIS exercise in THIS
-   workout+slot. Scoping to the slot is critical: the same exercise is trained at different rep
-   ranges on different days (heavy low-rep vs light high-rep), and pooling them made a light day
-   look like a stall against a heavy day. Within one range, adding even one rep raises e1RM, so a
-   genuine +1-rep session clears the stall and never triggers a deload. */
-function slotE1rmSeries(name, workout, slotIndex){
-  const v=[];
-  liveSessions().forEach(s=>{ if(s.skipped || s.workout!==workout || !s.entries) return;
-    const e=s.entries[slotIndex]; if(!e || e.deload || e.name!==name) return;
-    let best=0; e.sets.forEach(x=>{ if(!x.skipped){ const val=e1rm(x.w,x.r); if(val>best) best=val; } });
-    if(best>0) v.push(best); });
-  return v;
+/* Stall = 3 flat sessions in a row, each judged against the session before it, for THIS exercise
+   (by exKey, so aliases, a rename and a merge share one history) in THIS workout+slot. Scoping to
+   the slot is critical: the same exercise is trained at different rep ranges on different days
+   (heavy low-rep vs light high-rep), and pooling them made a light day look like a stall against a
+   heavy day.
+   - Heavier working weight than last time is progress. The same weight with at least +1 total rep
+     (every worked set counted, so gains on sets 2 and 3 count) is progress. Anything else at the
+     same weight is flat.
+   - A lighter session restarts the comparison from itself: not progress, not a failure.
+   - A deload or a skipped day pauses: it is not counted, and the next session is compared with the
+     last counted one.
+   - A session with a skipped or blank set pauses the same way (D-10, and D-01 for blank sets):
+     dropping a set for time must never push toward a deload warning.
+   - Never compared with an all-time best: one old PR must not make the warning repeat forever.
+   Computed at render time over every past session. Nothing is stored, so history is re-judged
+   whenever the rule changes. Bodyweight (weight 0 or blank) is a normal session judged on reps. */
+function sessionSummary(e){
+  const worked = workedSets(e);
+  if(!worked.length) return null;
+  let W = 0, reps = 0;
+  worked.forEach(x=>{ const w = setWeightNum(x); if(w>W) W=w; const r = +x.r; if(isFinite(r)) reps += r; });
+  return {W, reps};
+}
+function compareSessions(prev, cur){
+  if(cur.W > prev.W) return 'progress';
+  if(cur.W < prev.W) return 'lighter';
+  return cur.reps >= prev.reps + 1 ? 'progress' : 'flat';
+}
+function slotHistory(workout, slotIndex, exName){
+  const k = exKey(exName), out = [];
+  liveSessions().forEach(s=>{
+    if(s.workout!==workout || s.skipped || !Array.isArray(s.entries)) return;
+    const e = s.entries[slotIndex];
+    if(!e || exKey(e)!==k) return;
+    out.push({entry:e, date:s.date});
+  });
+  return out;
+}
+function stallStreak(workout, slotIndex, exName){
+  let prev = null, streak = 0;
+  slotHistory(workout, slotIndex, exName).forEach(({entry})=>{
+    if(entry.deload) return;
+    if(+entry.blankSets > 0 || (Array.isArray(entry.sets) && entry.sets.some(x=> x && x.skipped))) return;
+    const cur = sessionSummary(entry);
+    if(!cur) return;
+    if(prev) streak = compareSessions(prev, cur)==='flat' ? streak+1 : 0;
+    prev = cur;
+  });
+  return streak;
 }
 function isStalledSlot(name, workout, slotIndex){
-  const v=slotE1rmSeries(name, workout, slotIndex);
-  if(v.length<4) return false;
-  const maxBefore=Math.max(...v.slice(0,-3));
-  return v.slice(-3).every(x=> x<=maxBefore);
+  return stallStreak(workout, slotIndex, name) >= 3;
 }
 /* Deload: drop this exercise's working weight ~10% for the session and flag it,
    so lastRealEntry skips it and the baseline-to-beat stays your pre-deload best. */
@@ -1178,7 +1243,7 @@ function undeloadExercise(i){ DB.draft.entries[i].deload=false; saveLocal(); ren
 /* All logged exercises in a session = main entries + abs/forearms accessories. */
 function sessionExercises(s){
   const list = (s.entries||[]).slice();
-  if(s.extras) Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.name && e.sets && e.sets.length) list.push(e); });
+  if(s.extras) Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.name && Array.isArray(e.sets) && e.sets.length) list.push(e); });
   return list;
 }
 /* ── Exercise identity ───────────────────────────────────────────────────────────────────────
@@ -1751,7 +1816,7 @@ function startWorkout(name){
       entries: PROGRAM[name].slots.map((s,i)=>{
         const ref = lastRealEntry(name,i);
         const exName = ref? ref.entry.name : s.examples[0];
-        const aw = addWeightInfo(s, ref, exName);
+        const aw = addWeightInfo(name, i, exName);
         const real = ref? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
         return { name: exName, note:'', sets: Array.from({length:s.sets},(_,k)=>{
           let w='';
@@ -1811,8 +1876,9 @@ function viewActive(){
     let lastLine = `<span class="muted">No previous data — set your baseline.</span>`, flag='', noteHint='';
     if(ref){
       lastLine = `Last time (${fmtDate(ref.date)}): <strong>${esc(real.map(x=> fmtSet(x.w,x.r)).join(',  '))||'—'}</strong>`;
-      const aw = addWeightInfo(s, ref, entry.name);
-      flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${aw.newW} ${DB.unit}`:''}</span>` : '';
+      const aw = addWeightInfo(name, i, entry.name);
+      /* Bodyweight (weight 0 or blank) at the top has no next number to suggest (PROG-05, D-08). */
+      flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${esc(aw.newW)} ${esc(DB.unit)}`:' (belt) or harder variation'}</span>` : '';
       if(ref.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(ref.entry.note)}</div>`;
     } else if(alt){
       const altReal = alt.entry.sets.filter(x=>!x.skipped && x.r!=='');
@@ -1828,7 +1894,7 @@ function viewActive(){
     }
     let coachHint='';
     if(entry.deload) coachHint = `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`;
-    else if(isStalledSlot(entry.name, name, i)) coachHint = `<div class="coach stall">⚠ Stalled — no new best for this exercise on ${name} in 3 sessions. <button class="coach-btn" data-action="deloadExercise" data-i="${esc(i)}">Deload −10%</button> or swap the exercise above.</div>`;
+    else if(isStalledSlot(entry.name, name, i)) coachHint = `<div class="coach stall">⚠ Stalled — no extra rep or weight for 3 sessions in a row on ${esc(name)}. <button class="coach-btn" data-action="deloadExercise" data-i="${esc(i)}">Deload −10%</button> or swap the exercise above.</div>`;
     const opts = s.examples.map(e=>`<option ${e===entry.name?'selected':''}>${esc(e)}</option>`).join('') +
                  (s.examples.includes(entry.name)?'':`<option selected>${esc(entry.name)}</option>`) +
                  `<option value="__custom">+ Custom…</option>`;
@@ -1964,7 +2030,17 @@ function rollWeight(i,k,value){
   }
   saveLocal();
 }
-function addSet(i){ DB.draft.entries[i].sets.push({w:'',r:'',skipped:false,reason:''}); saveLocal(); render(); }
+/* The weight for a row the draft creates or restores: the nearest set above that has one, else the
+   nearest below, the way startWorkout fills a slot past last time's sets with the last weight. A
+   blank weight reads as bodyweight (setWeightNum), so a row Ian fills with reps only would otherwise
+   block ⬆ Add weight under D-02 with nothing on screen saying why. */
+function nearWeight(sets, k){
+  const has = s => s && !s.skipped && s.w!=='' && s.w!=null;
+  for(let j=k-1;j>=0;j--) if(has(sets[j])) return sets[j].w;
+  for(let j=k+1;j<sets.length;j++) if(has(sets[j])) return sets[j].w;
+  return '';
+}
+function addSet(i){ const ss=DB.draft.entries[i].sets; ss.push({w:nearWeight(ss, ss.length),r:'',skipped:false,reason:''}); saveLocal(); render(); }
 function rmSet(i,k){ if(DB.draft.entries[i].sets.length<=1)return; DB.draft.entries[i].sets.splice(k,1); saveLocal(); render(); }
 function skipSet(i,k){
   const reason = prompt(`Why skipping set ${k+1}? (optional)`, '');
@@ -1972,7 +2048,7 @@ function skipSet(i,k){
   const st = DB.draft.entries[i].sets[k]; st.skipped=true; st.reason=reason.trim(); st.w=''; st.r='';
   saveLocal(); render();
 }
-function unskipSet(i,k){ const st=DB.draft.entries[i].sets[k]; st.skipped=false; st.reason=''; saveLocal(); render(); }
+function unskipSet(i,k){ const ss=DB.draft.entries[i].sets, st=ss[k]; st.skipped=false; st.reason=''; if(st.w==='') st.w=nearWeight(ss, k); saveLocal(); render(); }
 function stairVal(f,v){ DB.draft.stairs[f]=v; saveLocal(); }
 function stairTimeSet(part,v){
   const cur=+(DB.draft.stairs.seconds||0); let m=Math.floor(cur/60), s=cur%60;
@@ -2038,11 +2114,20 @@ function finishWorkout(){
   const x = d.extras || {};
   const hasExtra = Object.keys(x).some(w=> x[w].sets.some(s=> s.r!==''));
   if(!hasEx && !hasStairs && !hasExtra){ alert('Log at least one set (with reps) before saving.'); return; }
-  // keep skipped sets (they carry a reason); drop sets with no reps (incl. pre-filled-weight-only)
-  d.entries.forEach(e=>{ e.sets = e.sets.filter(s=> s.skipped || s.r!==''); e.sets.forEach(s=>delete s._cel); });
+  // keep skipped sets (they carry a reason); drop sets with no reps (incl. pre-filled-weight-only).
+  // A dropped blank set still blocks ⬆ Add weight (D-01), so count it first: blankSets lives only on
+  // the new row built here, never on an existing one, and a re-save that filled the blanks clears it.
+  // The row is built from copies, so d.entries is untouched until the save commits: if anything below
+  // throws, the draft keeps its blank rows and a retry counts them again.
+  const entries = d.entries.map(e=>{
+    const blank = e.sets.filter(s=> !s.skipped && s.r==='').length;
+    const out = Object.assign({}, e, { sets: e.sets.filter(s=> s.skipped || s.r!=='').map(s=>{ const c=Object.assign({}, s); delete c._cel; return c; }) });
+    if(blank>0) out.blankSets = blank; else delete out.blankSets;
+    return out;
+  });
   /* Stamp identity at save time so a session is self-describing the moment it's written, rather than
      leaning on name resolution forever. */
-  d.entries.forEach(e=>{ if(e.name && !e.exId) e.exId = exEnsure(e.name); });
+  entries.forEach(e=>{ if(e.name && !e.exId) e.exId = exEnsure(e.name); });
   Object.keys(x).forEach(w=>{ const e=x[w]; if(e && e.name && !e.exId) e.exId = exEnsure(e.name); });
   Object.keys(x).forEach(w=>{ x[w].sets = x[w].sets.filter(s=> s.r!==''); });
   const endedAt = Date.now(), hist = d.historical;
@@ -2054,7 +2139,7 @@ function finishWorkout(){
     endedAt: hist ? null : endedAt,
     durationMin: hist ? (d.durationMin? +d.durationMin : null)
                       : (d.startedAt ? Math.max(1, Math.round((endedAt-d.startedAt)/60000)) : null),
-    entries:d.entries, stairs:d.stairs, extras:x, note:(d.sessionNote||'').trim()
+    entries, stairs:d.stairs, extras:x, note:(d.sessionNote||'').trim()
   };
   if(d.editRef) DB.sessions = DB.sessions.filter(z=> z.id!==d.editRef); // editing → drop the original before re-inserting
   // PR detection: an exercise whose heaviest set this session beats its prior all-time heaviest.
@@ -2255,9 +2340,16 @@ function editSession(idx){
   DB.draft = {
     workout:s.workout, date:s.date, historical:true, startedAt:null, durationMin:(s.durationMin||''),
     editRef: s.id,
+    /* blankSets comes back as blank rows (capped at 20, since a backup can hold anything), so Ian sees
+       them and finishWorkout recounts on the re-save. The draft never carries the count itself. A
+       restored row has no reps but takes the last worked weight (nearWeight), like + Add set. */
     entries: PROGRAM[s.workout].slots.map((sl,i)=>{ const e=(s.entries||[])[i];
-      return e ? { name:e.name, note:e.note||'', deload:!!e.deload, sets:(e.sets||[]).map(x=>({w:x.w,r:x.r,skipped:!!x.skipped,reason:x.reason||''})) }
-               : { name:sl.examples[0], note:'', sets:[] }; }),
+      if(!e) return { name:sl.examples[0], note:'', sets:[] };
+      const nb = +e.blankSets, k = isFinite(nb) ? Math.min(20, Math.max(0, Math.floor(nb))) : 0;
+      const kept = (Array.isArray(e.sets)?e.sets:[]).map(x=>({w:x.w,r:x.r,skipped:!!x.skipped,reason:x.reason||''}));
+      const bw = nearWeight(kept, kept.length);
+      return { name:e.name, note:e.note||'', deload:!!e.deload,
+               sets:kept.concat(Array.from({length:k}, ()=>({w:bw,r:'',skipped:false,reason:''}))) }; }),
     stairs: s.stairs ? { level:s.stairs.level, seconds:s.stairs.seconds, skipped:!!s.stairs.skipped, reason:s.stairs.reason||'' } : { level:'', seconds:'', skipped:false, reason:'' },
     extras: s.extras ? JSON.parse(JSON.stringify(s.extras)) : blankExtras(s.workout),
     sessionNote: s.note || ''

@@ -1,17 +1,20 @@
 ---
 phase: 06-f4-gitattributes
 verified: 2026-10-01T00:00:00Z
-status: human_needed
+status: passed
 score: 12/12 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
+
   - test: "Merge the phase PR with 'Create a merge commit' (never squash or rebase). On an up-to-date main, run: git diff-tree --no-commit-id --name-only -r \"$(git log --diff-filter=A --format=%H -- .gitattributes)\""
     expected: "Prints exactly `.gitattributes`, and the sha is 17b5a663ebb47ae2290d989c45fee950c9dfee61, reachable from main as its own commit."
     why_human: "REPO-02 survival onto main depends on the merge strategy chosen in the GitHub UI after verification. A squash merge would fold C1 into a commit with ~750 lines of other changes."
+
   - test: "Open the CI run for the phase push or merge (Deploy to GitHub Pages, job `test`) and read the log."
     expected: "Job green; the log contains `PASS  REPO-01: git resolves index.html to eol=lf` and `PASS  REPO-01: the indexed index.html blob holds no carriage return`."
     why_human: "The phase commits are not pushed yet (origin/claude/gifted-goodall-706ad7 is at a0cb437, a Phase 5 commit), so no CI run has executed the new checks on ubuntu-latest."
+
   - test: "After pulling main into the main checkout (C:/Users/idbac/Projects/ppl-tracker) and the other worktrees, run the guarded lf-refresh.sh from 06-01-SUMMARY.md § Follow-ups, then `git ls-files --eol | grep -v 'w/lf'`."
     expected: "Nothing printed; uncommitted work (e.g. the main checkout's modified .planning/config.json) is restored unchanged."
     why_human: "A checkout made before C1 keeps CRLF copies on disk while git status reports clean. The refresh runs a destructive pair (rm --cached, reset --hard) in checkouts the executor was forbidden to touch."
@@ -29,6 +32,7 @@ human_verification:
 REQUIREMENTS.md and ROADMAP SC1 say "store `index.html` bytes exactly". Read literally, that means `-text`: no conversion at all. What shipped is `* text=auto eol=lf`, which normalizes CRLF to LF on add. That is a deterministic rewrite, but it no longer depends on `core.autocrlf`.
 
 This was a recorded decision, not executor drift:
+
 - `06-DISCUSSION-LOG.md` shows the Scope question offered three options: "all-text LF", "index.html only", and "index.html -text". The last of these is the literal reading. The chosen option was "All text, `* text=auto eol=lf`".
 - `06-CONTEXT.md` D-01 records the choice and says it satisfies REPO-01.
 - `PROJECT.md` line 107 records that the approach was "First argued for `* -text`; D-01 chose `* text=auto eol=lf`".

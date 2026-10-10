@@ -1,156 +1,210 @@
-# Requirements: PPL Tracker — Declarative Data Layer
+# Requirements: PPL Tracker
 
-**Defined:** 2026-09-10
-**Core Value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
+**Defined:** 2026-10-09
+**Milestone:** v1.1 Training accuracy, lawn & sleep
+**Core Value:** The data Ian has already logged must never be lost, corrupted, or resurrected after
+deletion — every other feature can fail before that one does.
 
-## v1 Requirements
+**Source:** `.planning/v1.1-BRIEF.md`, agreed with Ian on 2026-10-09. Every threshold below is his
+decision, not a default. All of `CLAUDE.md` applies to every requirement: union-merge sync, soft
+deletes, explicit `false`, migrations that `touch()` and persist, `saveLocal()` for derived data and
+draft edits, the draft never leaving the device, `esc()` on user strings, `data-action` delegation,
+and `npm run csp:hash` after any change to the inline script.
 
-Requirements for this milestone. Each maps to exactly one roadmap phase.
+IDs do not reuse any v1.0 prefix (REG, EXP, DOC, DRAFT, DELEG, REPO, CSP, SLEEP, VAL, DEPLOY), so
+sleep work in this milestone is `SLP`, not `SLEEP`.
 
-### Registry (REG)
+## v1.1 Requirements
 
-The one declaration the rest of the data layer derives from.
+### Progression and stall (PROG)
 
-- [x] **REG-01**: A `COLLECTIONS` object declares every collection's `kind`, identity key, sort order, merge strategy and soft-delete behaviour in one place
-- [x] **REG-02**: `COLLECTIONS` is declared textually before `let DB = load()`, adjacent to `SCHEMA`/`KEY` and before `MIGRATIONS`
-- [x] **REG-03**: Every value inside `COLLECTIONS` is a literal or a reference to a hoisted `function` declaration — never a `const` arrow, never a reference to a `const` declared later
-- [x] **REG-04**: The existing composite-key arrows (`sessKey`, `todoKey`, `hobbyKey`, and the inline `cardio`/`ideas` key arrows) are promoted to `function` declarations before being referenced from `COLLECTIONS`
-- [x] **REG-05**: `merge` is an explicit required field on every collection with no inferred default; a map-shaped collection that omits it fails loudly at declaration rather than defaulting to list semantics
-- [x] **REG-06**: `blank()` is derived from `COLLECTIONS` and produces a database with a correctly-shaped key for every declared collection
-- [x] **REG-07**: The `liveX()` soft-delete filters are derived from `COLLECTIONS`, so a new collection cannot ship without its filter
-- [x] **REG-08**: `validateBackup()`'s shape checks are derived from `COLLECTIONS` and accept and reject exactly what the hand-written version does — strict behavioural parity
-- [x] **REG-09**: `mergeDB()`'s per-collection merging is derived from `COLLECTIONS`
-- [x] **REG-10**: The `gen`-mismatch wholesale-replace stays a hard early `return` before any per-collection merging, untouched by the derived loop
-- [x] **REG-11**: `MIGRATIONS` stays hand-written and is not derived from `COLLECTIONS`; it may read `COLLECTIONS` one-way
-- [x] **REG-12**: Each hand-written consumer is replaced in its own commit, cheapest-first and `mergeDB()` last, with the app shippable at every commit
-- [x] **REG-13**: Every replaced function is kept renamed (not deleted) and differential-tested against its derived replacement over a real exported backup plus per-incident synthetic two-device fixtures
-- [x] **REG-14**: The renamed legacy functions are deleted only in a later commit than the one that introduced their replacement, never the same one
-- [x] **REG-15**: A boot-order regression test asserts the app boots without throwing for every schema version from 1 to current, and that every declared collection exists with the right shape afterward
-- [x] **REG-16**: If any row rewrite is introduced, it stamps `mtime` via `touch()`, persists immediately, is idempotent, never downgrades `_schema`, and ships with a stale-device merge replay test — all four, or the rewrite does not ship
-- [x] **REG-17**: `COLLECTIONS` carries the column/format metadata the Markdown export needs, settled in this phase so the export phase does not reopen the registry
+- [x] **PROG-01**: The app suggests adding weight to a slot only when every planned set for that slot
+  was done (none skipped, none missing) and each one reached the top of the rep range at the working
+  weight. Two sets at the top plus one skipped set does not suggest adding weight.
+- [x] **PROG-02**: A session counts as progress on an exercise when, compared with the previous session
+  of that exercise, total reps across all sets went up by at least 1, or the weight went up.
+- [x] **PROG-03**: An exercise is flagged as stalled only after 3 sessions in a row with no progress,
+  each measured against the session before it, never against the all-time best. Extra reps on sets 2
+  and 3 count as progress, so a DB lateral raise that gains reps on later sets is not flagged.
+- [x] **PROG-04**: Progress and stall history follow the exercise's identity (`exKey`), not its exact
+  name, so a renamed or merged exercise keeps its history.
+- [x] **PROG-05**: Bodyweight exercises are checked for stalls too, with progress meaning +1 total rep.
+  When every set reaches the top of the range, the app shows "add weight (belt) or harder variation"
+  with no number.
 
-### Sleep (SLEEP)
+### Equipment and weight steps (EQUIP)
 
-The eleventh collection — the proof that REG paid off.
+- [ ] **EQUIP-01**: Each exercise has one equipment type: barbell, EZ bar, dumbbell, machine, cable or
+  bodyweight. It is stored on the synced exercise-registry row.
+- [ ] **EQUIP-02**: Existing exercises get an equipment type defaulted from their name. The migration
+  that writes it bumps `SCHEMA`, stamps `mtime` on every row it rewrites (`touch()`), persists
+  immediately, is idempotent and never downgrades `_schema`. A stale-device merge replay test proves
+  an older device cannot revert it, and replaying that device again still keeps it.
+- [ ] **EQUIP-03**: Ian can change an exercise's equipment type in Settings → Exercises, and the change
+  syncs to his other device.
+- [ ] **EQUIP-04**: Weight suggestions move by the exercise's own step: 5 lb for barbell, EZ bar,
+  machine and cable; 2.5 lb for dumbbells. No suggestion uses a flat 5 lb step for a dumbbell.
+- [ ] **EQUIP-05**: Deloads and warm-ups round to the exercise's own step, so a 15 lb dumbbell deload
+  at 90% suggests 12.5 lb instead of rounding back to 15.
+- [ ] **EQUIP-06**: Plate math follows the equipment type. The preacher curl is an EZ bar exercise with
+  a 25 lb bar and shows plate math against that bar.
 
-- [x] **SLEEP-01**: A `sleep` collection is added to `COLLECTIONS` as `{ kind:'list', key:'id', soft:true, sortBy:'date' }`
-- [x] **SLEEP-02**: Ian can log a night's sleep with hours slept, a 1–5 quality rating, and an optional note
-- [x] **SLEEP-03**: Ian can see his logged sleep as a dated series and can delete an entry
-- [x] **SLEEP-04**: Adding `sleep` required one entry in `COLLECTIONS` plus its view — no edits to `blank()`, `mergeDB()`, the filter family, `validateBackup()` or the exporter
-- [x] **SLEEP-05**: A test asserts SLEEP-04 — that the declaration alone caused every derived consumer to pick the collection up
-- [x] **SLEEP-06**: A deleted sleep entry survives a stale-device merge replay without resurrecting
+### Log page (LOG)
 
-### Export (EXP)
+- [ ] **LOG-01**: Tapping the "Last time" line on an exercise card opens that exercise's last 5
+  sessions inline on the card. The workout is never left, and the in-progress draft is unchanged.
+- [ ] **LOG-02**: The inline history links to that exercise's full chart in Progress → Strength.
+- [ ] **LOG-03**: Each exercise card has a skip button that skips all of that exercise's sets, with one
+  optional reason. The skip is a draft edit and persists with `saveLocal()`.
+- [ ] **LOG-04**: A skipped exercise can be un-skipped during the workout, restoring its sets.
+- [ ] **LOG-05**: A skipped exercise is saved as skipped in the finished session, so it blocks adding
+  weight to it next time (PROG-01).
 
-Clean data out of the app and into Claude Desktop.
+### Lawn, journal and weather loop (LAWN)
 
-- [x] **EXP-01**: Ian can export a Markdown file separate from, and alongside, the existing JSON backup
-- [x] **EXP-02**: The export is derived from `COLLECTIONS`, not hand-written per collection
-- [x] **EXP-03**: Workouts export as flat rows — one row per set, carrying date, workout, exercise, set number, weight and reps — not nested
-- [x] **EXP-04**: Every collection's rows are read through the same `liveX()` path the views use, never raw `DB[key]`
-- [x] **EXP-05**: Soft-deleted rows and internal ids are absent from the export
-- [x] **EXP-06**: Dates are ISO format, units appear once in the column header (read from `DB.unit`, not hardcoded), and missing values use one consistent explicit marker rather than a blank or a silent zero
-- [x] **EXP-07**: Cell values are escaped for Markdown tables — pipes escaped, embedded newlines replaced, whitespace trimmed — so no logged text can break the table
-- [x] **EXP-08**: The file opens with a short header block stating what it is, when it was generated, and the date range covered, so a truncated file cannot be mistaken for complete history
+- [ ] **LAWN-01**: The lawn scheduler holds off watering when today's forecast high is below 60°F.
+- [ ] **LAWN-02**: Once a day is over, that day's rainfall is saved, with its exact amount, in its own
+  small synced collection, separate from `lawnLog`. The collection is added by the `CLAUDE.md` recipe:
+  one `COLLECTIONS` entry placed last with an unused `label`, a `SCHEMA` bump and a migration, and the
+  required tests (registry validity, a stale-device merge replay that keeps a deleted row deleted,
+  `validateBackup()` shape, and a declaration-alone structural proof). The merge golden is regenerated.
+- [ ] **LAWN-03**: Lawn history shows 🌧 on every day with 0.1 inches of rain or more.
+- [ ] **LAWN-04**: The 7-day outlook shows 💧 on the day watering is next due. It skips any day whose
+  forecast rain meets the season's `rainSkip` (0.3 to 0.5 inches) or whose chance of rain is 60% or
+  higher.
+- [ ] **LAWN-05**: Week in Review in the journal shows 🚜 Mowed, 💧 Watered and 🌧 rain on each day they
+  apply.
+- [ ] **LAWN-06**: A failed weather fetch backs off instead of looping fetch → fail → render, on both
+  Today and Lawn, while offline (closes 04-REVIEW WR-01).
+- [ ] **LAWN-07**: The test harness's `fetch` settles, so a fetch-render loop fails the suite instead of
+  hiding (closes 04-REVIEW WR-05).
 
-### Documentation (DOC)
+### Sleep card and Erase (SLP)
 
-- [x] **DOC-01**: `CLAUDE.md` gains a numbered "adding a new tracked thing" recipe, written against the shipped `COLLECTIONS` declaration
-- [x] **DOC-02**: The recipe states the module-eval-time placement rule and what may appear as a value in `COLLECTIONS`
-- [x] **DOC-03**: The recipe names the tests a new collection must ship with, including the stale-device merge replay
-- [x] **DOC-04**: The recipe is verified by following it end to end for a collection that is not `sleep`, on paper or in a scratch branch
+- [ ] **SLP-01**: In the morning, Today shows a sleep card until last night's sleep is logged; once it
+  is logged the card disappears for the rest of the day. It reuses the morning weigh-in card's pattern.
+- [ ] **SLP-02**: The sleep card's entry is dated the day Ian woke up, requires hours and quality, and
+  takes an optional note. It saves a row in the existing `sleep` collection.
+- [ ] **SLP-03**: A local "Erase all data" keeps this device's in-progress workout: `wipe()` goes
+  through `keepLocalDraft()`, or `CLAUDE.md` documents it as the one exception to the draft rule. A
+  test pins whichever is chosen (closes the v1.0 audit `wipe()` warning).
 
-### Draft (DRAFT)
+### Strength index (STR)
 
-- [x] **DRAFT-01**: The in-progress workout `draft` is excluded from cloud sync, following the pattern already used for the `wx` weather cache
-- [x] **DRAFT-02**: A stale cloud document still carrying a legacy `draft` field cannot reintroduce one onto a device
-- [x] **DRAFT-03**: The Log tab renders correctly when a cloud document carries a malformed legacy `draft`
-- [x] **DRAFT-04**: Finishing or discarding a workout no longer writes draft state across the wire
-- [x] **DRAFT-05**: Ian's in-progress workout survives closing and reopening the app on the same device
+- [ ] **STR-01**: The strength index starts at 100. For every exercise trained in the last 4 weeks, it
+  divides that exercise's best e1RM from those 4 weeks by its best e1RM from its own first 4 weeks
+  logged, then averages across those exercises.
+- [ ] **STR-02**: Bodyweight exercises contribute total reps in place of e1RM.
+- [ ] **STR-03**: A second line shows the index adjusted for bodyweight: index × (bodyweight at start ÷
+  bodyweight now).
+- [ ] **STR-04**: The index and the bodyweight-adjusted line appear at the top of Progress → Strength
+  with a weekly chart.
+- [ ] **STR-05**: Today's week card shows one small strength number with its change over the month,
+  e.g. "Strength 112, +3 this month".
 
-### Delegation (DELEG)
+### Poor-sleep intensity (INT)
 
-- [x] **DELEG-01**: A static inventory of all 175 inline handler attributes is captured before any are changed
-- [x] **DELEG-02**: Inline `onclick`, `onchange`, `oninput`, `onkeydown` and `onpointerdown` attributes are replaced by delegated listeners reading `data-*` attributes
-- [x] **DELEG-03**: A static completeness check cross-references the pre-change inventory against the dispatcher, so a dropped call site fails the suite rather than the phone
-- [x] **DELEG-04**: No handler is left reachable only through a global function called by name from markup
-- [x] **DELEG-05**: Any `stopPropagation()` call that would break delegation is found and resolved
-- [x] **DELEG-06**: Controls converted to delegation remain keyboard-operable
-- [x] **DELEG-07**: The Log tab is manually verified end to end, being the screen Ian uses mid-workout
+- [ ] **INT-01**: Last night counts as poor sleep when its sleep entry has quality 2 or lower, or under
+  6 hours.
+- [ ] **INT-02**: When a workout starts after a poor night, the app asks "You slept poorly. Go 10%
+  lighter today?" and applies it with one tap. It is never applied automatically.
+- [ ] **INT-03**: A lighter workout keeps the same sets and reps. Each suggested weight is cut 10%,
+  rounded to the exercise's step, and always at least one step lighter than the normal suggestion.
+- [ ] **INT-04**: A lighter session is marked like a deload, so it never counts toward a stall and
+  never counts as a reason to add weight.
+- [ ] **INT-05**: When no sleep is logged for last night, nothing changes and the Log page shows a
+  small "Log last night's sleep" link. Logging a poor night from that link brings up the offer.
 
-### Repository (REPO)
+## Future Requirements
 
-- [x] **REPO-01**: A `.gitattributes` file makes git store `index.html` bytes exactly, ending `core.autocrlf` rewriting
-- [x] **REPO-02**: `.gitattributes` and the resulting whole-file diff land in a commit containing nothing else (done in 06-01 as C1 `17b5a66`, which holds only `.gitattributes`; no whole-file diff arose because every blob was already LF. Whether it survives onto `main` is checked after the phase PR merges)
+Deferred. Tracked, not in the v1.1 roadmap.
 
-### Content Security Policy (CSP)
+### Carried v2 backlog
 
-- [x] **CSP-01**: A `<meta http-equiv="Content-Security-Policy">` policy ships, using a hash-based `script-src` for the inline script block (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
-- [x] **CSP-02**: The policy allow-lists `https://www.gstatic.com` so the three Firebase SDK scripts keep loading (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
-- [x] **CSP-03**: `connect-src` covers Firebase's runtime endpoints and the weather API hosts, inventoried by hand rather than by grepping `index.html` — they are internal to the SDK and to `fetch` calls and do not appear in the file (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
-- [x] **CSP-04**: `style-src` retains `'unsafe-inline'` as a documented, deliberate decision, because inline-style removal is out of scope (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
-- [ ] **CSP-05**: The policy is verified locally against a static file server with the DevTools console clean of violations before it is pushed — meta CSP has no report-only mode, so this local pass is the only pre-production check available
-- [ ] **CSP-06**: Cloud sync is confirmed working after the policy is live, not assumed — a blocked Firebase script fails silently while the app keeps working on localStorage
-- [x] **CSP-07**: The hash-regeneration step is documented as a manual command in `CLAUDE.md`, so a future edit to the inline script does not silently break the policy (re-shipped in the repo by 07-06, `643c628`, after the 07-05 revert; live verification in 07-07)
+- **VAL-01**: `validateBackup()` checks the types inside an imported file, not only its shape.
+- **VAL-02**: File-wide attribute-escaping sweep (`esc()` does not escape `'`).
+- **EXP-09**: Export windowing (recent detail plus aggregates).
+- **DEPLOY-01**: CI publishes only the served surface, not the whole repo.
 
-## v2 Requirements
+### v1.0 tech debt not covered by the brief
 
-Acknowledged, deferred, not in this roadmap.
+From `STATE.md` and `milestones/v1.0-MILESTONE-AUDIT.md`:
 
-### Validation (VAL)
-
-- **VAL-01**: `validateBackup()` checks the *types* inside an imported file, not only its shape — a hand-edited backup can currently put anything in a set's `w`
-- **VAL-02**: Values interpolated into HTML *attributes* are escaped; `esc()` currently covers element content only and does not escape `'`
-
-### Export (EXP)
-
-- **EXP-09**: Recent-detail-plus-older-aggregate windowing in the export — aggregation rules are inherently per-collection and so resist deriving from `COLLECTIONS`; irrelevant at current data volume regardless
-
-### Deploy (DEPLOY)
-
-- **DEPLOY-01**: CI publishes only the served surface rather than the whole repo — `path: '.'` currently uploads `test/`, `CLAUDE.md` and the review docs to the live site. Noise, not a leak; the repo is public
+- REG-14 legacy deletion: remove the ten `_legacy` data-layer functions per
+  `milestones/v1.0-phases/01-f1-the-collections-registry/01-07-PLAN.md` Task 2 (Ian's call on timing).
+- 04-REVIEW WR-03: `pickEx`/`exPick` bump `updatedAt` and push even when nothing synced changed.
+- 04-REVIEW WR-04: a draft kept across restore, Replace or remote Erase can land a session whose `exId`
+  is in no registry.
+- 04-REVIEW WR-06: under a storage-quota failure the draft has no durable copy, and the banner says
+  cloud sync protects it.
+- 02-REVIEW WR-02: `collectionProblems()` does not require `soft:true` on a list, but `exportRows`
+  routes every list through `liveOf`.
+- 02-REVIEW WR-03: the "column[0] is the date" export contract is enforced nowhere.
+- 06-REVIEW WR-01..03: the line-ending checks do not prove normalization and cover `index.html` only.
+- 07-REVIEW IN-04: add the phone auth-loader path to the `CLAUDE.md` re-probe triggers.
+- 01-REVIEW IN-01: a malformed imported sleep row renders `NaN`.
+- Map collections (`mobilityLog`, `lawnLog`, `journal`) are not associative across three devices
+  (documented and accepted).
+- Process: no `04-SECURITY.md` / `07-SECURITY.md`; Nyquist validation still draft for phases 02-05
+  and 07.
 
 ## Out of Scope
 
-Explicitly excluded. Each was decided, not overlooked.
-
 | Feature | Reason |
 |---------|--------|
-| Rewriting or removing cloud sync | Works, is tested, and is the only automatic off-device backup. Rewriting it is real data risk for near-zero payoff on a single device. (Answer 1) |
-| Deleting or trimming any feature, lawn scheduler included | 47 days of usage data show nothing is abandoned. The problem was never feature count. (Answers 3, 4) |
-| Anything about localStorage capacity | Measured at ~1.3% of budget, reaching half around 2035. (Answer 5) |
-| Switching auth providers | Data is keyed to the current auth uid; a Google login means a hand migration of `users/{uid}`. Closing signup already solved the real risk. (Answer 6) |
-| Navigation or layout changes | Emphasis, not a complaint. Nothing in the usage data suggests the app feels wrong. (Answer 8) |
-| Splitting `index.html` into modules | Splitting means a build step, which is the thing that makes the app editable without a toolchain. (F5) |
-| Automated CSP hash injection in GitHub Actions | Borders on a build step, which is ruled out. The manual documented command is the chosen alternative. (Research: STACK.md flagged this against itself) |
-| Field-level validators inside `COLLECTIONS` | A validation DSL is a new abstraction solving a problem that is not producing incidents. Rejected by both ARCHITECTURE.md and PITFALLS.md. |
-| A Content-Security-Policy-Report-Only soak | Report-only is header-only and has no `<meta>` equivalent; this app has no server to set headers. A report-only meta tag would silently do nothing. Local DevTools verification replaces it. |
-| In-app correlation charts between sleep, training and weight | Anti-feature. The whole point of the export is that Claude does this reasoning, not the app. |
-| Sensor-style sleep fields, separate bedtime/waketime, disruption tag pickers, sleep reminders | Anti-features. The Consensus Sleep Diary finds these are the least reliably self-reported fields. |
-| A round-trippable or re-importable Markdown export | The JSON backup is the round-trip format. Two round-trip formats means two schemas to keep in step. |
-| An export configuration screen | Recreates the "schema lives in a sixth place" pattern this milestone exists to end. |
+| Kettlebells (equipment type, list of bells) | Ian doesn't use them (v1.1 brief) |
+| CSP-test hardening (07-REVIEW WR-01..03) | Runs as a separate quick task, outside v1.1 (v1.1 brief) |
+| Everything in PROJECT.md → Out of Scope | Decided 2026-09-09 and re-audited at v1.0 close; v1.1 does not re-open any of it |
 
 ## Traceability
 
-Populated during roadmap creation.
+Which phases cover which requirements. Filled during roadmap creation (2026-10-09); the roadmap is
+proposed and awaiting Ian's approval.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REG-01 … REG-17 | Phase 1 | Complete |
-| SLEEP-01 … SLEEP-06 | Phase 1 | Complete |
-| EXP-01 … EXP-08 | Phase 2 | Complete |
-| DOC-01 … DOC-04 | Phase 3 | Complete |
-| DRAFT-01 … DRAFT-05 | Phase 4 | Complete |
-| DELEG-01 … DELEG-07 | Phase 5 | Complete |
-| REPO-01 … REPO-02 | Phase 6 | Pending |
-| CSP-01 … CSP-07 | Phase 7 | Pending |
+| PROG-01 | Phase 8 | Complete |
+| PROG-02 | Phase 8 | Complete |
+| PROG-03 | Phase 8 | Complete |
+| PROG-04 | Phase 8 | Complete |
+| PROG-05 | Phase 8 | Complete |
+| EQUIP-01 | Phase 9 | Pending |
+| EQUIP-02 | Phase 9 | Pending |
+| EQUIP-03 | Phase 9 | Pending |
+| EQUIP-04 | Phase 9 | Pending |
+| EQUIP-05 | Phase 9 | Pending |
+| EQUIP-06 | Phase 9 | Pending |
+| LOG-01 | Phase 10 | Pending |
+| LOG-02 | Phase 10 | Pending |
+| LOG-03 | Phase 10 | Pending |
+| LOG-04 | Phase 10 | Pending |
+| LOG-05 | Phase 10 | Pending |
+| LAWN-01 | Phase 11 | Pending |
+| LAWN-02 | Phase 11 | Pending |
+| LAWN-03 | Phase 11 | Pending |
+| LAWN-04 | Phase 11 | Pending |
+| LAWN-05 | Phase 11 | Pending |
+| LAWN-06 | Phase 11 | Pending |
+| LAWN-07 | Phase 11 | Pending |
+| SLP-01 | Phase 12 | Pending |
+| SLP-02 | Phase 12 | Pending |
+| SLP-03 | Phase 12 | Pending |
+| STR-01 | Phase 13 | Pending |
+| STR-02 | Phase 13 | Pending |
+| STR-03 | Phase 13 | Pending |
+| STR-04 | Phase 13 | Pending |
+| STR-05 | Phase 13 | Pending |
+| INT-01 | Phase 13 | Pending |
+| INT-02 | Phase 13 | Pending |
+| INT-03 | Phase 13 | Pending |
+| INT-04 | Phase 13 | Pending |
+| INT-05 | Phase 13 | Pending |
 
 **Coverage:**
-
-- v1 requirements: 56 total
-- Mapped to phases: 56
-- Unmapped: 0
+- v1.1 requirements: 36 total (PROG 5, EQUIP 6, LOG 5, LAWN 7, SLP 3, STR 5, INT 5)
+- Mapped to phases: 36 (Phase 8: 5, Phase 9: 6, Phase 10: 5, Phase 11: 7, Phase 12: 3, Phase 13: 10)
+- Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-09-10*
-*Last updated: 2026-09-10 after initialization*
+*Requirements defined: 2026-10-09*
+*Last updated: 2026-10-09 after roadmap creation (Phases 8-13, proposed)*

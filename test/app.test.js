@@ -7174,13 +7174,15 @@ function f2Mid(seed){
   a.go('train'); a.setSub('log');
   return a;
 }
-/* Four earlier PUSH 1 sessions whose slot-0 best never beats the first one: isStalledSlot() is true
-   for slot 0, so the card offers the coach's Deload button. */
+/* A baseline and three flat sessions in PUSH 1 slot 0: populatedDB's s1 (dayOff(-9), 135×8 and
+   135×7) is the baseline, and these three repeat it exactly — the same weight with no extra rep, each
+   compared with the session before. That is 3 flat in a row, so isStalledSlot() is true for slot 0
+   and the card offers the coach's Deload button. */
 function f2Stall(d, a){
   const name = d.draft.entries[0].name;
-  [[-40, '185', '8'], [-35, '135', '5'], [-30, '135', '5'], [-25, '135', '5']].forEach(([off, w, r], n) => {
+  [-8, -6, -4].forEach((off, n) => {
     d.sessions.push({ id: 'st' + n, workout: 'PUSH 1', date: dayOff(off), endedAt: 10 + n, extras: {},
-      entries: [{ name, sets: [{ w, r, skipped: false }] }] });
+      entries: [{ name, sets: [{ w: '135', r: '8', skipped: false }, { w: '135', r: '7', skipped: false }] }] });
   });
   d.sessions.sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0);
 }
@@ -7709,6 +7711,519 @@ function f2FlexItemTapProblems(html){
   ok('DELEG-04: index.html has no inline on-event attribute left',
      Array.isArray(rows) && rows.length === 0 && synthetic,
      { rows: (rows || []).slice(0, 5).map(r => [r.fn, r.event, r.was].join(' | ')), synthetic });
+}
+
+/* ── PROG: add weight and stall follow what was lifted ──
+   Ian's rule (Sep 21): "each lift needs to have all sets done for me to progress." These checks drive
+   the real flow (latRun seeds history, startWorkout builds the next draft, viewActive renders the card,
+   finishWorkout stores the row) on an instance of their own, so the shared `app` state never moves.
+   The builders are reused by 08-02 for the stall rule:
+     latSess(date, sets, o)  one session with an entry for every slot of o.workout (default PUSH 1); the
+                             target slot (o.slot, default the DB lateral raise slot) gets the [w, r,
+                             skipped] triples, every other slot `sets: []`. Options: name, deload,
+                             skippedDay, blankSets, exId, workout, slot.
+     latRun(list)            replaces P.DB with those sessions, seeded at _schema:16 so the registry
+                             migration stamps real exercise ids.
+     latCard(i, workout)     rebuilds the draft from history and returns the i-th exercise card. */
+console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01..05) ──');
+{
+  const P = loadApp(APP_PATH); spyPushes(P);
+  const LW = 'PUSH 1';
+  const LAT = P.PROGRAM[LW].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+  let latN = 0;
+  const latSess = (date, sets, o = {}) => {
+    const wk = o.workout || LW, slotIdx = o.slot != null ? o.slot : LAT;
+    return { id: 'prog' + (latN++), workout: wk, date, endedAt: 1, extras: {}, skipped: !!o.skippedDay,
+      entries: P.PROGRAM[wk].slots.map((s, i) => i !== slotIdx ? { name: s.examples[0], sets: [] }
+        : Object.assign({ name: o.name || 'DB lateral raise',
+            sets: sets.map(([w, r, sk]) => ({ w: sk ? '' : String(w), r: sk ? '' : String(r), skipped: !!sk, reason: '' })) },
+          o.deload ? { deload: true } : {}, o.blankSets != null ? { blankSets: o.blankSets } : {}, o.exId ? { exId: o.exId } : {})) };
+  };
+  const latRun = list => { P.DB = P.normalize(Object.assign(P.blank(), { _schema: 16, sessions: list, draft: null, unit: 'lb' })); };
+  const latCard = (i, workout = LW) => {
+    P.DB.draft = null;
+    P.__sandbox.startWorkout(workout);
+    return P.viewActive().split('<div class="ex-card">')[i + 1] || '';
+  };
+  const flagOf = card => { const m = /<span class="flag">([\s\S]*?)<\/span>/.exec(card); return m ? m[1] : null; };
+  const draftW = (i = LAT) => P.DB.draft.entries[i].sets.map(x => x.w);
+  const todayRow = () => P.DB.sessions.find(s => s.workout === LW && s.date === P.todayISO() && !s.deletedAt);
+
+  const S = P.__sandbox;
+  ok('PROG: the progression helpers exist',
+     ['addWeightVerdict', 'lastAttemptEntry', 'weightStep', 'workedSets', 'setWeightNum', 'addWeightInfo'].every(n => typeof S[n] === 'function'),
+     ['addWeightVerdict', 'lastAttemptEntry', 'weightStep', 'workedSets', 'setWeightNum', 'addWeightInfo'].filter(n => typeof S[n] !== 'function'));
+
+  // Positive control: every set done, at 25 and at the top of 15-20, earns the bump to 30.
+  latRun([ latSess(dayOff(-7), [[25, 20], [25, 20], [25, 20]]) ]);
+  {
+    const card = latCard(LAT), flag = flagOf(card);
+    ok('PROG-01: every set at the top earns ⬆ Add weight with the next weight, and the prefill bumps',
+       LAT >= 0 && flag !== null && flag.includes('30') && draftW().length === 3 && draftW().every(w => w === '30'),
+       { LAT, flag, w: draftW() });
+  }
+
+  // The reported bug, end to end: two sets at the top plus one skipped set, then the next workout.
+  {
+    let threw = null;
+    try{
+      P.setVal(LAT, 0, 'w', '25');
+      P.setVal(LAT, 0, 'r', '20');
+      P.setVal(LAT, 1, 'w', '25');
+      P.setVal(LAT, 1, 'r', '20');
+      S.skipSet(LAT, 2);
+      P.finishWorkout();
+    }catch(e){ threw = String(e && e.stack || e); }
+    const row = todayRow(), e = row && row.entries[LAT];
+    const worked = e ? e.sets.filter(x => !x.skipped) : [];
+    ok('PROG-01: the finished row stores LAT as 25×20, 25×20 plus one skipped set',
+       !threw && !!e && worked.length === 2 && worked.every(x => x.w === '25' && x.r === '20') &&
+       e.sets.filter(x => x.skipped === true).length === 1,
+       { threw, sets: e && e.sets });
+    const card = latCard(LAT);
+    const aw = S.addWeightInfo(LW, LAT, 'DB lateral raise');
+    ok('PROG-01: a skipped set means no ⬆ Add weight next time, and the prefill keeps last time\'s 25',
+       !card.includes('class="flag"') && draftW().every(w => w === '25') && !!aw && aw.allTop === false,
+       { flag: flagOf(card), w: draftW(), aw });
+  }
+
+  /* D-01: a blank set is recorded at finish as an entry-level blankSets count, because finishWorkout
+     drops blank rows. Each case starts from one all-top baseline and finishes today's LAT through
+     the real draft functions. `rows` holds [w, r] per set on the card; null leaves that set blank. */
+  const clone = v => JSON.parse(JSON.stringify(v));
+  const TOP3 = [[25, 20], [25, 20], [25, 20]];
+  const finishLat = (rows, before) => {
+    latRun([ latSess(dayOff(-7), TOP3) ]);
+    latCard(LAT);
+    if(before) before();
+    rows.forEach((v, k) => { if(v){ P.setVal(LAT, k, 'w', String(v[0])); P.setVal(LAT, k, 'r', String(v[1])); } });
+    P.finishWorkout();
+    return todayRow();
+  };
+  {
+    const row = finishLat([[25, 20], [25, 20], null]), e = row && row.entries[LAT];
+    const card = latCard(LAT);
+    ok('D-01: a set left blank at finish is stored as blankSets 1, and the next LAT card has no ⬆ Add weight',
+       !!e && e.blankSets === 1 && e.sets.length === 2 && !card.includes('class="flag"'),
+       { blankSets: e && e.blankSets, sets: e && e.sets.length, flag: flagOf(card) });
+  }
+  {
+    const row = finishLat(TOP3), e = row && row.entries[LAT];
+    ok('D-01: a workout with every set filled stores no blankSets key',
+       !!e && !('blankSets' in e) && e.sets.length === 3, e);
+  }
+  {
+    finishLat([[25, 20], [25, 20], [25, 20], [25, 20]], () => S.addSet(LAT));
+    const flag = flagOf(latCard(LAT));
+    ok('D-01: a set added with + Add set counts: four sets at the top earn ⬆ Add weight → 30',
+       flag !== null && flag.includes('30'), flag);
+    finishLat([[25, 20], [25, 20], [25, 20], [25, 19]], () => S.addSet(LAT));
+    const card = latCard(LAT);
+    ok('D-01: an added set below the top blocks ⬆ Add weight',
+       !card.includes('class="flag"'), flagOf(card));
+  }
+  {
+    const row = finishLat([[25, 20], [25, 20]], () => S.rmSet(LAT, 2)), e = row && row.entries[LAT];
+    const flag = flagOf(latCard(LAT));
+    ok('D-01: a set removed with rmSet is not missing: two sets at the top earn ⬆ Add weight → 30, with no blankSets',
+       !!e && !('blankSets' in e) && e.sets.length === 2 && flag !== null && flag.includes('30'),
+       { e, flag });
+  }
+  {
+    const row = finishLat([[25, 20], [25, 20], null]);
+    const id = row && row.id;
+    let threw = null, draftRows = null, draftBlank = -1;
+    try{
+      S.editSession(P.DB.sessions.findIndex(s => s.id === id));
+      draftRows = P.DB.draft.entries[LAT].sets.length;
+      // A restored blank row has no reps; it takes the last worked weight (WR-03), so only r is blank.
+      draftBlank = P.DB.draft.entries[LAT].sets.filter(x => !x.skipped && x.r === '').length;
+      P.finishWorkout();
+    }catch(e){ threw = String(e && e.stack || e); }
+    const same = P.DB.sessions.filter(s => s.id === id && !s.deletedAt);
+    const e = same.length === 1 ? same[0].entries[LAT] : null;
+    const card = latCard(LAT);
+    ok('D-01: editSession shows the blank set again, and re-saving keeps blankSets 1 on the same row with no ⬆ Add weight',
+       !threw && draftRows === 3 && draftBlank === 1 && same.length === 1 && !!e && e.blankSets === 1 && !card.includes('class="flag"'),
+       { threw, draftRows, draftBlank, rows: same.length, blankSets: e && e.blankSets, flag: flagOf(card) });
+  }
+
+  /* D-09: the verdict judges the latest attempt on the card, even one with nothing worked, while the
+     Last time line keeps showing the last real attempt. */
+  const lastTop = [P.__sandbox.fmtSet('25', '20'), P.__sandbox.fmtSet('25', '20'), P.__sandbox.fmtSet('25', '20')].join(',  ');
+  {
+    latRun([ latSess(dayOff(-14), TOP3), latSess(dayOff(-7), [[0, 0, true], [0, 0, true], [0, 0, true]]) ]);
+    const card = latCard(LAT);
+    ok('D-09: a later LAT entry with every set skipped gives no ⬆ Add weight, and Last time still shows the all-top sets',
+       !card.includes('class="flag"') && card.includes(lastTop), { flag: flagOf(card) });
+  }
+  {
+    latRun([ latSess(dayOff(-14), TOP3), latSess(dayOff(-7), [], { blankSets: 3 }) ]);
+    const card = latCard(LAT);
+    ok('D-09: a later LAT entry left fully blank (sets [] and blankSets 3) gives no ⬆ Add weight, and Last time still shows the all-top sets',
+       !card.includes('class="flag"') && card.includes(lastTop), { flag: flagOf(card) });
+  }
+  {
+    latRun([ latSess(dayOff(-14), TOP3), latSess(dayOff(-7), []) ]);
+    const flag = flagOf(latCard(LAT));
+    ok('D-07/D-09: a legacy later entry with sets [] and no blankSets was never on the card, so the all-top attempt still earns ⬆ Add weight',
+       flag !== null && flag.includes('30'), flag);
+  }
+
+  // D-01 / T-8-04: sessions merge as whole rows by mtime, so a stale copy cannot drop the marker.
+  {
+    const base = latSess(dayOff(-3), [[25, 20], [25, 20]], { blankSets: 1 });
+    const localRow = Object.assign(clone(base), { mtime: 2000 });
+    const staleRow = Object.assign(clone(base), { mtime: 1000 }); delete staleRow.entries[LAT].blankSets;
+    const local = Object.assign(P.blank(), { sessions: [localRow], updatedAt: 100 });
+    const stale = Object.assign(P.blank(), { sessions: [staleRow], updatedAt: 9000 });
+    const keeps = db => { const rows = (db.sessions || []).filter(s => s.id === base.id);
+      return rows.length === 1 && rows[0].entries[LAT].blankSets === 1; };
+    const once = P.mergeDB(clone(stale), clone(local));
+    const twice = P.mergeDB(clone(stale), clone(once));
+    ok('D-01: a stale-device merge replay keeps blankSets 1, and replaying the stale copy again still keeps it',
+       keeps(once) && keeps(twice),
+       { once: (once.sessions || []).map(s => s.entries[LAT].blankSets), twice: (twice.sessions || []).map(s => s.entries[LAT].blankSets) });
+  }
+
+  // T-8-02: blankSets from a hand-edited backup or an old sync can hold anything.
+  {
+    const verdictFor = bs => { latRun([ latSess(dayOff(-7), TOP3, { blankSets: bs }) ]); return flagOf(latCard(LAT)); };
+    const abc = verdictFor('abc'), neg = verdictFor(-2), huge = verdictFor(1e9);
+    ok('T-8-02: a garbage blankSets of \'abc\' or -2 does not block ⬆ Add weight, and 1e9 blocks it',
+       abc !== null && neg !== null && huge === null, { abc, neg, huge });
+    let threw = null, added = -1;
+    try{
+      const idx = P.DB.sessions.findIndex(s => s.workout === LW && s.entries && s.entries[LAT] && s.entries[LAT].blankSets === 1e9);
+      S.editSession(idx);
+      added = P.DB.draft.entries[LAT].sets.filter(x => !x.skipped && x.r === '').length;
+    }catch(e){ threw = String(e && e.stack || e); }
+    ok('T-8-02: editSession on a blankSets 1e9 row adds at most 20 blank rows and does not throw',
+       !threw && added > 0 && added <= 20, { threw, added });
+    P.DB.draft = null;
+  }
+
+  // D-02: every worked set must be at the working weight (the heaviest set).
+  {
+    latRun([ latSess(dayOff(-7), [[30, 20], [30, 20], [25, 20]]) ]);
+    const card = latCard(LAT), aw = S.addWeightInfo(LW, LAT, 'DB lateral raise');
+    ok('D-02: 30/30/25 lb all at the top gives no ⬆ Add weight',
+       !card.includes('class="flag"') && !!aw && aw.allTop === false, { flag: flagOf(card), aw });
+    latRun([ latSess(dayOff(-7), [[30, 20], [30, 20], [30, 20]]) ]);
+    const flag = flagOf(latCard(LAT));
+    ok('D-02: 30/30/30 lb all at the top gives ⬆ Add weight → 35', flag !== null && flag.includes('35'), flag);
+  }
+
+  // PROG-05 / D-08: bodyweight (weight 0 or blank) at the top gets a belt or a harder variation, no number.
+  [['0', 'weight 0'], ['', 'a blank weight']].forEach(([w, label]) => {
+    latRun([ latSess(dayOff(-7), [[w, 20], [w, 20], [w, 20]]) ]);
+    const flag = flagOf(latCard(LAT));
+    ok(`PROG-05/D-08: bodyweight at the top (${label}) suggests a belt or a harder variation with no number, and the prefill writes none`,
+       flag !== null && flag.includes('belt') && flag.includes('harder variation') && !/[0-9]/.test(flag) && draftW().every(x => x === w),
+       { flag, w: draftW() });
+  });
+  {
+    latRun([ latSess(dayOff(-7), [['0', 20], ['0', 20], ['0', 19]]) ]);
+    const card = latCard(LAT);
+    ok('PROG-05/D-08: bodyweight at 20, 20 and 19 gives no add-weight flag', !card.includes('class="flag"'), flagOf(card));
+  }
+
+  // T-8-01: the flag escapes what it prints.
+  {
+    latRun([ latSess(dayOff(-7), TOP3) ]);
+    P.DB.unit = '<img src=x>';
+    const flag = flagOf(latCard(LAT));
+    P.DB.unit = 'lb';
+    ok('T-8-01: a hostile unit renders escaped inside the add-weight flag',
+       flag !== null && flag.includes('&lt;img') && !flag.includes('<img'), flag);
+  }
+
+  // T-8-03: garbage weights from a hand-edited backup never throw or print NaN.
+  {
+    let threw = null, card = '';
+    try{
+      latRun([ latSess(dayOff(-7), [['abc', 20], ['abc', 20], ['abc', 20]]) ]);
+      card = latCard(LAT);
+    }catch(e){ threw = String(e && e.stack || e); }
+    ok('T-8-03: LAT sets with weight \'abc\' do not throw, and the card prints no NaN',
+       !threw && card.length > 0 && !card.includes('NaN'), { threw, flag: flagOf(card) });
+  }
+
+  /* ── the stall rule (08-02): progress is judged session to session ──
+     A session is progress when its working weight went up, or stayed the same with at least +1 total
+     rep. Three flat sessions in a row after a baseline is a stall. `latStall(list)` seeds the history
+     and asks the real rule for the LAT slot. */
+  const LATN = 'DB lateral raise';
+  const latStall = list => { latRun(list); return S.isStalledSlot(LATN, LW, LAT); };
+  const latDays = (seq, o) => seq.map((sets, n) => latSess(dayOff(-40 + 3 * n), sets, (o && o[n]) || {}));
+  const w25 = reps => reps.map(r => [25, r]);
+  ok('PROG: the stall helpers exist, and the old e1RM series helper is gone',
+     ['sessionSummary', 'compareSessions', 'slotHistory', 'stallStreak', 'isStalledSlot'].every(n => typeof S[n] === 'function') && typeof S.slotE1rmSeries !== 'function',
+     ['sessionSummary', 'compareSessions', 'slotHistory', 'stallStreak', 'isStalledSlot'].filter(n => typeof S[n] !== 'function'));
+
+  // PROG-03, the reported false warning: reps gained only on sets 2 and 3.
+  {
+    const stalled = latStall(latDays([w25([20, 17, 15]), w25([20, 18, 15]), w25([20, 18, 16]), w25([20, 19, 16])]));
+    const card = latCard(LAT);
+    ok('PROG-03: DB lateral raise at 25 lb, 20/17/15 → 20/18/15 → 20/18/16 → 20/19/16, is not stalled and its card shows no ⚠ Stalled',
+       stalled === false && card.length > 0 && !card.includes('coach stall'), { stalled, streak: S.stallStreak(LW, LAT, LATN) });
+  }
+  // PROG-03 / D-06: a baseline and three flats is a stall, with the Deload button on the card.
+  {
+    const B = w25([20, 18, 16]);
+    const stalled = latStall(latDays([B, B, B, B]));
+    const card = latCard(LAT);
+    ok('PROG-03/D-06: a baseline plus 3 flat sessions (25 lb, 20/18/16 four times) is stalled, and the card shows ⚠ Stalled with Deload −10%',
+       stalled === true && card.includes('coach stall') && card.includes('data-action="deloadExercise"'),
+       { stalled, streak: S.stallStreak(LW, LAT, LATN) });
+    ok('PROG-03: the stall banner says why, and names the workout',
+       /no extra rep or weight for 3 sessions in a row on PUSH 1/.test(card), (/<div class="coach stall">([\s\S]*?)<button/.exec(card) || [])[1]);
+    ok('PROG-03/D-06: a baseline plus 2 flats is not stalled', latStall(latDays([B, B, B])) === false, S.stallStreak(LW, LAT, LATN));
+  }
+  // PROG-02: the comparison itself.
+  {
+    const c = S.compareSessions;
+    const got = [c({W:25,reps:50}, {W:30,reps:40}), c({W:25,reps:50}, {W:25,reps:51}), c({W:25,reps:50}, {W:25,reps:50}), c({W:25,reps:50}, {W:20,reps:60})];
+    ok('PROG-02: heavier is progress, the same weight with +1 total rep is progress, the same total is flat, and lighter is lighter',
+       got.join() === 'progress,progress,flat,lighter', got);
+  }
+
+  /* Pauses and restarts. B is a baseline of 20/18/16 at 25 lb (54 reps); a flat repeats it. A pause
+     neither counts as flat nor breaks the streak, and the next counted session is compared with the
+     last counted one. */
+  {
+    const B = w25([20, 18, 16]);
+    const SKIP = [[25, 20], [25, 18], [0, 0, true]];
+    const streak = () => S.stallStreak(LW, LAT, LATN);
+    const seq = (list, opts) => { const s = latStall(latDays(list, opts)); return { stalled: s, streak: streak() }; };
+
+    let r = seq([B, B, SKIP, B, B]);
+    ok('D-10: B, F, a session with a skipped set, F, F is stalled — the skipped-set session paused the streak, it did not break it',
+       r.stalled === true && r.streak === 3, r);
+    r = seq([B, B, B, SKIP]);
+    ok('D-10: B, F, F, then a session with a skipped set is not stalled (only 2 flats)', r.stalled === false && r.streak === 2, r);
+    r = seq([B, B, B, [[25, 20], [25, 20], [0, 0, true]], B]);
+    ok('D-10: after a skipped-set session at 20/20, the next 54 is compared with the last counted 54, never the 40, so it is the third flat',
+       r.stalled === true && r.streak === 3, r);
+    r = seq([B, B, B, [[25, 20], [25, 20]], B], { 3: { blankSets: 1 } });
+    ok('D-10/D-01: a session with a set left blank (blankSets 1) pauses the same way, so the sequence is stalled',
+       r.stalled === true && r.streak === 3, r);
+
+    r = seq([B, B, [[20, 20], [20, 18], [20, 16]], B, B], { 2: { deload: true } });
+    ok('D-05: B, F, a deload at 20 lb, F, F is stalled — the deload paused', r.stalled === true && r.streak === 3, r);
+    r = seq([B, B, B, B, B], { 2: { skippedDay: true } });
+    ok('D-05: B, F, a skipped day, F, F is stalled — the skipped day paused', r.stalled === true && r.streak === 3, r);
+    r = seq([B, B, [], B, B]);
+    ok('D-05: an entry with sets [] and no marker in the middle pauses: B, F, empty, F, F is stalled', r.stalled === true && r.streak === 3, r);
+
+    const L = [[20, 20], [20, 18], [20, 16]];
+    r = seq([B, L, L, L]);
+    ok('D-03: B at 25, then 20 lb (lighter, a restart), then 2 flats at 20 is not stalled', r.stalled === false && r.streak === 2, r);
+    r = seq([B, L, L, L, L]);
+    ok('D-03: a third flat at 20 after the restart is stalled', r.stalled === true && r.streak === 3, r);
+    r = seq([B, [[30, 15], [30, 15], [30, 15]]]);
+    ok('D-03: heavier with fewer reps is progress (B at 25, then 30×15×3 gives a streak of 0)', r.streak === 0, r);
+
+    const B1 = w25([20, 18, 17]);
+    r = seq([B, B, B, B]);
+    const stalledFirst = r.stalled;
+    r = seq([B, B, B, B, B1]);
+    const clearedBy1 = r.stalled === false && r.streak === 0;
+    r = seq([B, B, B, B, B1, B1, B1, B1]);
+    ok('D-06: one session of progress clears the warning: B and 3 F is stalled, +1 rep clears it, and 3 more F stall again',
+       stalledFirst === true && clearedBy1 && r.stalled === true && r.streak === 3, { stalledFirst, clearedBy1, last: r });
+    r = seq([[[40, 20], [40, 20], [40, 20]], w25([15, 15, 15]), w25([16, 15, 15]), w25([16, 16, 15]), w25([16, 16, 16])]);
+    ok('D-06: never compared with the all-time best — 40 lb at 20/20/20, then 25 lb gaining 1 rep each time is not stalled',
+       r.stalled === false && r.streak === 0, r);
+  }
+
+  /* Identity, separate slots, bodyweight, soft delete, hostile data, and nothing stored. */
+  {
+    const B = w25([20, 18, 16]);
+    const FLAT4 = [B, B, B, B];
+
+    // D-04: each workout and slot keeps its own streak.
+    const P2 = 'PUSH 2', LAT2 = P.PROGRAM[P2].slots.findIndex(s => s.examples.includes(LATN));
+    latRun(latDays(FLAT4).concat([latSess(dayOff(-2), B, { workout: P2, slot: LAT2 })]));
+    const s1 = S.isStalledSlot(LATN, LW, LAT), s2 = S.isStalledSlot(LATN, P2, LAT2);
+    ok('D-04: 3 flats after a baseline in PUSH 1 stall PUSH 1\'s lateral raise, and PUSH 2\'s own slot is not stalled',
+       LAT2 >= 0 && s1 === true && s2 === false, { LAT2, s1, s2 });
+
+    // PROG-04: alias spellings that resolve to one exKey share one streak.
+    const ALT = '  db LATERAL   Raise ';
+    latRun(latDays(FLAT4, [{}, { name: ALT }, {}, { name: ALT }]));
+    const sameKey = P.exKey(ALT) === P.exKey(LATN);
+    ok('PROG-04: a baseline plus 3 flats whose entries alternate between spellings of one exKey is stalled',
+       sameKey && S.isStalledSlot(LATN, LW, LAT) === true, { sameKey, keys: [P.exKey(ALT), P.exKey(LATN)], streak: S.stallStreak(LW, LAT, LATN) });
+
+    /* PROG-04: a renamed exercise keeps its registry id, so its history follows the new name. Seeded
+       on settled data, the way a rename really happens: the boot's registry migration stamps exId
+       from the typed name, so a fixture seeded at _schema:16 cannot carry a pre-set id through it.
+       The two older entries keep their old typed name under the same exId, and the registry row is
+       renamed the way renameExercise does it. */
+    latRun(latDays(FLAT4));
+    const latId = P.exIdByName(LATN);
+    const OLD = 'Dumbbell side raise (old name)', NEW = 'Side raise';
+    P.DB.sessions.slice(0, 2).forEach(s => { s.entries[LAT].name = OLD; });
+    const row = P.exRow(latId);
+    if(row){ row.name = NEW; row.aliases.push(P.normEx(NEW)); }
+    ok('PROG-04: a baseline plus 3 flats where the older entries carry the same exId under an old display name is stalled under the current name',
+       !!latId && P.DB.sessions[0].entries[LAT].exId === latId && P.exKey(NEW) === latId && S.isStalledSlot(NEW, LW, LAT) === true,
+       { latId, exId0: P.DB.sessions[0].entries[LAT].exId, key: P.exKey(NEW), streak: S.stallStreak(LW, LAT, NEW) });
+
+    // PROG-04: merging two exercises joins their streaks.
+    const OTHER = 'Lean-away lateral raise';
+    latRun(latDays(FLAT4, [{}, {}, { name: OTHER }, { name: OTHER }]));
+    const keepId = P.exIdByName(LATN), secondId = P.exEnsure(OTHER);
+    const before = S.isStalledSlot(LATN, LW, LAT);
+    const merged = P.exMerge(secondId, keepId);
+    const after = S.isStalledSlot(LATN, LW, LAT);
+    ok('PROG-04: a baseline and 1 flat, then 2 flats under a second exercise, is not stalled until exMerge folds the second into the first',
+       !!keepId && !!secondId && keepId !== secondId && merged === true && before === false && after === true,
+       { keepId, secondId, merged, before, after });
+
+    // PROG-05 / D-08: bodyweight stalls on reps alone, and +1 rep clears it.
+    [['0', 'weight 0'], ['', 'a blank weight']].forEach(([w, label]) => {
+      const BW = [[w, 12], [w, 12], [w, 12]], BW1 = [[w, 13], [w, 12], [w, 12]];
+      const stalled = latStall(latDays([BW, BW, BW, BW]));
+      const cleared = latStall(latDays([BW, BW, BW, BW, BW1]));
+      ok(`PROG-05/D-08: bodyweight (${label}) at 12/12/12 four times is stalled, and a session with +1 rep clears it`,
+         stalled === true && cleared === false, { stalled, cleared });
+    });
+
+    // T-8-10: a soft-deleted session never counts toward a streak.
+    {
+      const list = latDays(FLAT4);
+      Object.assign(list[2], { deletedAt: Date.now(), mtime: Date.now() });
+      const stalled = latStall(list);
+      ok('T-8-10: a baseline plus 3 flats with one flat soft-deleted is not stalled (liveSessions only)',
+         stalled === false && S.stallStreak(LW, LAT, LATN) === 2, { stalled, streak: S.stallStreak(LW, LAT, LATN) });
+    }
+
+    /* T-8-08: garbage from a hand-edited backup never throws, never prints NaN, and gives a boolean.
+       WR-04: the non-array sets sits on the LATEST session too, so lastRealEntry and lastAnywhere,
+       which scan from the newest session, actually read it; an accessory whose sets is not an array
+       reaches sessionExercises the same way. */
+    {
+      let threw = null, res = null, card = '', any = 'unset', accIn = null;
+      try{
+        const list = latDays([[['abc', 20], [25, 'x'], [25, 18]], B, B, B]);
+        list[1].entries[LAT].sets = 'not an array';
+        list[list.length - 1].entries[LAT].sets = 'not an array';
+        list[list.length - 1].extras = { abs: { name: LATN, sets: 'not an array' } };
+        latRun(list);
+        res = S.isStalledSlot(LATN, LW, LAT);
+        any = S.lastAnywhere(LATN);
+        const last = P.DB.sessions[P.DB.sessions.length - 1];
+        accIn = P.sessionExercises(last).some(e => e.sets === 'not an array' && e === (last.extras || {}).abs);
+        card = latCard(LAT);
+      }catch(e){ threw = String(e && e.stack || e); }
+      ok('T-8-08/WR-04: weight \'abc\', reps \'x\' and a latest entry and accessory whose sets is not an array give a boolean, no throw, no NaN on the card, and sessionExercises leaves the accessory out',
+         !threw && typeof res === 'boolean' && any !== 'unset' && accIn === false && card.length > 0 && !card.includes('NaN'), { threw, res, accIn });
+    }
+
+    // D-07: the verdict is computed, never stored, and a boot rewrites no pre-phase session.
+    {
+      latRun(latDays(FLAT4));
+      latCard(LAT);
+      const snap = canon(clone(P.DB.sessions));
+      let threw = null;
+      try{
+        S.isStalledSlot(LATN, LW, LAT);
+        S.addWeightInfo(LW, LAT, LATN);
+        P.viewActive();
+      }catch(e){ threw = String(e && e.stack || e); }
+      ok('D-07: isStalledSlot, addWeightInfo and viewActive leave every session unchanged — no verdict is stored',
+         !threw && canon(P.DB.sessions) === snap, { threw });
+
+      P.DB.draft = null;
+      const settled = clone(P.DB);
+      const booted = P.normalize(clone(settled));
+      const noBlank = settled.sessions.every(s => s.entries.every(e => !('blankSets' in e)));
+      ok('D-07: booting data already at the current SCHEMA rewrites no session — no blankSets added, no mtime changed',
+         settled._schema === P.SCHEMA && noBlank && canon(booted.sessions) === canon(settled.sessions),
+         { schema: settled._schema, SCHEMA: P.SCHEMA, noBlank });
+    }
+  }
+
+  // The in-app guide states the rules the code applies.
+  {
+    const line = (rawHtml.split('\n').find(l => l.includes('t:"How to progress"')) || '');
+    ok('PROG: the guide\'s How to progress states the stall rule, that a blank set blocks Add weight, and the bodyweight belt',
+       /3 sessions/.test(line) && /left blank/.test(line) && /belt/.test(line) && /lighter/.test(line), line.slice(0, 80));
+  }
+
+  /* WR-01: a Finish that throws part-way leaves the draft as it was. If finishWorkout dropped the blank
+     row from the draft before the throw, the retry would count no blank set, store no blankSets, and
+     the workout with a set left blank would earn ⬆ Add weight. exercisePRs throws once here. */
+  {
+    latRun([ latSess(dayOff(-7), TOP3) ]);
+    latCard(LAT);
+    P.setVal(LAT, 0, 'w', '25'); P.setVal(LAT, 0, 'r', '20');
+    P.setVal(LAT, 1, 'w', '25'); P.setVal(LAT, 1, 'r', '20');
+    const realPRs = S.exercisePRs;
+    let calls = 0, first = null, retry = null, draftAfter = null;
+    S.exercisePRs = function(){ if(calls++ === 0) throw new Error('exercisePRs failed once'); return realPRs.apply(this, arguments); };
+    try{ P.finishWorkout(); }catch(e){ first = String(e && e.message || e); }
+    const de = P.DB.draft && P.DB.draft.entries[LAT];
+    draftAfter = de ? { rows: de.sets.length, blankSets: 'blankSets' in de } : null;
+    try{ P.finishWorkout(); }catch(e){ retry = String(e && e.stack || e); }
+    S.exercisePRs = realPRs;
+    const row = todayRow(), e = row && row.entries[LAT];
+    const card = latCard(LAT);
+    ok('WR-01: a Finish that throws part-way leaves the draft with its 3 rows and no blankSets, and the retry stores blankSets 1 with no ⬆ Add weight next time',
+       first !== null && !!draftAfter && draftAfter.rows === 3 && draftAfter.blankSets === false &&
+       !retry && !!e && e.blankSets === 1 && e.sets.length === 2 && !card.includes('class="flag"'),
+       { first, draftAfter, retry, blankSets: e && e.blankSets, sets: e && e.sets.length, flag: flagOf(card) });
+  }
+
+  /* WR-03: a row the draft creates or restores takes a weight from its neighbours. A blank weight reads
+     as bodyweight, so under D-02 a row Ian fills with reps only would quietly block ⬆ Add weight.
+     History is all-top at 25, so the draft prefills 30 and Ian types reps only. */
+  {
+    // 30 lb beats the 25 lb history, so these finishes are PRs; the stub keeps the canvas out of it.
+    const realConfetti = S.confettiBurst; S.confettiBurst = () => {};
+    const repsOnly = n => { for(let k = 0; k < n; k++) P.setVal(LAT, k, 'r', '20'); };
+    latRun([ latSess(dayOff(-7), TOP3) ]);
+    latCard(LAT);
+    S.addSet(LAT);
+    const added = P.DB.draft.entries[LAT].sets[3].w;
+    repsOnly(4);
+    P.finishWorkout();
+    const flag = flagOf(latCard(LAT));
+    ok('WR-03: + Add set takes the weight above it (30), so four sets with only reps typed earn ⬆ Add weight → 35',
+       added === '30' && flag !== null && flag.includes('35'), { added, flag });
+
+    latRun([ latSess(dayOff(-7), TOP3) ]);
+    latCard(LAT);
+    S.skipSet(LAT, 2);
+    S.unskipSet(LAT, 2);
+    const restored = P.DB.draft.entries[LAT].sets[2].w;
+    repsOnly(3);
+    P.finishWorkout();
+    const flag2 = flagOf(latCard(LAT));
+    ok('WR-03: undoing a skip gives the set its weight back (30), so three sets with only reps typed earn ⬆ Add weight → 35',
+       restored === '30' && flag2 !== null && flag2.includes('35'), { restored, flag: flag2 });
+
+    const row = finishLat([[25, 20], [25, 20], null]);
+    const id = row && row.id;
+    let threw = null, blankW = null, e = null;
+    try{
+      S.editSession(P.DB.sessions.findIndex(s => s.id === id));
+      blankW = P.DB.draft.entries[LAT].sets[2].w;
+      P.setVal(LAT, 2, 'r', '20');
+      P.finishWorkout();
+      const same = P.DB.sessions.filter(s => s.id === id && !s.deletedAt);
+      e = same.length === 1 ? same[0].entries[LAT] : null;
+    }catch(err){ threw = String(err && err.stack || err); }
+    const flag3 = flagOf(latCard(LAT));
+    ok('WR-03: editSession restores a blank row at the last worked weight (25), so filling its reps stores 25×20 three times and earns ⬆ Add weight → 30',
+       !threw && blankW === '25' && !!e && !('blankSets' in e) && e.sets.length === 3 && e.sets.every(x => x.w === '25' && x.r === '20') &&
+       flag3 !== null && flag3.includes('30'),
+       { threw, blankW, sets: e && e.sets, flag: flag3 });
+    S.confettiBurst = realConfetti;
+  }
+  P.DB.draft = null;
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

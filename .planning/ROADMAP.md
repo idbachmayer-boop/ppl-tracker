@@ -1,281 +1,195 @@
-# Roadmap: PPL Tracker — Declarative Data Layer
+# Roadmap: PPL Tracker
 
-## Overview
+## Milestones
 
-This milestone replaces the implicit, five-places-at-once rules governing PPL Tracker's ten (soon
-eleven) data collections with one explicit, derived registry — then builds everything that registry
-unlocks, in the order Ian already decided on 2026-09-09 and research confirmed has no data-flow
-reason to change. Phase 1 declares `COLLECTIONS` and re-derives `blank()`, the `liveX()` filters,
-`validateBackup()` and `mergeDB()` from it, proven by adding an eleventh collection (`sleep`) in one
-line. Phases 2 and 3 spend that registry: a clean Markdown export for Claude, and a documented recipe
-so the next collection after `sleep` doesn't require re-deriving what Phase 1 worked out. Phases 4 and
-6 are self-contained fixes (device-local draft, `.gitattributes`) that don't touch the registry in
-either direction and can land whenever convenient. Phase 5 replaces all 175 inline event-handler
-attributes with delegated listeners, which is what makes Phase 7's hash-based Content-Security-Policy
-possible without disabling every clickable control in the app. Phase 1 is the highest-risk phase in
-the milestone — it is the only one that touches the merge, soft-delete and migration code paths that
-have already caused real, unrecoverable data loss in this app.
+- ✅ **v1.0 Collections & lockdown**: Phases 1-7 (shipped 2026-10-09)
+- 📋 **v1.1 Training accuracy, lawn & sleep**: Phases 8-13 (in progress — roadmap approved 2026-10-10)
 
 ## Phases
 
-**Phase Numbering:**
+<details>
+<summary>✅ v1.0 Collections & lockdown (Phases 1-7) — SHIPPED 2026-10-09</summary>
 
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+- [x] Phase 1: F1 — The COLLECTIONS Registry (7/7 plans) — completed 2026-09-14
+- [x] Phase 2: Export for Claude (3/3 plans) — completed 2026-09-18
+- [x] Phase 3: F3 — Adding a New Tracked Thing (Recipe) (5/5 plans) — completed 2026-09-22
+- [x] Phase 4: Draft Goes Device-Local (3/3 plans) — completed 2026-09-23
+- [x] Phase 5: F2 — Event Delegation (6/6 plans) — completed 2026-10-01
+- [x] Phase 6: F4 — .gitattributes (2/2 plans) — completed 2026-10-02
+- [x] Phase 7: Content Security Policy (7/7 plans) — completed 2026-10-09
 
-Decimal phases appear between their surrounding integers in numeric order.
+Full details: `.planning/milestones/v1.0-ROADMAP.md`. Phase artifacts:
+`.planning/milestones/v1.0-phases/`.
 
-- [x] **Phase 1: F1 — The COLLECTIONS Registry** - One declared registry replaces the five places a collection's merge/delete/sort rule could be silently forgotten; adding `sleep` in one line is the proof. (completed 2026-09-14)
-- [x] **Phase 2: Export for Claude** - A Markdown export of live data, derived from the same registry and the same views, ready to paste into a Claude conversation. (completed 2026-09-18)
-- [x] **Phase 3: F3 — Adding a New Tracked Thing (Recipe)** - `CLAUDE.md` gets a numbered recipe for the next collection after `sleep`, written against the shipped registry. (completed 2026-09-22)
-- [x] **Phase 4: Draft Goes Device-Local** - The in-progress workout stops crossing the wire, closing a whole bug family at the source. (completed 2026-09-23)
-- [x] **Phase 5: F2 — Event Delegation** - All 175 inline handler attributes become delegated listeners, which is what makes a real CSP possible. (completed 2026-10-01)
-- [ ] **Phase 6: F4 — .gitattributes** - Git stores `index.html`'s bytes exactly, landed alone so the whole-file diff hides nothing.
-- [ ] **Phase 7: Content Security Policy** - A hash-based CSP ships without silently breaking the only off-device backup.
+</details>
+
+### 📋 v1.1 Training accuracy, lawn & sleep (Phases 8-13) — in progress (approved 2026-10-10)
+
+**Milestone Goal:** Make the training advice trustworthy, so that add-weight, stall, step and deload
+suggestions match what Ian actually lifted, and close the lawn and sleep loops he asked for, without
+bending any v1.0 data rule.
+
+**Status:** Draft. Ian has not approved this roadmap yet. Nothing below is planned or started.
+
+**Source:** `.planning/v1.1-BRIEF.md`, agreed with Ian on 2026-10-09. Its six phases map one to one
+onto Phases 8-13, and every threshold below is his decision, not a default. Requirements with IDs are
+in `.planning/REQUIREMENTS.md`.
+
+- [ ] **Phase 8: Progression Correctness** - Add weight only when every planned set hit the top of the range; progress and stall are measured session to session by `exKey`, bodyweight included.
+- [ ] **Phase 9: Equipment and Weight Steps** - Each exercise gets a synced equipment type, its own 2.5 or 5 lb step, step-aware deloads and warm-ups, and plate math for its own bar.
+- [ ] **Phase 10: Log Page — History and Skip** - The last 5 sessions open inline from "Last time", and a whole exercise can be skipped with an optional reason and undone.
+- [ ] **Phase 11: Lawn, Journal and Weather Loop** - Cool-day watering hold, rain history in its own synced collection, 💧 in the outlook, journal marks, and a weather fetch that backs off offline.
+- [ ] **Phase 12: Sleep Card and Erase** - A morning sleep card on Today, and a local Erase that keeps the workout in progress or is the documented exception.
+- [ ] **Phase 13: Strength Index and Poor-Sleep Intensity** - A strength index from 100 on Progress and Today, and a one-tap 10%-lighter offer after a poor night.
+
+**Rules every v1.1 phase carries** (from `CLAUDE.md`, which wins on any conflict):
+
+- Every phase edits the inline `<script>`, so run `npm run csp:hash` before each commit that touches
+  it. A stale hash blanks the app on every device, the phone included.
+- `npm test` stays green from the 928-check baseline, and each phase adds checks for what it changes.
+- Union-merge sync, soft deletes, an explicit `false` in map collections, `esc()` on every
+  user-controlled string (double-quoted attributes only, never JS source), and `data-action`
+  delegation through thin `ACTIONS` wrappers. Never stop propagation.
+- Draft edits persist with `saveLocal()`, never `save()`. Only `pickEx`, `exPick` and
+  `finishWorkout` may `save()`, and the suite fails when a new draft function calls it.
+- No new fetch host without a CSP change and a re-probe on desktop and Android user agents.
 
 ## Phase Details
 
-### Phase 1: F1 — The COLLECTIONS Registry
-
-**Goal**: The rules for how a collection merges, soft-deletes, sorts and validates move out of five separately-maintained functions and into one declared registry, so a new or edited collection can no longer silently omit a rule the way `mobilityLog` and Migration 15 already did.
-**Depends on**: Nothing (first phase)
-**Risk**: Highest-risk phase in this milestone — it is the only phase that touches the merge, soft-delete and migration code paths directly, where a mistake doesn't fail loudly, it silently loses or resurrects real training data, which is exactly how the 2026-07-25 blind-write and Migration-15 incidents happened.
-**Requirements**: REG-01, REG-02, REG-03, REG-04, REG-05, REG-06, REG-07, REG-08, REG-09, REG-10, REG-11, REG-12, REG-13, REG-14, REG-15, REG-16, REG-17, SLEEP-01, SLEEP-02, SLEEP-03, SLEEP-04, SLEEP-05, SLEEP-06
+### Phase 8: Progression Correctness
+**Goal**: The add-weight and stall advice on each exercise card matches what Ian actually lifted. Weight goes up only after a complete set of top-of-range sets, and a stall means three sessions in a row without progress against the session before, so the false DB lateral raise warning and the repeating stalls stop.
+**Depends on**: Nothing in v1.1 (builds on the shipped v1.0 app)
+**Requirements**: PROG-01, PROG-02, PROG-03, PROG-04, PROG-05
+**Verification**: A real workout on Ian's phone, plus the automated suite (`npm test`).
 **Success Criteria** (what must be TRUE):
+  1. After a session where every planned set for a slot was done at the working weight and each one reached the top of the rep range, the next session suggests adding weight. After two sets at the top plus one skipped or missing set, it does not (PROG-01).
+  2. A session counts as progress when, against the previous session of that exercise, total reps across all sets rose by at least 1 or the weight went up. Extra reps on sets 2 and 3 alone count, so a DB lateral raise that gains reps on its later sets is not flagged as stalled (PROG-02, PROG-03).
+  3. The stalled warning appears only after 3 sessions in a row with no progress, each measured against the session before it and never against the all-time best, and one session of progress clears it (PROG-03).
+  4. A renamed or merged exercise keeps its progress and stall history, because both follow the exercise's identity (`exKey`), not its exact name (PROG-04).
+  5. A bodyweight exercise is flagged as stalled after 3 sessions in a row without +1 total rep, and when every set reaches the top of the range its card shows "add weight (belt) or harder variation" with no number (PROG-05).
+**Notes**:
+- The bugs being fixed, from the brief: `addWeightInfo` drops skipped and blank sets before checking the top of the range, so two top sets plus a skip still says "add weight"; `isStalledSlot` compares the best single-set e1RM with the all-time max before the last 3 sessions, so extra reps on later sets never count.
+- Until Phase 9 adds an explicit equipment type, "bodyweight" means what the app already treats as bodyweight (sets logged at weight 0, shown as BW). Phase 9 keeps the two definitions consistent.
+- Deloaded entries stay out of both checks, as they do today. INT-04 (Phase 13) relies on this.
+**Plans:** 2/3 plans executed
 
-  1. `const COLLECTIONS` is declared textually before `let DB = load()`, adjacent to `SCHEMA`/`KEY` and before `MIGRATIONS`; every value inside it is a literal or a reference to a hoisted `function` declaration, never a `const` arrow or a forward `const` reference — checkable by reading the file top to bottom once (REG-02, REG-03, REG-04).
-  2. Adding the `sleep` collection touches only `COLLECTIONS` plus its logging/viewing UI — no edits to `blank()`, `mergeDB()`, the `liveX()` filter family, `validateBackup()`, or the exporter's column metadata — and a test asserts this directly (SLEEP-04, SLEEP-05).
-  3. A boot-order regression test passes for every schema version from 1 through the current `SCHEMA = 17`, with every declared collection present in the correct shape immediately after boot (REG-15).
-  4. Every hand-written function being replaced (`mergeDB_v0` etc.) stays in the file, renamed, and a differential test proves its derived replacement matches it over a real exported backup plus a synthetic two-device fixture for each past incident — before the legacy function is deleted in a later commit (REG-12, REG-13, REG-14).
-  5. Two behaviors that must never regress both hold under test: the `gen`-mismatch wholesale-replace still short-circuits before any per-collection merge, so "Erase all data" and Import→Replace still produce zero unioned survivors from the losing side (REG-09, REG-10); and a deleted `sleep` row plus a map collection (`journal`, `mobilityLog`, `lawnLog`) row storing an explicit `false` both survive a stale-device merge replay without resurrecting (SLEEP-06, REG-05, REG-16).
+Plans:
+- [x] 08-01-PLAN.md — Add weight judges every set on the card: a skipped or blank set blocks it (a `blankSets` marker is stamped at finish), every set must be at the working weight, the latest attempt is judged, and bodyweight suggests a belt or harder variation (PROG-01, PROG-05)
+- [x] 08-02-PLAN.md — Stall is 3 flat sessions in a row, each against the one before, per workout and slot by `exKey`; deloads, skipped days and skipped sets pause, a lighter session restarts, bodyweight counts; the in-app guide matches (PROG-02..05)
+- [ ] 08-03-PLAN.md — Ship: pre-flight, Ian pushes and merges with a merge commit, live bytes checked, then the real workout on Ian's phone (end-of-phase UAT)
 
-**Plans**: 7/7 plans executed
+### Phase 9: Equipment and Weight Steps
+**Goal**: Every exercise knows its equipment, so suggestions, deloads, warm-ups and plate math move in steps Ian can actually load (2.5 lb for dumbbells, 5 lb for everything else), and a deload always makes the weight lighter.
+**Depends on**: Phase 8 (the per-exercise step plugs into the corrected add-weight rule)
+**Requirements**: EQUIP-01, EQUIP-02, EQUIP-03, EQUIP-04, EQUIP-05, EQUIP-06
+**Verification**: A real workout on Ian's phone, plus the automated suite (`npm test`).
+**Success Criteria** (what must be TRUE):
+  1. Settings → Exercises shows each exercise's one equipment type (barbell, EZ bar, dumbbell, machine, cable or bodyweight). Ian can change it there, and the change shows on his other device after sync (EQUIP-01, EQUIP-03).
+  2. After the update, every existing exercise already has an equipment type defaulted from its name, and syncing with an older device that never ran the migration, twice in a row, leaves every exercise's equipment type in place (EQUIP-02).
+  3. Add-weight suggestions move by the exercise's own step: +2.5 lb for a dumbbell exercise, +5 lb for barbell, EZ bar, machine and cable. No dumbbell suggestion jumps a flat 5 lb (EQUIP-04).
+  4. Deloads and warm-ups round to the exercise's own step, so a 15 lb dumbbell deload at 90% suggests 12.5 lb instead of rounding back to 15 (EQUIP-05).
+  5. Plate math follows the equipment type, and the preacher curl, as an EZ bar exercise, shows plate math against a 25 lb bar (EQUIP-06).
+**Notes** (this migration rewrites existing rows, so every `CLAUDE.md` migration rule applies):
+- Bump `SCHEMA` (18 → 19) and add a `MIGRATIONS` entry. It must be idempotent and must never downgrade `_schema`.
+- `touch()` every exercise-registry row it rewrites (stamp `mtime`) and persist immediately. A migration that only runs in memory inside `normalize()` at boot is how Migration 15 was silently reverted in production.
+- Ship a stale-device merge replay test: an older device's un-migrated rows cannot revert the equipment field, and replaying that device a second time still keeps it.
+- Check the merge path before planning. `DB.exercises` is not a `COLLECTIONS` entry, and `mergeDB()` appears to take the whole array from the side with the newer `updatedAt`. If so, a per-row `mtime` alone does not protect an equipment edit (EQUIP-03) from the other device's next save, and the replay test must cover that path too.
+- The `SCHEMA` bump stales `test/fixtures/merge-golden.json`: regenerate it with `WRITE_MERGE_GOLDEN=1 node test/app.test.js`, and grep `test/app.test.js` for the old schema number as a bare literal (`docs/adding-a-collection.md`).
+- The equipment picker is a `data-action` control with its value through `esc()`. Changing it edits synced data, so it goes through `save()`, not `saveLocal()`.
+- The brief states steps in lb. What a kg user sees (today `INCREMENT.kg` is 2.5) is a question for discuss-phase, not something this roadmap decides.
+**Plans**: TBD
 **UI hint**: yes
 
-Plans:
-**Wave 1**
-
-- [x] 01-01-PLAN.md — Tracer: declare COLLECTIONS at the TDZ-safe spot, validate it at module eval, boot every schema through it; settle export columns/format (REG-17)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 01-02-PLAN.md — Derive blank(), the liveX() family and validateBackup() from COLLECTIONS, one commit each, legacy twins kept (REG-12 steps 1-3)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 01-03-PLAN.md — Freeze mergeDB as mergeDB_legacy, replay every sync incident, then derive mergeCollections(); gen early return untouched (REG-12 step 4)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 01-04-PLAN.md — Seeded random merge differential + merge laws; .gitignore and the local-only real-backup differential that skips loudly
-
-**Wave 5** *(blocked on Wave 4 completion)*
-
-- [x] 01-05-PLAN.md — sleep as one COLLECTIONS entry (SCHEMA 18), Care → Sleep log/list/delete, SLEEP-05 probe proof
-- [x] 01-06-PLAN.md — Checkpoint: Ian exports a real backup into test/local/; the real-data differential must PASS (counts-only record)
-
-**Wave 6** *(blocked on Wave 5 completion)*
-
-- [x] 01-07-PLAN.md — Record legacy outputs as committed goldens, then delete the legacy functions in a later commit (REG-14)
-
-### Phase 2: Export for Claude
-
-**Goal**: Ian can pull a clean, complete Markdown snapshot of his data out of the app for Claude to reason over, generated from the same `COLLECTIONS` declaration and the same live views as the rest of the app, so the export never becomes a second hand-maintained schema.
-**Depends on**: Phase 1 (needs `COLLECTIONS`' column/format metadata settled by REG-17, and the derived `liveX()` family)
-**Requirements**: EXP-01, EXP-02, EXP-03, EXP-04, EXP-05, EXP-06, EXP-07, EXP-08
+### Phase 10: Log Page — History and Skip
+**Goal**: Mid-workout, Ian can see how an exercise went over its last 5 sessions without leaving the workout, and can skip a whole exercise (with an optional reason, and undo) in a way that correctly blocks adding weight next time.
+**Depends on**: Phase 8 (a skipped exercise blocks adding weight through PROG-01, and history follows `exKey` per PROG-04)
+**Requirements**: LOG-01, LOG-02, LOG-03, LOG-04, LOG-05
+**Verification**: A real workout on Ian's phone, plus the automated suite (`npm test`).
 **Success Criteria** (what must be TRUE):
-
-  1. Ian can export a Markdown file, separate from and alongside the existing JSON backup, and it opens with a header stating what it is, when it was generated, and the date range covered (EXP-01, EXP-08).
-  2. The Markdown table builder itself is derived from `COLLECTIONS`, not hand-written per collection — adding a twelfth collection later requires no exporter edit (EXP-02).
-  3. Every table is read through the same `liveX()` path the app's own views use — exporting after deleting a row shows the row absent, along with its internal id, never present with `deletedAt` visible (EXP-04, EXP-05).
-  4. Workouts export as one flat row per set (date, workout, exercise, set number, weight, reps), not nested by session (EXP-03).
-  5. Dates are ISO format, units appear once in the column header sourced from `DB.unit` rather than hardcoded, and a logged value containing a pipe character or an embedded newline still produces a valid, unbroken table row (EXP-06, EXP-07).
-
-**Plans**: 3/3 plans executed
-
-Plans:
-**Wave 1**
-
-- [x] 02-01-PLAN.md — Tracer: COLLECTIONS columns become {field,label,unit}; Markdown export built from the registry and downloaded from Settings; registry contract + EXP-02 probe/static proofs (stops once after the tracer in interactive runs)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 02-02-PLAN.md — Row content: skipped day as one row (D-04), only ticked day flags (D-05), oldest first (D-11), cardio blanks as — (D-09); deleted rows, ids and non-registry data proven absent (EXP-03/04/05, D-07)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 02-03-PLAN.md — Header with date range and per-section counts (EXP-08, D-13), units/escaping battery (EXP-06/07), share sheet with download fallback (D-01)
-
-### Phase 3: F3 — Adding a New Tracked Thing (Recipe)
-
-**Goal**: The knowledge of how to add a new tracked collection moves out of this milestone's working memory into a numbered recipe in `CLAUDE.md`, so the collection after `sleep` doesn't require re-deriving what Phase 1 already worked out.
-**Depends on**: Phase 1 (documents the shipped `COLLECTIONS` shape and placement rule); also reflects Phase 2 (documents the export's `columns` field) — not a hard blocker, but writing it after Phase 2 avoids a rewrite
-**Requirements**: DOC-01, DOC-02, DOC-03, DOC-04
-**Success Criteria** (what must be TRUE):
-
-  1. `CLAUDE.md` contains a numbered "adding a new tracked thing" recipe, written against the shipped `COLLECTIONS` shape, not the pre-Phase-1 five-places version (DOC-01).
-  2. The recipe states the module-eval-time placement rule verbatim (declare before `let DB = load()`; literals or hoisted-function references only) and lists the tests a new collection must ship with, including the stale-device merge replay (DOC-02, DOC-03).
-  3. Following the recipe end to end, on paper or a scratch branch, for a collection other than `sleep` produces the correct result with no step missing, wrong, or requiring outside knowledge (DOC-04).
-
-**Plans**: 5/5 plans executed
-
-Plans:
-**Wave 1**
-
-- [x] 03-01-PLAN.md — Tracer: the companion doc's registry-contract blocks, the `CLAUDE.md` section and step 1, and the test that turns red when the recipe and `collectionProblems()`'s `ALLOWED` list disagree (DOC-01, DOC-03)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 03-02-PLAN.md — Dry run A: a map-shaped probe injected via the harness's existing `opts.transform`, proving every derived consumer picks it up and the explicit-`false` merge trap holds (DOC-04)
-- [x] 03-03-PLAN.md — The six-step spine, the required-test categories including the stale-device merge replay, and the worked `sleep` example with the safe-id gate (DOC-01, DOC-03)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 03-04-PLAN.md — Checkpoint: which of the repo's three wordings of the placement rule is canonical; then the verbatim quote pinned to its source, plus the copy-paste entry round-tripped through the live validator (DOC-02, DOC-03)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 03-05-PLAN.md — Dry run B: walk the recipe cold for `supplements` on a scratch branch, fold every gap back in, discard the branch (DOC-04, DOC-01)
-
-### Phase 4: Draft Goes Device-Local
-
-**Goal**: The in-progress workout stops crossing the wire at all, so a crash or a malformed legacy `draft` field arriving from another device can never corrupt or clear the workout Ian is mid-set on, at the rack, right now.
-**Depends on**: Nothing — independent of Phase 1's `COLLECTIONS` registry in both directions, since `draft` is a scalar `DB` field, never a declared collection. Note: this phase edits the same merge boundary Phase 1 hardens, so apply the same never-delete-in-the-same-commit discipline regardless of execution order relative to Phase 1.
-**Requirements**: DRAFT-01, DRAFT-02, DRAFT-03, DRAFT-04, DRAFT-05
-**Success Criteria** (what must be TRUE):
-
-  1. Finishing or discarding a workout produces no cloud write containing `draft` state, following the same exclusion pattern already used for the `wx` weather cache (DRAFT-01, DRAFT-04).
-  2. A cloud document still carrying a legacy `draft` field from before this change cannot reintroduce a draft onto a device that opens the app after the change ships (DRAFT-02).
-  3. The Log tab renders without error when the cloud document's legacy `draft` field is malformed or absent (DRAFT-03).
-  4. Closing and reopening the app on the same device preserves the in-progress workout exactly as it was left (DRAFT-05).
-
-**Plans**: 3/3 plans executed
-
-Plans:
-**Wave 1**
-
-- [x] 04-01-PLAN.md — Tracer: a rep typed mid-workout stays on the device, the push through the real transaction carries no draft, and a newer cloud draft cannot replace it; then snapshots, cloud versions, the JSON backup, finish and discard proven draft-free (DRAFT-01, DRAFT-02 partial, DRAFT-04)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 04-02-PLAN.md — Every inbound path keeps this device's draft: import Merge/Replace (extracted helpers), both restores, the cloud-copy choice, remote Erase, a malformed-cloud-draft battery, and a tripwire on every statement that replaces `DB` (DRAFT-02, DRAFT-03)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 04-03-PLAN.md — The remaining 23 draft functions persist locally with no push, close-and-reopen replays, the rule written into `CLAUDE.md`, and the end-of-phase two-device check (DRAFT-05)
-
-### Phase 5: F2 — Event Delegation
-
-**Goal**: All 175 inline handler attributes are replaced by delegated listeners reading `data-*` attributes, so markup no longer calls global functions by name and a Content-Security-Policy can restrict script execution without disabling the app.
-**Depends on**: Nothing — independent of Phase 1's `COLLECTIONS` registry in both directions.
-**Requirements**: DELEG-01, DELEG-02, DELEG-03, DELEG-04, DELEG-05, DELEG-06, DELEG-07
-**Success Criteria** (what must be TRUE):
-
-  1. A static inventory of all 175 inline handler attributes (143 `onclick`, 14 `onchange`, 13 `oninput`, 3 `onkeydown`, 2 `onpointerdown`, counted when the inventory was captured) is captured before any are touched, and a static completeness check cross-references that inventory against the delegated dispatcher afterward (DELEG-01, DELEG-03).
-  2. Grepping the shipped `index.html` for `on(click|change|input|keydown|pointerdown)=` returns zero matches — no handler is reachable only through a global function called by name from markup (DELEG-02, DELEG-04).
-  3. Every `stopPropagation()` call in the file has been found and confirmed not to break delegation (DELEG-05).
-  4. Every converted control is still operable by keyboard, not only by pointer or click (DELEG-06).
-  5. The Log tab — the screen Ian is standing in front of mid-workout — is manually verified end to end and behaves identically to before the conversion (DELEG-07).
-
-**Plans**: 6/6 plans executed
+  1. Tapping the "Last time" line on an exercise card opens that exercise's last 5 sessions inline on the card. The workout is never left, and every set already entered is unchanged (LOG-01).
+  2. The inline history links to that exercise's full chart in Progress → Strength, and coming back to the Log tab finds the workout exactly as it was (LOG-02).
+  3. Each exercise card has a skip button that skips all of that exercise's sets and takes one optional reason. The skip survives reloading the app on the phone (LOG-03).
+  4. A skipped exercise can be un-skipped during the workout, which restores its sets (LOG-04).
+  5. After the workout is finished, the session records the exercise as skipped, and the next time that exercise comes up the app does not suggest adding weight to it (LOG-05).
+**Notes**:
+- Skip and un-skip are draft edits: `saveLocal()`, never `save()` (the suite's draft tripwire fails otherwise). `finishWorkout` is what writes the skip into the synced session.
+- The skip reason is user text: through `esc()` when rendered, in double-quoted attributes only.
+- The inline history reads through `liveSessions()`, so a deleted session never ghosts back into it.
+**Plans**: TBD
 **UI hint**: yes
 
-Plans:
-**Wave 1**
-
-- [x] 05-01-PLAN.md — Tracer: capture the inline-handler inventory before any change, then a tap on a tab goes through one delegated dispatcher; the rest of the app shell, the completeness ratchet, the registry guards and the keyboard reset (DELEG-01, DELEG-03, DELEG-05; DELEG-02/04/06 infrastructure)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 05-02-PLAN.md — Settings and the Ideas sheet: hostile idea, exercise and cloud-version ids travel as escaped data, the backdrop stays the one reviewed non-button, and the export test asserts its property (DELEG-02, DELEG-04, DELEG-06)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 05-03-PLAN.md — Care (Skin, Lawn, Sleep): Enter-to-search through the registry, the lawn card on Today and Care as a button, and the four text-pinned lawn/sleep checks retargeted (DELEG-02, DELEG-04, DELEG-06)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [x] 05-04-PLAN.md — Train without the Log tab (History, Progress, Cardio): offsets, ranges and row indexes arrive as numbers, and the week-review links become buttons (DELEG-02, DELEG-04, DELEG-06)
-
-**Wave 5** *(blocked on Wave 4 completion)*
-
-- [x] 05-05-PLAN.md — Today: Enter-to-log and the Log button each log once, the Chart chains become one action, and the shortcut cards and headers become buttons (DELEG-02, DELEG-04, DELEG-06)
-
-**Wave 6** *(blocked on Wave 5 completion)*
-
-- [x] 05-06-PLAN.md — The Log tab last and alone: `swGuard` kept, set-row values escaped, the draft rule untouched; no inline handler left; docs teach the pattern; keyboard pass and phone checklist queued as the end-of-phase gate (DELEG-02, DELEG-04, DELEG-06, DELEG-07)
-
-### Phase 6: F4 — .gitattributes
-
-**Goal**: Git stores `index.html`'s bytes exactly as written instead of letting `core.autocrlf` silently rewrite line endings, so a future line-ending flip can never disguise a real change inside a multi-thousand-line reformat diff.
-**Depends on**: Nothing — independent of Phase 1's `COLLECTIONS` registry in both directions; can land at any point in the milestone.
-**Requirements**: REPO-01, REPO-02
+### Phase 11: Lawn, Journal and Weather Loop
+**Goal**: The lawn scheduler stops watering on cool days, remembers how much it rained, shows when watering is next due, and marks mowing, watering and rain in the journal, while the weather fetch stops looping when the phone is offline.
+**Depends on**: Nothing in v1.1 for its features. Its `SCHEMA` bump takes the next number after Phase 9's.
+**Requirements**: LAWN-01, LAWN-02, LAWN-03, LAWN-04, LAWN-05, LAWN-06, LAWN-07
+**Verification**: Automated checks, plus a quick look on Ian's phone.
 **Success Criteria** (what must be TRUE):
+  1. When today's forecast high is below 60°F, the lawn scheduler holds off watering. At 60°F or warmer, watering is scheduled as before (LAWN-01).
+  2. Once a day is over, its rainfall is saved with the exact amount in a new synced rain-history collection, separate from `lawnLog`, and it reaches Ian's other device. Lawn history shows 🌧 on every day with 0.1 inches of rain or more, and no mark below that, while the exact amount is kept either way (LAWN-02, LAWN-03).
+  3. The 7-day outlook shows 💧 on the day watering is next due, skipping any day whose forecast rain meets the season's `rainSkip` (0.3 to 0.5 inches) or whose chance of rain is 60% or higher (LAWN-04).
+  4. Week in Review in the journal shows 🚜 Mowed, 💧 Watered and 🌧 rain on each day they apply (LAWN-05).
+  5. With the phone offline, a failed weather fetch on Today and on Lawn backs off instead of looping fetch → fail → render, and the test harness's `fetch` settles, so a fetch-render loop fails the suite instead of hiding (LAWN-06, LAWN-07).
+**Notes** (a new collection, so `CLAUDE.md` "Adding a new tracked thing" applies step by step):
+- Exactly one `COLLECTIONS` entry, placed last (after `sleep`), with a `label` no other collection uses. Its values follow the verbatim placement rule: literals or hoisted `function` references only. Retarget the existing "I am the last entry" test from `sleep` to it.
+- Bump `SCHEMA` and add a `MIGRATIONS` entry, taking the next number after Phase 9's (19 → 20 if the phases ship in order). It must be idempotent and never downgrade `_schema`. Add the collection to the `INTRODUCED_AT` boot table and regenerate `test/fixtures/merge-golden.json`.
+- Required tests: registry validity; a stale-device merge replay in which a deleted row stays deleted, and stays deleted when the stale device is replayed again; `validateBackup()` shape (a damaged section is refused, an older backup without the section is accepted); a declaration-alone proof that no derived consumer names the collection; UI behaviour for the history marks. If the collection is a map, the explicit-`false` replay too.
+- Do not touch the exporter. The new collection exports itself.
+- Rain stays out of `lawnLog` because `mergeDateMap` takes the whole inner object from the newer side, so rain written there could overwrite the other device's mowed and watered marks.
+- Open for discuss-phase: rain rows come from the weather fetch, and `CLAUDE.md` says derived data uses `saveLocal()` (the weather cache once used `save()` and made a stale device look newest just by being opened). Decide how a rain row is persisted and reaches the cloud without reopening that hole.
+- Open for discuss-phase: the weather cache holds only 3 past days, so a day is saved only if the app is opened within that window. Confirm with Ian whether gaps are acceptable. Open-Meteo is already an allowed host; any other host needs a CSP change.
+**Plans**: TBD
+**UI hint**: yes
 
-  1. A `.gitattributes` file exists that makes git store `index.html` bytes exactly, ending `core.autocrlf` rewriting (REPO-01).
-  2. The commit that adds `.gitattributes` contains nothing else — the resulting whole-file diff is isolated to its own commit, verifiable by inspecting that commit's file list (REPO-02).
-
-**Plans**: 2/2 plans executed
-
-Plans:
-
-- [x] 06-01-PLAN.md — `.gitattributes` (`* text=auto eol=lf`) lands alone as commit 1 (tracer), then this checkout is refreshed to LF through a guarded, lossless procedure
-- [x] 06-02-PLAN.md — `npm test` asks git whether index.html is stored as LF, and fails rather than skips (red-proven); docs updated; merge-commit and other-checkout follow-ups queued
-
-### Phase 7: Content Security Policy
-
-**Goal**: A hash-based Content-Security-Policy ships that blocks arbitrary injected script while explicitly keeping the three Firebase SDK scripts and Firebase's runtime endpoints allowed, so tightening security is never the thing that silently kills the app's only off-device backup.
-**Depends on**: Phase 5 (a hash-based `script-src` cannot coexist with 175 inline handler attributes without `unsafe-inline` or the fragile, Safari-inconsistent `unsafe-hashes`; delegation must land first)
-**Requirements**: CSP-01, CSP-02, CSP-03, CSP-04, CSP-05, CSP-06, CSP-07
+### Phase 12: Sleep Card and Erase
+**Goal**: Logging last night's sleep takes one card on Today each morning, and erasing local data no longer silently throws away the workout Ian is in the middle of.
+**Depends on**: Nothing in v1.1 (uses the `sleep` collection shipped in v1.0)
+**Requirements**: SLP-01, SLP-02, SLP-03
+**Verification**: Automated checks, plus a quick look on Ian's phone.
 **Success Criteria** (what must be TRUE):
+  1. In the morning, Today shows a sleep card until last night's sleep is logged. Once it is, the card is gone for the rest of the day, reload included, following the morning weigh-in card's pattern (SLP-01).
+  2. The card will not save without hours and quality, takes an optional note, and saves a row in the existing `sleep` collection dated the day Ian woke up. The row shows in Care → Sleep and on his other device after sync (SLP-02).
+  3. The Erase behaviour Ian chooses holds, and a test pins it: either a local "Erase all data" during a workout leaves this device's in-progress workout on the Log tab (`wipe()` goes through `keepLocalDraft()`), or `CLAUDE.md` names `wipe()` as the one documented exception to the draft rule (SLP-03).
+**Notes**:
+- SLP-03 needs Ian's choice at discuss-phase. Either way it closes the v1.0 audit's `wipe()` warning.
+- Saving from the card writes synced data, so it uses `save()`. The note is user text and goes through `esc()`.
+**Plans**: TBD
+**UI hint**: yes
 
-  1. A `<meta http-equiv="Content-Security-Policy">` tag ships with a hash-based `script-src` covering the inline script block, and `https://www.gstatic.com` is allow-listed so the three Firebase SDK scripts still load (CSP-01, CSP-02).
-  2. `connect-src` explicitly covers Firebase's runtime endpoints and the weather API hosts, built from a hand inventory rather than a grep of `index.html` (they don't appear in a static grep), and `style-src` keeps `'unsafe-inline'` as a documented, deliberate decision (CSP-03, CSP-04).
-  3. Loading the app against a local static file server shows a DevTools console with zero CSP violations before the policy is pushed to production — the only pre-production check available, since meta CSP has no report-only mode (CSP-05).
-  4. After the policy is live, cloud sync is confirmed working by an actual sync check (e.g., a round-trip write observed in Firestore), never merely assumed because the app loads normally (CSP-06).
-  5. `CLAUDE.md` documents the manual hash-regeneration command, so a future edit to the inline script cannot silently break the policy (CSP-07).
-
-**Plans**: 6/7 plans executed (07-01..04 and 07-06 complete; 07-05 failed and reverted; 07-07 ships the re-ship)
-
-Plans:
-**Wave 1**
-
-- [x] 07-01-PLAN.md — Tracer: the build stamp moves out of the inline script into `<meta name="ppl-build">`, BUILD reads it, the deploy sed and the tests follow, and red-proven guards keep the deploy rewrite out of hashed bytes (D-08)
-
-**Wave 2** *(blocked on Wave 1 completion)*
-
-- [x] 07-02-PLAN.md — The stamp move ships alone: Ian pushes it, confirms Settings → This version on the PC and the phone, and the live bytes prove the script is untouched (D-09; human-action gate)
-- [x] 07-03-PLAN.md — Zero-dependency `scripts/csp-hash.js` with `npm run csp:hash` / `csp:check`, pinned to Chrome's own hash and CRLF-safe; inert until the CSP lands (D-03, D-04, D-05)
-
-**Wave 3** *(blocked on Wave 2 completion)*
-
-- [x] 07-04-PLAN.md — Tracer: the CSP ships as one revertable commit (policy, property checks, deploy `--check`, CLAUDE.md note); every guard red-proven, zero violations in Chrome on desktop and Android UAs, revert rehearsed green (CSP-01..05, CSP-07; D-01, D-02, D-06, D-07, D-10)
-
-**Wave 4** *(blocked on Wave 3 completion)*
-
-- [ ] 07-05-PLAN.md — Go-live: pre-flight against the live stamp-only build, Ian's CSP-05 DevTools pass and push, live `--check` and live-URL probes; CSP-06 signed-in round trip queued with revert-on-failure (human-action gate). Failed at Task 3 (live manifest-src violation); CSP reverted on main (a122a2e); closed by 07-06/07-07
-
-**Wave 5** *(gap closure; blocked on Wave 4)*
-
-- [x] 07-06-PLAN.md — Tracer: reproduce the live manifest-src violation on localhost (split delivery), drop the manifest link's href with a suite check refusing it back, then re-apply the CSP as its own commit patch-identical to ebc5723; Chrome proofs at both delivery speeds, stamped copy, revert rehearsal that keeps the fix (CSP-01..05, CSP-07; D-01..D-07)
-
-**Wave 6** *(gap closure; blocked on Wave 5)*
-
-- [ ] 07-07-PLAN.md — Re-run the go-live: pre-flight (main unmoved, tip clean at both speeds), Ian's DevTools pass with a throttled reload and push, live `--check` plus probes of both live URLs requiring zero violations; CSP-06 round trip queued, revert of the new CSP commit on failure (human-action gate)
+### Phase 13: Strength Index and Poor-Sleep Intensity
+**Goal**: Ian can see in one number whether he is getting stronger since he started, on Progress and on Today, and after a poor night the app offers a lighter workout that he accepts with one tap and that never distorts his progression history.
+**Depends on**: Phase 8 (deload-like sessions stay out of stall and add-weight checks; history by `exKey`), Phase 9 (lighter weights round to each exercise's step; bodyweight exercises by equipment type), Phase 12 (last night's sleep entry, and the entry the "Log last night's sleep" link opens)
+**Requirements**: STR-01, STR-02, STR-03, STR-04, STR-05, INT-01, INT-02, INT-03, INT-04, INT-05
+**Verification**: Automated checks, plus a quick look on Ian's phone.
+**Success Criteria** (what must be TRUE):
+  1. Progress → Strength opens with a strength index and a weekly chart. The index starts at 100: for every exercise trained in the last 4 weeks, its best e1RM from those 4 weeks is divided by its best from its own first 4 weeks logged, then averaged across those exercises, with bodyweight exercises using total reps in place of e1RM (STR-01, STR-02, STR-04).
+  2. A second line shows the index adjusted for bodyweight, index × (bodyweight at start ÷ bodyweight now), so the same index reads higher after Ian loses weight (STR-03).
+  3. Today's week card shows one small strength number with its change over the month, in the form "Strength 112, +3 this month" (STR-05).
+  4. When last night's sleep entry has quality 2 or lower, or under 6 hours, starting a workout asks "You slept poorly. Go 10% lighter today?" and one tap applies it. Nothing changes without that tap, and quality 3 with 6 hours or more asks nothing. With no sleep logged for last night, nothing changes and the Log page shows a small "Log last night's sleep" link; logging a poor night from it brings up the offer (INT-01, INT-02, INT-05).
+  5. A lighter workout keeps the same sets and reps, with each suggested weight cut 10%, rounded to the exercise's step and always at least one step lighter (a 15 lb dumbbell becomes 12.5 lb; a 20 lb cable becomes 15 lb, not 20). The finished session is marked like a deload, so it never counts toward a stall or as a reason to add weight (INT-03, INT-04).
+**Notes**:
+- Accepting the offer edits the draft, so it persists with `saveLocal()`. The deload-like mark reaches the synced session through `finishWorkout`.
+- The index and the Today number are derived from logged data. If anything is cached, it uses `saveLocal()`; this phase needs no `SCHEMA` change.
+- Edge cases for discuss-phase: an exercise whose first 4 weeks overlap the last 4 weeks, and what "bodyweight at start" means when the first weigh-in comes after the first workout.
+**Plans**: TBD
+**UI hint**: yes
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7. Phases 4 and 6 have no dependency on
-Phase 1 in either direction and may be pulled earlier if convenient; Phase 7 must not start before
-Phase 5 completes.
+Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. F1 — The COLLECTIONS Registry | 7/7 | Complete    | 2026-09-14 |
-| 2. Export for Claude | 3/3 | Complete    | 2026-09-18 |
-| 3. F3 — Adding a New Tracked Thing (Recipe) | 5/5 | Complete    | 2026-09-22 |
-| 4. Draft Goes Device-Local | 3/3 | Complete    | 2026-09-23 |
-| 5. F2 — Event Delegation | 6/6 | Complete    | 2026-10-01 |
-| 6. F4 — .gitattributes | 2/2 | In Progress|  |
-| 7. Content Security Policy | 6/7 | In Progress|  |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. F1 — The COLLECTIONS Registry | v1.0 | 7/7 | Complete | 2026-09-14 |
+| 2. Export for Claude | v1.0 | 3/3 | Complete | 2026-09-18 |
+| 3. F3 — Adding a New Tracked Thing (Recipe) | v1.0 | 5/5 | Complete | 2026-09-22 |
+| 4. Draft Goes Device-Local | v1.0 | 3/3 | Complete | 2026-09-23 |
+| 5. F2 — Event Delegation | v1.0 | 6/6 | Complete | 2026-10-01 |
+| 6. F4 — .gitattributes | v1.0 | 2/2 | Complete | 2026-10-02 |
+| 7. Content Security Policy | v1.0 | 7/7 | Complete | 2026-10-09 |
+| 8. Progression Correctness | v1.1 | 2/3 | In Progress | - |
+| 9. Equipment and Weight Steps | v1.1 | 0/TBD | Not started | - |
+| 10. Log Page — History and Skip | v1.1 | 0/TBD | Not started | - |
+| 11. Lawn, Journal and Weather Loop | v1.1 | 0/TBD | Not started | - |
+| 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |
+| 13. Strength Index and Poor-Sleep Intensity | v1.1 | 0/TBD | Not started | - |
