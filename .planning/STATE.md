@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Collections & lockdown
-status: milestone_complete
-stopped_at: "v1.0 Collections & lockdown completed and archived; next: /gsd-new-milestone (v1.1)"
-last_updated: "2026-10-09T22:00:00.000Z"
+milestone: v1.1
+milestone_name: Training accuracy, lawn & sleep
+status: planning
+last_updated: "2026-10-10T02:48:06.556Z"
 last_activity: 2026-10-09
-last_activity_desc: "Milestone v1.0 Collections & lockdown completed, archived and tagged v1.0"
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 33
-  completed_plans: 33
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -21,16 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Planning the next milestone (v1.1, defined by `.planning/v1.1-BRIEF.md`)
+**Current focus:** v1.1 Training accuracy, lawn & sleep: defining requirements and roadmap (scope: `.planning/v1.1-BRIEF.md`)
 
 ## Current Position
 
-Phase: Milestone v1.0 complete (7/7 phases, 33/33 plans)
+Phase: Not started (defining requirements)
 Plan: —
-Status: v1.0 Collections & lockdown shipped 2026-10-09 and archived to `.planning/milestones/`. Awaiting next milestone
-Last activity: 2026-10-09 — Milestone v1.0 completed, archived and tagged `v1.0`
-
-Progress: [██████████] 100% (v1.0)
+Status: Defining requirements
+Last activity: 2026-10-09 — Milestone v1.1 started
 
 ## Performance Metrics
 
@@ -141,4 +138,4 @@ Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with `/gsd-new-milestone` (v1.1 scope: `.planning/v1.1-BRIEF.md`)
+- Approve the v1.1 roadmap (Phases 8-13), then `/gsd-discuss-phase 8`

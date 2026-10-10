@@ -60,7 +60,16 @@ later docs-only commits. See `.planning/MILESTONES.md`.
 
 <!-- Next milestone. Hypotheses until shipped. Requirements are written by /gsd-new-milestone. -->
 
-- [ ] v1.1 scope as agreed in `.planning/v1.1-BRIEF.md` (see Next Milestone Goals)
+v1.1 Training accuracy, lawn & sleep. Full list with REQ-IDs in `.planning/REQUIREMENTS.md`; source
+of every rule is `.planning/v1.1-BRIEF.md`.
+
+- [ ] Progression correctness: add weight only after every planned set hit the top of the range; progress and stall measured session to session by `exKey`, bodyweight included (PROG)
+- [ ] Equipment type per exercise with its own weight step, rounding and plate math (EQUIP)
+- [ ] Log page: last 5 sessions inline from "Last time", and skip exercise with undo (LOG)
+- [ ] Lawn: cool-day hold, rain history in its own synced collection, watering in the outlook, journal marks, weather fetch backoff (LAWN)
+- [ ] Sleep card on Today, and a local Erase that keeps the workout in progress (SLP)
+- [ ] Strength index on Progress and Today (STR)
+- [ ] Poor-sleep 10%-lighter workout offer, never automatic, treated like a deload (INT)
 
 ### Out of Scope
 
@@ -78,10 +87,14 @@ later docs-only commits. See `.planning/MILESTONES.md`.
 - **Removing `'unsafe-inline'` from `style-src`** — the markup carries inline `style=` attributes; out of scope by decision (CSP-04).
 - **Kettlebells** — Ian doesn't use them; no kettlebell equipment type. (v1.1 brief, 2026-10-09)
 
-## Next Milestone Goals
+## Current Milestone: v1.1 Training accuracy, lawn & sleep
 
-v1.1 is defined by `.planning/v1.1-BRIEF.md`, agreed with Ian on 2026-10-09. It covers his 14 in-app
-ideas plus two v1.0 audit follow-ups, in six phases:
+**Goal:** Make the training advice trustworthy (add weight, stall, steps and deloads that match what
+Ian actually lifted), and close the lawn and sleep loops he asked for, without bending any v1.0 data
+rule.
+
+**Target features:** defined by `.planning/v1.1-BRIEF.md`, agreed with Ian on 2026-10-09. It covers
+his 14 in-app ideas plus two v1.0 audit follow-ups, in six phases (roadmap Phases 8-13):
 
 1. **Progression correctness.** Add weight only when every planned set reached the top of the range
    (a skipped set blocks it). Progress means +1 total rep or more weight versus the previous session,
@@ -102,8 +115,8 @@ ideas plus two v1.0 audit follow-ups, in six phases:
    line and a weekly chart, and shows on Progress and Today. After a poor night, the app offers a
    10%-lighter workout with one tap. It is never automatic, and the session is treated like a deload.
 
-The CSP-test hardening (07-REVIEW WR-01..03) runs as a separate quick task. Requirements and roadmap
-come from `/gsd-new-milestone`.
+The CSP-test hardening (07-REVIEW WR-01..03) runs as a separate quick task, outside v1.1.
+Requirements are in `.planning/REQUIREMENTS.md`.
 
 ## Context
 
@@ -182,4 +195,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-09 after v1.0 milestone*
+*Last updated: 2026-10-09 after starting milestone v1.1*
