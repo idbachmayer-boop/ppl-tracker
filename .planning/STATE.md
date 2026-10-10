@@ -2,9 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
+current_phase: 8
+current_phase_name: Progression Correctness
 status: planning
-last_updated: "2026-10-10T02:57:22.000Z"
+stopped_at: Phase 8 context gathered
+last_updated: "2026-10-10T11:07:34.209Z"
 last_activity: 2026-10-09
+last_activity_desc: "v1.1 roadmap drafted: Phases 8-13, 36/36 requirements mapped"
 progress:
   total_phases: 6
   completed_phases: 0
@@ -143,9 +147,9 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-09
-Stopped at: v1.1 roadmap drafted (Phases 8-13, 36/36 requirements mapped); awaiting Ian's approval
-Resume file: None
+Last session: 2026-10-10T11:07:34.201Z
+Stopped at: Phase 8 context gathered
+Resume file: .planning/phases/08-progression-correctness/08-CONTEXT.md
 
 ## Operator Next Steps
 
