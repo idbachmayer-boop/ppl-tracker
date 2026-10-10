@@ -7986,6 +7986,55 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
     ok('PROG-02: heavier is progress, the same weight with +1 total rep is progress, the same total is flat, and lighter is lighter',
        got.join() === 'progress,progress,flat,lighter', got);
   }
+
+  /* Pauses and restarts. B is a baseline of 20/18/16 at 25 lb (54 reps); a flat repeats it. A pause
+     neither counts as flat nor breaks the streak, and the next counted session is compared with the
+     last counted one. */
+  {
+    const B = w25([20, 18, 16]);
+    const SKIP = [[25, 20], [25, 18], [0, 0, true]];
+    const streak = () => S.stallStreak(LW, LAT, LATN);
+    const seq = (list, opts) => { const s = latStall(latDays(list, opts)); return { stalled: s, streak: streak() }; };
+
+    let r = seq([B, B, SKIP, B, B]);
+    ok('D-10: B, F, a session with a skipped set, F, F is stalled — the skipped-set session paused the streak, it did not break it',
+       r.stalled === true && r.streak === 3, r);
+    r = seq([B, B, B, SKIP]);
+    ok('D-10: B, F, F, then a session with a skipped set is not stalled (only 2 flats)', r.stalled === false && r.streak === 2, r);
+    r = seq([B, B, B, [[25, 20], [25, 20], [0, 0, true]], B]);
+    ok('D-10: after a skipped-set session at 20/20, the next 54 is compared with the last counted 54, never the 40, so it is the third flat',
+       r.stalled === true && r.streak === 3, r);
+    r = seq([B, B, B, [[25, 20], [25, 20]], B], { 3: { blankSets: 1 } });
+    ok('D-10/D-01: a session with a set left blank (blankSets 1) pauses the same way, so the sequence is stalled',
+       r.stalled === true && r.streak === 3, r);
+
+    r = seq([B, B, [[20, 20], [20, 18], [20, 16]], B, B], { 2: { deload: true } });
+    ok('D-05: B, F, a deload at 20 lb, F, F is stalled — the deload paused', r.stalled === true && r.streak === 3, r);
+    r = seq([B, B, B, B, B], { 2: { skippedDay: true } });
+    ok('D-05: B, F, a skipped day, F, F is stalled — the skipped day paused', r.stalled === true && r.streak === 3, r);
+    r = seq([B, B, [], B, B]);
+    ok('D-05: an entry with sets [] and no marker in the middle pauses: B, F, empty, F, F is stalled', r.stalled === true && r.streak === 3, r);
+
+    const L = [[20, 20], [20, 18], [20, 16]];
+    r = seq([B, L, L, L]);
+    ok('D-03: B at 25, then 20 lb (lighter, a restart), then 2 flats at 20 is not stalled', r.stalled === false && r.streak === 2, r);
+    r = seq([B, L, L, L, L]);
+    ok('D-03: a third flat at 20 after the restart is stalled', r.stalled === true && r.streak === 3, r);
+    r = seq([B, [[30, 15], [30, 15], [30, 15]]]);
+    ok('D-03: heavier with fewer reps is progress (B at 25, then 30×15×3 gives a streak of 0)', r.streak === 0, r);
+
+    const B1 = w25([20, 18, 17]);
+    r = seq([B, B, B, B]);
+    const stalledFirst = r.stalled;
+    r = seq([B, B, B, B, B1]);
+    const clearedBy1 = r.stalled === false && r.streak === 0;
+    r = seq([B, B, B, B, B1, B1, B1, B1]);
+    ok('D-06: one session of progress clears the warning: B and 3 F is stalled, +1 rep clears it, and 3 more F stall again',
+       stalledFirst === true && clearedBy1 && r.stalled === true && r.streak === 3, { stalledFirst, clearedBy1, last: r });
+    r = seq([[[40, 20], [40, 20], [40, 20]], w25([15, 15, 15]), w25([16, 15, 15]), w25([16, 16, 15]), w25([16, 16, 16])]);
+    ok('D-06: never compared with the all-time best — 40 lb at 20/20/20, then 25 lb gaining 1 rep each time is not stalled',
+       r.stalled === false && r.streak === 0, r);
+  }
   P.DB.draft = null;
 }
 
