@@ -71,7 +71,12 @@ in `.planning/REQUIREMENTS.md`.
 - The bugs being fixed, from the brief: `addWeightInfo` drops skipped and blank sets before checking the top of the range, so two top sets plus a skip still says "add weight"; `isStalledSlot` compares the best single-set e1RM with the all-time max before the last 3 sessions, so extra reps on later sets never count.
 - Until Phase 9 adds an explicit equipment type, "bodyweight" means what the app already treats as bodyweight (sets logged at weight 0, shown as BW). Phase 9 keeps the two definitions consistent.
 - Deloaded entries stay out of both checks, as they do today. INT-04 (Phase 13) relies on this.
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — Add weight judges every set on the card: a skipped or blank set blocks it (a `blankSets` marker is stamped at finish), every set must be at the working weight, the latest attempt is judged, and bodyweight suggests a belt or harder variation (PROG-01, PROG-05)
+- [ ] 08-02-PLAN.md — Stall is 3 flat sessions in a row, each against the one before, per workout and slot by `exKey`; deloads, skipped days and skipped sets pause, a lighter session restarts, bodyweight counts; the in-app guide matches (PROG-02..05)
+- [ ] 08-03-PLAN.md — Ship: pre-flight, Ian pushes and merges with a merge commit, live bytes checked, then the real workout on Ian's phone (end-of-phase UAT)
 
 ### Phase 9: Equipment and Weight Steps
 **Goal**: Every exercise knows its equipment, so suggestions, deloads, warm-ups and plate math move in steps Ian can actually load (2.5 lb for dumbbells, 5 lb for everything else), and a deload always makes the weight lighter.

@@ -38,28 +38,30 @@ created: 2026-10-10
 
 ## Per-Task Verification Map
 
-The planner fills in Task IDs. Each row below is a behaviour that must have an automated check.
+Task IDs filled in by the planner (2026-10-10). Each row below is a behaviour that must have an automated check.
+Every task's `<verify>` runs `npm run csp:check && TZ=America/Chicago npm test 2>&1 | grep -E "[0-9]+ passed, 0 failed"`.
 
-| Behaviour | Requirement / Decision | Test Type | Automated Command | File Exists | Status |
-|-----------|------------------------|-----------|-------------------|-------------|--------|
-| 2 sets at the top + 1 skipped → no add weight | PROG-01 / D-01 | unit | `npm test` | ❌ W0 | ⬜ pending |
-| 2 sets at the top + `blankSets` → no add weight; all at the top with no blanks → add weight | PROG-01 / D-01 | unit | `npm test` | ❌ W0 | ⬜ pending |
-| An added set must reach the top; a removed set is not missing | D-01 | unit + draft flow | `npm test` | ❌ W0 | ⬜ pending |
-| `finishWorkout` stamps `blankSets`; an edit and re-save keeps it; a stale-device merge keeps it | D-01 | integration | `npm test` | ❌ W0 | ⬜ pending |
-| 30/30/25, all at the top → no add weight | D-02 | unit | `npm test` | ❌ W0 | ⬜ pending |
-| Every set skipped or blank in the latest entry → no add weight | D-09 | unit | `npm test` | ❌ W0 | ⬜ pending |
-| Heavier = progress; same weight +1 total rep = progress; same and same = flat | PROG-02 / D-03 | unit | `npm test` | ❌ W0 | ⬜ pending |
-| Lateral raise replay (20/17/15 → 20/18/15 → 20/18/16 → 20/19/16) is not stalled | PROG-03 | unit | `npm test` | ❌ W0 | ⬜ pending |
-| Baseline + 3 flat → stalled; + 2 flat → not; one progress clears it; no all-time-max comparison | PROG-03 / D-06 | unit | `npm test` | ❌ W0 | ⬜ pending |
-| A lighter session restarts the comparison | D-03 | unit | `npm test` | ❌ W0 | ⬜ pending |
-| A deload, a skipped day or a session with a skipped set pauses the streak | D-05 / D-10 | unit | `npm test` | ❌ W0 | ⬜ pending |
-| Slots are independent | D-04 | unit | `npm test` | ❌ W0 | ⬜ pending |
-| A rename, alias or merge keeps one streak (fixtures seeded at `_schema:16`) | PROG-04 | unit | `npm test` | ❌ W0 | ⬜ pending |
-| Bodyweight stalls after 3 flat sessions; all at the top → "belt / harder variation" with no number | PROG-05 / D-08 | unit + render | `npm test` | ❌ W0 | ⬜ pending |
-| No SCHEMA change; booting old data rewrites no session | D-07 | unit | `npm test` | ✅ partly | ⬜ pending |
-| Garbage `w` / `blankSets` doesn't throw; the stall banner and flag escape the workout name and `DB.unit` | Security | unit + render | `npm test` | ❌ W0 | ⬜ pending |
-| The `f2Stall` fixture is rewritten; `busyStalled` and the handler inventory still pass | Regression | existing | `npm test` | ✅ (edit) | ⬜ pending |
-| The inline-script hash is current | CSP | existing | `npm run csp:check` | ✅ | ⬜ pending |
+| Behaviour | Requirement / Decision | Task | Test Type | Automated Command | File Exists | Status |
+|-----------|------------------------|------|-----------|-------------------|-------------|--------|
+| 2 sets at the top + 1 skipped → no add weight | PROG-01 / D-01 | 08-01 T1 (tracer) | unit + finish flow + render | `npm test` | ❌ W0 (T1 creates the PROG section) | ⬜ pending |
+| 2 sets at the top + `blankSets` → no add weight; all at the top with no blanks → add weight | PROG-01 / D-01 | 08-01 T1 (positive control), 08-01 T2 | unit | `npm test` | ❌ W0 | ⬜ pending |
+| An added set must reach the top; a removed set is not missing | D-01 | 08-01 T2 | unit + draft flow | `npm test` | ❌ W0 | ⬜ pending |
+| `finishWorkout` stamps `blankSets`; an edit and re-save keeps it; a stale-device merge keeps it | D-01 | 08-01 T2 | integration | `npm test` | ❌ W0 | ⬜ pending |
+| 30/30/25, all at the top → no add weight | D-02 | 08-01 T3 | unit + render | `npm test` | ❌ W0 | ⬜ pending |
+| Every set skipped or blank in the latest entry → no add weight | D-09 | 08-01 T2 | unit + render | `npm test` | ❌ W0 | ⬜ pending |
+| Heavier = progress; same weight +1 total rep = progress; same and same = flat | PROG-02 / D-03 | 08-02 T1 | unit | `npm test` | ❌ W0 | ⬜ pending |
+| Lateral raise replay (20/17/15 → 20/18/15 → 20/18/16 → 20/19/16) is not stalled | PROG-03 | 08-02 T1 (tracer) | unit + render | `npm test` | ❌ W0 | ⬜ pending |
+| Baseline + 3 flat → stalled; + 2 flat → not; one progress clears it; no all-time-max comparison | PROG-03 / D-06 | 08-02 T1 (3 vs 2 flat), 08-02 T2 (clears, no max) | unit | `npm test` | ❌ W0 | ⬜ pending |
+| A lighter session restarts the comparison | D-03 | 08-02 T2 | unit | `npm test` | ❌ W0 | ⬜ pending |
+| A deload, a skipped day or a session with a skipped set pauses the streak | D-05 / D-10 | 08-02 T2 | unit | `npm test` | ❌ W0 | ⬜ pending |
+| Slots are independent | D-04 | 08-02 T3 | unit | `npm test` | ❌ W0 | ⬜ pending |
+| A rename, alias or merge keeps one streak (fixtures seeded at `_schema:16`) | PROG-04 | 08-02 T3 | unit | `npm test` | ❌ W0 | ⬜ pending |
+| Bodyweight stalls after 3 flat sessions; all at the top → "belt / harder variation" with no number | PROG-05 / D-08 | 08-02 T3 (stall), 08-01 T3 (wording) | unit + render | `npm test` | ❌ W0 | ⬜ pending |
+| No SCHEMA change; booting old data rewrites no session | D-07 | 08-01 T2 (SCHEMA diff gate), 08-02 T3 (normalize settles, nothing stored) | unit | `npm test` | ✅ partly | ⬜ pending |
+| Garbage `w` / `blankSets` doesn't throw; the stall banner and flag escape the workout name and `DB.unit` | Security | 08-01 T2 (`blankSets`), 08-01 T3 (`w`, unit), 08-02 T1 (`esc(name)`), 08-02 T3 (stall garbage) | unit + render | `npm test` | ❌ W0 | ⬜ pending |
+| The `f2Stall` fixture is rewritten; `busyStalled` and the handler inventory still pass | Regression | 08-02 T1 | existing | `npm test` | ✅ (edit) | ⬜ pending |
+| The inline-script hash is current | CSP | every task; 08-03 T1 and T3 (live bytes) | existing | `npm run csp:check` | ✅ | ⬜ pending |
+| The phone gives the right advice on Ian's real data | PROG-01..05 | 08-03 T3 (`<human-check>`, end-of-phase UAT) | manual | — | manual-only | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
