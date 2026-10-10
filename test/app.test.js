@@ -7836,7 +7836,8 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
     try{
       S.editSession(P.DB.sessions.findIndex(s => s.id === id));
       draftRows = P.DB.draft.entries[LAT].sets.length;
-      draftBlank = P.DB.draft.entries[LAT].sets.filter(x => !x.skipped && x.w === '' && x.r === '').length;
+      // A restored blank row has no reps; it takes the last worked weight (WR-03), so only r is blank.
+      draftBlank = P.DB.draft.entries[LAT].sets.filter(x => !x.skipped && x.r === '').length;
       P.finishWorkout();
     }catch(e){ threw = String(e && e.stack || e); }
     const same = P.DB.sessions.filter(s => s.id === id && !s.deletedAt);
@@ -7895,7 +7896,7 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
     try{
       const idx = P.DB.sessions.findIndex(s => s.workout === LW && s.entries && s.entries[LAT] && s.entries[LAT].blankSets === 1e9);
       S.editSession(idx);
-      added = P.DB.draft.entries[LAT].sets.filter(x => !x.skipped && x.w === '' && x.r === '').length;
+      added = P.DB.draft.entries[LAT].sets.filter(x => !x.skipped && x.r === '').length;
     }catch(e){ threw = String(e && e.stack || e); }
     ok('T-8-02: editSession on a blankSets 1e9 row adds at most 20 blank rows and does not throw',
        !threw && added > 0 && added <= 20, { threw, added });
@@ -8166,6 +8167,53 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
        first !== null && !!draftAfter && draftAfter.rows === 3 && draftAfter.blankSets === false &&
        !retry && !!e && e.blankSets === 1 && e.sets.length === 2 && !card.includes('class="flag"'),
        { first, draftAfter, retry, blankSets: e && e.blankSets, sets: e && e.sets.length, flag: flagOf(card) });
+  }
+
+  /* WR-03: a row the draft creates or restores takes a weight from its neighbours. A blank weight reads
+     as bodyweight, so under D-02 a row Ian fills with reps only would quietly block ⬆ Add weight.
+     History is all-top at 25, so the draft prefills 30 and Ian types reps only. */
+  {
+    // 30 lb beats the 25 lb history, so these finishes are PRs; the stub keeps the canvas out of it.
+    const realConfetti = S.confettiBurst; S.confettiBurst = () => {};
+    const repsOnly = n => { for(let k = 0; k < n; k++) P.setVal(LAT, k, 'r', '20'); };
+    latRun([ latSess(dayOff(-7), TOP3) ]);
+    latCard(LAT);
+    S.addSet(LAT);
+    const added = P.DB.draft.entries[LAT].sets[3].w;
+    repsOnly(4);
+    P.finishWorkout();
+    const flag = flagOf(latCard(LAT));
+    ok('WR-03: + Add set takes the weight above it (30), so four sets with only reps typed earn ⬆ Add weight → 35',
+       added === '30' && flag !== null && flag.includes('35'), { added, flag });
+
+    latRun([ latSess(dayOff(-7), TOP3) ]);
+    latCard(LAT);
+    S.skipSet(LAT, 2);
+    S.unskipSet(LAT, 2);
+    const restored = P.DB.draft.entries[LAT].sets[2].w;
+    repsOnly(3);
+    P.finishWorkout();
+    const flag2 = flagOf(latCard(LAT));
+    ok('WR-03: undoing a skip gives the set its weight back (30), so three sets with only reps typed earn ⬆ Add weight → 35',
+       restored === '30' && flag2 !== null && flag2.includes('35'), { restored, flag: flag2 });
+
+    const row = finishLat([[25, 20], [25, 20], null]);
+    const id = row && row.id;
+    let threw = null, blankW = null, e = null;
+    try{
+      S.editSession(P.DB.sessions.findIndex(s => s.id === id));
+      blankW = P.DB.draft.entries[LAT].sets[2].w;
+      P.setVal(LAT, 2, 'r', '20');
+      P.finishWorkout();
+      const same = P.DB.sessions.filter(s => s.id === id && !s.deletedAt);
+      e = same.length === 1 ? same[0].entries[LAT] : null;
+    }catch(err){ threw = String(err && err.stack || err); }
+    const flag3 = flagOf(latCard(LAT));
+    ok('WR-03: editSession restores a blank row at the last worked weight (25), so filling its reps stores 25×20 three times and earns ⬆ Add weight → 30',
+       !threw && blankW === '25' && !!e && !('blankSets' in e) && e.sets.length === 3 && e.sets.every(x => x.w === '25' && x.r === '20') &&
+       flag3 !== null && flag3.includes('30'),
+       { threw, blankW, sets: e && e.sets, flag: flag3 });
+    S.confettiBurst = realConfetti;
   }
   P.DB.draft = null;
 }
