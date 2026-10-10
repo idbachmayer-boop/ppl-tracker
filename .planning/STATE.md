@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
 current_phase: 08
 current_phase_name: progression-correctness
-status: executing
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-10-10T12:07:38.930Z"
+status: verifying
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-10-10T12:44:26.762Z"
 last_activity: 2026-10-10
-last_activity_desc: Phase 08 execution started
+last_activity_desc: Phase 08 shipped (PR #13, merge 99e10c8); phone UAT pending
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 0
+  completed_plans: 3
+  percent: 17
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 
 ## Current Position
 
-Phase: 08 (progression-correctness) — EXECUTING
+Phase: 08 (progression-correctness) — VERIFYING (live on main, phone UAT pending)
 Plan: 3 of 3
-Status: Ready to execute
-Last activity: 2026-10-10 — Phase 08 execution started
+Status: Phase complete — ready for verification
+Last activity: 2026-10-10 — Phase 08 shipped as PR #13 (merge commit 99e10c8), live build verified
 
-Progress: [███████░░░] 67% (v1.1: 0 of 6 phases complete)
+Progress: [██████████] 100% of Phase 8 plans (v1.1: 0 of 6 phases verified; Phase 8 awaits the phone UAT)
 
 ## Performance Metrics
 
@@ -98,6 +98,7 @@ Progress: [███████░░░] 67% (v1.1: 0 of 6 phases complete)
 | Phase 07 P07 | ~9min executor (spans 2026-10-07..09, waiting on Ian) | 3 tasks | 0 files |
 | Phase 08 P01 | 12min | 3 tasks | 2 files |
 | Phase 08 P02 | 8 min | 3 tasks | 2 files |
+| Phase 08 P03 | ~20min (incl. Ian's push, PR, CI, deploy) | 3 tasks | 0 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,8 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [08-01]: addWeightInfo is now (workout, slotIndex, name) over lastAttemptEntry; lastRealEntry unchanged; weightStep(name) is the Phase 9 EQUIP-04 seam
 - [08-02]: stall judged session to session per workout+slot+exKey; heavier or +1 total rep is progress, lighter restarts, 3 flat in a row after a baseline is stalled, never against an all-time best
 - [08-02]: a deload, skipped day, empty entry, skipped set or blankSets>0 pauses the stall streak (blank set = planner's reading of D-10 with D-01, confirm on phone in 08-03)
+- [08-03]: Phase 8 shipped as PR #13, merge commit 99e10c8 on main; revert is git revert -m 1 --no-edit 99e10c8. Phone workout check is the pending end-of-phase UAT item
+- [08-03]: WR-02 (total reps compared when the set count changes) left open for Ian's product call; did not block shipping
 
 ### Pending Todos
 
@@ -153,10 +156,10 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-10T12:07:38.920Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-10-10T12:44:26.751Z
+Stopped at: Completed 08-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Approve the v1.1 roadmap (Phases 8-13), then `/gsd-discuss-phase 8`
+- Phone UAT for Phase 8 (08-03-SUMMARY.md § UAT item): Settings → This version must end `99e10c8`. On failure, `git revert -m 1 --no-edit 99e10c8` on `main` and push. On pass, write the vault changelog entry, then `/gsd-verify-work 8`.
