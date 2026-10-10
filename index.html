@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-ikbitI4Uloc/i54l6vHCHYasQBvlyRRcsnFKoD3F17k=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-VSpEAhLsbS5yumQ18nImafph6cHhVEV8S1Mhxffl8cs=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1186,6 +1186,8 @@ function updTargetBadge(i,k){
    - A lighter session restarts the comparison from itself: not progress, not a failure.
    - A deload or a skipped day pauses: it is not counted, and the next session is compared with the
      last counted one.
+   - A session with a skipped or blank set pauses the same way (D-10, and D-01 for blank sets):
+     dropping a set for time must never push toward a deload warning.
    - Never compared with an all-time best: one old PR must not make the warning repeat forever.
    Computed at render time over every past session. Nothing is stored, so history is re-judged
    whenever the rule changes. Bodyweight (weight 0 or blank) is a normal session judged on reps. */
@@ -1215,6 +1217,7 @@ function stallStreak(workout, slotIndex, exName){
   let prev = null, streak = 0;
   slotHistory(workout, slotIndex, exName).forEach(({entry})=>{
     if(entry.deload) return;
+    if(+entry.blankSets > 0 || (Array.isArray(entry.sets) && entry.sets.some(x=> x && x.skipped))) return;
     const cur = sessionSummary(entry);
     if(!cur) return;
     if(prev) streak = compareSessions(prev, cur)==='flat' ? streak+1 : 0;
