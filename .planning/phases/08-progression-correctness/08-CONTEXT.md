@@ -77,6 +77,18 @@ implementation edge cases Ian decided on 2026-10-10.
   - Bodyweight series must no longer be dropped. Today `e1rm` returns 0 for weight 0 and `if(best>0)`
     filters those sessions out, so bodyweight exercises can never stall.
 
+### Decided after research (2026-10-10, RESEARCH.md open questions A1 and A3)
+- **D-09:** Add weight judges **the latest non-deload entry where the exercise was on the card**, even one
+  where every set was skipped or left blank. That case means "not there yet", so there is **no** add-weight
+  suggestion.
+  - `lastRealEntry` stays as it is for the "Last time" line and the prefilled weights, which keep showing
+    the last real attempt.
+  - Rejected: falling back to the attempt before the skipped one.
+- **D-10:** A session with **any skipped set pauses the stall streak**, the same way a skipped day does. It
+  neither counts as flat nor breaks the streak, so skipping a set for time never pushes Ian toward a deload
+  warning.
+  - Rejected: comparing only the sets done in both sessions, and counting the session normally.
+
 ### Claude's Discretion
 - How the stall and progress rule is shaped in code: rewrite `isStalledSlot` and `slotE1rmSeries`, or
   replace them with one per-slot "session comparison" helper.
