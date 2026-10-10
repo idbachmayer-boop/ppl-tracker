@@ -86,7 +86,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Settings → Exercises shows each exercise's one equipment type (barbell, EZ bar, dumbbell, machine, cable or bodyweight). Ian can change it there, and the change shows on his other device after sync (EQUIP-01, EQUIP-03).
   2. After the update, every existing exercise already has an equipment type defaulted from its name, and syncing with an older device that never ran the migration, twice in a row, leaves every exercise's equipment type in place (EQUIP-02).
-  3. Add-weight suggestions move by the exercise's own step: +2.5 lb for a dumbbell exercise, +5 lb for barbell, EZ bar, machine and cable. No dumbbell suggestion jumps a flat 5 lb (EQUIP-04).
+  3. Add-weight suggestions move by the exercise's own step: +2.5 lb for a dumbbell exercise up to 60 lb (+5 above 60), +2.5 lb for cable, +5 lb for barbell, EZ bar and machine. No dumbbell suggestion at 60 lb or under jumps a flat 5 lb (EQUIP-04, amended 2026-10-10).
   4. Deloads and warm-ups round to the exercise's own step, so a 15 lb dumbbell deload at 90% suggests 12.5 lb instead of rounding back to 15 (EQUIP-05).
   5. Plate math follows the equipment type, and the preacher curl, as an EZ bar exercise, shows plate math against a 25 lb bar (EQUIP-06).
 **Notes** (this migration rewrites existing rows, so every `CLAUDE.md` migration rule applies):

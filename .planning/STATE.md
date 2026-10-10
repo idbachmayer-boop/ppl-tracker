@@ -5,10 +5,10 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 08
 current_phase_name: progression-correctness
 status: verifying
-stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-10-10T12:44:26.762Z"
+stopped_at: Phase 9 context gathered
+last_updated: "2026-10-10T14:35:53.220Z"
 last_activity: 2026-10-10
-last_activity_desc: Phase 08 shipped (PR #13, merge 99e10c8); phone UAT pending
+last_activity_desc: "Phase 08 shipped (PR #13, merge 99e10c8); phone UAT pending"
 progress:
   total_phases: 6
   completed_phases: 1
@@ -156,9 +156,9 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-10T12:44:26.751Z
-Stopped at: Completed 08-03-PLAN.md
-Resume file: None
+Last session: 2026-10-10T14:35:53.196Z
+Stopped at: Phase 9 context gathered
+Resume file: .planning/phases/09-equipment-and-weight-steps/09-CONTEXT.md
 
 ## Operator Next Steps
 

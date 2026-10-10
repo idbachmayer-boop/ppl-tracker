@@ -42,8 +42,10 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
   an older device cannot revert it, and replaying that device again still keeps it.
 - [ ] **EQUIP-03**: Ian can change an exercise's equipment type in Settings → Exercises, and the change
   syncs to his other device.
-- [ ] **EQUIP-04**: Weight suggestions move by the exercise's own step: 5 lb for barbell, EZ bar,
-  machine and cable; 2.5 lb for dumbbells. No suggestion uses a flat 5 lb step for a dumbbell.
+- [ ] **EQUIP-04**: Weight suggestions move by the exercise's own step: 5 lb for barbell, EZ bar and
+  machine; 2.5 lb for cable; 2.5 lb for dumbbells up to 60 lb and 5 lb above 60. No suggestion uses a
+  flat 5 lb step for a dumbbell at 60 lb or under. (Amended 2026-10-10 by Ian in Phase 9 discussion:
+  cable stacks take a 2.5 lb add-on, and the dumbbell rack goes in 5s above 60.)
 - [ ] **EQUIP-05**: Deloads and warm-ups round to the exercise's own step, so a 15 lb dumbbell deload
   at 90% suggests 12.5 lb instead of rounding back to 15.
 - [ ] **EQUIP-06**: Plate math follows the equipment type. The preacher curl is an EZ bar exercise with
