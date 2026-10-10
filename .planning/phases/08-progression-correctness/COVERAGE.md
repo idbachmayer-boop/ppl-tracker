@@ -1,1 +1,1 @@
-No external API integration: the phase rewrites in-app pure functions (add-weight and stall advice) and adds one field to locally finished sessions. Its only network use is the ship plan's read-only GitHub API and Pages checks of the deploy, not an integration.
+No external API integration: the phase rewrites in-app add-weight and stall logic. Its only network use is read-only GitHub and Pages checks of the deploy.
