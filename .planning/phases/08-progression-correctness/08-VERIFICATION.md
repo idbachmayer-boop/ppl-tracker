@@ -1,14 +1,16 @@
 ---
 phase: 08-progression-correctness
 verified: 2026-10-10T13:30:00Z
-status: human_needed
+status: passed
 score: 17/18 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
+
   - test: "Real workout on Ian's phone. First check that Settings → This version ends with 99e10c8. Then: (1) open the PUSH workout with the DB lateral raise and look at its card before logging; (2) do the workout, skip one set (or leave one set's reps blank) on one exercise, and finish; (3) start the same workout again, look at that exercise's card, then Discard; (4) if a bodyweight exercise hit the top of its range on every set last time, look at its card; (5) optionally, Edit a past workout and re-save it unchanged."
     expected: "(1) No ⚠ Stalled on the DB lateral raise. Any ⚠ Stalled card says 'no extra rep or weight for 3 sessions in a row' and offers Deload −10%. (3) No ⬆ Add weight on the exercise with the skipped or blank set, and Last time shows the sets actually done. (4) '⬆ Add weight (belt) or harder variation', with no number. (5) The sets are unchanged. No sync error on either device. On a blank app, wrong advice or a sync error: run git revert -m 1 --no-edit 99e10c8b7e46b0fc507aced553c7dbb8dcbdafb4 on main and push at once."
     why_human: "Needs Ian's real history, the deployed PWA on his phone, and a real workout. The suite replays the same cases on fixtures, and only the device shows the advice on his actual data. This is the phase's declared verification mode (backstop truth, 08-03 Task 3 human-check)."
+
   - test: "Product decision on WR-02 (left open on purpose in 08-REVIEW-FIX.md): the stall comparison uses total reps even when the number of worked sets changed between sessions."
     expected: "Ian decides whether a session with a set removed (rmSet) should read as flat and a session with a set added (+ Add set) should read as progress, as they do now. Either keep it, or extend D-03/D-10 in a later phase."
     why_human: "The behaviour matches PROG-02's wording ('total reps across all sets went up by at least 1'). Whether that is the right rule is a product call, and code can't settle it."

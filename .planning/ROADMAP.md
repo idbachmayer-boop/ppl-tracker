@@ -35,7 +35,7 @@ bending any v1.0 data rule.
 onto Phases 8-13, and every threshold below is his decision, not a default. Requirements with IDs are
 in `.planning/REQUIREMENTS.md`.
 
-- [ ] **Phase 8: Progression Correctness** - Add weight only when every planned set hit the top of the range; progress and stall are measured session to session by `exKey`, bodyweight included.
+- [x] **Phase 8: Progression Correctness** - Add weight only when every planned set hit the top of the range; progress and stall are measured session to session by `exKey`, bodyweight included. (completed 2026-10-10)
 - [ ] **Phase 9: Equipment and Weight Steps** - Each exercise gets a synced equipment type, its own 2.5 or 5 lb step, step-aware deloads and warm-ups, and plate math for its own bar.
 - [ ] **Phase 10: Log Page — History and Skip** - The last 5 sessions open inline from "Last time", and a whole exercise can be skipped with an optional reason and undone.
 - [ ] **Phase 11: Lawn, Journal and Weather Loop** - Cool-day watering hold, rain history in its own synced collection, 💧 in the outlook, journal marks, and a weather fetch that backs off offline.
@@ -71,7 +71,7 @@ in `.planning/REQUIREMENTS.md`.
 - The bugs being fixed, from the brief: `addWeightInfo` drops skipped and blank sets before checking the top of the range, so two top sets plus a skip still says "add weight"; `isStalledSlot` compares the best single-set e1RM with the all-time max before the last 3 sessions, so extra reps on later sets never count.
 - Until Phase 9 adds an explicit equipment type, "bodyweight" means what the app already treats as bodyweight (sets logged at weight 0, shown as BW). Phase 9 keeps the two definitions consistent.
 - Deloaded entries stay out of both checks, as they do today. INT-04 (Phase 13) relies on this.
-**Plans:** 3/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 08-01-PLAN.md — Add weight judges every set on the card: a skipped or blank set blocks it (a `blankSets` marker is stamped at finish), every set must be at the working weight, the latest attempt is judged, and bodyweight suggests a belt or harder variation (PROG-01, PROG-05)
@@ -187,7 +187,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 5. F2 — Event Delegation | v1.0 | 6/6 | Complete | 2026-10-01 |
 | 6. F4 — .gitattributes | v1.0 | 2/2 | Complete | 2026-10-02 |
 | 7. Content Security Policy | v1.0 | 7/7 | Complete | 2026-10-09 |
-| 8. Progression Correctness | v1.1 | 3/3 | In Progress | - |
+| 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
 | 9. Equipment and Weight Steps | v1.1 | 0/TBD | Not started | - |
 | 10. Log Page — History and Skip | v1.1 | 0/TBD | Not started | - |
 | 11. Lawn, Journal and Weather Loop | v1.1 | 0/TBD | Not started | - |

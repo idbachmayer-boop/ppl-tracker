@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
-current_phase: 08
-current_phase_name: progression-correctness
-status: verifying
-stopped_at: Phase 9 context gathered
-last_updated: "2026-10-10T14:35:53.220Z"
+current_phase: 09
+current_phase_name: Equipment and Weight Steps
+status: planning
+stopped_at: Phase 8 complete; Phase 9 context gathered, ready to plan
+last_updated: "2026-10-11T00:09:05.751Z"
 last_activity: 2026-10-10
-last_activity_desc: "Phase 08 shipped (PR #13, merge 99e10c8); phone UAT pending"
+last_activity_desc: "Phase 08 complete (UAT passed, security verified); Phase 09 context gathered"
 progress:
   total_phases: 6
   completed_phases: 1
@@ -24,22 +24,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 08 — progression-correctness
+**Current focus:** Phase 09 — Equipment and Weight Steps
 
 ## Current Position
 
-Phase: 08 (progression-correctness) — VERIFYING (live on main, phone UAT pending)
-Plan: 3 of 3
-Status: Phase complete — ready for verification
-Last activity: 2026-10-10 — Phase 08 shipped as PR #13 (merge commit 99e10c8), live build verified
+Phase: 09 — Equipment and Weight Steps
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-10 — Phase 8 complete, transitioned to Phase 09
 
-Progress: [██████████] 100% of Phase 8 plans (v1.1: 0 of 6 phases verified; Phase 8 awaits the phone UAT)
+Progress: [██████████] Phase 8 complete (v1.1: 1 of 6 phases verified)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 33
+- Total plans completed: 36
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -54,6 +54,7 @@ Progress: [██████████] 100% of Phase 8 plans (v1.1: 0 of 6 p
 | 05 | 6 | - | - |
 | 7 | 7 | - | - |
 | 6 | 2 | - | - |
+| 8 | 3 | - | - |
 
 **Recent Trend:**
 
@@ -112,9 +113,9 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [08-01]: An exercise left untouched at finish stores blankSets = its prefilled set count, so the next card gives no add-weight suggestion for it (D-09); Last time still shows the last real attempt
 - [08-01]: addWeightInfo is now (workout, slotIndex, name) over lastAttemptEntry; lastRealEntry unchanged; weightStep(name) is the Phase 9 EQUIP-04 seam
 - [08-02]: stall judged session to session per workout+slot+exKey; heavier or +1 total rep is progress, lighter restarts, 3 flat in a row after a baseline is stalled, never against an all-time best
-- [08-02]: a deload, skipped day, empty entry, skipped set or blankSets>0 pauses the stall streak (blank set = planner's reading of D-10 with D-01, confirm on phone in 08-03)
-- [08-03]: Phase 8 shipped as PR #13, merge commit 99e10c8 on main; revert is git revert -m 1 --no-edit 99e10c8. Phone workout check is the pending end-of-phase UAT item
-- [08-03]: WR-02 (total reps compared when the set count changes) left open for Ian's product call; did not block shipping
+- [08-02]: a deload, skipped day, empty entry, skipped set or blankSets>0 pauses the stall streak (blank set = planner's reading of D-10 with D-01; confirmed in the phone UAT)
+- [08-03]: Phase 8 shipped as PR #13, merge commit 99e10c8 on main; revert is git revert -m 1 --no-edit 99e10c8. Phone UAT passed 2026-10-10; 08-SECURITY.md verified, 20/20 threats closed
+- [08-UAT]: WR-02 resolved by Ian: keep comparing total reps even when the set count changes (matches PROG-02)
 
 ### Pending Todos
 
@@ -126,7 +127,7 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 No blockers. Open questions for discuss-phase, raised while drafting the v1.1 roadmap (details in the ROADMAP.md phase notes):
 
 - Phase 9: `DB.exercises` is not a `COLLECTIONS` entry, and `mergeDB()` appears to take the whole array from the side with the newer `updatedAt`, so an equipment edit could lose to the other device's next save. Check before planning; the stale-device replay test must cover that path.
-- Phase 9: the brief states steps in lb; kg behaviour (`INCREMENT.kg` is 2.5) is undecided.
+- Phase 9: kg decided in 09-CONTEXT D-10 (lb only; kg keeps a flat 2.5).
 - Phase 11: rain rows come from the weather fetch, but derived data uses `saveLocal()`. Decide how a rain row persists and reaches the cloud without letting a stale device look newest. The weather cache keeps only 3 past days.
 - Phase 12: Ian chooses whether `wipe()` goes through `keepLocalDraft()` or becomes the documented exception (SLP-03).
 
@@ -157,9 +158,9 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 ## Session Continuity
 
 Last session: 2026-10-10T14:35:53.196Z
-Stopped at: Phase 9 context gathered
+Stopped at: Phase 8 complete; Phase 9 context gathered, ready to plan
 Resume file: .planning/phases/09-equipment-and-weight-steps/09-CONTEXT.md
 
 ## Operator Next Steps
 
-- Phone UAT for Phase 8 (08-03-SUMMARY.md § UAT item): Settings → This version must end `99e10c8`. On failure, `git revert -m 1 --no-edit 99e10c8` on `main` and push. On pass, write the vault changelog entry, then `/gsd-verify-work 8`.
+- Plan Phase 9: `/gsd-plan-phase 9` (decisions in 09-CONTEXT.md).
