@@ -5,15 +5,15 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 09
 current_phase_name: equipment-and-weight-steps
 status: executing
-stopped_at: Completed 09-03-PLAN.md
-last_updated: "2026-10-12T13:39:54.731Z"
+stopped_at: Completed 09-04-PLAN.md
+last_updated: "2026-10-12T17:51:52.355Z"
 last_activity: 2026-10-12
-last_activity_desc: Completed 09-03 (deloads and warm-ups on the exercise ladder, EZ-bar plate math)
+last_activity_desc: Completed 09-04 (the first-time equipment picker, the card tag, the Settings copy)
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
+  completed_plans: 7
   percent: 17
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 ## Current Position
 
 Phase: 09 (equipment-and-weight-steps) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
-Last activity: 2026-10-12 — Completed 09-03 (deloads and warm-ups on the exercise ladder, EZ-bar plate math)
+Last activity: 2026-10-12 — Completed 09-04 (the first-time equipment picker, the card tag, the Settings copy)
 
-Progress: [████████░░] 75% of planned v1.1 plans (Phase 9: 3 of 5 plans done)
+Progress: [█████████░] 88% of planned v1.1 plans (Phase 9: 4 of 5 plans done)
 
 ## Performance Metrics
 
@@ -103,6 +103,7 @@ Progress: [████████░░] 75% of planned v1.1 plans (Phase 9: 3
 | Phase 09 P01 | 13min | 3 tasks | 4 files |
 | Phase 09 P02 | 14 min | 3 tasks | 3 files |
 | Phase 09 P03 | 14 min | 3 tasks | 2 files |
+| Phase 09 P04 | 10 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -126,6 +127,9 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [09-03]: deloadPlan floors 0.9 x lastW to the exercise's ladder (always strictly lighter); at or below the bar on a bar lift in lb it keeps the weight and the card shows the D-15 line, computed at render
 - [09-03]: barStyle is decided by equipOf(name); BAR_FOR and LANDMINE_RE only pick sled or landmine, and the EZ plate line is silent at or under the bar and on unloadable totals (D-07 supersedes the UI-SPEC Color sentence)
 - [09-03]: warm-up rungs use loadNearest with ties down, clamped to the bar on bar lifts in lb and capped at the working weight; translateLoad floors with loadFloor and the suggest line escapes its unit
+- [09-04]: the picker is keyed by registry id in equipAsk, so it follows the exercise, not the slot; it stays until answered, the slot switches exercise, or the app reloads
+- [09-04]: on a time-based accessory card exEnsureAsk still queues the id and extraCard declines to render it; the row keeps its guess
+- [09-04]: equipAsk.delete(id) sits after setExerciseEquip's validity checks, so a refused type leaves the picker in place
 
 ### Pending Todos
 
@@ -167,8 +171,8 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-12T13:39:54.708Z
-Stopped at: Completed 09-03-PLAN.md
+Last session: 2026-10-12T17:51:52.341Z
+Stopped at: Completed 09-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

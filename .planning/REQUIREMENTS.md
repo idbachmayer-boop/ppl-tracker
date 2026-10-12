@@ -34,15 +34,15 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
 
 ### Equipment and weight steps (EQUIP)
 
-- [ ] **EQUIP-01**: Each exercise has one equipment type: barbell, EZ bar, dumbbell, machine, cable or
+- [x] **EQUIP-01**: Each exercise has one equipment type: barbell, EZ bar, dumbbell, machine, cable or
   bodyweight. It is stored on the synced exercise-registry row.
 - [x] **EQUIP-02**: Existing exercises get an equipment type defaulted from their name. The migration
   that writes it bumps `SCHEMA`, stamps `mtime` on every row it rewrites (`touch()`), persists
   immediately, is idempotent and never downgrades `_schema`. A stale-device merge replay test proves
   an older device cannot revert it, and replaying that device again still keeps it.
-- [ ] **EQUIP-03**: Ian can change an exercise's equipment type in Settings → Exercises, and the change
+- [x] **EQUIP-03**: Ian can change an exercise's equipment type in Settings → Exercises, and the change
   syncs to his other device.
-- [ ] **EQUIP-04**: Weight suggestions move by the exercise's own step: 5 lb for barbell, EZ bar and
+- [x] **EQUIP-04**: Weight suggestions move by the exercise's own step: 5 lb for barbell, EZ bar and
   machine; 2.5 lb for cable; 2.5 lb for dumbbells up to 60 lb and 5 lb above 60. No suggestion uses a
   flat 5 lb step for a dumbbell at 60 lb or under. (Amended 2026-10-10 by Ian in Phase 9 discussion:
   cable stacks take a 2.5 lb add-on, and the dumbbell rack goes in 5s above 60.)
@@ -170,10 +170,10 @@ proposed and awaiting Ian's approval.
 | PROG-03 | Phase 8 | Complete |
 | PROG-04 | Phase 8 | Complete |
 | PROG-05 | Phase 8 | Complete |
-| EQUIP-01 | Phase 9 | Pending |
+| EQUIP-01 | Phase 9 | Complete |
 | EQUIP-02 | Phase 9 | Complete |
-| EQUIP-03 | Phase 9 | Pending |
-| EQUIP-04 | Phase 9 | Pending |
+| EQUIP-03 | Phase 9 | Complete |
+| EQUIP-04 | Phase 9 | Complete |
 | EQUIP-05 | Phase 9 | Complete |
 | EQUIP-06 | Phase 9 | Complete |
 | LOG-01 | Phase 10 | Pending |
