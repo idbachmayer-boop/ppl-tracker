@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
 current_phase: 09
-current_phase_name: Equipment and Weight Steps
+current_phase_name: equipment-and-weight-steps
 status: executing
 stopped_at: Phase 9 planned (5 plans), ready to execute
-last_updated: "2026-10-12T12:50:11.728Z"
-last_activity: 2026-10-10
-last_activity_desc: "Phase 09 planned: 5 plans, checker passed (0 blockers)"
+last_updated: "2026-10-12T12:53:50.735Z"
+last_activity: 2026-10-12
+last_activity_desc: Phase 09 execution started
 progress:
   total_phases: 6
   completed_phases: 1
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 09 — Equipment and Weight Steps
+**Current focus:** Phase 09 — equipment-and-weight-steps
 
 ## Current Position
 
-Phase: 09 — Equipment and Weight Steps
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-10-10 — Phase 8 complete, transitioned to Phase 09
+Phase: 09 (equipment-and-weight-steps) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 09
+Last activity: 2026-10-12 — Phase 09 execution started
 
 Progress: [██████████] Phase 8 complete (v1.1: 1 of 6 phases verified)
 
