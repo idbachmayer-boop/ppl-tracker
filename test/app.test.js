@@ -8423,6 +8423,89 @@ const EQ_EXPORT_NAMES = [
      canon(rdOut.sessions) === canon(rdSessions) && rdOut.sessions.every(s => s.entries[RD].name === 'Rear delt fly'),
      rdOut.sessions.map(s => ({ id: s.id, mtime: s.mtime, name: s.entries[RD].name })));
 }
+{
+  /* Steps follow Ian's rack and stacks (EQUIP-04, amended by D-08, D-10, D-17). */
+  const F = loadApp(APP_PATH); spyPushes(F);
+  const S = F.__sandbox, step = (n, w) => S.weightStep(n, w);
+  F.DB = F.normalize(F.blank());
+  const lbTable = {
+    bench: step('Barbell bench press', 100), ez: step('EZ-bar curl', 60), press: step('Leg press', 300),
+    cable: step('Triceps pushdown', 25),
+    db575: step('DB incline press', 57.5), db60: step('DB incline press', 60), db65: step('DB incline press', 65),
+    db0: step('DB incline press', 0), dbU: step('DB incline press', undefined),
+    chin: step('Chin-up', 25), lunges: step('Lunges', 0),
+  };
+  ok('EQUIP-04/D-08: with no registry rows the guess decides — barbell, EZ and machine +5, cable +2.5, a dumbbell +2.5 below 60 and +5 from 60, bodyweight no number',
+     F.DB.exercises.length === 0 &&
+     lbTable.bench === 5 && lbTable.ez === 5 && lbTable.press === 5 && lbTable.cable === 2.5 &&
+     lbTable.db575 === 2.5 && lbTable.db60 === 5 && lbTable.db65 === 5 && lbTable.db0 === 2.5 && lbTable.dbU === 2.5 &&
+     lbTable.chin === null && lbTable.lunges === null,
+     lbTable);
+  ok('D-17 (A3 reading): a suggestion landing at or under 60 never comes from +5 (57.5 → 60), and a dumbbell AT 60 moves to 65',
+     57.5 + step('DB incline press', 57.5) === 60 && 60 + step('DB incline press', 60) === 65 && 65 + step('DB incline press', 65) === 70,
+     [57.5 + step('DB incline press', 57.5), 60 + step('DB incline press', 60), 65 + step('DB incline press', 65)]);
+
+  const PUSH = 'PUSH 1', PULL = 'PULL 1';
+  const INC = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('DB incline press'));
+  const TRI = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('Triceps pushdown'));
+  const BENCH = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('Barbell bench press'));
+  const CHIN = app.PROGRAM[PULL].slots.findIndex(s => s.examples.includes('Chin-up'));
+  const top = (w, slot, n) => { const hi = app.PROGRAM[w].slots[slot].hi; return [[n, hi], [n, hi], [n, hi]]; };
+  const cardAt = (w, slot, name, load, extra) => {
+    eqRun(F, [ eqSess('st-' + slot + '-' + load, w, dayOff(-7), slot, name, top(w, slot, load)) ], extra);
+    const card = eqCard(F, w, slot);
+    return { card, flag: eqFlag(card), draft: F.DB.draft.entries[slot].sets.map(x => x.w), name: F.DB.draft.entries[slot].name };
+  };
+  const ladder = [[57.5, '60'], [60, '65'], [65, '70']].map(([w, want]) => {
+    const c = cardAt(PUSH, INC, 'DB incline press', w);
+    return { w, want, name: c.name, flag: c.flag, draft: c.draft,
+             good: c.flag !== null && c.flag.includes('→ ' + want + ' lb') && c.draft.length > 0 && c.draft.every(x => x === want) };
+  });
+  ok('D-08/D-17: on the card, DB incline press all at the top shows → 60 from 57.5, → 65 from 60 and → 70 from 65, and the prefill matches',
+     ladder.every(x => x.good), ladder.map(({ w, name, flag, draft }) => ({ w, name, flag, draft })));
+  {
+    const c = cardAt(PUSH, TRI, 'Triceps pushdown', 25);
+    ok('EQUIP-04: a cable stack moves 2.5 — Triceps pushdown all at the top at 25 shows → 27.5, and the prefill matches',
+       c.flag !== null && c.flag.includes('→ 27.5 lb') && c.draft.every(x => x === '27.5'), { flag: c.flag, draft: c.draft });
+  }
+  {
+    const c = cardAt(PULL, CHIN, 'Chin-up', 25);
+    ok('Phase 8 D-08/EQUIP-04: a bodyweight lift logged with a load at the top shows (belt) or harder variation with no number, keeps the prefill at 25, and never prints NaN',
+       c.flag !== null && c.flag.includes('(belt) or harder variation') && !/\d/.test(c.flag) &&
+       c.draft.every(x => x === '25') && !c.card.includes('NaN'),
+       { name: c.name, flag: c.flag, draft: c.draft, nan: c.card.includes('NaN') });
+  }
+
+  // D-10: kg keeps a flat 2.5 for every non-bodyweight type.
+  F.DB = F.normalize(F.blank()); F.DB.unit = 'kg';
+  const kgTable = { bench: step('Barbell bench press', 100), db65: step('DB incline press', 65),
+                    cable: step('Triceps pushdown', 25), chin: step('Chin-up', 25) };
+  ok('D-10: in kg every non-bodyweight type moves a flat 2.5, and bodyweight still gets no number',
+     kgTable.bench === 2.5 && kgTable.db65 === 2.5 && kgTable.cable === 2.5 && kgTable.chin === null, kgTable);
+  {
+    const c = cardAt(PUSH, BENCH, 'Barbell bench press', 100, { unit: 'kg' });
+    ok('D-10: a Barbell bench press all at the top at 100 kg shows → 102.5 kg',
+       c.flag !== null && c.flag.includes('→ 102.5 kg') && c.draft.every(x => x === '102.5'), { flag: c.flag, draft: c.draft });
+  }
+
+  // A stored choice beats the guess (set on the row after the migrations ran).
+  eqRun(F, [ eqSess('st-own', PUSH, dayOff(-7), BENCH, 'Barbell bench press', top(PUSH, BENCH, 100)) ]);
+  const benchRow = F.exRow('barbell-bench-press');
+  if(benchRow){ benchRow.equip = 'dumbbell'; benchRow.equipAt = 1; }
+  ok('EQUIP-04: a stored type beats the guess — Barbell bench press stored as a dumbbell moves 5 at 100 and 2.5 at 50',
+     !!benchRow && step('Barbell bench press', 100) === 5 && step('Barbell bench press', 50) === 2.5,
+     { row: benchRow, at100: step('Barbell bench press', 100), at50: step('Barbell bench press', 50) });
+
+  // T-9-04: a hostile unit never indexes INCREMENT, so the step stays a number.
+  eqRun(F, [ eqSess('st-hostile', PUSH, dayOff(-7), BENCH, 'Barbell bench press', top(PUSH, BENCH, 100)) ]);
+  F.DB.unit = '__proto__';
+  const hostileStep = step('Barbell bench press', 100);
+  const hostileCard = eqCard(F, PUSH, BENCH);
+  ok('T-9-04: a unit of __proto__ still gives a numeric step, and the card shows no [object',
+     typeof hostileStep === 'number' && !hostileCard.includes('[object'), { hostileStep: typeof hostileStep, flag: eqFlag(hostileCard) });
+  F.DB.unit = 'lb';
+  F.DB.draft = null;
+}
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
