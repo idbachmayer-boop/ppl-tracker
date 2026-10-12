@@ -5,15 +5,15 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 09
 current_phase_name: equipment-and-weight-steps
 status: executing
-stopped_at: Phase 9 planned (5 plans), ready to execute
-last_updated: "2026-10-12T12:53:50.735Z"
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-10-12T13:08:31.288Z"
 last_activity: 2026-10-12
-last_activity_desc: Phase 09 execution started
+last_activity_desc: Completed 09-01 (equipment types, migration 19, rack steps)
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 3
+  completed_plans: 4
   percent: 17
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 ## Current Position
 
 Phase: 09 (equipment-and-weight-steps) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 09
-Last activity: 2026-10-12 — Phase 09 execution started
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-10-12 — Completed 09-01 (equipment types, migration 19, rack steps)
 
-Progress: [██████████] Phase 8 complete (v1.1: 1 of 6 phases verified)
+Progress: [█████░░░░░] 50% of planned v1.1 plans (Phase 9: 1 of 5 plans done)
 
 ## Performance Metrics
 
@@ -100,6 +100,7 @@ Progress: [██████████] Phase 8 complete (v1.1: 1 of 6 phases
 | Phase 08 P01 | 12min | 3 tasks | 2 files |
 | Phase 08 P02 | 8 min | 3 tasks | 2 files |
 | Phase 08 P03 | ~20min (incl. Ian's push, PR, CI, deploy) | 3 tasks | 0 files |
+| Phase 09 P01 | 13min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,8 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [08-02]: a deload, skipped day, empty entry, skipped set or blankSets>0 pauses the stall streak (blank set = planner's reading of D-10 with D-01; confirmed in the phone UAT)
 - [08-03]: Phase 8 shipped as PR #13, merge commit 99e10c8 on main; revert is git revert -m 1 --no-edit 99e10c8. Phone UAT passed 2026-10-10; 08-SECURITY.md verified, 20/20 threats closed
 - [08-UAT]: WR-02 resolved by Ian: keep comparing total reps even when the set count changes (matches PROG-02)
+- [09-01]: Registry rows carry equip (one of EQUIP_TYPES) and equipAt (0 = a default); migration 19 stamps them with mtime old + 1, never now (D-14), and the boot save persists it
+- [09-01]: weightStep(name, w) returns null for bodyweight in either unit, 2.5 flat in kg, and in lb dumbbell 2.5 below 60 then 5, cable 2.5, barbell/EZ/machine 5; every caller branches on null
 
 ### Pending Todos
 
@@ -157,8 +160,8 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-12T12:02:05.549Z
-Stopped at: Phase 9 planned (5 plans), ready to execute
+Last session: 2026-10-12T13:08:31.261Z
+Stopped at: Completed 09-01-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
