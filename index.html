@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-KWR/yJSH05cyHv/0ddiuFCN9aoZv8bhMfavu7BM3Bdc=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-YCoYUoaQf4rjMIWXnPJbEdLuUyF4+e1VGW9SpwnAI5o=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -4581,8 +4581,8 @@ function mergeCollections(r, l, localNewer, out){
    The identity rule: a row's other fields come from the copy with the newest mtime, and its `equip`
    comes from the copy with the newest equipAt (the field clock, equipClock below). So a migration
    default (equipAt 0) never beats Ian's choice, and a later rename on the other device never erases
-   it. Only a STRICTLY higher clock replaces the winning row's own type, which keeps the merge
-   commutative when two copies tie; the replaced row is a new object, never the input.
+   it. Two copies tied on equipAt give the type that sorts first, whichever row won (IN-02); a
+   replaced row is a new object, never the input.
 
    A merged-away row stays merged (WR-01). Nothing in the app revives a registry tombstone on purpose:
    exEnsure never reuses a tombstoned id, and there is no restore for exercises. So once any copy of
@@ -4636,15 +4636,18 @@ function mergeExercises(r, l, localNewer){
     }
     rows[j] = back;
   });
+  /* The type: the copy with the highest equipAt, and on a tie the type that sorts first. The tie-break
+     reads only the choice itself, never the row it rode in on, so three copies give one answer in any
+     grouping (IN-02). */
+  const typeOver = (a, b) => equipClock(a) !== equipClock(b) ? equipClock(a) > equipClock(b) : equipClock(a) >= 0 && String(a.equip) < String(b.equip);
   const best = new Map();
   ra.concat(la).forEach(x => {
-    if(!x || typeof x !== 'object') return;
     const prev = best.get(x.id);
-    if(prev === undefined || equipClock(x) > equipClock(prev)) best.set(x.id, x);
+    if(prev === undefined || typeOver(x, prev)) best.set(x.id, x);
   });
   const typed = rows.map(row => {
     const b = best.get(row.id);
-    if(!b || !(equipClock(b) > equipClock(row))) return row;
+    if(!b || equipClock(b) < 0 || (b.equip === row.equip && +b.equipAt === +row.equipAt)) return row;
     return Object.assign({}, row, { equip: b.equip, equipAt: +b.equipAt });
   });
   /* Claims (WR-07). A row merges whole by mtime, so the newest copy of a survivor edited on a device

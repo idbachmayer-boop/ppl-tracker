@@ -8621,12 +8621,13 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
      hc.every(db => { const x = rowOf(db, 'preacher-curl'); return x.equip === 'ez' && x.equipAt === 0 && x.mtime === 200; }),
      hc.map(db => rowOf(db, 'preacher-curl')));
 
-  // A tie on equipAt leaves the mtime winner's own equip, whichever side is remote.
+  // A tie on equipAt goes to the type that sorts first, whichever side is remote and whichever copy
+  // won the row (IN-02 supersedes 09-02's "the mtime winner's own equip", which was not associative).
   const TA = regDB([eqRow('Preacher curl', 100, { equip: 'cable', equipAt: 500 })], 100);
   const TB = regDB([eqRow('Preacher curl', 200, { equip: 'machine', equipAt: 500 })], 200);
   const tie = [merge(TA, TB), merge(TB, TA)];
-  ok('EQUIP-03: two copies at the same equipAt keep the mtime winner\'s own equip, in both orders',
-     tie.every(db => rowOf(db, 'preacher-curl').equip === 'machine'), tie.map(db => rowOf(db, 'preacher-curl')));
+  ok('EQUIP-03/IN-02: two copies at the same equipAt take the type that sorts first (cable over machine), in both orders',
+     tie.every(db => rowOf(db, 'preacher-curl').equip === 'cable' && rowOf(db, 'preacher-curl').equipAt === 500), tie.map(db => rowOf(db, 'preacher-curl')));
 
   // T-9-13: the newer side's order, then the older side's new rows, never sorted.
   const ON = regDB([eqRow('x', 10), eqRow('y', 11)], 200), OO = regDB([eqRow('z', 12), eqRow('x', 9)], 100);
@@ -8943,6 +8944,37 @@ function eqAllAssoc(M, P, Q, R){
   ok('WR-08: over the same trials no row is dropped, no merged-away row comes back live, and every spelling has exactly one live owner',
      !bad.dropped.length && !bad.resurrected.length && !bad.owners.length,
      { dropped: bad.dropped.slice(0, 5), resurrected: bad.resurrected.slice(0, 5), owners: bad.owners.slice(0, 5) });
+}
+{
+  /* IN-02 (09-REVIEW): a tie on equipAt must not make the merge depend on grouping. The reviewer's
+     three copies: D1 ez@50 (mtime 1), D2 cable@50 (mtime 2), D3 machine@0 (mtime 3). */
+  const M = app.mergeDB;
+  const regDB = (rows, updatedAt) => Object.assign(app.blank(), { exercises: rows, updatedAt });
+  const D1 = regDB([eqRow('Preacher curl', 1, { equip: 'ez', equipAt: 50 })], 10);
+  const D2 = regDB([eqRow('Preacher curl', 2, { equip: 'cable', equipAt: 50 })], 20);
+  const D3 = regDB([eqRow('Preacher curl', 3, { equip: 'machine', equipAt: 0 })], 30);
+  const all = eqAllAssoc(M, D1, D2, D3);
+  const eqs = all.map(db => { const x = db.exercises.find(e => e.id === 'preacher-curl'); return x.equip + '@' + x.equipAt; });
+  ok('IN-02: the reviewer\'s tied copies give cable@50 (the tied type that sorts first) in all 12 association orders',
+     eqs.every(e => e === 'cable@50') && all.map(eqRegContent).every(c => c === eqRegContent(all[0])), eqs);
+
+  /* Property-style: 300 seeded trials of three copies of one row whose equipAt is drawn from {0, 5},
+     so ties are the common case, with distinct mtimes and every type. */
+  let seed = 4242;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  let clock = 0;
+  const types = app.EQUIP_TYPES;
+  const copy = () => regDB([eqRow('Preacher curl', (clock += 1 + Math.floor(rnd() * 3)),
+    { equip: types[Math.floor(rnd() * types.length)], equipAt: rnd() < 0.5 ? 0 : 5 })], (clock += 1));
+  const badAssoc = [], badComm = [];
+  for(let n = 0; n < 300; n++){
+    const [p, q, r] = [copy(), copy(), copy()];
+    const c = eqAllAssoc(M, p, q, r).map(eqRegContent);
+    if(c.some(x => x !== c[0])) badAssoc.push(n);
+    if(eqRegContent(M(clone(p), clone(q))) !== eqRegContent(M(clone(q), clone(p)))) badComm.push(n);
+  }
+  ok('IN-02: over 300 seeded trials with equipAt ties the registry merge is commutative and associative in all 12 orders',
+     !badAssoc.length && !badComm.length, { associative: badAssoc.slice(0, 5), commutative: badComm.slice(0, 5) });
 }
 
 /* ── EQUIP rounding: deloads, warm-ups and the suggest line follow the exercise's own ladder (Phase 9,
