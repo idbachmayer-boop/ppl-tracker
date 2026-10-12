@@ -33,8 +33,10 @@ call `touch()`, and read through `liveSessions()` / `liveWeights()` / etc. A mis
 deleted row back into a view. The exercise registry (`DB.exercises`) has merged per row since Phase 9,
 so `exMerge` tombstones the merged-away row (`deletedAt`, `mergedInto`, empty `aliases`), and a
 registry row is never spliced out of `DB.exercises`. `exRow()` reads live rows only, and `exKey()`
-follows `mergedInto` to the survivor. In the merge a registry tombstone beats a live copy of the same
-id, even a newer one, and two live rows never share an alias. Nothing revives a registry tombstone.
+follows `mergedInto` to the survivor. In the merge a tombstone `exMerge` made beats a live copy of the
+same id, even a newer one, and nothing revives it. Two live rows never share an alias: the merge
+recomputes ownership from every copy's `aliases` and `lost`, and a row that loses every spelling is an
+`autoMerged` tombstone the next merge recomputes, never a permanent one.
 
 **Absence never means "off".** `mobilityLog` and `lawnLog` take the whole inner object from the newer
 side, so a deleted key reads as "never logged" on the other device. Store an explicit `false`.

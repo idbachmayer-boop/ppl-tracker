@@ -8861,6 +8861,89 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
   ok('WR-07: B renamed the merged-away X to add "foo" before it heard — "foo" goes with X to y instead of vanishing, both orders, replayed twice',
      rf.every(r => r.every(id => id === 'y')), rf);
 }
+/* Registry content for the merge laws: rows by id, with aliases and lost read as sets (their order
+   carries no meaning: exIdByName needs one live owner per spelling, not a position). */
+function eqRegContent(db){
+  const o = {};
+  ((db && db.exercises) || []).forEach(x => { if(!x || typeof x !== 'object') return;
+    const y = Object.assign({}, x);
+    if(Array.isArray(y.aliases)) y.aliases = y.aliases.slice().sort();
+    if(Array.isArray(y.lost)) y.lost = y.lost.slice().sort();
+    o[x.id] = y; });
+  return canon(o);
+}
+/* Every way to merge three copies: each order of P, Q, R, grouped both ways. */
+function eqAllAssoc(M, P, Q, R){
+  const perms = [[P, Q, R], [P, R, Q], [Q, P, R], [Q, R, P], [R, P, Q], [R, Q, P]];
+  const out = [];
+  perms.forEach(([a, b, c]) => {
+    out.push(M(clone(M(clone(a), clone(b))), clone(c)));
+    out.push(M(clone(a), clone(M(clone(b), clone(c)))));
+  });
+  return out;
+}
+{
+  /* WR-08 (09-REVIEW, iteration 2): the registry merge must not depend on the order three copies meet.
+     A tombstone the one-owner pass makes (a row that lost every spelling) used to be as sticky as one
+     exMerge made, so a stale copy meeting first could fold a row into another for good, while a later
+     rename meeting first kept them apart. */
+  const M = app.mergeDB;
+  const R = loadApp(APP_PATH); spyPushes(R);
+  const regDB = (rows, updatedAt) => Object.assign(app.blank(), { exercises: rows, updatedAt });
+  const P = regDB([eqRow('Y', 100, { aliases: ['y', 'k'] })], 100);
+  const Q = regDB([eqRow('X', 50, { aliases: ['k'] })], 50);
+  const Rr = regDB([eqRow('X', 300, { aliases: ['k', 'k2'] })], 300);
+  const all = eqAllAssoc(M, P, Q, Rr);
+  const contents = all.map(eqRegContent);
+  const view = all.map(db => { R.DB = clone(db); const x = (db.exercises || []).find(e => e.id === 'x');
+    return { x: x && { deletedAt: x.deletedAt || null, aliases: x.aliases }, k: R.exIdByName('k'), k2: R.exIdByName('k2'), y: R.exIdByName('y') }; });
+  ok('WR-08: P (y owns k), a stale Q (x claims k) and a later rename R (x claims k, k2) give one result in all 12 association orders — x live with k and k2, y with y',
+     contents.every(c => c === contents[0]) && view.every(v => v.x && !v.x.deletedAt && v.k === 'x' && v.k2 === 'x' && v.y === 'y'), view);
+
+  /* The merge laws, property-style: 400 seeded trials of three replicas mixing stale and later live
+     copies, exMerge tombstones and contested spellings over ids a, b and c (c is the merge target and
+     stays live). Every mtime and equipAt is distinct here; ties are IN-02's check below. */
+  let seed = 9091;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  let clock = 0;
+  const tick = () => (clock += 1 + Math.floor(rnd() * 3));
+  const shared = ['k', 'm'];
+  const replica = () => {
+    const rows = [eqRow('C', tick(), { aliases: ['c'].concat(shared.filter(() => rnd() < 0.2)), equip: 'machine', equipAt: tick() })];
+    ['a', 'b'].forEach(id => {
+      const roll = rnd();
+      if(roll < 0.2) return;
+      if(roll < 0.45){ const t = tick(); rows.push({ id, name: id.toUpperCase(), aliases: [], deletedAt: t, mergedInto: 'c', mtime: t, equip: 'cable', equipAt: tick() }); return; }
+      rows.push({ id, name: id.toUpperCase(), aliases: [id].filter(() => rnd() < 0.8).concat(shared.filter(() => rnd() < 0.5)), mtime: tick(),
+                  equip: rnd() < 0.5 ? 'dumbbell' : 'barbell', equipAt: tick() });
+    });
+    return regDB(rows, tick());
+  };
+  const bad = { commutative: [], associative: [], idempotent: [], dropped: [], resurrected: [], owners: [] };
+  for(let n = 0; n < 400; n++){
+    const reps = [replica(), replica(), replica()];
+    const all3 = eqAllAssoc(M, reps[0], reps[1], reps[2]), c3 = all3.map(eqRegContent);
+    if(c3.some(c => c !== c3[0])) bad.associative.push(n);
+    if(eqRegContent(M(clone(reps[0]), clone(reps[1]))) !== eqRegContent(M(clone(reps[1]), clone(reps[0])))) bad.commutative.push(n);
+    const out = all3[0];
+    if(eqRegContent(M(clone(out), clone(out))) !== c3[0]) bad.idempotent.push(n);
+    const inRows = [].concat(...reps.map(d => d.exercises));
+    const outRows = out.exercises;
+    const ids = new Set(inRows.map(x => x.id));
+    if([...ids].some(id => !outRows.some(x => x.id === id))) bad.dropped.push(n);
+    const merged = new Set(inRows.filter(x => x.deletedAt && !x.autoMerged).map(x => x.id));
+    if(outRows.some(x => merged.has(x.id) && (!x.deletedAt || x.autoMerged))) bad.resurrected.push(n);
+    const spellings = new Set([].concat(...inRows.map(x => (x.aliases || []).concat(x.lost || []))));
+    const liveRows = outRows.filter(x => !x.deletedAt);
+    if([...spellings].some(k => liveRows.filter(x => (x.aliases || []).indexOf(k) >= 0).length !== 1)) bad.owners.push(n);
+  }
+  ok('WR-08: over 400 seeded three-replica trials the registry merge is commutative, associative in all 12 orders, and idempotent',
+     !bad.commutative.length && !bad.associative.length && !bad.idempotent.length,
+     { commutative: bad.commutative.slice(0, 5), associative: bad.associative.slice(0, 5), idempotent: bad.idempotent.slice(0, 5) });
+  ok('WR-08: over the same trials no row is dropped, no merged-away row comes back live, and every spelling has exactly one live owner',
+     !bad.dropped.length && !bad.resurrected.length && !bad.owners.length,
+     { dropped: bad.dropped.slice(0, 5), resurrected: bad.resurrected.slice(0, 5), owners: bad.owners.slice(0, 5) });
+}
 
 /* ── EQUIP rounding: deloads, warm-ups and the suggest line follow the exercise's own ladder (Phase 9,
    plan 09-03, EQUIP-05). A 15 lb dumbbell deload used to round back to 15 through a flat 5-lb rounding,

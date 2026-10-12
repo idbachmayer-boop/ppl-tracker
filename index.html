@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-9ji271Sh0gy75vlNnWT/kMKjhaUTC27waGNW5iOdAuk=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-KWR/yJSH05cyHv/0ddiuFCN9aoZv8bhMfavu7BM3Bdc=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -4592,17 +4592,29 @@ function mergeCollections(r, l, localNewer, out){
    other and no live row at all; the later merge decides that cycle, and its target comes back live.
    Last, two live rows never share a spelling. A pre-Phase-9 merge spliced the row out instead of
    tombstoning it, so a device still holding the row, or a backup older than the merge, brings it back
-   alongside the survivor that also owns its alias. Each shared alias stays on the row with the newer
-   mtime (the id breaks a tie), and a row left with no alias becomes a tombstone merged into the row
-   that took it. Every rule reads only the set of copies, never which side they came from, so the
-   result is the same in either order and stable when replayed. */
+   alongside the survivor that also owns its alias. A row's claims are the union of every copy's
+   aliases and `lost` (a tombstoned id's go to its survivor, WR-07); each claimed spelling stays on the
+   live row with the newer mtime (the id breaks a tie), the rest go to `lost`, and a row left with no
+   spelling reads as merged into the row that took it, marked autoMerged. That tombstone is recomputed
+   on every merge, never sticky, so the result is a function of the set of copies alone: the same in
+   either order, in any grouping of three or more, and stable when replayed (WR-08). */
 function mergeExercises(r, l, localNewer){
-  const ra = Array.isArray(r.exercises) ? r.exercises : [], la = Array.isArray(l.exercises) ? l.exercises : [];
+  /* A tombstone the one-owner pass made (autoMerged) is read back as the live row it was, with its
+     spellings in `lost`, so it is recomputed on every merge and never gains the stickiness of a
+     tombstone exMerge made (WR-08). Ordinary rows pass through as the same objects. */
+  const asLive = x => { if(!x.autoMerged) return x; const y = Object.assign({}, x); delete y.autoMerged; delete y.deletedAt; delete y.mergedInto; return y; };
+  const ins = d => (Array.isArray(d.exercises) ? d.exercises : []).filter(x => x && typeof x === 'object').map(asLive);
+  const ra = ins(r), la = ins(l);
   /* Newer side first, replaced only on a strictly newer mtime: the same tie rule as mergeUnion. */
-  const copies = (localNewer ? la.concat(ra) : ra.concat(la)).filter(x => x && typeof x === 'object');
+  const copies = localNewer ? la.concat(ra) : ra.concat(la);
   const mt = x => +x.mtime || 0;
   const newest = (id, test) => { let b = null; copies.forEach(x => { if(x.id === id && test(x) && (!b || mt(x) > mt(b))) b = x; }); return b; };
-  const rows = mergeUnion(ra, la, x => x.id, localNewer).map(row => row.deletedAt ? row : (newest(row.id, x => !!x.deletedAt) || row));
+  /* The tombstone that wins is chosen from its own fields alone (mtime, then deletedAt, then mergedInto),
+     never by which side it came from, so three copies give one answer in any order. */
+  const tombOver = (a, b) => mt(a) !== mt(b) ? mt(a) > mt(b)
+    : (+a.deletedAt || 0) !== (+b.deletedAt || 0) ? (+a.deletedAt || 0) > (+b.deletedAt || 0) : String(a.mergedInto) > String(b.mergedInto);
+  const newestTomb = id => { let b = null; copies.forEach(x => { if(x.id === id && x.deletedAt && (!b || tombOver(x, b))) b = x; }); return b; };
+  const rows = mergeUnion(ra, la, x => x.id, localNewer).map(row => newestTomb(row.id) || row);
   /* A cycle of tombstones: the merge with the latest deletedAt (then the larger id) decides, and its
      target is revived from its newest live copy, or from the tombstone itself when no live copy is left. */
   const at = new Map(rows.map((x, i) => [x.id, i]));
@@ -4647,13 +4659,17 @@ function mergeExercises(r, l, localNewer){
     while(x && x.deletedAt && typeof x.mergedInto === 'string' && seen.indexOf(x.id) < 0){ seen.push(x.id); x = byId.get(x.mergedInto); }
     return x && !x.deletedAt ? x.id : null;
   };
+  /* A row's claims are its spellings plus the ones it lost in an earlier merge (`lost`), so a later
+     edit that makes it the newest wins them back in whatever order the copies meet (WR-08). */
   const claims = new Map();
   copies.forEach(c => {
-    if(!Array.isArray(c.aliases) || !byId.has(c.id)) return;
+    if(!byId.has(c.id)) return;
+    const ks = (Array.isArray(c.aliases) ? c.aliases : []).concat(Array.isArray(c.lost) ? c.lost : []);
+    if(!ks.length) return;
     const to = byId.get(c.id).deletedAt ? survivor(c.id) : c.id;
     if(to == null) return;
     const a = claims.get(to) || []; claims.set(to, a);
-    c.aliases.forEach(k => { if(a.indexOf(k) < 0) a.push(k); });
+    ks.forEach(k => { if(a.indexOf(k) < 0) a.push(k); });
   });
   /* One live owner per alias. */
   const over = (a, b) => mt(a) > mt(b) || (mt(a) === mt(b) && String(a.id) > String(b.id));
@@ -4668,10 +4684,19 @@ function mergeExercises(r, l, localNewer){
        which copy was seen first. */
     const base = Array.isArray(x.aliases) ? x.aliases : [];
     const keep = base.filter(k => own.indexOf(k) >= 0).concat(own.filter(k => base.indexOf(k) < 0).sort());
-    if(keep.length === base.length && keep.every((k, i) => k === base[i])) return x;
-    if(keep.length) return Object.assign({}, x, { aliases: keep });
+    const lost = mine.filter(k => own.indexOf(k) < 0).sort();
+    const was = Array.isArray(x.lost) ? x.lost : null;
+    const same = (p, q) => p.length === q.length && p.every((k, i) => k === q[i]);
+    if(keep.length){
+      if(same(keep, base) && (lost.length ? !!was && same(lost, was) : !('lost' in x))) return x;
+      const y = Object.assign({}, x, { aliases: keep });
+      if(lost.length) y.lost = lost; else delete y.lost;
+      return y;
+    }
+    /* Every spelling is owned by another row: it reads as merged into the newest of them, marked
+       autoMerged so the next merge recomputes it from the claims kept in `lost`. */
     const into = mine.map(k => owner.get(k)).reduce((a, b) => over(b, a) ? b : a);
-    return Object.assign({}, x, { aliases: [], deletedAt: mt(into) || 1, mergedInto: into.id });
+    return Object.assign({}, x, { aliases: [], lost, deletedAt: mt(into) || 1, mergedInto: into.id, autoMerged: true });
   });
 }
 /* A registry row's equipment field clock: its equipAt, but only when its equip is one of
