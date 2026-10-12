@@ -108,6 +108,27 @@ criteria are updated to match.
   - It rounds down to the exercise's step instead of the flat `INCREMENT`. It is the second place
     `INCREMENT` is read directly (review IN-04), so it routes through the same step seam.
 
+### Decided after research (2026-10-12, RESEARCH.md open questions)
+- **D-14:** **The migration stamps each rewritten row's `mtime` as "only just newer" than its old copy (old `mtime` + 1), not `Date.now()`.**
+  - A stale device's un-migrated copy still loses to it.
+  - A rename or merge Ian made on the other device before this one updated still wins.
+  - This satisfies CLAUDE.md's migration rule, since `mtime` is stamped and the result is persisted
+    immediately. It only avoids "now" outrunning real edits.
+  - Equipment choices are protected separately by their own clock (RESEARCH: `equipAt`).
+  - The stale-device replay test must cover a rename on the other device as well.
+- **D-15:** **Deload at the empty bar stays at the bar weight**, for example Barbell row at 45, and the
+  card says why: "Already at the empty bar — cut a set or reps instead."
+  - This is the one exception to D-11's "at least one step lighter", because nothing lighter can be
+    loaded.
+  - The same applies wherever 90% rounds below the bar on a barbell or EZ-bar lift.
+- **D-16:** **The first-time equipment picker (D-04) shows only for a name the default table can't
+  place.** Program names and every name in Ian's history get their type silently.
+- **D-17 (clarifies D-08):** **The dumbbell step is the gap to the next dumbbell on the rack.**
+  - Below 60 the rack goes in 2.5s, so 57.5 → 60.
+  - Above 60 it goes in 5s, so 60 → 65 → 70.
+  - Rounding uses the same rack: deloads round down to a weight that exists, and warm-ups to the
+    nearest one.
+
 ### Claude's Discretion
 - How the equipment type is stored on the registry row (field name, enum spelling) and how the default
   table is expressed. It must follow CLAUDE.md:
