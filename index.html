@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-vIizx9pDW8e7DQXXv28JrxiESnjc7wUnpzuz431d1vM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-c21XVzCcRwMep642eFzbjNWAsgtThZ09OcXShNXTUM8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -88,6 +88,10 @@
     .ex-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .ex-title { font-size: 14px; font-weight: 700; }
     .lasttime { font-size: 12px; color: var(--text-2); background: var(--surface-2); border-radius: 8px; padding: 7px 9px; margin: 6px 0 10px; line-height: 1.5; }
+    .equip-ask { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px 12px; margin: 8px 0 12px; }
+    .equip-ask p { font-size: 12px; line-height: 1.5; color: var(--text-2); margin-bottom: 8px; }
+    .equip-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 8px; }
+    .equip-grid .day-btn { min-height: 44px; padding: 8px 4px; width: 100%; }
     .last-note { font-size: 12px; color: var(--warm-fg); background: var(--warm-bg); border: 1px solid var(--warm-bd); border-radius: 8px; padding: 7px 9px; margin: -4px 0 10px; line-height: 1.5; }
     select, input, textarea { font-family: inherit; font-size: 14px; border: 1.5px solid var(--border-2); border-radius: 8px; padding: 9px 10px; background: var(--surface); color: var(--text); width: 100%; }
     input[type=checkbox] { width: 20px; height: 20px; min-width: 20px; padding: 0; border: none; accent-color: var(--accent); }
@@ -478,7 +482,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 18;
+const SCHEMA = 19;
 /* Which build is this? The deploy job stamps <meta name="ppl-build"> in <head> with
    "<ISO time> <short sha>", in the published copy only, so Settings can say which version a device
    is actually running — a phone still on a stale build has cost real confusion before.
@@ -533,6 +537,66 @@ const COLLECTIONS = {
   const problems = collectionProblems(COLLECTIONS);
   if(problems.length) throw new Error('COLLECTIONS is invalid: ' + problems.join('; '));
 }
+/* ───────────────────────── Equipment types (Phase 9, EQUIP-01/02) ─────────────────────────
+   Every exercise-registry row carries one synced `equip` value from EQUIP_TYPES. Migration 19 reads
+   this block while the stored blob boots (the boot load a few dozen lines down runs the migrations
+   table below), so everything here is a literal or a hoisted `function` declaration. Nothing in this
+   block may call normEx, slugEx, BAR_FOR, LANDMINE_RE, ACCESSORIES, or anything else declared further
+   down: a temporal-dead-zone error during that load is swallowed by normalize()'s silent catch while
+   `_schema` still advances, and the migration never runs again (how migration 15 died).
+   The stored string is never rendered. Display goes through EQUIP_LABEL, after the value is checked
+   against EQUIP_TYPES. Keys of EQUIP_DEFAULTS are normalised names: trimmed, lower-case, runs of
+   whitespace collapsed to one space (the same normalisation exKey uses). */
+const EQUIP_TYPES = ['barbell','ez','dumbbell','machine','cable','bodyweight'];
+const EQUIP_LABEL = { barbell:'barbell', ez:'EZ bar', dumbbell:'dumbbell', machine:'machine', cable:'cable', bodyweight:'bodyweight' };
+const EQUIP_DEFAULTS = {
+  "barbell bench press":'barbell', "barbell incline press":'barbell', "standing ohp":'barbell',
+  "romanian deadlift":'barbell', "barbell row":'barbell', "barbell curl":'barbell',
+  "t-bar row":'barbell', "meadows row":'barbell', "chest supported t-bar row":'barbell',
+  "back squat":'barbell', "front squat":'barbell', "stiff-leg deadlift":'barbell', "good mornings":'barbell',
+  "behind-the-back wrist curls":'barbell',
+  "ez-bar curl":'ez', "skull crusher":'ez', "preacher curl":'ez', "overhand grip curl":'ez',
+  "db bench press":'dumbbell', "db incline press":'dumbbell', "db fly":'dumbbell', "db shoulder press":'dumbbell',
+  "db lateral raise":'dumbbell', "db pullover":'dumbbell', "db curl":'dumbbell', "one-arm db row":'dumbbell',
+  "dumbbell row":'dumbbell', "hammer curl":'dumbbell', "deficit sumo squat":'dumbbell',
+  "bulgarian split squat":'dumbbell', "overhead triceps extension":'dumbbell', "wrist curls":'dumbbell',
+  "rear delt fly":'dumbbell', "concentration curl":'dumbbell', "reverse wrist curls":'dumbbell',
+  "farmer carry":'dumbbell',
+  "seated fly":'machine', "seated flys":'machine', "reverse pec deck":'machine', "machine crunch":'machine',
+  "leg press":'machine', "hack squat":'machine', "machine hamstring curl":'machine', "calf raise machine":'machine',
+  "leg extensions":'machine', "seated ohp":'machine',
+  "lat pulldown":'cable', "triceps pushdown":'cable', "seated cable row":'cable', "straight-arm pulldown":'cable',
+  "cable fly":'cable', "cable lateral raise":'cable', "cable crunch":'cable', "face pull":'cable',
+  "glute kickbacks":'cable',
+  "chin-up":'bodyweight', "pull-up":'bodyweight', "nordic hamstring curl":'bodyweight', "dead hang":'bodyweight',
+  "hanging leg raise":'bodyweight', "diamond push-ups":'bodyweight', "lunges":'bodyweight',
+  "weighted push-up":'bodyweight', "weighted decline push-up":'bodyweight', "dips":'bodyweight',
+  "weighted sit-up":'bodyweight', "dead bug":'bodyweight', "plank":'bodyweight', "plate/stair raise":'bodyweight',
+  "active hang":'bodyweight', "towel dead hang":'bodyweight',
+};
+/* The type a name defaults to. An own key of EQUIP_DEFAULTS wins first; then the name rules below, in
+   this fixed order, first match wins (dumbbell before cable before machine before EZ, so a cable or
+   machine variant of a preacher curl is not read as an EZ bar); then 'machine' — 5 lb and no plate
+   line, which is what an unclassifiable name got before this phase. The own-key test keeps names
+   such as 'constructor' or '__proto__' from reading the prototype. */
+function equipGuess(name){
+  const norm = s => String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,' ');
+  const k = norm(name);
+  if(Object.prototype.hasOwnProperty.call(EQUIP_DEFAULTS, k) && EQUIP_TYPES.indexOf(EQUIP_DEFAULTS[k]) >= 0) return EQUIP_DEFAULTS[k];
+  if(/\bdb\b|dumbbell/.test(k)) return 'dumbbell';
+  if(/cable|pulldown|pushdown|face pull/.test(k)) return 'cable';
+  if(/\bmachine\b|pec deck|smith/.test(k)) return 'machine';
+  if(/\bez\b|skull crusher|preacher/.test(k)) return 'ez';
+  if(/t-?\s?bar|meadows|landmine|barbell/.test(k)) return 'barbell';
+  if(/push-?ups?\b|pull-?ups?\b|chin-?ups?\b|\bdips?\b|\bhang\b|plank|nordic|\blunges?\b|dead bug/.test(k)) return 'bodyweight';
+  return 'machine';
+}
+/* True when the normalised name has its own row in the default table (the D-16 first-time picker
+   asks only for a name that does not). */
+function equipKnown(name){
+  const norm = s => String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,' ');
+  return Object.prototype.hasOwnProperty.call(EQUIP_DEFAULTS, norm(name));
+}
 /* Ordered schema migrations. Each takes the data object up one version. Must be idempotent. */
 const MIGRATIONS = {
   1:d=>{ if(!d.hobbies) d.hobbies=DEFAULT_HOBBIES.slice(); if(!d.hobbyLog) d.hobbyLog=[]; if(!('lawn' in d)) d.lawn=null; if(!('wx' in d)) d.wx=null; return d; },
@@ -577,6 +641,7 @@ const MIGRATIONS = {
   /* Exercises stop being strings and become things with ids. See buildExerciseRegistry(). */
   17:d=>buildExerciseRegistry(d),
   18:d=>ensureCollectionDefaults(d), // sleep log — creates absent collections only (COLLECTIONS registry, F1)
+  19:d=>stampEquipment(d), // equipment type per registry row (EQUIP-02), mtime old + 1 (D-14) — see stampEquipment()
 };
 /* Creates ABSENT collections only — never rewrites a row that already carries an mtime, so the
    four REG-16 guards a row-rewriting migration must satisfy (touch, persist immediately, stay
@@ -642,6 +707,24 @@ function buildExerciseRegistry(d){
     (d.draft.entries||[]).forEach(e=>stamp(e));
     if(d.draft.extras) Object.keys(d.draft.extras).forEach(k=>stamp(d.draft.extras[k], k==='forearms'?FOREARM_ORPHAN:null));
   }
+  return d;
+}
+/* Migration 19 (EQUIP-02): give every registry row an equipment type, guessed from its name, with
+   `equipAt` 0 meaning "a default, not Ian's choice". Reads only EQUIP_TYPES and equipGuess, both above
+   the migrations table, so it is safe during the boot load. Idempotent: a row already holding a valid
+   type, a tombstone and a non-object are left alone, so a second boot rewrites nothing.
+   The row's `mtime` becomes its old value + 1 (a row with no usable mtime gets 1), never now (D-14).
+   That is just enough to beat the stale un-migrated copy of the same row on another device, and never
+   enough to outrun a real rename or merge Ian made there in the meantime — a now-stamp on a device
+   that updates late would revert his edits. Nothing here persists; the boot save does, before any
+   pull can run. */
+function stampEquipment(d){
+  (Array.isArray(d.exercises) ? d.exercises : []).forEach(r=>{
+    if(!r || typeof r !== 'object' || r.deletedAt || EQUIP_TYPES.indexOf(r.equip) >= 0) return;
+    r.equip = equipGuess(r.name);
+    r.equipAt = 0;
+    r.mtime = (isFinite(+r.mtime) ? +r.mtime : 0) + 1;
+  });
   return d;
 }
 function renameLoggedExercise(d, map){
@@ -860,7 +943,6 @@ const fmtDate = iso => { const [y,m,d]=iso.split('-'); return new Date(y,m-1,d).
 /* Whole days from today to an ISO date (midnight-to-midnight). Negative once past → null. */
 const WEDDING_DATE = '2026-08-21';
 function daysUntil(iso){ const [y,m,d]=iso.split('-').map(Number); const target=new Date(y,m-1,d); target.setHours(0,0,0,0); const now=new Date(); now.setHours(0,0,0,0); const diff=Math.round((target-now)/86400000); return diff<0 ? null : diff; }
-const round5 = n => Math.max(0, Math.round(n/5)*5);
 const accClass = g => g==='push'?'acc-push':g==='legs'?'acc-legs':'acc-pull';
 const barClass = g => g==='push'?'acc-bar-push':g==='legs'?'acc-bar-legs':'acc-bar-pull';
 const rangeText = s => s.lo===s.hi ? `${s.lo}${s.note==='each leg'?'/leg':''}` : `${s.lo}–${s.hi}`;
@@ -933,13 +1015,13 @@ function lastAnywhere(exName){
 }
 /* Estimate the load that carries a past set over to a different rep range: hold the estimated 1RM
    constant and solve Epley for the bottom of the new range (the rep you'd restart a range on).
-   Rounded down to a loadable increment so the suggestion errs light. */
-function translateLoad(w, r, targetReps){
+   Floored to the exercise's own step so the suggestion errs light (D-13). Display only: nothing
+   writes it into a set. */
+function translateLoad(w, r, targetReps, name){
   const one = e1rm(w, r);
   if(!one || !targetReps) return null;
   const raw = one / (1 + targetReps/30);
-  const inc = INCREMENT[DB.unit] || 5;
-  return Math.max(inc, Math.floor(raw/inc)*inc);
+  return Math.max(ladderStep(name, 0), loadFloor(name, raw));
 }
 function lastRealStairs(){
   const ls = liveSessions();
@@ -1021,10 +1103,10 @@ function fmtMS(total){ total=+total||0; const m=Math.floor(total/60), s=total%60
 /* Estimated 1-rep max (Epley). BW(0) or blank → 0 (excluded from strength charts). */
 function e1rm(w,r){ w=+w; r=+r; if(!w||!r) return 0; return w*(1+r/30); }
 /* Plate calculator (lb): plates 45/25/10/5/2.5 per side, on a bar whose weight depends on the lift.
-   Which exercises take a bar is an explicit table rather than a name match — "Standing OHP",
-   "Back squat" and both deadlifts are barbell lifts that contain no "barbell" in their name, and
-   a name match silently skipped every one of them. Custom names you type in aren't in the table,
-   so they keep falling back to the old regex. Deliberately absent: Seated OHP (often a machine). */
+   The exercise's equipment type decides whether it has a bar at all (D-06): barbell and EZ bar do,
+   a sled machine is plates only, and dumbbell, cable, bodyweight and every other machine have no
+   plate line. BAR_FOR and LANDMINE_RE no longer decide that; they only pick a sled out of the
+   machines and a landmine out of the barbells. So changing a type in Settings moves the plate line. */
 const BARBELL_LB = 45, PLATES_LB = [45,25,10,5,2.5];
 /* Three loading styles, because "per side" is not universal:
    - straight / ez  → a bar with two sleeves; plates split evenly, so (total − bar) / 2.
@@ -1046,9 +1128,11 @@ const BAR_FOR = {
 /* Name test for the landmine variants people type by hand ("T bar row", "Tbar row", "T-Bar Row"). */
 const LANDMINE_RE = /t-?\s?bar|meadows|landmine/i;
 function barStyle(name){
-  const s = BAR_FOR[name]; if(s) return s;
-  if(LANDMINE_RE.test(name||'')) return 'landmine';
-  if(/barbell/i.test(name||'')) return 'straight';
+  const t = equipOf(name);                                                  // a name or an entry (WR-05)
+  const n = typeof name === 'string' ? name : (name && typeof name.name === 'string' ? name.name : '');
+  if(t === 'ez') return 'ez';
+  if(t === 'barbell') return (BAR_FOR[n] === 'landmine' || LANDMINE_RE.test(n)) ? 'landmine' : 'straight';
+  if(t === 'machine') return BAR_FOR[n] === 'sled' ? 'sled' : null;
   return null;
 }
 const barWeight = name => { const s=barStyle(name); return s ? BAR_LB[s] : null; };
@@ -1074,6 +1158,13 @@ function platesText(total, bar, style){
        the mistake this is here to prevent. */
     return `🏋️ On the sleeve: ${plateGroups(b.plates)}${short(b)} <span class="muted">+ ${bar} lb bar</span>`;
   }
+  /* An EZ bar is often a fixed preset bar, so at or under the bar, or a total the plates can't make,
+     the line stays silent instead of guessing (D-07). */
+  if(style==='ez'){
+    if(!(t > bar + 1e-9)) return '';   // NaN too
+    const b=plateBreakdown(t, bar, style); if(!b || b.leftover>0.01) return '';
+    return `🏋️ Per side: ${plateGroups(b.plates)}`;
+  }
   if(bar===0){
     const b=plateBreakdown(t, 0, style); if(!b || !b.plates.length) return '';
     return `🏋️ Per side: ${plateGroups(b.plates)}${short(b)} <span class="muted">— plates only, sled not counted</span>`;
@@ -1082,11 +1173,47 @@ function platesText(total, bar, style){
   const b=plateBreakdown(t, bar, style); if(!b) return `🏋️ Under bar weight (${bar} lb)`;
   return `🏋️ Per side: ${plateGroups(b.plates)}${short(b)}`;
 }
-/* Live plate readout for a barbell exercise → the heaviest weight entered across its sets. */
-function updPlates(i){ const el=document.getElementById(`plates-${i}`); if(!el) return;
-  const name=DB.draft.entries[i].name, bar=barWeight(name); if(bar==null){ el.innerHTML=''; return; }
-  const ws=DB.draft.entries[i].sets.filter(s=>!s.skipped && s.w!=='' && +s.w>0).map(s=>+s.w);
-  el.innerHTML = ws.length ? platesText(Math.max(...ws), bar, barStyle(name)) : ''; }
+/* The heaviest weight entered on a card: sets not skipped, with a non-empty, positive weight. 0 when
+   there is none, and never NaN, so the dumbbell step reads the low end of the rack until a weight is in. */
+function cardTopWeight(sets){
+  let top = 0;
+  (Array.isArray(sets) ? sets : []).forEach(s => {
+    if(!s || s.skipped || s.w === '' || s.w == null) return;
+    const w = +s.w;
+    if(isFinite(w) && w > top) top = w;
+  });
+  return top;
+}
+/* The card's equipment tag (D-05): "dumbbell · +2.5", "barbell · +5", or "bodyweight" with no step.
+   Built only from EQUIP_LABEL and the numeric step, so a hostile stored type reads as the guess. */
+function equipTagText(name, w){
+  const t = equipOf(name), s = weightStep(name, w);
+  return s == null ? EQUIP_LABEL[t] : EQUIP_LABEL[t] + ' · +' + s;
+}
+/* The first-time equipment picker (S2, D-16): six buttons in EQUIP_TYPES order, the current type
+   (the name-rule guess until Ian answers) highlighted. One tap calls setExerciseEquip. Labels come
+   from EQUIP_LABEL and data-equip from EQUIP_TYPES, never from a stored string. */
+function equipPickerHTML(id, name){
+  const row = exRow(id);   // the row the tap writes to, never the row the name happens to spell (WR-05)
+  const cur = row && EQUIP_TYPES.indexOf(row.equip) >= 0 ? row.equip : equipGuess(name);
+  const btns = EQUIP_TYPES.map(t => `<button class="day-btn${t===cur?' active':''}" aria-pressed="${t===cur?'true':'false'}" data-action="pickExEquip" data-id="${esc(id)}" data-equip="${esc(t)}">${esc(EQUIP_LABEL[t])}</button>`).join('');
+  return `<div class="equip-ask" role="group" aria-label="Equipment for ${esc(name)}">
+          <p>What equipment is “${esc(name)}”?<br><span class="muted" style="font-size:12px">Sets its weight step. Tap one to confirm — change it any time in Settings → Exercises.</span></p>
+          <div class="equip-grid">${btns}</div>
+        </div>`;
+}
+/* Live readouts on a card as a weight is typed: first the equipment tag (D-05), which every main card
+   carries, then the plate line, which only bar lifts have. The tag goes first so the early return
+   below never skips it; it is written as textContent, never markup. */
+function updPlates(i){
+  const entry = DB.draft.entries[i];   // the entry, not its name: the type follows its exId (WR-05)
+  const tag = document.getElementById(`equip-tag-${i}`);
+  if(tag) tag.textContent = equipTagText(entry, cardTopWeight(entry.sets));
+  const el=document.getElementById(`plates-${i}`); if(!el) return;
+  const bar=barWeight(entry); if(bar==null){ el.innerHTML=''; return; }
+  const ws=entry.sets.filter(s=>!s.skipped && s.w!=='' && +s.w>0).map(s=>+s.w);
+  el.innerHTML = ws.length ? platesText(Math.max(...ws), bar, barStyle(entry)) : '';
+}
 const INCREMENT = { lb:5, kg:2.5 };
 /* Should we bump the load, and to what? The verdict judges the latest attempt on the card for this
    exercise in this slot (even one where every set was skipped or left blank, D-09): every set done
@@ -1094,8 +1221,66 @@ const INCREMENT = { lb:5, kg:2.5 };
    every set at the top of the range. Computed at render time, never stored. */
 function setWeightNum(x){ const v = (!x || x.w==='' || x.w==null) ? 0 : +x.w; return isFinite(v) && v>0 ? v : 0; }
 function workedSets(e){ return (e && Array.isArray(e.sets) ? e.sets : []).filter(x=> x && !x.skipped && x.r!=='' && x.r!=null); }
-/* The one seam Phase 9 (EQUIP-04) replaces: only the body changes, so `name` is kept though unused. */
-function weightStep(name){ return INCREMENT[DB.unit] || 5; }
+/* How far ⬆ Add weight moves (EQUIP-04), by the exercise's equipment type. null means "no number":
+   a bodyweight exercise is told to add a belt or a harder variation, never a weight, in either unit.
+   kg keeps a flat 2.5 for every other type (D-10). In lb, dumbbells follow the rack: 2.5 below 60,
+   5 from 60 up, so 57.5 → 60 → 65 → 70 (D-08, D-17); cable stacks move 2.5; barbell, EZ bar and
+   machine move 5 (D-09). The unit is compared with the literal 'kg' and never used as an index, so a
+   hostile unit cannot reach Object.prototype. */
+function weightStep(name, w){
+  const t = equipOf(name);
+  if(t === 'bodyweight') return null;
+  if(DB.unit === 'kg') return INCREMENT.kg;
+  if(t === 'dumbbell') return (+w || 0) >= 60 ? 5 : 2.5;
+  if(t === 'cable') return 2.5;
+  return 5;
+}
+/* The exercise's own ladder of loadable weights (D-11, D-15, D-17). The 1e-9 inside every floor guards
+   float drift: 0.9 × 70 is 63.00000000000001, which must still floor to 60. */
+function ladderStep(name, x){ const s = weightStep(name, x); return s == null ? 2.5 : s; }   // a belt load moves in 2.5s
+function loadFloor(name, x){
+  x = +x; if(!isFinite(x) || x <= 0) return 0;
+  if(DB.unit !== 'kg' && equipOf(name) === 'dumbbell'){
+    if(x >= 60 - 1e-9) return 60 + Math.floor((x - 60) / 5 + 1e-9) * 5;   // the rack: 60, 65, 70 …
+    return Math.floor(x / 2.5 + 1e-9) * 2.5;                                // … and 2.5s below 60
+  }
+  const s = ladderStep(name, x);
+  return Math.floor(x / s + 1e-9) * s;
+}
+/* Nearest loadable weight; a tie goes down (a warm-up rung errs light). */
+function loadNearest(name, x){
+  const lo = loadFloor(name, x), hi = lo + ladderStep(name, lo);
+  return (+x - lo) <= (hi - +x) + 1e-9 ? lo : hi;
+}
+/* The heaviest worked weight of the history a deload starts from: this slot, else anywhere. */
+function deloadBaseW(workout, slotIndex, exName){
+  const ref = lastRealEntry(workout, slotIndex, exName) || lastAnywhere(exName);
+  if(!ref) return 0;
+  return Math.max(0, ...workedSets(ref.entry).map(setWeightNum));
+}
+/* A deload is 90% floored to the ladder, so it is always strictly lighter (D-11). On a bar lift in lb,
+   at the empty bar there is nothing to take off: the weight stays and atBar says so (D-15); a 90%
+   that lands under a still-lighter bar is raised to the bar. A weight UNDER the bar is not on that
+   bar at all: it is a preset or fixed bar (D-07, Ian's preset EZ bars under 25 lb), a lighter one
+   exists, so it steps down the type's ladder like any load and is never raised to the bar (WR-02).
+   Never heavier than lastW, and never '' for a real load: when 90% floors to nothing (a 2.5 lb
+   dumbbell, a 5 lb stack), the lightest loadable weight is one step, and a load already at or under it
+   stays and atFloor says so, so the weights are never blanked under a "−10%" line (WR-03). With no
+   load at all (bodyweight) there is nothing to write, which is atFloor too. */
+function deloadPlan(name, lastW){
+  lastW = +lastW;
+  if(!(lastW > 0)) return { w:'', atBar:false, atFloor:true };
+  const bar = DB.unit === 'lb' ? barWeight(name) : null;
+  const onBar = bar > 0 && lastW >= bar - 1e-9;
+  if(onBar && lastW <= bar + 1e-9) return { w:lastW, atBar:true };
+  let x = loadFloor(name, 0.9 * lastW);
+  if(!(x > 0)){
+    const s = ladderStep(name, 0);
+    return lastW > s + 1e-9 ? { w:s, atBar:false } : { w:lastW, atBar:false, atFloor:true };
+  }
+  if(onBar && x < bar) x = bar;
+  return { w:x, atBar:false };
+}
 /* Unlike lastRealEntry, an entry with no worked set still counts here, as long as it was on the card
    (it holds sets, or blankSets says its sets were left blank). lastRealEntry keeps feeding Last time
    and the prefilled weights. */
@@ -1119,13 +1304,20 @@ function addWeightVerdict(entry, rng){
   const allTop = !blocked && worked.every(x=> setWeightNum(x)===W && +x.r >= rng.hi);
   return { allTop, lastW:W, hasLoad: W>0 };
 }
-function addWeightInfo(workout, slotIndex, name){
+/* `who` is the draft entry the card shows, when there is one: the step comes from the row its exId
+   names, the same row as the card's tag (IN-09). History is still matched by `name`, as before. */
+function addWeightInfo(workout, slotIndex, name, who){
   const prog = PROGRAM[workout], slot = prog && prog.slots ? prog.slots[slotIndex] : null;
   if(!slot) return null;
   const att = lastAttemptEntry(workout, slotIndex, name);
   if(!att) return null;
   const v = addWeightVerdict(att.entry, effRange(slot, name));
-  return { allTop:v.allTop, lastW:v.lastW, newW: v.lastW + weightStep(name), hasLoad:v.hasLoad };
+  const eq = who || name;
+  const step = weightStep(eq, v.lastW);
+  /* The next weight the exercise can load, not lastW + step: an off-ladder 62 lb dumbbell goes to 65,
+     never 67 (D-17). On the ladder this is exactly one step, as before (WR-04). */
+  const floor = loadFloor(eq, v.lastW);
+  return { allTop:v.allTop, lastW:v.lastW, newW: step == null ? null : floor + ladderStep(eq, floor), hasLoad:v.hasLoad };
 }
 /* Per-set "beat last time" badge: ✓ beat, = tied, '' under (compared at the matched weight). */
 function badgeState(st, t){
@@ -1231,10 +1423,10 @@ function isStalledSlot(name, workout, slotIndex){
 /* Deload: drop this exercise's working weight ~10% for the session and flag it,
    so lastRealEntry skips it and the baseline-to-beat stays your pre-deload best. */
 function deloadExercise(i){
-  const e=DB.draft.entries[i], ref=lastRealEntry(DB.draft.workout, i, e.name) || lastAnywhere(e.name);
-  let lastW=0; if(ref){ const real=ref.entry.sets.filter(x=>!x.skipped && x.r!==''); lastW=Math.max(0, ...real.map(x=> x.w===''?0:+x.w)); }
-  const dw = lastW>0 ? String(round5(lastW*0.9)) : '';
-  e.deload=true; e.sets.forEach(st=>{ if(!st.skipped) st.w=dw; });
+  const e=DB.draft.entries[i];
+  const p = deloadPlan(e, deloadBaseW(DB.draft.workout, i, e.name));   // the ladder floor, a step lighter, the bar clamp; the type follows the entry (WR-05)
+  /* No weight to write (no load at all) leaves the sets as they are: a deload never blanks them (WR-03). */
+  e.deload=true; if(p.w !== '') e.sets.forEach(st=>{ if(!st.skipped) st.w=String(p.w); });
   saveLocal(); render();
 }
 function undeloadExercise(i){ DB.draft.entries[i].deload=false; saveLocal(); render(); }
@@ -1261,37 +1453,71 @@ function sessionExercises(s){
 const normEx = s => String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,' ');
 const slugEx = s => normEx(s).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'ex';
 const exRows = () => DB.exercises || (DB.exercises = []);
-function exRow(id){ return exRows().find(x=>x && x.id===id) || null; }
+/* Live rows only: a row exMerge tombstoned (deletedAt) reads as no row. */
+function exRow(id){ return exRows().find(x=>x && x.id===id && !x.deletedAt) || null; }
 function exIdByName(name){
   const k = normEx(name); if(!k) return null;
   const rows = exRows();
   for(let i=0;i<rows.length;i++){ const r=rows[i]; if(r && r.aliases && r.aliases.indexOf(k)>=0) return r.id; }
   return null;
 }
+/* Follow a merged-away id to the row it was merged into (CR-01). exMerge restamps every entry it can
+   see, but two kinds escape it: a session the other device finished before it heard about the merge,
+   and this device's own draft, which adoptMerged keeps exactly as it was. Both still carry the old id,
+   and without this they read as a ghost exercise no control could rename or merge. A chain (a into b,
+   then b into c) is followed to its end. A cycle can only come from two devices merging opposite ways
+   at once or from a hand-edited backup; every member resolves to the same id, the smallest, so it can
+   never loop and never splits one history in two. A non-string mergedInto ends the walk. */
+function exResolve(id){
+  const seen = [];
+  while(typeof id === 'string' && id && seen.indexOf(id) < 0){
+    const r = exRows().find(x => x && x.id === id);
+    if(!r || !r.deletedAt || typeof r.mergedInto !== 'string' || !r.mergedInto) return id;
+    seen.push(id);
+    id = r.mergedInto;
+  }
+  const at = seen.indexOf(id);
+  return at >= 0 ? seen.slice(at).sort()[0] : id;
+}
 /* The identity of a logged entry — or of a bare name. Falls back to the normalised name so data
-   logged before the registry existed still groups exactly as it did. */
+   logged before the registry existed still groups exactly as it did. Every id goes through exResolve,
+   so a merged-away id lands on the survivor. */
 function exKey(e){
   if(!e) return '';
-  if(typeof e === 'string') return exIdByName(e) || normEx(e);
-  return e.exId || exIdByName(e.name) || normEx(e.name);
+  if(typeof e === 'string') return exResolve(exIdByName(e)) || normEx(e);
+  return exResolve(e.exId) || exResolve(exIdByName(e.name)) || normEx(e.name);
 }
 /* What to show for an identity: the registry's label, else the raw key. */
 function exLabel(key){ const r = exRow(key); return r ? r.name : (key||''); }
+/* The equipment type of a name (EQUIP-01): the registry row's stored value when it is one of
+   EQUIP_TYPES, else the guess from the name. A missing, empty or hostile stored value never changes
+   behaviour, and renaming a row never re-guesses a stored type. It also takes a logged or draft entry,
+   which resolves through its exId the way exKey does: the card reads the type of the row its picker
+   writes to, even when the entry's name spells another row's alias (WR-05). So do weightStep,
+   loadFloor, barStyle and deloadPlan, which only pass their argument on. */
+function equipOf(x){
+  const r = exRow(exKey(x));
+  return (r && EQUIP_TYPES.indexOf(r.equip) >= 0) ? r.equip : equipGuess(typeof x === 'string' ? x : (x && x.name));
+}
 /* Register a name and return its id, creating the row when it's genuinely new. */
 function exEnsure(name){
   const k = normEx(name); if(!k) return null;
   const found = exIdByName(name); if(found) return found;
   let id = slugEx(name), n = 2;
-  while(exRow(id)) id = slugEx(name) + '-' + (n++);
-  exRows().push(touch({ id, name:String(name).trim(), aliases:[k] }));
+  while(exRows().some(x=>x && x.id===id)) id = slugEx(name) + '-' + (n++);   // every row, tombstones too: a merged-away id is never reused
+  exRows().push(touch({ id, name:String(name).trim(), aliases:[k], equip: equipGuess(name), equipAt: 0 }));
   return id;
 }
 /* Fold `fromId` into `intoId`: the alias comes along, every logged row is restamped, and the merged
-   row is dropped. Rows are touched so the change survives the next sync. */
+   row becomes a tombstone (deletedAt, mergedInto, empty aliases). It is never removed: since Phase 9
+   the registry merges per row, so a removed row would come back from any device still holding it
+   live (CLAUDE.md, deletes are soft). The survivor takes the merged row's equipment type when that
+   choice is newer by the equipAt field clock. Rows are touched so the change survives the next sync. */
 function exMerge(fromId, intoId){
   if(!fromId || !intoId || fromId===intoId) return false;
   const a = exRow(fromId), b = exRow(intoId); if(!a || !b) return false;
   b.aliases = (b.aliases||[]).concat(a.aliases||[]).filter((v,i,arr)=>arr.indexOf(v)===i);
+  if(equipClock(a) > equipClock(b)){ b.equip = a.equip; b.equipAt = +a.equipAt; }
   touch(b);
   const restamp = e => { if(e && exKey(e)===fromId){ e.exId = intoId; e.name = b.name; return true; } return false; };
   (DB.sessions||[]).forEach(s=>{
@@ -1301,7 +1527,7 @@ function exMerge(fromId, intoId){
     if(hit) touch(s);
   });
   if(DB.draft){ (DB.draft.entries||[]).forEach(restamp); if(DB.draft.extras) Object.keys(DB.draft.extras).forEach(k=>restamp(DB.draft.extras[k])); }
-  DB.exercises = exRows().filter(x=>x.id!==fromId);
+  a.deletedAt = Date.now(); a.mergedInto = intoId; a.aliases = []; touch(a);
   return true;
 }
 /* How many logged sessions reference an identity — shown in the merge screen so it's obvious which
@@ -1816,13 +2042,16 @@ function startWorkout(name){
       entries: PROGRAM[name].slots.map((s,i)=>{
         const ref = lastRealEntry(name,i);
         const exName = ref? ref.entry.name : s.examples[0];
-        const aw = addWeightInfo(name, i, exName);
+        /* The prefill steps on the same identity the card will read: the entry being built (IN-09). */
+        const e = { name: exName, note:'', sets: [] };
+        const aw = addWeightInfo(name, i, exName, e);
         const real = ref? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
-        return { name: exName, note:'', sets: Array.from({length:s.sets},(_,k)=>{
+        e.sets = Array.from({length:s.sets},(_,k)=>{
           let w='';
-          if(aw) w = (aw.allTop && aw.hasLoad) ? String(aw.newW) : (real[k]? real[k].w : (real.length? real[real.length-1].w : ''));
+          if(aw) w = (aw.allTop && aw.hasLoad && aw.newW != null) ? String(aw.newW) : (real[k]? real[k].w : (real.length? real[real.length-1].w : ''));
           return { w, r:'', skipped:false, reason:'' };
-        }) };
+        });
+        return e;
       }),
       stairs: { level:'', seconds:'', skipped:false, reason:'' },
       extras: blankExtras(name), sessionNote:''
@@ -1876,9 +2105,9 @@ function viewActive(){
     let lastLine = `<span class="muted">No previous data — set your baseline.</span>`, flag='', noteHint='';
     if(ref){
       lastLine = `Last time (${fmtDate(ref.date)}): <strong>${esc(real.map(x=> fmtSet(x.w,x.r)).join(',  '))||'—'}</strong>`;
-      const aw = addWeightInfo(name, i, entry.name);
+      const aw = addWeightInfo(name, i, entry.name, entry);
       /* Bodyweight (weight 0 or blank) at the top has no next number to suggest (PROG-05, D-08). */
-      flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${esc(aw.newW)} ${esc(DB.unit)}`:' (belt) or harder variation'}</span>` : '';
+      flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${(aw.hasLoad && aw.newW != null)?` → ${esc(aw.newW)} ${esc(DB.unit)}`:' (belt) or harder variation'}</span>` : '';
       if(ref.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(ref.entry.note)}</div>`;
     } else if(alt){
       const altReal = alt.entry.sets.filter(x=>!x.skipped && x.r!=='');
@@ -1888,12 +2117,21 @@ function viewActive(){
          pre-filled: a suggestion shouldn't quietly become a logged number. */
       const best = altReal.reduce((a,x)=> e1rm(x.w,x.r) > e1rm(a.w,a.r) ? x : a, altReal[0]);
       const offRange = best && (+best.r < rng.lo || +best.r > rng.hi);
-      const sug = offRange ? translateLoad(best.w, best.r, rng.lo) : null;
-      if(sug) lastLine += ` <span class="muted">→ suggest <strong>${sug} ${DB.unit}</strong> for ${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>`;
+      const sug = offRange ? translateLoad(best.w, best.r, rng.lo, entry) : null;   // the entry's own ladder (IN-09)
+      if(sug) lastLine += ` <span class="muted">→ suggest <strong>${esc(sug)} ${esc(DB.unit)}</strong> for ${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>`;
       if(alt.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(alt.entry.note)}</div>`;
     }
     let coachHint='';
-    if(entry.deload) coachHint = `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`;
+    if(entry.deload){
+      /* The empty-bar case is derived here from history, never stored: finishWorkout copies every draft
+         entry field into the session (D-15). */
+      const dp = deloadPlan(entry, deloadBaseW(name, i, entry.name));
+      coachHint = dp.atBar
+        ? `<div class="coach deload">↓ Already at the empty bar — cut a set or reps instead. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`
+        : dp.atFloor
+        ? `<div class="coach deload">↓ Already at the lightest weight — cut a set or reps instead. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`
+        : `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`;
+    }
     else if(isStalledSlot(entry.name, name, i)) coachHint = `<div class="coach stall">⚠ Stalled — no extra rep or weight for 3 sessions in a row on ${esc(name)}. <button class="coach-btn" data-action="deloadExercise" data-i="${esc(i)}">Deload −10%</button> or swap the exercise above.</div>`;
     const opts = s.examples.map(e=>`<option ${e===entry.name?'selected':''}>${esc(e)}</option>`).join('') +
                  (s.examples.includes(entry.name)?'':`<option selected>${esc(entry.name)}</option>`) +
@@ -1921,13 +2159,16 @@ function viewActive(){
           </div>
         </div>
         <select data-action="pickEx" data-i="${esc(i)}">${opts}</select>
+        ${equipAsk.has(exKey(entry))
+          ? equipPickerHTML(exKey(entry), entry.name)
+          : `<div class="ex-meta" id="equip-tag-${i}" style="margin-top:4px">${esc(equipTagText(entry, cardTopWeight(entry.sets)))}</div>`}
         <div class="lasttime">${lastLine}</div>
         ${noteHint}
         ${coachHint}
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
         ${setRows}
         <button class="addset" data-action="addSet" data-i="${esc(i)}">+ Add set</button>
-        ${isBarbell(entry.name)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'', barWeight(entry.name), barStyle(entry.name))}</div>`:''}
+        ${isBarbell(entry)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'', barWeight(entry), barStyle(entry))}</div>`:''}
         ${i===0?`<div class="warm">
           <button class="warm-toggle" data-action="toggleWarm" data-i="${esc(i)}">${ph('fire')}Warm-up ramp</button>
           <div class="warm-table hidden" id="warm-${i}"></div>
@@ -2003,7 +2244,16 @@ function resolveTypedName(raw){
   if(near && confirm(`Did you mean “${near.name}”?\n\nOK — use ${near.name} (keeps one history)\nCancel — keep “${name}” as a separate exercise`)){
     return { name: near.name, exId: near.id };
   }
-  return { name, exId: exEnsure(name) };
+  return { name, exId: exEnsureAsk(name) };
+}
+/* exEnsure, plus the D-16 question: a registry row created just now for a name the default table
+   cannot place is queued for the first-time equipment picker. A name that already had a row, or one
+   the table knows, never asks. Reads and writes only the registry and equipAsk, never the workout. */
+function exEnsureAsk(name){
+  const known = !!exIdByName(name);
+  const id = exEnsure(name);
+  if(id && !known && !equipKnown(name)) equipAsk.add(id);
+  return id;
 }
 function pickEx(i, sel){
   const e = DB.draft.entries[i];
@@ -2012,7 +2262,7 @@ function pickEx(i, sel){
     if(picked){ e.name = picked.name; e.exId = picked.exId; }
     save(); render(); return;
   }
-  e.name = sel.value; e.exId = exEnsure(sel.value); save(); render();
+  e.name = sel.value; e.exId = exEnsureAsk(sel.value); save(); render();
 }
 function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; if(f==='r' && v!=='') restCtx=restTargetForSlot(i); saveLocal(); /* live save, no re-render to keep focus */ }
 function setNote(i,v){ DB.draft.entries[i].note=v; saveLocal(); }
@@ -2081,30 +2331,46 @@ function confettiBurst(){
 }
 function skipStairs(){ const reason=prompt('Why skipping the stair stepper? (optional)',''); if(reason===null)return; DB.draft.stairs.skipped=true; DB.draft.stairs.reason=reason.trim(); saveLocal(); render(); }
 function unskipStairs(){ DB.draft.stairs.skipped=false; DB.draft.stairs.reason=''; saveLocal(); render(); }
-function toggleWarm(i){
-  const box = document.getElementById('warm-'+i); box.classList.toggle('hidden');
-  if(box.classList.contains('hidden')) return;
-  const entry = DB.draft.entries[i], sets = entry.sets;
+/* The warm-up ramp for one draft entry (D-12). Pure: toggleWarm owns the show/hide and writes this in. */
+function warmRampHTML(entry){
+  const sets = entry.sets;
   const w = Math.max(...sets.map(s=> +s.w || 0), 0);
-  if(!w){ box.innerHTML = `<div><span>Enter a working weight first</span></div>`; return; }
+  if(!w) return `<div><span>Enter a working weight first</span></div>`;
   /* Loading the bar is exactly when you want the plate breakdown, so each rung carries its own.
-     Non-barbell lifts (and kg) fall through to the plain percentages. */
-  const bar = barWeight(entry.name);
-  const style = barStyle(entry.name);
+     Non-barbell lifts (and kg) fall through to the plain percentages. A working weight under the bar
+     in lb is a preset or fixed bar (D-07), not the loaded bar, so it ramps like a lift with no bar:
+     no "Empty bar" rung heavier than the working weight, and no plate lines (WR-02). */
+  const bar0 = barWeight(entry);   // the entry, so the type follows its exId (WR-05)
+  const bar = (DB.unit === 'lb' && bar0 > 0 && w < bar0 - 1e-9) ? null : bar0;
+  const style = barStyle(entry);
   const plates = t => { const s = bar==null ? '' : platesText(t, bar, style); return s ? `<div class="warm-plates">${s}</div>` : ''; };
   const rung = (label, target, reps) => `<div><span>${label}${plates(target)}</span><span>${reps}</span></div>`;
-  const w50 = round5(w*0.5), w75 = round5(w*0.75);
-  /* There is no bar on a dumbbell or kettlebell lift — a goblet squat's first rung is your own
-     bodyweight, and the loads round to the nearest 5 lb (bells jump further; take the nearest). */
+  /* Rungs round to the nearest weight on this exercise's ladder, ties down. On a bar lift in lb a rung
+     never drops under the bar, and no rung is ever above the working weight. */
+  const lbBar = DB.unit === 'lb' && bar > 0;
+  const clamp = r => Math.min(w, (lbBar && w >= bar && r < bar) ? bar : r);
+  const w50 = clamp(loadNearest(entry, w*0.5)), w75 = clamp(loadNearest(entry, w*0.75));
+  /* No bar means the first rung is your own bodyweight, and the loads land on the type's own steps. */
   const first = bar > 0 ? `<div><span>Empty bar — ${bar} ${DB.unit}</span><span>a few reps</span></div>`
               : bar === 0 ? `<div><span>Empty sled — no plates</span><span>a few reps</span></div>`
               : `<div><span>Bodyweight — no load</span><span>5–10 reps</span></div>`;
-  box.innerHTML = `
+  const t = equipOf(entry);
+  const noteText = DB.unit === 'kg' ? 'Rounded to the nearest 2.5 kg.'
+                 : t === 'dumbbell' ? 'Rounded to the nearest dumbbell — 2.5 lb steps up to 60, 5 lb above.'
+                 : t === 'cable' ? 'Rounded to the nearest 2.5 lb.'
+                 : t === 'bodyweight' ? 'Rounded to the nearest 2.5 lb.'
+                 : 'Rounded to the nearest 5 lb.';
+  return `
     ${first}
     ${rung(`~50% — ${w50} ${DB.unit}`, w50, '3–4 reps')}
     ${rung(`~75% — ${w75} ${DB.unit}`, w75, '2–3 reps')}
     ${rung(`<strong>Working — ${w} ${DB.unit}</strong>`, w, 'per plan')}
-    ${bar==null ? '<div class="muted" style="font-size:11px;padding-top:4px">Rounded to 5 lb — with kettlebells, take the nearest bell.</div>' : ''}`;
+    ${bar==null ? `<div class="muted" style="font-size:11px;padding-top:4px">${noteText}</div>` : ''}`;
+}
+function toggleWarm(i){
+  const box = document.getElementById('warm-'+i); box.classList.toggle('hidden');
+  if(box.classList.contains('hidden')) return;
+  box.innerHTML = warmRampHTML(DB.draft.entries[i]);
 }
 function finishWorkout(){
   const d = DB.draft;
@@ -2165,6 +2431,10 @@ function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be
 /* ───────────────────────── HISTORY ───────────────────────── */
 let openHist = -1, showBackdate = false, reviewWeekOffset = 0;
 let collapsedEx = new Set(); // slot indices collapsed to a summary in the active workout (ephemeral UI)
+/* Registry ids still waiting for the first-time equipment picker (D-16). In-memory UI state only:
+   never stored, synced, exported or written to the workout, so the picker lasts until it is tapped,
+   the slot switches exercise, or the app reloads. Ignoring it keeps the guess (equipAt 0). */
+let equipAsk = new Set();
 function toggleExCollapse(i){ if(collapsedEx.has(i)) collapsedEx.delete(i); else collapsedEx.add(i); render(); }
 function weekShift(d){ reviewWeekOffset = Math.min(0, reviewWeekOffset + d); render(); }
 /* Backfill a hobby/productivity item onto a past day from Week in Review (in case you forgot to log it). */
@@ -2693,21 +2963,31 @@ function exListRows(){
 }
 function exercisesCardHTML(){
   const rows = exListRows();
-  if(!rows.length) return `<div class="card"><p class="muted">Log a workout and your exercises show up here to rename or merge.</p></div>`;
+  if(!rows.length) return `<div class="card"><p class="muted">Log a workout and your exercises show up here to rename, merge or set their equipment.</p></div>`;
   const opts = rows.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');
   return `<div class="card">
-    <p class="muted" style="margin-bottom:10px">Two spellings of the same lift split its history in two. Rename one, or merge them — your logged sets are never changed, only the label they sit under.</p>
+    <p class="muted" style="margin-bottom:10px">Two spellings of the same lift split its history in two. Rename one, or merge them — your logged sets are never changed, only the label they sit under. The equipment under each name sets its weight step and plate math.</p>
     <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:12px">
       <select id="ex-merge-from" style="flex:1;min-width:130px">${opts}</select>
       <span class="muted" style="align-self:center;font-size:12px">into</span>
       <select id="ex-merge-into" style="flex:1;min-width:130px">${opts}</select>
       <button class="btn btn-sm" data-action="doExMerge">Merge</button>
     </div>
-    ${rows.map(r=>`<div class="hist-item">
-      <span style="min-width:0"><strong style="font-size:13px">${esc(r.name)}</strong>
-        <span class="muted" style="font-size:11px">· ${r.n} session${r.n===1?'':'s'}</span></span>
+    ${rows.map(r=>{
+      /* S1: the type sits under the name. A listed key with no registry row gets a plain line, since
+         there is no row to store a choice on. Labels come from EQUIP_LABEL, never the stored string. */
+      const row = exRow(r.id);   // read the type from the row the select writes to, never by the label (WR-05)
+      const cur = row && EQUIP_TYPES.indexOf(row.equip) >= 0 ? row.equip : equipGuess(r.name);
+      const equipUI = exRow(r.id)
+        ? `<select data-action="setExEquip" data-id="${esc(r.id)}" aria-label="Equipment for ${esc(r.name)}" style="display:block;width:auto;min-width:140px;margin-top:8px">${EQUIP_TYPES.map(t=>`<option value="${esc(t)}"${t===cur?' selected':''}>${esc(EQUIP_LABEL[t])}</option>`).join('')}</select>`
+        : `<div class="muted" style="font-size:12px;margin-top:8px">${esc(EQUIP_LABEL[cur])}</div>`;
+      return `<div class="hist-item" style="align-items:flex-start">
+      <span style="min-width:0;flex:1"><strong style="font-size:13px">${esc(r.name)}</strong>
+        <span class="muted" style="font-size:11px">· ${r.n} session${r.n===1?'':'s'}</span>
+        ${equipUI}</span>
       <button class="btn btn-sm btn-ghost" data-action="renameExercise" data-id="${esc(r.id)}">${ph('pencil-simple')}Rename</button>
-    </div>`).join('')}
+    </div>`;
+    }).join('')}
   </div>`;
 }
 function renameExercise(id){
@@ -2720,6 +3000,21 @@ function renameExercise(id){
   r.name = name;
   const k = normEx(name); if(r.aliases.indexOf(k)<0) r.aliases.push(k);   // keep the old spelling resolving
   touch(r); save(); toast('Renamed ✓'); render();
+}
+/* Set an exercise's equipment type from Settings → Exercises (EQUIP-01, EQUIP-03). This writes synced
+   registry data, so it calls save(), and it reads and writes only the registry row: the in-progress
+   workout is never touched (CLAUDE.md, the draft rule). equipAt is the field clock the registry merge
+   compares, so this choice outlives a later rename of the same row on the other device. A type
+   outside EQUIP_TYPES, or an unknown or merged-away id, is refused with no write and no push. */
+function setExerciseEquip(id, type){
+  const r = exRow(id);
+  if(!r) return;
+  if(typeof type !== 'string' || EQUIP_TYPES.indexOf(type) < 0) return;
+  r.equip = type;
+  r.equipAt = Date.now();
+  touch(r);
+  equipAsk.delete(id);   // the first-time picker for this row is answered (D-16)
+  save(); toast('Equipment set ✓'); render();
 }
 function doExMerge(){
   const from = (document.getElementById('ex-merge-from')||{}).value;
@@ -2863,7 +3158,7 @@ function exPick(which, sel){
     if(picked){ e.name = picked.name; e.exId = picked.exId; }
     save(); render(); return;
   }
-  e.name = sel.value; e.exId = exEnsure(sel.value); save();
+  e.name = sel.value; e.exId = exEnsureAsk(sel.value); save();
 }
 function exSet(which,k,f,v){ DB.draft.extras[which].sets[k][f]=v; saveLocal(); }
 function exRoll(which,k,v){ const sets=DB.draft.extras[which].sets; sets[k].w=v; if(v!==''){ for(let j=k+1;j<sets.length;j++){ if(sets[j].w===''){ sets[j].w=v; const el=document.getElementById(`ex-${which}-w-${j}`); if(el) el.value=v; } } } saveLocal(); }
@@ -2920,6 +3215,7 @@ function extraCard(id){
     <button class="phase-header" data-action="toggleAcc" data-key="${esc(id)}"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${ph(def.icon)}${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
     ${open?`<div class="phase-body">
       <select data-action="exPick" data-id="${esc(id)}" style="margin-bottom:8px">${opts}</select>
+      ${(!isSec && equipAsk.has(exKey(e))) ? equipPickerHTML(exKey(e), e.name) : ''}
       <div class="set-grid" style="grid-template-columns:${cols};margin-bottom:4px"><span></span>${isSec?'':'<span class="colhead">Weight</span>'}<span class="colhead">${isSec?'Sec':'Reps'}</span><span></span></div>
       ${rows}
       <button class="addset" data-action="exAddSet" data-id="${esc(id)}">+ Add set</button>
@@ -4281,6 +4577,143 @@ function mergeCollections(r, l, localNewer, out){
     }
   }
 }
+/* The exercise registry (DB.exercises) merges per row (EQUIP-03, Phase 9). It used to ride along
+   whole from the side with the newer updatedAt, so an equipment choice, a new exercise or a merge
+   made on one device was lost on the other device's next save. Rows are keyed by id, the newest
+   mtime wins and a tie goes to the newer side (mergeUnion). There is no sort: the newer side's
+   order is kept, then the older side's new rows, which is what keeps legacy parity and the merge
+   golden unchanged. It reads only r.exercises and l.exercises, and never mutates an input row.
+
+   The identity rule: a row's other fields come from the copy with the newest mtime, and its `equip`
+   comes from the copy with the newest equipAt (the field clock, equipClock below). So a migration
+   default (equipAt 0) never beats Ian's choice, and a later rename on the other device never erases
+   it. Two copies tied on equipAt give the type that sorts first, whichever row won (IN-02); a
+   replaced row is a new object, never the input.
+
+   A merged-away row stays merged (WR-01). Nothing in the app revives a registry tombstone on purpose:
+   exEnsure never reuses a tombstoned id, and there is no restore for exercises. So once any copy of
+   a row is a tombstone, the newest tombstone copy wins, even against a live copy with a later mtime,
+   which is a rename or a type change made on a device that had not heard about the merge yet. Two
+   devices merging one pair opposite ways at once would then leave two tombstones pointing at each
+   other and no live row at all; the later merge decides that cycle, and its target comes back live.
+   Last, two live rows never share a spelling. A pre-Phase-9 merge spliced the row out instead of
+   tombstoning it, so a device still holding the row, or a backup older than the merge, brings it back
+   alongside the survivor that also owns its alias. A row's claims are the union of every copy's
+   aliases and `lost` (a tombstoned id's go to its survivor, WR-07); each claimed spelling stays on the
+   live row with the newer mtime (the id breaks a tie), the rest go to `lost`, and a row left with no
+   spelling reads as merged into the row that took it, marked autoMerged. That tombstone is recomputed
+   on every merge, never sticky, so the result is a function of the set of copies alone: the same in
+   either order, in any grouping of three or more, and stable when replayed (WR-08). */
+function mergeExercises(r, l, localNewer){
+  /* A tombstone the one-owner pass made (autoMerged) is read back as the live row it was, with its
+     spellings in `lost`, so it is recomputed on every merge and never gains the stickiness of a
+     tombstone exMerge made (WR-08). Ordinary rows pass through as the same objects. */
+  const asLive = x => { if(!x.autoMerged) return x; const y = Object.assign({}, x); delete y.autoMerged; delete y.deletedAt; delete y.mergedInto; return y; };
+  const ins = d => (Array.isArray(d.exercises) ? d.exercises : []).filter(x => x && typeof x === 'object').map(asLive);
+  const ra = ins(r), la = ins(l);
+  /* Newer side first, replaced only on a strictly newer mtime: the same tie rule as mergeUnion. */
+  const copies = localNewer ? la.concat(ra) : ra.concat(la);
+  const mt = x => +x.mtime || 0;
+  const newest = (id, test) => { let b = null; copies.forEach(x => { if(x.id === id && test(x) && (!b || mt(x) > mt(b))) b = x; }); return b; };
+  /* The tombstone that wins is chosen from its own fields alone (mtime, then deletedAt, then mergedInto),
+     never by which side it came from, so three copies give one answer in any order. */
+  const tombOver = (a, b) => mt(a) !== mt(b) ? mt(a) > mt(b)
+    : (+a.deletedAt || 0) !== (+b.deletedAt || 0) ? (+a.deletedAt || 0) > (+b.deletedAt || 0) : String(a.mergedInto) > String(b.mergedInto);
+  const newestTomb = id => { let b = null; copies.forEach(x => { if(x.id === id && x.deletedAt && (!b || tombOver(x, b))) b = x; }); return b; };
+  const rows = mergeUnion(ra, la, x => x.id, localNewer).map(row => newestTomb(row.id) || row);
+  /* A cycle of tombstones: the merge with the latest deletedAt (then the larger id) decides, and its
+     target is revived from its newest live copy, or from the tombstone itself when no live copy is left. */
+  const at = new Map(rows.map((x, i) => [x.id, i]));
+  rows.forEach(t => {
+    const path = [];
+    let cur = t;
+    while(cur && cur.deletedAt && typeof cur.mergedInto === 'string' && path.indexOf(cur.id) < 0){
+      path.push(cur.id);
+      cur = at.has(cur.mergedInto) ? rows[at.get(cur.mergedInto)] : null;
+    }
+    if(!cur || !cur.deletedAt || path.indexOf(cur.id) < 0) return;
+    const ring = path.slice(path.indexOf(cur.id)).map(id => rows[at.get(id)]);
+    const last = ring.reduce((a, x) => ((+x.deletedAt || 0) > (+a.deletedAt || 0) || ((+x.deletedAt || 0) === (+a.deletedAt || 0) && String(x.id) > String(a.id))) ? x : a);
+    const j = at.get(last.mergedInto);
+    let back = newest(last.mergedInto, x => !x.deletedAt);
+    if(!back){
+      back = Object.assign({}, rows[j]); delete back.deletedAt; delete back.mergedInto;
+      if(!Array.isArray(back.aliases) || !back.aliases.length) back.aliases = [normEx(back.name)];
+    }
+    rows[j] = back;
+  });
+  /* The type: the copy with the highest equipAt, and on a tie the type that sorts first. The tie-break
+     reads only the choice itself, never the row it rode in on, so three copies give one answer in any
+     grouping (IN-02). */
+  const typeOver = (a, b) => equipClock(a) !== equipClock(b) ? equipClock(a) > equipClock(b) : equipClock(a) >= 0 && String(a.equip) < String(b.equip);
+  const best = new Map();
+  ra.concat(la).forEach(x => {
+    const prev = best.get(x.id);
+    if(prev === undefined || typeOver(x, prev)) best.set(x.id, x);
+  });
+  const typed = rows.map(row => {
+    const b = best.get(row.id);
+    if(!b || equipClock(b) < 0 || (b.equip === row.equip && +b.equipAt === +row.equipAt)) return row;
+    return Object.assign({}, row, { equip: b.equip, equipAt: +b.equipAt });
+  });
+  /* Claims (WR-07). A row merges whole by mtime, so the newest copy of a survivor edited on a device
+     that had not heard of a merge lacks the spellings the merge gave it, and the merged-away row's own
+     tombstone has none. So every copy's aliases count, live or tombstone, and a tombstoned id's
+     spellings go to the live row its mergedInto chain ends at. Nothing in the app removes an alias from
+     a live row; only the one-owner pass below decides who keeps a contested one. */
+  const byId = new Map(typed.map(x => [x.id, x]));
+  const survivor = id => {
+    const seen = [];
+    let x = byId.get(id);
+    while(x && x.deletedAt && typeof x.mergedInto === 'string' && seen.indexOf(x.id) < 0){ seen.push(x.id); x = byId.get(x.mergedInto); }
+    return x && !x.deletedAt ? x.id : null;
+  };
+  /* A row's claims are its spellings plus the ones it lost in an earlier merge (`lost`), so a later
+     edit that makes it the newest wins them back in whatever order the copies meet (WR-08). */
+  const claims = new Map();
+  copies.forEach(c => {
+    if(!byId.has(c.id)) return;
+    const ks = (Array.isArray(c.aliases) ? c.aliases : []).concat(Array.isArray(c.lost) ? c.lost : []);
+    if(!ks.length) return;
+    const to = byId.get(c.id).deletedAt ? survivor(c.id) : c.id;
+    if(to == null) return;
+    const a = claims.get(to) || []; claims.set(to, a);
+    ks.forEach(k => { if(a.indexOf(k) < 0) a.push(k); });
+  });
+  /* One live owner per alias. */
+  const over = (a, b) => mt(a) > mt(b) || (mt(a) === mt(b) && String(a.id) > String(b.id));
+  const owner = new Map();
+  typed.forEach(x => { if(x.deletedAt) return;
+    (claims.get(x.id) || []).forEach(k => { const o = owner.get(k); if(!o || over(x, o)) owner.set(k, x); }); });
+  return typed.map(x => {
+    const mine = claims.get(x.id) || [];
+    if(x.deletedAt || !mine.length) return x;
+    const own = mine.filter(k => owner.get(k) === x);
+    /* The row's own order first, then any spelling it gained, sorted, so the result never depends on
+       which copy was seen first. */
+    const base = Array.isArray(x.aliases) ? x.aliases : [];
+    const keep = base.filter(k => own.indexOf(k) >= 0).concat(own.filter(k => base.indexOf(k) < 0).sort());
+    const lost = mine.filter(k => own.indexOf(k) < 0).sort();
+    const was = Array.isArray(x.lost) ? x.lost : null;
+    const same = (p, q) => p.length === q.length && p.every((k, i) => k === q[i]);
+    if(keep.length){
+      if(same(keep, base) && (lost.length ? !!was && same(lost, was) : !('lost' in x))) return x;
+      const y = Object.assign({}, x, { aliases: keep });
+      if(lost.length) y.lost = lost; else delete y.lost;
+      return y;
+    }
+    /* Every spelling is owned by another row: it reads as merged into the newest of them, marked
+       autoMerged so the next merge recomputes it from the claims kept in `lost`. */
+    const into = mine.map(k => owner.get(k)).reduce((a, b) => over(b, a) ? b : a);
+    return Object.assign({}, x, { aliases: [], lost, deletedAt: mt(into) || 1, mergedInto: into.id, autoMerged: true });
+  });
+}
+/* A registry row's equipment field clock: its equipAt, but only when its equip is one of
+   EQUIP_TYPES and equipAt is a finite number. Anything else (a missing, unknown or hostile type,
+   or a clock like 'abc') scores -1, so it can never win the field against a real choice. */
+function equipClock(x){
+  return (x && typeof x === 'object' && EQUIP_TYPES.indexOf(x.equip) >= 0 && isFinite(+x.equipAt)) ? +x.equipAt : -1;
+}
 /* localWins: on a straight tie (same updatedAt) prefer `local`. Used after a round trip so
    keystrokes typed while the transaction was in flight aren't discarded. */
 function mergeDB(remote, local, localWins){
@@ -4304,6 +4737,8 @@ function mergeDB(remote, local, localWins){
   const newer = localNewer ? l : r, older = localNewer ? r : l;
   const out = Object.assign({}, blank(), older, newer); // start from newer's scalars, guarantee all blank() keys
   mergeCollections(r, l, localNewer, out);
+  /* EQUIP-03: the exercise registry merges per row, never whole from the newer side. */
+  out.exercises = mergeExercises(r, l, localNewer);
   /* draft: device-local (D-04), removed from every merge result below. The 2026-07-25 loop — a stale
      draft resurrected on every merge and re-pushed by the live listener — cannot recur, because no
      draft crosses the wire at all; adoptMerged() puts this device's own draft back. The frozen
@@ -4868,6 +5303,7 @@ const ACTIONS = {
   wipe:           { click: () => wipe() },
   doExMerge:      { click: () => doExMerge() },
   renameExercise: { click: el => renameExercise(el.dataset.id) },
+  setExEquip:     { change: el => setExerciseEquip(el.dataset.id, el.value) },
   /* Recently deleted, Version history and Cloud Sync. Restores take a NUMBER index or the exact
      id; the functions they call own the confirm and the snapshot taken first. */
   toggleTrash:         { click: () => toggleTrash() },
@@ -4997,7 +5433,8 @@ const ACTIONS = {
   setReps:   { input: el => { const i = +el.dataset.i, k = +el.dataset.k; setVal(i, k, 'r', el.value); updTargetBadge(i, k); },
                change: el => repCheck(+el.dataset.i, +el.dataset.k) },
   pickEx:           { change: el => pickEx(+el.dataset.i, el) },
-  setNote:          { input: el => setNote(+el.dataset.i, el.value) },
+  pickExEquip:      { click: el => setExerciseEquip(el.dataset.id, el.dataset.equip) },
+  setNote:         { input: el => setNote(+el.dataset.i, el.value) },
   unskipStairs:     { click: () => unskipStairs() },
   skipStairs:       { click: () => skipStairs() },
   stairVal:         { input: el => stairVal(el.dataset.field, el.value) },

@@ -35,7 +35,7 @@ bending any v1.0 data rule.
 onto Phases 8-13, and every threshold below is his decision, not a default. Requirements with IDs are
 in `.planning/REQUIREMENTS.md`.
 
-- [ ] **Phase 8: Progression Correctness** - Add weight only when every planned set hit the top of the range; progress and stall are measured session to session by `exKey`, bodyweight included.
+- [x] **Phase 8: Progression Correctness** - Add weight only when every planned set hit the top of the range; progress and stall are measured session to session by `exKey`, bodyweight included. (completed 2026-10-10)
 - [ ] **Phase 9: Equipment and Weight Steps** - Each exercise gets a synced equipment type, its own 2.5 or 5 lb step, step-aware deloads and warm-ups, and plate math for its own bar.
 - [ ] **Phase 10: Log Page — History and Skip** - The last 5 sessions open inline from "Last time", and a whole exercise can be skipped with an optional reason and undone.
 - [ ] **Phase 11: Lawn, Journal and Weather Loop** - Cool-day watering hold, rain history in its own synced collection, 💧 in the outlook, journal marks, and a weather fetch that backs off offline.
@@ -71,12 +71,12 @@ in `.planning/REQUIREMENTS.md`.
 - The bugs being fixed, from the brief: `addWeightInfo` drops skipped and blank sets before checking the top of the range, so two top sets plus a skip still says "add weight"; `isStalledSlot` compares the best single-set e1RM with the all-time max before the last 3 sessions, so extra reps on later sets never count.
 - Until Phase 9 adds an explicit equipment type, "bodyweight" means what the app already treats as bodyweight (sets logged at weight 0, shown as BW). Phase 9 keeps the two definitions consistent.
 - Deloaded entries stay out of both checks, as they do today. INT-04 (Phase 13) relies on this.
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 08-01-PLAN.md — Add weight judges every set on the card: a skipped or blank set blocks it (a `blankSets` marker is stamped at finish), every set must be at the working weight, the latest attempt is judged, and bodyweight suggests a belt or harder variation (PROG-01, PROG-05)
 - [x] 08-02-PLAN.md — Stall is 3 flat sessions in a row, each against the one before, per workout and slot by `exKey`; deloads, skipped days and skipped sets pause, a lighter session restarts, bodyweight counts; the in-app guide matches (PROG-02..05)
-- [ ] 08-03-PLAN.md — Ship: pre-flight, Ian pushes and merges with a merge commit, live bytes checked, then the real workout on Ian's phone (end-of-phase UAT)
+- [x] 08-03-PLAN.md — Ship: pre-flight, Ian pushes and merges with a merge commit, live bytes checked, then the real workout on Ian's phone (end-of-phase UAT)
 
 ### Phase 9: Equipment and Weight Steps
 **Goal**: Every exercise knows its equipment, so suggestions, deloads, warm-ups and plate math move in steps Ian can actually load (2.5 lb for dumbbells, 5 lb for everything else), and a deload always makes the weight lighter.
@@ -86,7 +86,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Settings → Exercises shows each exercise's one equipment type (barbell, EZ bar, dumbbell, machine, cable or bodyweight). Ian can change it there, and the change shows on his other device after sync (EQUIP-01, EQUIP-03).
   2. After the update, every existing exercise already has an equipment type defaulted from its name, and syncing with an older device that never ran the migration, twice in a row, leaves every exercise's equipment type in place (EQUIP-02).
-  3. Add-weight suggestions move by the exercise's own step: +2.5 lb for a dumbbell exercise, +5 lb for barbell, EZ bar, machine and cable. No dumbbell suggestion jumps a flat 5 lb (EQUIP-04).
+  3. Add-weight suggestions move by the exercise's own step: +2.5 lb for a dumbbell exercise up to 60 lb (+5 above 60), +2.5 lb for cable, +5 lb for barbell, EZ bar and machine. No dumbbell suggestion at 60 lb or under jumps a flat 5 lb (EQUIP-04, amended 2026-10-10).
   4. Deloads and warm-ups round to the exercise's own step, so a 15 lb dumbbell deload at 90% suggests 12.5 lb instead of rounding back to 15 (EQUIP-05).
   5. Plate math follows the equipment type, and the preacher curl, as an EZ bar exercise, shows plate math against a 25 lb bar (EQUIP-06).
 **Notes** (this migration rewrites existing rows, so every `CLAUDE.md` migration rule applies):
@@ -97,7 +97,14 @@ Plans:
 - The `SCHEMA` bump stales `test/fixtures/merge-golden.json`: regenerate it with `WRITE_MERGE_GOLDEN=1 node test/app.test.js`, and grep `test/app.test.js` for the old schema number as a bare literal (`docs/adding-a-collection.md`).
 - The equipment picker is a `data-action` control with its value through `esc()`. Changing it edits synced data, so it goes through `save()`, not `saveLocal()`.
 - The brief states steps in lb. What a kg user sees (today `INCREMENT.kg` is 2.5) is a question for discuss-phase, not something this roadmap decides.
-**Plans**: TBD
+**Plans:** 4/5 plans complete
+
+Plans:
+- [x] 09-01-PLAN.md — Every exercise gets a type: the default table above MIGRATIONS, SCHEMA 19 with migration 19 (mtime + 1, persisted at boot), equip on new rows, equipOf, and ⬆ Add weight moving by the type's step (EQUIP-01, EQUIP-02, EQUIP-04)
+- [x] 09-02-PLAN.md — Equipment syncs: the Settings → Exercises select, setExerciseEquip, a per-row registry merge with an equipAt clock, the two-device replays, and exMerge tombstones (EQUIP-01, EQUIP-02, EQUIP-03)
+- [x] 09-03-PLAN.md — Loadable weights: deloads round down and are always lighter (empty-bar exception), warm-ups round to the ladder with honest notes, the suggest line floors and escapes, and plate math follows the type, with Preacher curl on the 25 lb EZ bar (EQUIP-05, EQUIP-06)
+- [x] 09-04-PLAN.md — The first-time equipment picker for unplaceable new names, the "dumbbell · +2.5" card tag, and the Settings copy, states and hostile-name sweep (EQUIP-01, EQUIP-03, EQUIP-04)
+- [ ] 09-05-PLAN.md — Ship after the code review: pre-flight, Ian pushes and merges with a merge commit (the schema-19 door, with an honest rollback), live bytes checked, then the real workout and the cross-device type change (end-of-phase UAT)
 **UI hint**: yes
 
 ### Phase 10: Log Page — History and Skip
@@ -187,8 +194,8 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 5. F2 — Event Delegation | v1.0 | 6/6 | Complete | 2026-10-01 |
 | 6. F4 — .gitattributes | v1.0 | 2/2 | Complete | 2026-10-02 |
 | 7. Content Security Policy | v1.0 | 7/7 | Complete | 2026-10-09 |
-| 8. Progression Correctness | v1.1 | 2/3 | In Progress | - |
-| 9. Equipment and Weight Steps | v1.1 | 0/TBD | Not started | - |
+| 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
+| 9. Equipment and Weight Steps | v1.1 | 4/5 | In Progress | - |
 | 10. Log Page — History and Skip | v1.1 | 0/TBD | Not started | - |
 | 11. Lawn, Journal and Weather Loop | v1.1 | 0/TBD | Not started | - |
 | 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |

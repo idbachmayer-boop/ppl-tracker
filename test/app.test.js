@@ -162,7 +162,8 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections', 'ensureCollectionDefaults',
   'sleepUid', 'addSleep', 'removeSleep', 'viewSleep',
   'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown', 'exportShareFailed',
-  'ACTIONS', 'dispatchAction'];
+  'ACTIONS', 'dispatchAction',
+  'EQUIP_TYPES','EQUIP_LABEL','EQUIP_DEFAULTS','equipAsk'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -1332,7 +1333,7 @@ ok('sleep: blank() has an empty sleep list', Array.isArray(app.blank().sleep) &&
   const mtimesAfter = JSON.stringify(LEGACY_LISTS.reduce((acc, name) => acc.concat((after[name] || []).map(r => r.mtime)), []).sort());
   const legacyUnchanged = LEGACY_COLLECTIONS.every(name => legacyBefore[name] === legacyAfter[name]);
   ok('sleep: migration 18 rewrites no existing row (REG-16 guards not triggered)',
-     legacyUnchanged && mtimesBefore === mtimesAfter && Array.isArray(after.sleep) && after.sleep.length === 0 && after._schema === 18,
+     legacyUnchanged && mtimesBefore === mtimesAfter && Array.isArray(after.sleep) && after.sleep.length === 0 && after._schema === app.SCHEMA,
      { legacyUnchanged, mtimesBefore, mtimesAfter, sleepLen: after.sleep.length, schema: after._schema });
 }
 
@@ -1357,8 +1358,8 @@ ok('sleep: blank() has an empty sleep list', Array.isArray(app.blank().sleep) &&
 
   const s17 = Object.assign(app.blank(), { _schema:17, updatedAt:100 }); delete s17.sleep;
   const s18 = Object.assign(app.blank(), { _schema:18, updatedAt:200 });
-  const mergeStamped = app.mergeDB(clone(s17), clone(s18), false)._schema === 18
-    && app.mergeDB(clone(s18), clone(s17), false)._schema === 18;
+  const mergeStamped = app.mergeDB(clone(s17), clone(s18), false)._schema === app.SCHEMA
+    && app.mergeDB(clone(s18), clone(s17), false)._schema === app.SCHEMA;
 
   ok('sleep: _schema never goes down', normKept && mergeStamped, { normKept, mergeStamped });
 }
@@ -3033,9 +3034,9 @@ asyncBlock('DRAFT restore a cloud version', async () => {
     const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
     a.importReplace(oldDocWithDraftOnlyLift(a));
     out.replace = hasDraftOnlyLift(a.DB.exercises);
-    /* Merge: the backup must be NEWER. `exercises` is not a COLLECTIONS entry, so mergeDB() takes it
-       whole from the newer side; an older backup's registry would be thrown away and the check would
-       pass for the wrong reason. */
+    /* Merge: the backup is NEWER. Since Phase 9 the registry merges per row (mergeExercises), so an
+       older backup's rows would be unioned in too; a newer backup keeps this a check that the draft-only
+       lift never reaches the registry from either side, not that one side's array was thrown away. */
     const b = loadApp(APP_PATH); spyPushes(b);
     const e = populatedDB(b); e.draft = fullDraft(b, 'PUSH 1'); e.updatedAt = 1000; b.DB = e;
     const backup = oldDocWithDraftOnlyLift(b); backup.updatedAt = Date.now() + 60000;
@@ -3861,8 +3862,8 @@ asyncBlock('DRAFT a brand-new exercise picked mid-workout', async () => {
     const hasZercher = rows => (rows || []).some(r => r && r.name === 'Zercher carry');
     a.__sandbox.pickEx(0, { value: 'Zercher carry' });
     const local = { row: hasZercher(a.DB.exercises), pushes: spy.n, updatedAt: a.DB.updatedAt };
-    /* The cloud is OLDER than the frozen clock: `exercises` is not a COLLECTIONS entry, so mergeDB()
-       takes the whole registry from the newer side. */
+    /* The cloud is OLDER than the frozen clock. Since Phase 9 the registry merges per row
+       (mergeExercises), so the new row reaches the written blob by the union, whichever side is newer. */
     const remote = populatedDB(a); remote.updatedAt = 1000;
     const cloud = fakeCloud(a, remote, { signedIn: true });
     await a.pushNow(true);
@@ -7754,12 +7755,13 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
      ['addWeightVerdict', 'lastAttemptEntry', 'weightStep', 'workedSets', 'setWeightNum', 'addWeightInfo'].every(n => typeof S[n] === 'function'),
      ['addWeightVerdict', 'lastAttemptEntry', 'weightStep', 'workedSets', 'setWeightNum', 'addWeightInfo'].filter(n => typeof S[n] !== 'function'));
 
-  // Positive control: every set done, at 25 and at the top of 15-20, earns the bump to 30.
+  /* Positive control: every set done, at 25 and at the top of 15-20, earns the bump to 27.5. DB lateral
+     raise is a dumbbell, so since Phase 9 it moves by the rack's 2.5 below 60, not a flat 5 (EQUIP-04). */
   latRun([ latSess(dayOff(-7), [[25, 20], [25, 20], [25, 20]]) ]);
   {
     const card = latCard(LAT), flag = flagOf(card);
-    ok('PROG-01: every set at the top earns ⬆ Add weight with the next weight, and the prefill bumps',
-       LAT >= 0 && flag !== null && flag.includes('30') && draftW().length === 3 && draftW().every(w => w === '30'),
+    ok('PROG-01: every set at the top earns ⬆ Add weight with the next weight, and the prefill bumps (EQUIP-04: 25 → 27.5)',
+       LAT >= 0 && flag !== null && flag.includes('27.5') && draftW().length === 3 && draftW().every(w => w === '27.5'),
        { LAT, flag, w: draftW() });
   }
 
@@ -7815,8 +7817,8 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
   {
     finishLat([[25, 20], [25, 20], [25, 20], [25, 20]], () => S.addSet(LAT));
     const flag = flagOf(latCard(LAT));
-    ok('D-01: a set added with + Add set counts: four sets at the top earn ⬆ Add weight → 30',
-       flag !== null && flag.includes('30'), flag);
+    ok('D-01: a set added with + Add set counts: four sets at the top earn ⬆ Add weight → 27.5 (EQUIP-04)',
+       flag !== null && flag.includes('27.5'), flag);
     finishLat([[25, 20], [25, 20], [25, 20], [25, 19]], () => S.addSet(LAT));
     const card = latCard(LAT);
     ok('D-01: an added set below the top blocks ⬆ Add weight',
@@ -7825,8 +7827,8 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
   {
     const row = finishLat([[25, 20], [25, 20]], () => S.rmSet(LAT, 2)), e = row && row.entries[LAT];
     const flag = flagOf(latCard(LAT));
-    ok('D-01: a set removed with rmSet is not missing: two sets at the top earn ⬆ Add weight → 30, with no blankSets',
-       !!e && !('blankSets' in e) && e.sets.length === 2 && flag !== null && flag.includes('30'),
+    ok('D-01: a set removed with rmSet is not missing: two sets at the top earn ⬆ Add weight → 27.5 (EQUIP-04), with no blankSets',
+       !!e && !('blankSets' in e) && e.sets.length === 2 && flag !== null && flag.includes('27.5'),
        { e, flag });
   }
   {
@@ -7866,8 +7868,8 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
   {
     latRun([ latSess(dayOff(-14), TOP3), latSess(dayOff(-7), []) ]);
     const flag = flagOf(latCard(LAT));
-    ok('D-07/D-09: a legacy later entry with sets [] and no blankSets was never on the card, so the all-top attempt still earns ⬆ Add weight',
-       flag !== null && flag.includes('30'), flag);
+    ok('D-07/D-09: a legacy later entry with sets [] and no blankSets was never on the card, so the all-top attempt still earns ⬆ Add weight (→ 27.5, EQUIP-04)',
+       flag !== null && flag.includes('27.5'), flag);
   }
 
   // D-01 / T-8-04: sessions merge as whole rows by mtime, so a stale copy cannot drop the marker.
@@ -7911,7 +7913,7 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
        !card.includes('class="flag"') && !!aw && aw.allTop === false, { flag: flagOf(card), aw });
     latRun([ latSess(dayOff(-7), [[30, 20], [30, 20], [30, 20]]) ]);
     const flag = flagOf(latCard(LAT));
-    ok('D-02: 30/30/30 lb all at the top gives ⬆ Add weight → 35', flag !== null && flag.includes('35'), flag);
+    ok('D-02: 30/30/30 lb all at the top gives ⬆ Add weight → 32.5 (EQUIP-04)', flag !== null && flag.includes('32.5'), flag);
   }
 
   // PROG-05 / D-08: bodyweight (weight 0 or blank) at the top gets a belt or a harder variation, no number.
@@ -8179,9 +8181,10 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
 
   /* WR-03: a row the draft creates or restores takes a weight from its neighbours. A blank weight reads
      as bodyweight, so under D-02 a row Ian fills with reps only would quietly block ⬆ Add weight.
-     History is all-top at 25, so the draft prefills 30 and Ian types reps only. */
+     History is all-top at 25, so the draft prefills 27.5 (a dumbbell's 2.5 step, EQUIP-04) and Ian types
+     reps only. */
   {
-    // 30 lb beats the 25 lb history, so these finishes are PRs; the stub keeps the canvas out of it.
+    // 27.5 lb beats the 25 lb history, so these finishes are PRs; the stub keeps the canvas out of it.
     const realConfetti = S.confettiBurst; S.confettiBurst = () => {};
     const repsOnly = n => { for(let k = 0; k < n; k++) P.setVal(LAT, k, 'r', '20'); };
     latRun([ latSess(dayOff(-7), TOP3) ]);
@@ -8191,8 +8194,8 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
     repsOnly(4);
     P.finishWorkout();
     const flag = flagOf(latCard(LAT));
-    ok('WR-03: + Add set takes the weight above it (30), so four sets with only reps typed earn ⬆ Add weight → 35',
-       added === '30' && flag !== null && flag.includes('35'), { added, flag });
+    ok('WR-03: + Add set takes the weight above it (27.5), so four sets with only reps typed earn ⬆ Add weight → 30 (EQUIP-04)',
+       added === '27.5' && flag !== null && flag.includes('30'), { added, flag });
 
     latRun([ latSess(dayOff(-7), TOP3) ]);
     latCard(LAT);
@@ -8202,8 +8205,8 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
     repsOnly(3);
     P.finishWorkout();
     const flag2 = flagOf(latCard(LAT));
-    ok('WR-03: undoing a skip gives the set its weight back (30), so three sets with only reps typed earn ⬆ Add weight → 35',
-       restored === '30' && flag2 !== null && flag2.includes('35'), { restored, flag: flag2 });
+    ok('WR-03: undoing a skip gives the set its weight back (27.5), so three sets with only reps typed earn ⬆ Add weight → 30 (EQUIP-04)',
+       restored === '27.5' && flag2 !== null && flag2.includes('30'), { restored, flag: flag2 });
 
     const row = finishLat([[25, 20], [25, 20], null]);
     const id = row && row.id;
@@ -8217,13 +8220,1462 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
       e = same.length === 1 ? same[0].entries[LAT] : null;
     }catch(err){ threw = String(err && err.stack || err); }
     const flag3 = flagOf(latCard(LAT));
-    ok('WR-03: editSession restores a blank row at the last worked weight (25), so filling its reps stores 25×20 three times and earns ⬆ Add weight → 30',
+    ok('WR-03: editSession restores a blank row at the last worked weight (25), so filling its reps stores 25×20 three times and earns ⬆ Add weight → 27.5 (EQUIP-04)',
        !threw && blankW === '25' && !!e && !('blankSets' in e) && e.sets.length === 3 && e.sets.every(x => x.w === '25' && x.r === '20') &&
-       flag3 !== null && flag3.includes('30'),
+       flag3 !== null && flag3.includes('27.5'),
        { threw, blankW, sets: e && e.sets, flag: flag3 });
     S.confettiBurst = realConfetti;
   }
   P.DB.draft = null;
+}
+
+/* ── EQUIP: equipment and weight steps (Phase 9) ──
+   Every exercise-registry row carries one synced equipment type, and ⬆ Add weight moves by that type's
+   step. Shared builders, reused by the later Phase 9 plans:
+     eqNorm(s) / eqSlug(s)      the app's normEx / slugEx, retyped here so a fixture names its row id
+                                without reaching into the app.
+     eqRow(name, mtime, extra)  one registry row as a schema-18 device stored it (no equip).
+     eqSeed18(rows, extra)      a stored blob at _schema 18 holding those rows: the device that updates.
+     eqSess(id, workout, date, slotIdx, name, sets, o)
+                                one session with an entry for every slot of that workout; the target
+                                slot gets the [w, r] pairs, every other slot its first example with
+                                sets []. Options: exId, deload, skippedDay.
+     eqCard(a, workout, i)      rebuilds the draft from history and returns the i-th exercise card.
+     eqRun(a, sessions, extra)  replaces a.DB with those sessions seeded at _schema 16, so migration 17
+                                stamps real ids and migration 19 stamps types: the path real history
+                                took. A fixture that needs a specific stored equip or mtime sets it on
+                                a.DB.exercises AFTER this call, because the migrations rewrite both. */
+function eqNorm(s){ return String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' '); }
+function eqSlug(s){ return eqNorm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'ex'; }
+function eqRow(name, mtime, extra){ return Object.assign({ id: eqSlug(name), name, aliases: [eqNorm(name)], mtime }, extra); }
+function eqSeed18(rows, extra){
+  return Object.assign(app.blank(), { _schema: 18, draft: null, unit: 'lb', sessions: [], exercises: rows }, extra);
+}
+function eqSess(id, workout, date, slotIdx, name, sets, o){
+  o = o || {};
+  return { id, workout, date, endedAt: 1, extras: {}, skipped: !!o.skippedDay,
+    entries: app.PROGRAM[workout].slots.map((s, i) => i !== slotIdx ? { name: s.examples[0], sets: [] }
+      : Object.assign({ name, sets: sets.map(([w, r]) => ({ w: String(w), r: String(r), skipped: false, reason: '' })) },
+          o.exId ? { exId: o.exId } : {}, o.deload ? { deload: true } : {})) };
+}
+function eqCard(a, workout, i){
+  a.DB.draft = null;
+  a.__sandbox.startWorkout(workout);
+  return a.viewActive().split('<div class="ex-card">')[i + 1] || '';
+}
+function eqRun(a, sessions, extra){
+  a.DB = a.normalize(Object.assign(a.blank(), { _schema: 16, sessions, draft: null, unit: 'lb' }, extra));
+}
+function eqFlag(card){ const m = /<span class="flag">([\s\S]*?)<\/span>/.exec(card); return m ? m[1] : null; }
+console.log('\n── EQUIP: equipment and weight steps (EQUIP-01..06) ──');
+{
+  /* The tracer, end to end on a device that updates: a schema-18 blob boots, migration 19 types every
+     registry row, the boot save stores it, and the card's ⬆ Add weight moves by the type's step. */
+  const W = 'PUSH 1';
+  const LAT = app.PROGRAM[W].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+  const BENCH = app.PROGRAM[W].slots.findIndex(s => s.examples.includes('Barbell bench press'));
+  const benchTop = app.PROGRAM[W].slots[BENCH].hi;
+  const seed = eqSeed18([ eqRow('DB lateral raise', 1000), eqRow('Barbell bench press', 1000), eqRow('Lunges', 1000) ], {
+    sessions: [
+      eqSess('eq-lat', W, dayOff(-7), LAT, 'DB lateral raise', [[25, 20], [25, 20], [25, 20]], { exId: 'db-lateral-raise' }),
+      eqSess('eq-bench', W, dayOff(-6), BENCH, 'Barbell bench press', [[155, benchTop], [155, benchTop], [155, benchTop]], { exId: 'barbell-bench-press' }),
+    ] });
+  const EQ = loadApp(APP_PATH, seed); spyPushes(EQ);
+  const stored = EQ.__stored() || {};
+  const rows = Array.isArray(stored.exercises) ? stored.exercises : [];
+  const types = EQ.EQUIP_TYPES || [];
+  const lat = rows.find(r => r && r.id === 'db-lateral-raise');
+  ok('EQUIP-02/D-14: a schema-18 device boots into schema 19, and every STORED registry row carries a valid equip, mtime old + 1 and equipAt 0',
+     stored._schema === 19 && rows.length === 3 && rows.every(r => types.indexOf(r.equip) >= 0 && r.mtime === 1001 && r.equipAt === 0) &&
+     !!lat && lat.equip === 'dumbbell',
+     { schema: stored._schema, rows });
+
+  const latCard = eqCard(EQ, W, LAT), latFlag = eqFlag(latCard);
+  const latW = EQ.DB.draft.entries[LAT].sets.map(x => x.w);
+  ok('EQUIP-04: DB lateral raise at 25×20 three times earns ⬆ Add weight → 27.5, and the next draft prefills 27.5',
+     latFlag !== null && latFlag.includes('27.5') && latW.length === 3 && latW.every(w => w === '27.5'),
+     { flag: latFlag, w: latW });
+
+  const benchFlag = eqFlag(eqCard(EQ, W, BENCH));
+  ok('EQUIP-04: Barbell bench press at 155 at the top still moves +5 → 160 (the barbell control)',
+     benchFlag !== null && benchFlag.includes('160'), benchFlag);
+  EQ.DB.draft = null;
+}
+
+/* Every exercise name in Ian's 2026-10-10 export, with the type a locked decision gives it (D-01, D-02,
+   D-03, D-06). Listed literally: the export itself never enters the repo. */
+const EQ_EXPORT_NAMES = [
+  ['Barbell bench press','barbell'], ['Romanian deadlift','barbell'], ['Barbell row','barbell'], ['Standing OHP','barbell'],
+  ['Barbell incline press','barbell'], ['Barbell curl','barbell'], ['Meadows row','barbell'],
+  ['Chest Supported T-Bar Row','barbell'], ['T-bar Row','barbell'],
+  ['Rear delt fly','dumbbell'], ['Overhead triceps extension','dumbbell'], ['DB incline press','dumbbell'],
+  ['DB lateral raise','dumbbell'], ['Deficit sumo squat','dumbbell'], ['DB fly','dumbbell'], ['DB shoulder press','dumbbell'],
+  ['Bulgarian split squat','dumbbell'], ['Hammer curl','dumbbell'], ['Wrist curls','dumbbell'],
+  ['Triceps pushdown','cable'], ['Lat pulldown','cable'], ['Straight-arm pulldown','cable'], ['Seated cable row','cable'],
+  ['EZ-bar curl','ez'], ['Preacher curl','ez'],
+  ['Calf raise machine','machine'], ['Leg press','machine'], ['Reverse pec deck','machine'], ['Seated Fly','machine'],
+  ['Seated Flys','machine'], ['Machine crunch','machine'],
+  ['Nordic hamstring curl','bodyweight'], ['Lunges','bodyweight'], ['Dead hang','bodyweight'], ['Hanging leg raise','bodyweight'],
+  ['Chin-up','bodyweight'], ['Pull-up','bodyweight'], ['Diamond push-ups','bodyweight'],
+];
+{
+  /* The default table and migration 19 on every edge (EQUIP-01, EQUIP-02). */
+  const E = loadApp(APP_PATH); spyPushes(E);
+  const S = E.__sandbox, types = E.EQUIP_TYPES || [];
+  const guess = n => S.equipGuess(n), known = n => S.equipKnown(n);
+
+  const pickable = [];
+  Object.keys(E.PROGRAM).forEach(w => (E.PROGRAM[w].slots || []).forEach(s => (s.examples || []).forEach(n => pickable.push(n))));
+  Object.keys(E.ACCESSORIES).forEach(id => (E.ACCESSORIES[id].examples || []).forEach(n => pickable.push(n)));
+  const unknown = pickable.filter(n => !known(n) || types.indexOf(guess(n)) < 0);
+  ok('EQUIP-01: every PROGRAM and ACCESSORIES example has its own row in the default table and a valid type',
+     pickable.length > 40 && unknown.length === 0, { count: pickable.length, unknown });
+
+  const wrong = EQ_EXPORT_NAMES.filter(([n, t]) => guess(n) !== t).map(([n, t]) => ({ n, want: t, got: guess(n) }));
+  ok('D-01/D-02/D-03/D-06: all 38 names in Ian\'s 2026-10-10 export map to their locked type (Preacher curl EZ bar, Rear delt fly dumbbell, Chest Supported T-Bar Row barbell, Seated Flys machine, Lunges bodyweight)',
+     EQ_EXPORT_NAMES.length === 38 && wrong.length === 0, wrong);
+
+  ok('EQUIP-01: the default lookup normalises names the way exKey does (trim, lower-case, collapse whitespace)',
+     ['Preacher Curl ', '  PREACHER   curl', 'preacher curl'].every(n => guess(n) === 'ez') && known('  PREACHER   curl'),
+     ['Preacher Curl ', '  PREACHER   curl', 'preacher curl'].map(guess));
+  ok('EQUIP-01: \'T bar row\' and \'Tbar row\' fall to the T-bar rule and read as barbell',
+     guess('T bar row') === 'barbell' && guess('Tbar row') === 'barbell', [guess('T bar row'), guess('Tbar row')]);
+
+  const order = [['DB spider curl', 'dumbbell'], ['Cable preacher curl', 'cable'], ['Machine preacher curl', 'machine'],
+                 ['Landmine press', 'barbell'], ['Archer push-ups', 'bodyweight'], ['Zercher carry', 'machine']];
+  const misordered = order.filter(([n, t]) => guess(n) !== t).map(([n, t]) => ({ n, want: t, got: guess(n) }));
+  ok('EQUIP-01: the name rules run in their fixed order, first match wins (cable and machine beat preacher\'s EZ), and an unknown name falls back to machine',
+     misordered.length === 0, misordered);
+
+  const hostile = ['', '   ', null, 'constructor', '__proto__', 'toString'];
+  ok('T-9-04: an empty, whitespace or prototype name (constructor, __proto__, toString) reads as machine and is not a known name',
+     hostile.every(n => guess(n) === 'machine' && known(n) === false),
+     hostile.map(n => ({ n, guess: typeof guess(n) === 'string' ? guess(n) : typeof guess(n), known: known(n) })));
+
+  // equipOf: a stored value counts only when it is one of EQUIP_TYPES.
+  const withPreacher = equip => {
+    E.DB = E.normalize(E.blank());
+    const row = { id: 'preacher-curl', name: 'Preacher curl', aliases: ['preacher curl'], mtime: 1 };
+    if(equip !== undefined) row.equip = equip;
+    E.DB.exercises = [row];
+    return S.equipOf('Preacher curl');
+  };
+  const junk = [undefined, '', 'laser', '"><img src=x>', {}];
+  const read = junk.map(withPreacher);
+  ok('T-9-03/EQUIP-01: a missing, empty, unknown, markup or object stored equip reads as the name\'s guess (Preacher curl → ez)',
+     read.every(t => t === 'ez'), read.map(t => typeof t === 'string' ? t : typeof t));
+  ok('EQUIP-01: a valid stored equip wins over the guess', withPreacher('cable') === 'cable', withPreacher('cable'));
+
+  // Two spellings that normalise to one exKey share one row and one type.
+  E.DB = E.normalize(E.blank());
+  const sfId = E.exEnsure('Seated Fly');
+  ok('EQUIP-01: two spellings of one name share one row and one type',
+     E.exKey('  seated   FLY ') === E.exKey('Seated Fly') && E.exKey('Seated Fly') === sfId &&
+     S.equipOf('  seated   FLY ') === 'machine' && S.equipOf('Seated Fly') === 'machine' && E.DB.exercises.length === 1,
+     { a: E.exKey('  seated   FLY '), b: E.exKey('Seated Fly'), rows: E.DB.exercises });
+  eqRun(E, [ eqSess('sf1', 'PUSH 1', dayOff(-9), 2, 'Seated Fly', [[100, 12]]),
+             eqSess('sf2', 'PUSH 1', dayOff(-8), 2, 'Seated Flys', [[100, 12]]) ]);
+  const sfRows = E.DB.exercises.filter(r => r && (r.aliases || []).some(k => k === 'seated fly' || k === 'seated flys'));
+  ok('EQUIP-01: \'Seated Fly\' and \'Seated Flys\' logged at schema 16 migrate to one registry row with one type, machine',
+     sfRows.length === 1 && E.exKey('Seated Flys') === E.exKey('Seated Fly') &&
+     S.equipOf('Seated Flys') === 'machine' && S.equipOf('Seated Fly') === 'machine' && sfRows[0].equip === 'machine',
+     sfRows);
+
+  E.DB = E.normalize(E.blank());
+  const zId = E.exEnsure('Zercher carry'), zRow = E.exRow(zId);
+  ok('EQUIP-01: a row exEnsure creates carries the guess and equipAt 0 (Zercher carry → machine)',
+     !!zRow && zRow.equip === 'machine' && zRow.equipAt === 0, zRow);
+
+  // Migration 19 settles: replaying it on migrated rows rewrites nothing.
+  const seed = eqSeed18([ eqRow('DB lateral raise', 1000), eqRow('Preacher curl', 2000), eqRow('Lunges', 'abc') ]);
+  const once = app.normalize(clone(seed));
+  const twice = app.normalize(clone(once));
+  const replayed = app.normalize(Object.assign(clone(once), { _schema: 18 }));
+  ok('EQUIP-02/T-9-05: migration 19 is idempotent — a second normalize, and migration 19 replayed on its own output, change no row\'s mtime, equip or equipAt',
+     canon(once.exercises) === canon(twice.exercises) && canon(once.exercises) === canon(replayed.exercises),
+     { once: once.exercises, replayed: replayed.exercises });
+  const abc = once.exercises.find(r => r.id === 'lunges');
+  ok('D-14: a row whose mtime is not a number gets mtime 1, never now', !!abc && abc.mtime === 1 && abc.equip === 'bodyweight', abc);
+
+  const empty = app.normalize(eqSeed18([]));
+  ok('EQUIP-02: an empty registry stays empty and still reaches schema 19',
+     Array.isArray(empty.exercises) && empty.exercises.length === 0 && empty._schema === 19, { ex: empty.exercises, schema: empty._schema });
+  const typedRows = [ eqRow('Preacher curl', 7, { equip: 'cable', equipAt: 5 }), eqRow('DB fly', 7, { equip: 'dumbbell', equipAt: 5 }) ];
+  const typed = app.normalize(eqSeed18(clone(typedRows)));
+  ok('EQUIP-02/T-9-05: rows that already hold a valid equip come back byte-identical',
+     JSON.stringify(typed.exercises) === JSON.stringify(typedRows), typed.exercises);
+  const tomb = eqRow('Pec deck', 40, { deletedAt: 50 });
+  const tombed = app.normalize(eqSeed18([clone(tomb)]));
+  ok('EQUIP-02: a tombstoned row is left exactly as it was',
+     JSON.stringify(tombed.exercises) === JSON.stringify([tomb]), tombed.exercises);
+
+  const tooNew = app.normalize(eqSeed18([ eqRow('DB fly', 3) ], { _schema: app.SCHEMA + 1 }));
+  ok('EQUIP-02: _schema never goes down — a blob from a newer build keeps its number', tooNew._schema === app.SCHEMA + 1, tooNew._schema);
+
+  // D-03: migration 19 rewrites registry rows only, so the June Rear delt fly sessions stay where they are.
+  const RD = app.PROGRAM['PULL 1'].slots.findIndex(s => s.examples.includes('Rear delt fly'));
+  const rdSessions = [
+    Object.assign(eqSess('rd1', 'PULL 1', '2026-06-08', RD, 'Rear delt fly', [[40, 15], [40, 15]], { exId: 'rear-delt-fly' }), { mtime: 500 }),
+    Object.assign(eqSess('rd2', 'PULL 1', '2026-06-15', RD, 'Rear delt fly', [[55, 15], [55, 15]], { exId: 'rear-delt-fly' }), { mtime: 500 }),
+  ];
+  const rdOut = app.normalize(eqSeed18([ eqRow('Rear delt fly', 300) ], { sessions: clone(rdSessions) }));
+  ok('D-03: migration 19 touches no session — both Rear delt fly sessions are unchanged and still say Rear delt fly',
+     canon(rdOut.sessions) === canon(rdSessions) && rdOut.sessions.every(s => s.entries[RD].name === 'Rear delt fly'),
+     rdOut.sessions.map(s => ({ id: s.id, mtime: s.mtime, name: s.entries[RD].name })));
+}
+{
+  /* Steps follow Ian's rack and stacks (EQUIP-04, amended by D-08, D-10, D-17). */
+  const F = loadApp(APP_PATH); spyPushes(F);
+  const S = F.__sandbox, step = (n, w) => S.weightStep(n, w);
+  F.DB = F.normalize(F.blank());
+  const lbTable = {
+    bench: step('Barbell bench press', 100), ez: step('EZ-bar curl', 60), press: step('Leg press', 300),
+    cable: step('Triceps pushdown', 25),
+    db575: step('DB incline press', 57.5), db60: step('DB incline press', 60), db65: step('DB incline press', 65),
+    db0: step('DB incline press', 0), dbU: step('DB incline press', undefined),
+    chin: step('Chin-up', 25), lunges: step('Lunges', 0),
+  };
+  ok('EQUIP-04/D-08: with no registry rows the guess decides — barbell, EZ and machine +5, cable +2.5, a dumbbell +2.5 below 60 and +5 from 60, bodyweight no number',
+     F.DB.exercises.length === 0 &&
+     lbTable.bench === 5 && lbTable.ez === 5 && lbTable.press === 5 && lbTable.cable === 2.5 &&
+     lbTable.db575 === 2.5 && lbTable.db60 === 5 && lbTable.db65 === 5 && lbTable.db0 === 2.5 && lbTable.dbU === 2.5 &&
+     lbTable.chin === null && lbTable.lunges === null,
+     lbTable);
+  ok('D-17 (A3 reading): a suggestion landing at or under 60 never comes from +5 (57.5 → 60), and a dumbbell AT 60 moves to 65',
+     57.5 + step('DB incline press', 57.5) === 60 && 60 + step('DB incline press', 60) === 65 && 65 + step('DB incline press', 65) === 70,
+     [57.5 + step('DB incline press', 57.5), 60 + step('DB incline press', 60), 65 + step('DB incline press', 65)]);
+
+  const PUSH = 'PUSH 1', PULL = 'PULL 1';
+  const INC = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('DB incline press'));
+  const TRI = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('Triceps pushdown'));
+  const BENCH = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('Barbell bench press'));
+  const CHIN = app.PROGRAM[PULL].slots.findIndex(s => s.examples.includes('Chin-up'));
+  const top = (w, slot, n) => { const hi = app.PROGRAM[w].slots[slot].hi; return [[n, hi], [n, hi], [n, hi]]; };
+  const cardAt = (w, slot, name, load, extra) => {
+    eqRun(F, [ eqSess('st-' + slot + '-' + load, w, dayOff(-7), slot, name, top(w, slot, load)) ], extra);
+    const card = eqCard(F, w, slot);
+    return { card, flag: eqFlag(card), draft: F.DB.draft.entries[slot].sets.map(x => x.w), name: F.DB.draft.entries[slot].name };
+  };
+  const ladder = [[57.5, '60'], [60, '65'], [65, '70']].map(([w, want]) => {
+    const c = cardAt(PUSH, INC, 'DB incline press', w);
+    return { w, want, name: c.name, flag: c.flag, draft: c.draft,
+             good: c.flag !== null && c.flag.includes('→ ' + want + ' lb') && c.draft.length > 0 && c.draft.every(x => x === want) };
+  });
+  ok('D-08/D-17: on the card, DB incline press all at the top shows → 60 from 57.5, → 65 from 60 and → 70 from 65, and the prefill matches',
+     ladder.every(x => x.good), ladder.map(({ w, name, flag, draft }) => ({ w, name, flag, draft })));
+  {
+    const c = cardAt(PUSH, TRI, 'Triceps pushdown', 25);
+    ok('EQUIP-04: a cable stack moves 2.5 — Triceps pushdown all at the top at 25 shows → 27.5, and the prefill matches',
+       c.flag !== null && c.flag.includes('→ 27.5 lb') && c.draft.every(x => x === '27.5'), { flag: c.flag, draft: c.draft });
+  }
+  {
+    const c = cardAt(PULL, CHIN, 'Chin-up', 25);
+    ok('Phase 8 D-08/EQUIP-04: a bodyweight lift logged with a load at the top shows (belt) or harder variation with no number, keeps the prefill at 25, and never prints NaN',
+       c.flag !== null && c.flag.includes('(belt) or harder variation') && !/\d/.test(c.flag) &&
+       c.draft.every(x => x === '25') && !c.card.includes('NaN'),
+       { name: c.name, flag: c.flag, draft: c.draft, nan: c.card.includes('NaN') });
+  }
+
+  // D-10: kg keeps a flat 2.5 for every non-bodyweight type.
+  F.DB = F.normalize(F.blank()); F.DB.unit = 'kg';
+  const kgTable = { bench: step('Barbell bench press', 100), db65: step('DB incline press', 65),
+                    cable: step('Triceps pushdown', 25), chin: step('Chin-up', 25) };
+  ok('D-10: in kg every non-bodyweight type moves a flat 2.5, and bodyweight still gets no number',
+     kgTable.bench === 2.5 && kgTable.db65 === 2.5 && kgTable.cable === 2.5 && kgTable.chin === null, kgTable);
+  {
+    const c = cardAt(PUSH, BENCH, 'Barbell bench press', 100, { unit: 'kg' });
+    ok('D-10: a Barbell bench press all at the top at 100 kg shows → 102.5 kg',
+       c.flag !== null && c.flag.includes('→ 102.5 kg') && c.draft.every(x => x === '102.5'), { flag: c.flag, draft: c.draft });
+  }
+
+  // A stored choice beats the guess (set on the row after the migrations ran).
+  eqRun(F, [ eqSess('st-own', PUSH, dayOff(-7), BENCH, 'Barbell bench press', top(PUSH, BENCH, 100)) ]);
+  const benchRow = F.exRow('barbell-bench-press');
+  if(benchRow){ benchRow.equip = 'dumbbell'; benchRow.equipAt = 1; }
+  ok('EQUIP-04: a stored type beats the guess — Barbell bench press stored as a dumbbell moves 5 at 100 and 2.5 at 50',
+     !!benchRow && step('Barbell bench press', 100) === 5 && step('Barbell bench press', 50) === 2.5,
+     { row: benchRow, at100: step('Barbell bench press', 100), at50: step('Barbell bench press', 50) });
+
+  // T-9-04: a hostile unit never indexes INCREMENT, so the step stays a number.
+  eqRun(F, [ eqSess('st-hostile', PUSH, dayOff(-7), BENCH, 'Barbell bench press', top(PUSH, BENCH, 100)) ]);
+  F.DB.unit = '__proto__';
+  const hostileStep = step('Barbell bench press', 100);
+  const hostileCard = eqCard(F, PUSH, BENCH);
+  ok('T-9-04: a unit of __proto__ still gives a numeric step, and the card shows no [object',
+     typeof hostileStep === 'number' && !hostileCard.includes('[object'), { hostileStep: typeof hostileStep, flag: eqFlag(hostileCard) });
+  F.DB.unit = 'lb';
+  F.DB.draft = null;
+}
+
+/* ── EQUIP sync: the registry merges per row (Phase 9, plan 09-02) ──
+   DB.exercises used to ride along whole from the side with the newer updatedAt, so an equipment
+   choice made on one device was lost on the other device's next save. These checks replay that. */
+/* The setExEquip select for `id` in rendered Settings HTML: its options and the selected one. */
+function eqSelectOf(html, id){
+  const re = /<select\b[^>]*data-action="setExEquip"[^>]*>([\s\S]*?)<\/select>/g;
+  let m;
+  while((m = re.exec(String(html || '')))){
+    const idm = /data-id="([^"]*)"/.exec(m[0]);
+    if(!idm || idm[1] !== id) continue;
+    const opts = [];
+    const ore = /<option value="([^"]*)"([^>]*)>([\s\S]*?)<\/option>/g;
+    let o;
+    while((o = ore.exec(m[1]))) opts.push({ value: o[1], selected: /\bselected\b/.test(o[2]), label: o[3] });
+    return { tag: m[0].slice(0, m[0].indexOf('>') + 1), opts, selected: (opts.find(x => x.selected) || {}).value || null };
+  }
+  return null;
+}
+const EQ_PULL2 = 'PULL 2';
+const EQ_PC = app.PROGRAM[EQ_PULL2].slots.findIndex(s => s.examples.includes('Preacher curl'));
+asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud past a newer device', async () => {
+  const seed = eqSeed18([eqRow('Preacher curl', 1000)], {
+    sessions: [eqSess('pc1', EQ_PULL2, dayOff(-5), EQ_PC, 'Preacher curl', [[35, 12], [35, 12], [35, 12]], { exId: 'preacher-curl' })] });
+  const a = loadApp(APP_PATH, seed);
+  const spy = spyPushes(a);
+  try{
+    /* Device B, the cloud: the same history, a newer updatedAt, and one weigh-in A never saw. */
+    const remote = a.normalize(clone(seed));
+    remote.updatedAt = Date.now() + 60000;
+    remote.weights = (remote.weights || []).concat([{ date: dayOff(-1), value: 190, mtime: 5 }]);
+    const html = a.__sandbox.exercisesCardHTML();
+    const sel = eqSelectOf(html, 'preacher-curl');
+    const ctl = controlsIn(html).find(c => c.data.action === 'setExEquip' && c.data.id === 'preacher-curl');
+    ok('EQUIP-03 tracer: Settings → Exercises shows one equipment select for Preacher curl, six options in EQUIP_TYPES order, EZ bar selected',
+       !!sel && !!ctl && ctl.tag === 'select' && sel.opts.length === 6 &&
+         sel.opts.map(o => o.value).join() === (a.EQUIP_TYPES || []).join() && sel.selected === 'ez',
+       sel);
+    fireAction(a, 'change', fakeEl({ action: 'setExEquip', id: 'preacher-curl' }, { value: 'dumbbell' }));
+    const row = (a.DB.exercises || []).find(r => r && r.id === 'preacher-curl') || {};
+    ok('EQUIP-03 tracer: the change stores dumbbell on the registry row with a positive equipAt, and pushes once',
+       row.equip === 'dumbbell' && typeof row.equipAt === 'number' && row.equipAt > 0 && spy.n === 1,
+       { equip: row.equip, equipAt: row.equipAt, pushes: spy.n });
+    const cloud = fakeCloud(a, remote, { signedIn: true });
+    await a.pushNow(true);
+    const last = cloud.writes.length ? JSON.parse(cloud.writes[cloud.writes.length - 1].blob) : null;
+    const wRow = last && (last.exercises || []).find(r => r && r.id === 'preacher-curl');
+    ok('EQUIP-03 tracer: the blob written to the cloud past the newer device says dumbbell for Preacher curl',
+       !!wRow && wRow.equip === 'dumbbell', { writes: cloud.writes.length, row: wRow, status: a.SYNC.status });
+    ok('EQUIP-03 tracer: the same push keeps the other device\'s weigh-in (union, never overwrite)',
+       !!last && (last.weights || []).some(w => w && w.date === dayOff(-1) && +w.value === 190),
+       last && last.weights);
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+{
+  /* Two devices, every order, replayed twice (EQUIP-02, D-14, EQUIP-03). A registry row's fields come
+     from the copy with the newest mtime, and its equip from the copy with the newest valid equipAt. */
+  const M = app.mergeDB, types = app.EQUIP_TYPES || [];
+  const rowOf = (db, id) => ((db && db.exercises) || []).find(x => x && x.id === id) || null;
+  const allTyped = db => ((db && db.exercises) || []).length > 0 && db.exercises.every(x => types.indexOf(x.equip) >= 0);
+  const regDB = (rows, updatedAt) => Object.assign(app.blank(), { exercises: rows, updatedAt });
+  /* Runs fn(a, b) on fresh clones, and reports whether either input was changed by the call. */
+  const pure = (a, b, fn) => { const ca = canon(a), cb = canon(b); const out = fn(a, b); return { out, intact: canon(a) === ca && canon(b) === cb }; };
+  let intact = true;
+  const merge = (a, b) => { const p = pure(a, b, M); if(!p.intact) intact = false; return p.out; };
+
+  // EQUIP-02: an older device that never ran migration 19, newer by updatedAt.
+  const seedRows = () => [eqRow('Preacher curl', 1000), eqRow('DB lateral raise', 1000)];
+  const L = app.normalize(clone(eqSeed18(seedRows())));
+  const S = clone(eqSeed18(seedRows())); S.updatedAt = 9e12;
+  const sl = merge(S, L), ls = merge(L, S), slAgain = merge(clone(S), sl), lsAgain = merge(ls, clone(S));
+  ok('EQUIP-02/D-14: the migrated copy\'s rows are at mtime old + 1, so the stale un-migrated copy (no equip, mtime 1000, newer updatedAt) loses on every row',
+     L.exercises.every(x => x.mtime === 1001) && S.exercises.every(x => x.mtime === 1000 && !('equip' in x)),
+     { L: L.exercises, S: S.exercises });
+  ok('EQUIP-02: merging the stale un-migrated device in both orders, then replaying it again, leaves every exercise\'s type in place',
+     [sl, ls, slAgain, lsAgain].every(allTyped) &&
+       [sl, ls, slAgain, lsAgain].every(db => rowOf(db, 'preacher-curl').equip === 'ez' && rowOf(db, 'db-lateral-raise').equip === 'dumbbell'),
+     [sl, ls, slAgain, lsAgain].map(db => db.exercises));
+
+  // D-14: a rename made on the stale device later than the migration still wins, and keeps the type.
+  const S2 = clone(S);
+  Object.assign(rowOf(S2, 'preacher-curl'), { name: 'EZ preacher curl', aliases: ['preacher curl', 'ez preacher curl'], mtime: 5000 });
+  const rn = [merge(S2, L), merge(L, S2)];
+  rn.push(merge(clone(S2), rn[0]), merge(rn[1], clone(S2)));
+  ok('D-14: a rename on the un-migrated device with a later mtime wins its name AND keeps a valid type, in both orders, replayed twice',
+     rn.every(db => { const x = rowOf(db, 'preacher-curl'); return !!x && x.name === 'EZ preacher curl' && types.indexOf(x.equip) >= 0; }) && rn.every(allTyped),
+     rn.map(db => rowOf(db, 'preacher-curl')));
+
+  // EQUIP-03: Ian's choice on A against a later rename of the same row on B.
+  const A = regDB([eqRow('Preacher curl', 7000, { equip: 'dumbbell', equipAt: 7000 })], 100);
+  const B = regDB([{ id: 'preacher-curl', name: 'EZ preacher curl', aliases: ['preacher curl', 'ez preacher curl'], mtime: 9000, equip: 'ez', equipAt: 0 }], 200);
+  const ch = [merge(A, B), merge(B, A)];
+  ch.push(merge(clone(A), ch[0]), merge(ch[1], clone(B)), merge(clone(B), ch[0]), merge(ch[1], clone(A)));
+  ok('EQUIP-03: Ian\'s choice (dumbbell, equipAt 7000) survives a later rename on the other device: the merged row has the rename AND the choice, both orders, replayed twice',
+     ch.every(db => { const x = rowOf(db, 'preacher-curl'); return !!x && x.name === 'EZ preacher curl' && x.equip === 'dumbbell' && x.equipAt === 7000; }),
+     ch.map(db => rowOf(db, 'preacher-curl')));
+
+  // EQUIP-03: a row created on one device survives the other device being newer.
+  const NA = regDB([eqRow('Preacher curl', 100, { equip: 'ez', equipAt: 0 }), eqRow('Zercher carry', 50, { equip: 'machine', equipAt: 0 })], 100);
+  const NB = regDB([eqRow('Preacher curl', 100, { equip: 'ez', equipAt: 0 })], 9e12);
+  const nr = [merge(NA, NB), merge(NB, NA)];
+  ok('EQUIP-03: a registry row created on one device (Zercher carry) survives the other device being newer, in both orders',
+     nr.every(db => !!rowOf(db, 'zercher-carry') && rowOf(db, 'zercher-carry').equip === 'machine'), nr.map(db => db.exercises));
+
+  // T-9-10: hostile clocks. B wins the row on mtime but its equip clock is no clock at all.
+  const HA = regDB([eqRow('Preacher curl', 100, { equip: 'ez', equipAt: 0 })], 100);
+  const HL = regDB([eqRow('Preacher curl', 200, { equip: 'laser', equipAt: 9e15 })], 200);
+  const HC = regDB([eqRow('Preacher curl', 200, { equip: 'cable', equipAt: 'abc' })], 200);
+  const hl = [merge(HA, HL), merge(HL, HA)], hc = [merge(HA, HC), merge(HC, HA)];
+  ok('T-9-10: an equip of \'laser\' at equipAt 9e15 never replaces the other device\'s valid ez, in both orders',
+     hl.every(db => rowOf(db, 'preacher-curl').equip === 'ez'), hl.map(db => rowOf(db, 'preacher-curl')));
+  ok('T-9-10: an equipAt of \'abc\' counts as no clock, so equipAt 0 ez wins the field even though the other row wins on mtime',
+     hc.every(db => { const x = rowOf(db, 'preacher-curl'); return x.equip === 'ez' && x.equipAt === 0 && x.mtime === 200; }),
+     hc.map(db => rowOf(db, 'preacher-curl')));
+
+  // A tie on equipAt goes to the type that sorts first, whichever side is remote and whichever copy
+  // won the row (IN-02 supersedes 09-02's "the mtime winner's own equip", which was not associative).
+  const TA = regDB([eqRow('Preacher curl', 100, { equip: 'cable', equipAt: 500 })], 100);
+  const TB = regDB([eqRow('Preacher curl', 200, { equip: 'machine', equipAt: 500 })], 200);
+  const tie = [merge(TA, TB), merge(TB, TA)];
+  ok('EQUIP-03/IN-02: two copies at the same equipAt take the type that sorts first (cable over machine), in both orders',
+     tie.every(db => rowOf(db, 'preacher-curl').equip === 'cable' && rowOf(db, 'preacher-curl').equipAt === 500), tie.map(db => rowOf(db, 'preacher-curl')));
+
+  // T-9-13: the newer side's order, then the older side's new rows, never sorted.
+  const ON = regDB([eqRow('x', 10), eqRow('y', 11)], 200), OO = regDB([eqRow('z', 12), eqRow('x', 9)], 100);
+  const ord = [merge(ON, OO), merge(OO, ON)].map(db => db.exercises.map(x => x.id).join());
+  ok('T-9-13: the merged registry keeps the newer side\'s order, then the older side\'s new rows, in both orders (never sorted)',
+     ord.every(s => s === 'x,y,z'), ord);
+
+  // The merge laws, on three devices with overlapping ids, distinct mtimes and distinct equipAts.
+  const content = db => canon(((db && db.exercises) || []).reduce((o, x) => { o[x.id] = x; return o; }, {}));
+  const D1 = regDB([eqRow('Preacher curl', 110, { equip: 'ez', equipAt: 0 }), eqRow('Lunges', 300, { equip: 'bodyweight', equipAt: 20 }),
+    eqRow('Face pull', 140, { equip: 'cable', equipAt: 40 })], 100);
+  const D2 = regDB([eqRow('Preacher curl', 220, { equip: 'machine', equipAt: 60 }), eqRow('Lunges', 230, { equip: 'dumbbell', equipAt: 80 }),
+    eqRow('Zercher carry', 240, { equip: 'barbell', equipAt: 10 })], 200);
+  const D3 = regDB([eqRow('Preacher curl', 330, { equip: 'cable', equipAt: 30 }), eqRow('Face pull', 340, { equip: 'machine', equipAt: 5 }),
+    eqRow('Zercher carry', 350, { equip: 'machine', equipAt: 90 }), eqRow('Lunges', 360, { equip: 'barbell', equipAt: 1 })], 300);
+  const laws = {
+    idempotent: [D1, D2, D3].every(d => content(merge(d, clone(d))) === content(d)),
+    commutative: [[D1, D2], [D1, D3], [D2, D3]].every(([p, q]) => content(merge(p, q)) === content(merge(q, p))),
+    associative: content(merge(merge(D1, D2), D3)) === content(merge(D1, merge(D2, D3))) &&
+                 content(merge(merge(D3, D1), D2)) === content(merge(D3, merge(D1, D2))),
+  };
+  ok('EQUIP-03: the registry merge is idempotent, commutative and associative on registry fixtures', laws.idempotent && laws.commutative && laws.associative, laws);
+  ok('T-9-13: no registry merge above mutated either of its inputs', intact, intact);
+}
+{
+  /* A merged-away exercise stays merged (EQUIP-03, CLAUDE.md soft deletes). Now that the registry
+     unions per row, a hard delete would be resurrected by any device still holding the live row. */
+  const W = 'PUSH 1';
+  const seed = eqSeed18([eqRow('Seated fly', 1000), eqRow('Pec deck', 1000)], { sessions: [
+    eqSess('fly1', W, dayOff(-9), 0, 'Seated fly', [[100, 12]], { exId: 'seated-fly' }),
+    eqSess('pec1', W, dayOff(-8), 0, 'Pec deck', [[110, 12]], { exId: 'pec-deck' }),
+  ] });
+  const A = loadApp(APP_PATH, seed); spyPushes(A);
+  const live = id => (A.DB.exercises || []).find(x => x && x.id === id) || null;
+  /* B: a stale copy taken before the merge, where pec-deck is live with its alias, newer by updatedAt. */
+  const B = clone(A.DB); B.draft = null; B.updatedAt = Date.now() + 60000;
+  const bPec = (B.exercises || []).find(x => x && x.id === 'pec-deck') || {};
+  const label = A.exLabel('seated-fly');
+  const merged = A.exMerge('pec-deck', 'seated-fly');
+  const tomb = live('pec-deck');
+  ok('EQUIP-03: exMerge leaves a tombstone — the merged row stays in DB.exercises with a numeric deletedAt, mergedInto, empty aliases and a touched mtime',
+     merged === true && !!tomb && typeof tomb.deletedAt === 'number' && tomb.mergedInto === 'seated-fly' &&
+       Array.isArray(tomb.aliases) && tomb.aliases.length === 0 && tomb.mtime > 1001,
+     tomb);
+  ok('EQUIP-03: exRow reads live rows only — the tombstone reads as no row, and the survivor\'s label is unchanged',
+     A.exRow('pec-deck') === null && A.exLabel('seated-fly') === label && A.exIdByName('Pec deck') === 'seated-fly',
+     { exRow: A.exRow('pec-deck'), label: A.exLabel('seated-fly'), resolves: A.exIdByName('Pec deck') });
+
+  const R = loadApp(APP_PATH); spyPushes(R);
+  const adopted = db => { R.DB = db; return { tomb: !!(db.exercises || []).find(x => x && x.id === 'pec-deck' && x.deletedAt),
+    resolves: R.exIdByName('Pec deck'), row: R.exRow('pec-deck') }; };
+  const ba = A.mergeDB(clone(B), clone(A.DB)), ab = A.mergeDB(clone(A.DB), clone(B));
+  const res = [ba, ab, A.mergeDB(clone(B), clone(ba)), A.mergeDB(clone(ab), clone(B))].map(adopted);
+  ok('EQUIP-03: a stale device whose pec-deck is still live (alias \'pec deck\', mtime 1001, newer updatedAt) cannot resurrect it — both orders, replayed twice',
+     bPec.mtime === 1001 && (bPec.aliases || []).indexOf('pec deck') >= 0 && !bPec.deletedAt &&
+       res.every(x => x.tomb && x.resolves === 'seated-fly' && x.row === null),
+     res);
+
+  // The better type carries into the survivor; a worse one never replaces it.
+  const T = loadApp(APP_PATH); spyPushes(T);
+  T.DB.exercises = [eqRow('Seated fly', 100, { equip: 'machine', equipAt: 0 }), eqRow('Pec deck', 100, { equip: 'cable', equipAt: 7000 })];
+  T.exMerge('pec-deck', 'seated-fly');
+  const up = T.exRow('seated-fly');
+  T.DB.exercises = [eqRow('Seated fly', 100, { equip: 'cable', equipAt: 7000 }), eqRow('Pec deck', 100, { equip: 'machine', equipAt: 0 })];
+  T.exMerge('pec-deck', 'seated-fly');
+  const keep = T.exRow('seated-fly');
+  ok('EQUIP-03: exMerge carries the higher-equipAt type into the survivor (machine at 0 ← cable at 7000), and a lower one never replaces it',
+     !!up && up.equip === 'cable' && up.equipAt === 7000 && !!keep && keep.equip === 'cable' && keep.equipAt === 7000,
+     { up, keep });
+
+  // A tombstoned id is never reused.
+  T.DB.exercises = [eqRow('Foo', 100, { equip: 'machine', equipAt: 0 }), eqRow('Bar', 100, { equip: 'machine', equipAt: 0 })];
+  T.exMerge('foo', 'bar');
+  const fooId = T.exEnsure('Foo!');
+  ok('EQUIP-03: after foo is merged into bar, exEnsure(\'Foo!\') makes a new row foo-2, never reusing the tombstoned foo',
+     fooId === 'foo-2' && T.DB.exercises.filter(x => x.id === 'foo').length === 1 && !!T.DB.exercises.find(x => x.id === 'foo').deletedAt,
+     { fooId, rows: T.DB.exercises.map(x => x.id) });
+
+  // Refusals: a tombstone, a type outside EQUIP_TYPES, an unknown id. No write, no push, no toast.
+  const spy = spyPushes(A);
+  let toasts = 0; const realToast = A.__sandbox.toast; A.__sandbox.toast = () => { toasts++; };
+  const before = canon(A.DB.exercises);
+  const setEq = A.__sandbox.setExerciseEquip;
+  if(typeof setEq === 'function'){ setEq('pec-deck', 'machine'); setEq('seated-fly', 'laser'); setEq('constructor', 'cable'); }
+  A.__sandbox.toast = realToast;
+  ok('T-9-10: setExerciseEquip refuses a tombstoned id, a type outside EQUIP_TYPES and an unknown id, with no write, no push and no toast',
+     typeof setEq === 'function' && canon(A.DB.exercises) === before && spy.n === 0 && toasts === 0,
+     { fn: typeof setEq, changed: canon(A.DB.exercises) !== before, pushes: spy.n, toasts });
+
+  const html = A.__sandbox.exercisesCardHTML();
+  ok('EQUIP-03: after the merge, Settings → Exercises renders no control for the merged-away pec-deck',
+     !controlsIn(html).some(c => c.data.id === 'pec-deck') && !html.includes('data-id="pec-deck"'), controlsIn(html).map(c => c.data));
+}
+{
+  /* CR-01 (09-REVIEW): a merged-away id can still arrive after the merge. exMerge restamps every row
+     it can see, but two kinds of entry escape it: a session the other device finished before it heard
+     about the merge, and this device's own draft, which adoptMerged keeps exactly as it was (the
+     draft never crosses the wire). Identity follows the tombstone's mergedInto, so either one lists
+     under the survivor and the lift keeps one history. Both orders, replayed twice. */
+  const W = 'PUSH 1';
+  const pair = r => r.id === 'db-curl' || r.id === 'dumbbell-curl';
+  const seed = eqSeed18([eqRow('DB curl', 1000), eqRow('Dumbbell curl', 1000)], { sessions: [
+    eqSess('cr-a', W, dayOff(-9), 0, 'DB curl', [[30, 10]], { exId: 'db-curl' }),
+    eqSess('cr-b', W, dayOff(-8), 0, 'Dumbbell curl', [[30, 11]], { exId: 'dumbbell-curl' }),
+  ] });
+  const A = loadApp(APP_PATH, seed); spyPushes(A);
+  /* B: the other device, copied before the merge, which then finishes a session under db-curl. */
+  const B = clone(A.DB); B.draft = null;
+  A.exMerge('db-curl', 'dumbbell-curl');
+  B.sessions.push(Object.assign(eqSess('cr-c', W, dayOff(-1), 0, 'DB curl', [[30, 12]], { exId: 'db-curl' }), { mtime: Date.now() }));
+  B.updatedAt = Date.now() + 60000;
+  const ba = A.mergeDB(clone(B), clone(A.DB)), ab = A.mergeDB(clone(A.DB), clone(B));
+  const R = loadApp(APP_PATH); spyPushes(R);
+  const view = db => { R.DB = db; return { rows: R.__sandbox.exListRows().filter(pair), key: R.exKey({ name: 'DB curl', exId: 'db-curl' }) }; };
+  const res = [ba, ab, A.mergeDB(clone(B), clone(ba)), A.mergeDB(clone(ab), clone(B))].map(view);
+  ok('CR-01: a session the other device logged under the merged-away db-curl lists as one exercise, Dumbbell curl, 3 sessions — both orders, replayed twice',
+     res.every(x => x.rows.length === 1 && x.rows[0].id === 'dumbbell-curl' && x.rows[0].name === 'Dumbbell curl' && x.rows[0].n === 3 && x.key === 'dumbbell-curl'),
+     res);
+
+  /* This device's own draft, started before the merge arrived: still db-curl when Ian finishes it. */
+  const D = loadApp(APP_PATH, seed); spyPushes(D);
+  D.__sandbox.startWorkout(W);
+  D.DB.draft.entries[0] = { name: 'DB curl', exId: 'db-curl', note: '', sets: [{ w: '30', r: '12', skipped: false, reason: '' }] };
+  const C = loadApp(APP_PATH, seed); spyPushes(C);
+  C.exMerge('db-curl', 'dumbbell-curl');
+  const remote = clone(C.DB); remote.draft = null; remote.updatedAt = Date.now() + 60000;
+  D.adoptMerged(D.mergeDB(remote, clone(D.DB)), 'test');
+  const draftId = D.DB.draft && D.DB.draft.entries[0].exId;
+  D.finishWorkout();
+  const dRows = D.__sandbox.exListRows().filter(pair);
+  ok('CR-01: this device\'s draft, kept through adoptMerged with the merged-away db-curl, lists under Dumbbell curl once finished — one row, 3 sessions',
+     draftId === 'db-curl' && dRows.length === 1 && dRows[0].id === 'dumbbell-curl' && dRows[0].n === 3, { draftId, rows: dRows });
+  ok('CR-01: every listed row can be renamed and merged — exRow finds each one, so neither control returns silently',
+     dRows.length > 0 && dRows.every(r => !!D.exRow(r.id)), dRows.map(r => ({ id: r.id, row: !!D.exRow(r.id) })));
+
+  /* A hostile chain cannot loop: a two-row cycle, a self-loop and a non-string mergedInto all return,
+     and both members of the cycle resolve to the same id, so one history is never split in two. */
+  R.DB = R.normalize(R.blank());
+  R.DB.exercises = [{ id: 'a', name: 'A', aliases: [], deletedAt: 1, mergedInto: 'b' }, { id: 'b', name: 'B', aliases: [], deletedAt: 1, mergedInto: 'a' },
+    { id: 'c', name: 'C', aliases: [], deletedAt: 1, mergedInto: 'c' }, { id: 'd', name: 'D', aliases: [], deletedAt: 1, mergedInto: { x: 1 } },
+    { id: 'e', name: 'E', aliases: [], deletedAt: 1, mergedInto: 'f' }, { id: 'f', name: 'F', aliases: ['f'], mtime: 5 }];
+  const ks = ['a', 'b', 'c', 'd', 'e'].map(id => R.exKey({ name: id.toUpperCase(), exId: id }));
+  ok('CR-01: exKey follows a chain to the live row (e → f), resolves a cycle\'s members to one id, and stops on a self-loop or a non-string mergedInto',
+     ks[0] === ks[1] && (ks[0] === 'a' || ks[0] === 'b') && ks[2] === 'c' && ks[3] === 'd' && ks[4] === 'f', ks);
+}
+{
+  /* WR-01 (09-REVIEW): the per-row registry union must not bring a merged-away row back to life. Three
+     ways it could: a merge made by a pre-Phase-9 build, which spliced the row out and left no
+     tombstone, against a device that still holds the row; Import → Merge of a backup older than such
+     a merge; and a later rename or type change on a device that had not heard about the merge yet.
+     A tombstone keeps winning, and two live rows never share a spelling. Both orders, replayed twice. */
+  const M = app.mergeDB;
+  const R = loadApp(APP_PATH); spyPushes(R);
+  const regDB = (rows, updatedAt) => Object.assign(app.blank(), { exercises: rows, updatedAt });
+  const rowOf = (db, id) => (db.exercises || []).find(x => x && x.id === id) || null;
+  const owners = (db, k) => (db.exercises || []).filter(x => x && !x.deletedAt && (x.aliases || []).indexOf(k) >= 0).map(x => x.id);
+  const content = db => canon((db.exercises || []).reduce((o, x) => { o[x.id] = x; return o; }, {}));
+  /* P and Q merged in both orders, then each result replayed against P and against Q. */
+  const replay = (P, Q) => { const pq = M(clone(P), clone(Q)), qp = M(clone(Q), clone(P));
+    return { all: [pq, qp, M(clone(P), clone(pq)), M(clone(qp), clone(P)), M(clone(Q), clone(pq)), M(clone(qp), clone(Q))],
+             commutes: content(pq) === content(qp) }; };
+  const see = db => { R.DB = clone(db); return { curl: rowOf(db, 'db-curl'), owners: owners(db, 'db curl'),
+    byName: R.exIdByName('DB curl'), key: R.exKey({ name: 'DB curl', exId: 'db-curl' }), live: !!R.exRow('db-curl') }; };
+  const merged = x => !!x.curl && !!x.curl.deletedAt && x.curl.mergedInto === 'dumbbell-curl' && !x.live &&
+    JSON.stringify(x.owners) === '["dumbbell-curl"]' && x.byName === 'dumbbell-curl' && x.key === 'dumbbell-curl';
+
+  // 1. A pre-Phase-9 merge: the cloud has no db-curl row at all, and the survivor owns its spelling.
+  const cloud = regDB([eqRow('Dumbbell curl', 2000, { aliases: ['dumbbell curl', 'db curl'], equip: 'dumbbell', equipAt: 0 })], 100);
+  const stale = regDB([eqRow('DB curl', 1001, { equip: 'dumbbell', equipAt: 0 }), eqRow('Dumbbell curl', 1001, { equip: 'dumbbell', equipAt: 0 })], 9e12);
+  const r1 = replay(cloud, stale), p1 = r1.all.map(see);
+  ok('WR-01: a device still holding a row an older build merged away (no tombstone) cannot bring it back live — it tombstones into the survivor, which alone owns "db curl", both orders, replayed twice',
+     r1.commutes && p1.every(merged), p1);
+
+  // 2. Import → Merge of a backup taken before that merge: mergeDB(backup, DB, true), imported twice.
+  const once = M(clone(stale), clone(cloud), true);
+  const p2 = [once, M(clone(stale), clone(once), true)].map(see);
+  ok('WR-01: Import → Merge of a backup taken before an older build\'s merge leaves db-curl merged, imported twice',
+     p2.every(merged), p2);
+
+  // 3. A later live edit: B renames db-curl and sets its type after A merged it, before B heard.
+  const A3 = regDB([eqRow('DB curl', 100, { aliases: [], deletedAt: 100, mergedInto: 'dumbbell-curl', equip: 'dumbbell', equipAt: 0 }),
+                    eqRow('Dumbbell curl', 100, { aliases: ['dumbbell curl', 'db curl'], equip: 'dumbbell', equipAt: 0 })], 100);
+  const B3 = regDB([eqRow('DB curl', 200, { name: 'DB curls', aliases: ['db curl', 'db curls'], equip: 'cable', equipAt: 200 }),
+                    eqRow('Dumbbell curl', 50, { equip: 'dumbbell', equipAt: 0 })], 200);
+  const r3 = replay(A3, B3), p3 = r3.all.map(see);
+  ok('WR-01: a rename and a type change on a device that had not heard of the merge (mtime 200 against the tombstone\'s 100) do not revive db-curl, both orders, replayed twice',
+     r3.commutes && p3.every(merged), p3);
+
+  /* Two devices merge the same pair opposite ways at once. The later merge decides, and the pair never
+     ends as two tombstones, which would leave the lift with no live row to rename or merge. */
+  const O1 = regDB([eqRow('DB curl', 300, { aliases: [], deletedAt: 300, mergedInto: 'dumbbell-curl' }),
+                    eqRow('Dumbbell curl', 300, { aliases: ['dumbbell curl', 'db curl'] })], 300);
+  const O2 = regDB([eqRow('Dumbbell curl', 400, { aliases: [], deletedAt: 400, mergedInto: 'db-curl' }),
+                    eqRow('DB curl', 400, { aliases: ['db curl', 'dumbbell curl'] })], 400);
+  const ro = replay(O1, O2);
+  const po = ro.all.map(db => { R.DB = clone(db); const t = rowOf(db, 'dumbbell-curl');
+    return { live: !!R.exRow('db-curl'), tomb: !!t && !!t.deletedAt && t.mergedInto === 'db-curl',
+             keys: [R.exKey({ exId: 'db-curl' }), R.exKey({ exId: 'dumbbell-curl' })], byName: R.exIdByName('Dumbbell curl') }; });
+  ok('WR-01: two devices merging one pair opposite ways keep the later merge — db-curl live, dumbbell-curl a tombstone into it, both ids resolving to db-curl, both orders, replayed twice',
+     ro.commutes && po.every(x => x.live && x.tomb && x.keys.every(k => k === 'db-curl') && x.byName === 'db-curl'), po);
+
+  /* A live row that shares one spelling with a newer row loses only that spelling and stays live. */
+  const K1 = regDB([eqRow('Curl', 500, { aliases: ['curl', 'db curl'] })], 100);
+  const K2 = regDB([eqRow('DB curl', 600, { aliases: ['db curl'] })], 200);
+  const rk = replay(K1, K2);
+  const pk = rk.all.map(db => ({ curl: rowOf(db, 'curl'), owners: owners(db, 'db curl') }));
+  ok('WR-01: two live rows sharing "db curl" leave it on the newer row only; the older keeps "curl" and stays live, both orders, replayed twice',
+     rk.commutes && pk.every(x => !!x.curl && !x.curl.deletedAt && JSON.stringify(x.curl.aliases) === '["curl"]' && JSON.stringify(x.owners) === '["db-curl"]'), pk);
+}
+{
+  /* WR-07 (09-REVIEW, iteration 2): a stale edit of the survivor must not drop the merged-away row's
+     spellings. A merged X into Y (Y gained "x"); B, not yet synced, renamed Y or set its type, which
+     made B's copy of Y the newest without "x". Every copy's aliases count, live or tombstone, and a
+     tombstone's spellings go to its survivor, so "X" still resolves to y. Both orders, replayed twice. */
+  const M = app.mergeDB;
+  const R = loadApp(APP_PATH); spyPushes(R);
+  const regDB = (rows, updatedAt) => Object.assign(app.blank(), { exercises: rows, updatedAt });
+  const runs = (P, Q) => { const pq = M(clone(P), clone(Q)), qp = M(clone(Q), clone(P));
+    return [pq, qp, M(clone(P), clone(pq)), M(clone(qp), clone(P)), M(clone(Q), clone(pq)), M(clone(qp), clone(Q))]; };
+  const resolve = (db, names) => { R.DB = clone(db); return names.map(n => R.exIdByName(n)); };
+  const A = regDB([eqRow('X', 100, { aliases: [], deletedAt: 100, mergedInto: 'y' }), eqRow('Y', 100, { aliases: ['y', 'x'] })], 100);
+  const Brename = regDB([eqRow('X', 50), eqRow('Y', 200, { name: 'Y2', aliases: ['y', 'y2'] })], 300);
+  const Bretype = regDB([eqRow('X', 50), eqRow('Y', 200, { equip: 'cable', equipAt: 200 })], 300);
+  const Bfoo = regDB([eqRow('X', 250, { aliases: ['x', 'foo'] }), eqRow('Y', 50)], 300);
+  const rn = runs(A, Brename).map(db => resolve(db, ['X', 'Y', 'Y2']));
+  ok('WR-07: A merged X into Y; B renamed Y before it heard — "X", "Y" and "Y2" all still resolve to y, both orders, replayed twice',
+     rn.every(r => r.every(id => id === 'y')), rn);
+  const rt = runs(A, Bretype).map(db => resolve(db, ['X', 'Y']));
+  ok('WR-07: A merged X into Y; B set Y\'s type before it heard — "X" and "Y" still resolve to y, both orders, replayed twice',
+     rt.every(r => r.every(id => id === 'y')), rt);
+  const rf = runs(A, Bfoo).map(db => resolve(db, ['X', 'Foo', 'Y']));
+  ok('WR-07: B renamed the merged-away X to add "foo" before it heard — "foo" goes with X to y instead of vanishing, both orders, replayed twice',
+     rf.every(r => r.every(id => id === 'y')), rf);
+}
+/* Registry content for the merge laws: rows by id, with aliases and lost read as sets (their order
+   carries no meaning: exIdByName needs one live owner per spelling, not a position). */
+function eqRegContent(db){
+  const o = {};
+  ((db && db.exercises) || []).forEach(x => { if(!x || typeof x !== 'object') return;
+    const y = Object.assign({}, x);
+    if(Array.isArray(y.aliases)) y.aliases = y.aliases.slice().sort();
+    if(Array.isArray(y.lost)) y.lost = y.lost.slice().sort();
+    o[x.id] = y; });
+  return canon(o);
+}
+/* Every way to merge three copies: each order of P, Q, R, grouped both ways. */
+function eqAllAssoc(M, P, Q, R){
+  const perms = [[P, Q, R], [P, R, Q], [Q, P, R], [Q, R, P], [R, P, Q], [R, Q, P]];
+  const out = [];
+  perms.forEach(([a, b, c]) => {
+    out.push(M(clone(M(clone(a), clone(b))), clone(c)));
+    out.push(M(clone(a), clone(M(clone(b), clone(c)))));
+  });
+  return out;
+}
+{
+  /* WR-08 (09-REVIEW, iteration 2): the registry merge must not depend on the order three copies meet.
+     A tombstone the one-owner pass makes (a row that lost every spelling) used to be as sticky as one
+     exMerge made, so a stale copy meeting first could fold a row into another for good, while a later
+     rename meeting first kept them apart. */
+  const M = app.mergeDB;
+  const R = loadApp(APP_PATH); spyPushes(R);
+  const regDB = (rows, updatedAt) => Object.assign(app.blank(), { exercises: rows, updatedAt });
+  const P = regDB([eqRow('Y', 100, { aliases: ['y', 'k'] })], 100);
+  const Q = regDB([eqRow('X', 50, { aliases: ['k'] })], 50);
+  const Rr = regDB([eqRow('X', 300, { aliases: ['k', 'k2'] })], 300);
+  const all = eqAllAssoc(M, P, Q, Rr);
+  const contents = all.map(eqRegContent);
+  const view = all.map(db => { R.DB = clone(db); const x = (db.exercises || []).find(e => e.id === 'x');
+    return { x: x && { deletedAt: x.deletedAt || null, aliases: x.aliases }, k: R.exIdByName('k'), k2: R.exIdByName('k2'), y: R.exIdByName('y') }; });
+  ok('WR-08: P (y owns k), a stale Q (x claims k) and a later rename R (x claims k, k2) give one result in all 12 association orders — x live with k and k2, y with y',
+     contents.every(c => c === contents[0]) && view.every(v => v.x && !v.x.deletedAt && v.k === 'x' && v.k2 === 'x' && v.y === 'y'), view);
+
+  /* The merge laws, property-style: 400 seeded trials of three replicas mixing stale and later live
+     copies, exMerge tombstones and contested spellings over ids a, b and c (c is the merge target and
+     stays live). Every mtime and equipAt is distinct here; ties are IN-02's check below. */
+  let seed = 9091;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  let clock = 0;
+  const tick = () => (clock += 1 + Math.floor(rnd() * 3));
+  const shared = ['k', 'm'];
+  const replica = () => {
+    const rows = [eqRow('C', tick(), { aliases: ['c'].concat(shared.filter(() => rnd() < 0.2)), equip: 'machine', equipAt: tick() })];
+    ['a', 'b'].forEach(id => {
+      const roll = rnd();
+      if(roll < 0.2) return;
+      if(roll < 0.45){ const t = tick(); rows.push({ id, name: id.toUpperCase(), aliases: [], deletedAt: t, mergedInto: 'c', mtime: t, equip: 'cable', equipAt: tick() }); return; }
+      rows.push({ id, name: id.toUpperCase(), aliases: [id].filter(() => rnd() < 0.8).concat(shared.filter(() => rnd() < 0.5)), mtime: tick(),
+                  equip: rnd() < 0.5 ? 'dumbbell' : 'barbell', equipAt: tick() });
+    });
+    return regDB(rows, tick());
+  };
+  const bad = { commutative: [], associative: [], idempotent: [], dropped: [], resurrected: [], owners: [] };
+  for(let n = 0; n < 400; n++){
+    const reps = [replica(), replica(), replica()];
+    const all3 = eqAllAssoc(M, reps[0], reps[1], reps[2]), c3 = all3.map(eqRegContent);
+    if(c3.some(c => c !== c3[0])) bad.associative.push(n);
+    if(eqRegContent(M(clone(reps[0]), clone(reps[1]))) !== eqRegContent(M(clone(reps[1]), clone(reps[0])))) bad.commutative.push(n);
+    const out = all3[0];
+    if(eqRegContent(M(clone(out), clone(out))) !== c3[0]) bad.idempotent.push(n);
+    const inRows = [].concat(...reps.map(d => d.exercises));
+    const outRows = out.exercises;
+    const ids = new Set(inRows.map(x => x.id));
+    if([...ids].some(id => !outRows.some(x => x.id === id))) bad.dropped.push(n);
+    const merged = new Set(inRows.filter(x => x.deletedAt && !x.autoMerged).map(x => x.id));
+    if(outRows.some(x => merged.has(x.id) && (!x.deletedAt || x.autoMerged))) bad.resurrected.push(n);
+    const spellings = new Set([].concat(...inRows.map(x => (x.aliases || []).concat(x.lost || []))));
+    const liveRows = outRows.filter(x => !x.deletedAt);
+    if([...spellings].some(k => liveRows.filter(x => (x.aliases || []).indexOf(k) >= 0).length !== 1)) bad.owners.push(n);
+  }
+  ok('WR-08: over 400 seeded three-replica trials the registry merge is commutative, associative in all 12 orders, and idempotent',
+     !bad.commutative.length && !bad.associative.length && !bad.idempotent.length,
+     { commutative: bad.commutative.slice(0, 5), associative: bad.associative.slice(0, 5), idempotent: bad.idempotent.slice(0, 5) });
+  ok('WR-08: over the same trials no row is dropped, no merged-away row comes back live, and every spelling has exactly one live owner',
+     !bad.dropped.length && !bad.resurrected.length && !bad.owners.length,
+     { dropped: bad.dropped.slice(0, 5), resurrected: bad.resurrected.slice(0, 5), owners: bad.owners.slice(0, 5) });
+}
+{
+  /* IN-02 (09-REVIEW): a tie on equipAt must not make the merge depend on grouping. The reviewer's
+     three copies: D1 ez@50 (mtime 1), D2 cable@50 (mtime 2), D3 machine@0 (mtime 3). */
+  const M = app.mergeDB;
+  const regDB = (rows, updatedAt) => Object.assign(app.blank(), { exercises: rows, updatedAt });
+  const D1 = regDB([eqRow('Preacher curl', 1, { equip: 'ez', equipAt: 50 })], 10);
+  const D2 = regDB([eqRow('Preacher curl', 2, { equip: 'cable', equipAt: 50 })], 20);
+  const D3 = regDB([eqRow('Preacher curl', 3, { equip: 'machine', equipAt: 0 })], 30);
+  const all = eqAllAssoc(M, D1, D2, D3);
+  const eqs = all.map(db => { const x = db.exercises.find(e => e.id === 'preacher-curl'); return x.equip + '@' + x.equipAt; });
+  ok('IN-02: the reviewer\'s tied copies give cable@50 (the tied type that sorts first) in all 12 association orders',
+     eqs.every(e => e === 'cable@50') && all.map(eqRegContent).every(c => c === eqRegContent(all[0])), eqs);
+
+  /* Property-style: 300 seeded trials of three copies of one row whose equipAt is drawn from {0, 5},
+     so ties are the common case, with distinct mtimes and every type. */
+  let seed = 4242;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  let clock = 0;
+  const types = app.EQUIP_TYPES;
+  const copy = () => regDB([eqRow('Preacher curl', (clock += 1 + Math.floor(rnd() * 3)),
+    { equip: types[Math.floor(rnd() * types.length)], equipAt: rnd() < 0.5 ? 0 : 5 })], (clock += 1));
+  const badAssoc = [], badComm = [];
+  for(let n = 0; n < 300; n++){
+    const [p, q, r] = [copy(), copy(), copy()];
+    const c = eqAllAssoc(M, p, q, r).map(eqRegContent);
+    if(c.some(x => x !== c[0])) badAssoc.push(n);
+    if(eqRegContent(M(clone(p), clone(q))) !== eqRegContent(M(clone(q), clone(p)))) badComm.push(n);
+  }
+  ok('IN-02: over 300 seeded trials with equipAt ties the registry merge is commutative and associative in all 12 orders',
+     !badAssoc.length && !badComm.length, { associative: badAssoc.slice(0, 5), commutative: badComm.slice(0, 5) });
+}
+
+/* ── EQUIP rounding: deloads, warm-ups and the suggest line follow the exercise's own ladder (Phase 9,
+   plan 09-03, EQUIP-05). A 15 lb dumbbell deload used to round back to 15 through a flat 5-lb rounding,
+   so it was no deload at all. ── */
+{
+  /* The tracer: history → stall → Deload −10% through the dispatcher → the draft weights and the card. */
+  const D = loadApp(APP_PATH); spyPushes(D);
+  const stallAt = (workout, slot, name, sets) => {
+    eqRun(D, [0, 1, 2, 3].map(n => eqSess('dl-' + slot + '-' + n, workout, dayOff(-20 + 3 * n), slot, name, sets)));
+    const card = eqCard(D, workout, slot);
+    const ctl = controlsIn(card).find(c => c.data.action === 'deloadExercise');
+    const entry = D.DB.draft.entries[slot];
+    const keysBefore = Object.keys(entry).sort();
+    if(ctl) fireAction(D, 'click', fakeEl(ctl.data));
+    const after = D.DB.draft.entries[slot];
+    const card2 = D.viewActive().split('<div class="ex-card">')[slot + 1] || '';
+    const want = Array.from(new Set(keysBefore.concat(['deload']))).sort();
+    return { ctl: !!ctl, name: after.name, w: after.sets.filter(x => !x.skipped).map(x => x.w), deload: after.deload,
+             card: card2, keysOk: JSON.stringify(Object.keys(after).sort()) === JSON.stringify(want),
+             keys: Object.keys(after).sort() };
+  };
+  const PUSH = 'PUSH 1', PULL = 'PULL 1';
+  const LAT = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+  const ROW = app.PROGRAM[PULL].slots.findIndex(s => s.examples.includes('Barbell row'));
+  const coachOf = card => { const m = /<div class="coach deload">([\s\S]*?)<\/div>/.exec(card); return m ? m[1] : null; };
+
+  const lat = stallAt(PUSH, LAT, 'DB lateral raise', [[15, 20], [15, 18], [15, 16]]);
+  ok('EQUIP-05/D-11 tracer: a stalled 15 lb DB lateral raise\'s Deload −10% fills 12.5 into every unskipped set, not 15',
+     lat.ctl && lat.name === 'DB lateral raise' && lat.w.length > 0 && lat.w.every(w => w === '12.5') && lat.deload === true,
+     { ctl: lat.ctl, name: lat.name, w: lat.w, deload: lat.deload });
+  ok('EQUIP-05 tracer: the re-rendered card shows the standard "Deloaded −10%" coach line with its undo',
+     (coachOf(lat.card) || '').includes('Deloaded −10% this session') && (coachOf(lat.card) || '').includes('data-action="undeloadExercise"'),
+     coachOf(lat.card));
+  ok('T-9-20 tracer: the deload adds no field to the draft entry except deload (finishWorkout copies every field)',
+     lat.keysOk, lat.keys);
+
+  const row = stallAt(PULL, ROW, 'Barbell row', [[45, 12], [45, 10], [45, 9]]);
+  const rowCoach = coachOf(row.card) || '';
+  ok('D-15 tracer: a stalled Barbell row at the empty 45 lb bar keeps 45 in every set',
+     row.ctl && row.w.length > 0 && row.w.every(w => w === '45') && row.deload === true,
+     { ctl: row.ctl, w: row.w, deload: row.deload });
+  ok('D-15 tracer: the card says exactly "Already at the empty bar — cut a set or reps instead." followed by the undo control',
+     /Already at the empty bar — cut a set or reps instead\. <button class="coach-btn" data-action="undeloadExercise"/.test(rowCoach) &&
+     !rowCoach.includes('Deloaded −10%'),
+     rowCoach);
+  ok('T-9-20 tracer: the empty-bar case adds no field to the draft entry either (computed at render)', row.keysOk, row.keys);
+  D.DB.draft = null;
+
+  /* Direct checks on deloadPlan: down to the ladder, always a step lighter, the bar clamp (D-11, D-15). */
+  const P = (n, w) => { const f = D.__sandbox.deloadPlan; const p = typeof f === 'function' ? f(n, w) : null; return p ? p : { w: 'missing', atBar: null }; };
+  D.DB = D.normalize(D.blank()); D.DB.unit = 'lb';
+  const d11 = [['DB lateral raise', 15, 12.5], ['DB lateral raise', 10, 7.5], ['Barbell bench press', 135, 120],
+               ['DB incline press', 70, 60], ['DB incline press', 65, 57.5], ['DB incline press', 60, 52.5], ['DB lateral raise', 5, 2.5]]
+    .map(([n, w, want]) => ({ n, w, want, got: P(n, w) }));
+  ok('D-11: deloads round DOWN to the exercise\'s ladder — 15 DB → 12.5, 10 DB → 7.5, 135 BB → 120, 70 DB → 60 (0.9×70 float drift), 65 DB → 57.5',
+     d11.every(x => x.got.w === x.want && x.got.atBar === false), d11);
+  const lighter = [['Triceps pushdown', 25, 22.5], ['Barbell bench press', 155, 135], ['Leg press', 90, 80]]
+    .map(([n, w, want]) => ({ n, w, want, got: P(n, w) }));
+  ok('D-11: a deload is always at least one step lighter — 25 cable → 22.5, 155 BB → 135, 90 sled → 80 (a sled is never clamped)',
+     lighter.every(x => x.got.w === x.want && x.got.atBar === false), lighter);
+  const meadows = P('Meadows row', 47.5);
+  ok('D-15: Meadows row 47.5 → 40 is raised to the 45 lb bar, which is still lighter (atBar false)',
+     meadows.w === 45 && meadows.atBar === false, meadows);
+  const atBar = P('Barbell row', 45);
+  ok('D-15: Barbell row at 45 is at the empty bar — the weight stays 45 and atBar is true', atBar.w === 45 && atBar.atBar === true, atBar);
+  const tiny = P('DB lateral raise', 2.5), none = P('DB lateral raise', 0);
+  /* WR-03 (09-REVIEW) supersedes 09-03's '' here: a deload keeps the lightest weight instead of blanking it. */
+  ok('D-11/WR-03: 2.5 DB has nothing lighter, so it stays 2.5 and says so (atFloor); no load gives no weight to write, also atFloor',
+     tiny.w === 2.5 && tiny.atBar === false && tiny.atFloor === true && none.w === '' && none.atBar === false && none.atFloor === true, { tiny, none });
+  D.DB.unit = 'kg';
+  const kgBench = P('Barbell bench press', 60), kgLat = P('DB lateral raise', 10);
+  ok('D-10/D-11: in kg the ladder is 2.5 and no bar clamp applies — Barbell bench press 60 → 52.5, DB lateral raise 10 → 7.5',
+     kgBench.w === 52.5 && kgBench.atBar === false && kgLat.w === 7.5 && kgLat.atBar === false, { kgBench, kgLat });
+  D.DB.unit = 'lb';
+}
+{
+  /* Plate math follows the type (EQUIP-06, D-06, D-07). Preacher curl is an EZ-bar lift, and Ian's
+     original report was "I've been doing ezbar, but I don't see the plate math". */
+  const E = loadApp(APP_PATH); spyPushes(E);
+  E.DB = E.normalize(E.blank()); E.DB.unit = 'lb';
+  ok('EQUIP-06: Preacher curl is an EZ-bar lift — barStyle ez, a 25 lb bar, and isBarbell',
+     E.barStyle('Preacher curl') === 'ez' && E.barWeight('Preacher curl') === 25 && E.isBarbell('Preacher curl') === true,
+     { style: E.barStyle('Preacher curl'), bar: E.barWeight('Preacher curl') });
+  const pt = (t) => E.platesText(t, 25, 'ez');
+  ok('EQUIP-06: on the 25 lb EZ bar, 35 is "Per side: 1×5" and 30 is "Per side: 1×2.5"',
+     pt(35).includes('Per side: 1×5') && pt(30).includes('Per side: 1×2.5'), { at35: pt(35), at30: pt(30) });
+  ok('D-07: the EZ plate line is silent at the bar (25), under it (a 20 lb preset bar) and when it can\'t be loaded (27)',
+     pt(25) === '' && pt(20) === '' && pt(27) === '', { at25: pt(25), at20: pt(20), at27: pt(27) });
+
+  const styles = {
+    sled: ['Leg press', 'Hack squat'].map(n => [n, E.barStyle(n), E.barWeight(n)]),
+    landmine: ['T-bar row', 'Meadows row', 'Chest Supported T-Bar Row'].map(n => [n, E.barStyle(n), E.barWeight(n)]),
+    straight: ['Barbell row', 'Standing OHP'].map(n => [n, E.barStyle(n), E.barWeight(n)]),
+    none: ['Deficit sumo squat', 'Triceps pushdown', 'Chin-up', 'Seated OHP'].map(n => [n, E.barStyle(n), E.barWeight(n)]),
+  };
+  ok('D-06: the type decides the bar — Leg press and Hack squat are sleds (bar 0); T-bar, Meadows and Chest Supported T-Bar rows are landmines (45); Barbell row and Standing OHP are straight',
+     styles.sled.every(([, s, b]) => s === 'sled' && b === 0) && styles.landmine.every(([, s, b]) => s === 'landmine' && b === 45) &&
+     styles.straight.every(([, s, b]) => s === 'straight' && b === 45), styles);
+  ok('D-06: a dumbbell, cable, bodyweight or non-sled machine lift has no bar — Deficit sumo squat, Triceps pushdown, Chin-up, Seated OHP',
+     styles.none.every(([, s, b]) => s === null && b === null), styles.none);
+
+  const PULL2 = 'PULL 2';
+  const PC = app.PROGRAM[PULL2].slots.findIndex(s => s.examples.includes('Preacher curl'));
+  const plateDiv = card => { const m = /<div class="muted" id="plates-\d+"[^>]*>([\s\S]*?)<\/div>/.exec(card); return m ? m[1] : null; };
+  const pcCard = w => { eqRun(E, [ eqSess('pc-' + w, PULL2, dayOff(-7), PC, 'Preacher curl', [[w, 12], [w, 12], [w, 12]]) ]); return eqCard(E, PULL2, PC); };
+  const at35 = plateDiv(pcCard(35));
+  ok('EQUIP-06: the Preacher curl card last logged at 35 shows "Per side: 1×5"', at35 !== null && at35.includes('Per side: 1×5'), at35);
+  const at20 = plateDiv(pcCard(20));
+  ok('D-07: the Preacher curl card at a 20 lb preset bar keeps its plate div, and it is empty', at20 === '', at20);
+
+  pcCard(35);
+  const setEq = E.__sandbox.setExerciseEquip;
+  if(typeof setEq === 'function') setEq('preacher-curl', 'dumbbell');
+  const asDb = E.viewActive().split('<div class="ex-card">')[PC + 1] || '';
+  if(typeof setEq === 'function') setEq('preacher-curl', 'ez');
+  const asEz = E.viewActive().split('<div class="ex-card">')[PC + 1] || '';
+  ok('EQUIP-06: changing Preacher curl to dumbbell in Settings removes its plate line, and changing it back to EZ bar restores it',
+     typeof setEq === 'function' && !asDb.includes('id="plates-') && asEz.includes('id="plates-') && (plateDiv(asEz) || '').includes('Per side: 1×5'),
+     { fn: typeof setEq, db: asDb.includes('id="plates-'), ez: plateDiv(asEz) });
+  E.DB.draft = null;
+
+  const dp = E.__sandbox.deloadPlan;
+  const ez25 = typeof dp === 'function' ? dp('Preacher curl', 25) : null, ez35 = typeof dp === 'function' ? dp('Preacher curl', 35) : null;
+  const ez20 = typeof dp === 'function' ? dp('Preacher curl', 20) : null;
+  /* WR-02 (09-REVIEW) supersedes 09-03's "a 20 lb preset stays 20": a preset bar under 25 is not the
+     empty 25 lb bar, and a lighter preset exists (D-07), so it deloads on the EZ ladder like any load. */
+  ok('D-15 on EZ: Preacher curl at the 25 lb bar is atBar, 35 deloads to 30, and a 20 lb preset bar deloads to 15 (WR-02: lighter, never atBar)',
+     !!ez25 && ez25.atBar === true && ez25.w === 25 && !!ez35 && ez35.w === 30 && ez35.atBar === false &&
+     !!ez20 && ez20.atBar === false && ez20.w === 15,
+     { ez25, ez35, ez20 });
+}
+{
+  /* Warm-up rungs land on the exercise's own ladder with an honest note (D-12), and the "→ suggest"
+     line floors to the step and escapes its unit (D-13, IN-04). */
+  const W = loadApp(APP_PATH); spyPushes(W);
+  W.DB = W.normalize(W.blank()); W.DB.unit = 'lb';
+  const ramp = (name, w, n) => {
+    const f = W.__sandbox.warmRampHTML;
+    const entry = { name, note: '', sets: Array.from({ length: n || 3 }, () => ({ w: w === '' ? '' : String(w), r: '', skipped: false, reason: '' })) };
+    const html = typeof f === 'function' ? String(f(entry)) : '';
+    const r50 = /~50% — ([^ <]+) /.exec(html), r75 = /~75% — ([^ <]+) /.exec(html);
+    const note = /<div class="muted" style="font-size:11px;padding-top:4px">([\s\S]*?)<\/div>/.exec(html);
+    return { html, r50: r50 ? r50[1] : null, r75: r75 ? r75[1] : null, note: note ? note[1] : null };
+  };
+  const rungPlates = (html, pct) => new RegExp('~' + pct + '% — [^<]*<div class="warm-plates">🏋️ Per side').test(html);
+  const bench = ramp('Barbell bench press', 135);
+  ok('D-12: Barbell bench press at 135 warms up at 65 (67.5 is a tie, so it goes down) and 100, each rung with its Per side plates, and no rounding note',
+     bench.r50 === '65' && bench.r75 === '100' && rungPlates(bench.html, 50) && rungPlates(bench.html, 75) && bench.note === null,
+     { r50: bench.r50, r75: bench.r75, note: bench.note });
+  const table = [
+    ['DB bench press', 65, '32.5', '47.5', 'Rounded to the nearest dumbbell — 2.5 lb steps up to 60, 5 lb above.'],
+    ['Cable fly', 25, '12.5', '17.5', 'Rounded to the nearest 2.5 lb.'],
+    ['Seated OHP', 50, '25', '35', 'Rounded to the nearest 5 lb.'],
+    ['Weighted push-up', 25, '12.5', '17.5', 'Rounded to the nearest 2.5 lb.'],
+  ].map(([n, w, a, b, note]) => { const r = ramp(n, w); return { n, w, want: [a, b, note], got: [r.r50, r.r75, r.note] }; });
+  ok('D-12: rungs round to the nearest loadable weight with ties going down, and the note names the real step — DB 65 → 32.5/47.5, cable 25 → 12.5/17.5, machine 50 → 25/35, weighted push-up 25 → 12.5/17.5',
+     table.every(x => JSON.stringify(x.want) === JSON.stringify(x.got)), table);
+  W.DB.unit = 'kg';
+  const kg = ramp('DB bench press', 30);
+  W.DB.unit = 'lb';
+  ok('D-10/D-12: in kg, DB bench press at 30 warms up at 15 and 22.5, noted "Rounded to the nearest 2.5 kg."',
+     kg.r50 === '15' && kg.r75 === '22.5' && kg.note === 'Rounded to the nearest 2.5 kg.', kg);
+  const row = ramp('Barbell row', 45);
+  ok('D-12: Barbell row at 45 never warms up under the bar — both rungs are 45', row.r50 === '45' && row.r75 === '45', { r50: row.r50, r75: row.r75 });
+  const pc = ramp('Preacher curl', 35);
+  ok('D-12: Preacher curl at 35 starts at "Empty bar — 25 lb" and both rungs are the 25 lb bar',
+     pc.html.includes('Empty bar — 25 lb') && pc.r50 === '25' && pc.r75 === '25', { r50: pc.r50, r75: pc.r75 });
+  const preset = ramp('Preacher curl', 20);
+  ok('D-12: an EZ preset bar at 20 gets no warm-up rung above 20',
+     preset.r50 !== null && preset.r75 !== null && +preset.r50 <= 20 && +preset.r75 <= 20, { r50: preset.r50, r75: preset.r75 });
+  const sled = ramp('Leg press', 90);
+  ok('D-12: Leg press at 90 warms up at 45 and 65 (67.5 is a tie, so it goes down), with no rounding note',
+     sled.r50 === '45' && sled.r75 === '65' && sled.note === null, { r50: sled.r50, r75: sled.r75, note: sled.note });
+  const empty = ramp('DB bench press', '');
+  ok('D-12: with no working weight the ramp says "Enter a working weight first"', empty.html.includes('Enter a working weight first'), empty.html);
+  const allRamps = [bench, row, pc, preset, sled, kg].concat(table.map(x => ramp(x.n, x.w))).map(r => r.html).join('');
+  ok('D-12: no warm-up output mentions a kettlebell, and neither does the app',
+     !/kettlebell/i.test(allRamps) && !/kettlebell/i.test(fs.readFileSync(APP_PATH, 'utf8')), null);
+
+  const tl = W.__sandbox.translateLoad;
+  const tls = typeof tl === 'function' ? [tl(30, 20, 8, 'DB incline press'), tl(135, 5, 12, 'Barbell bench press'), tl(0, 10, 8, 'Chin-up')] : [];
+  ok('D-13: translateLoad floors to the exercise\'s own step — DB 30×20 for 8 → 37.5 (a flat 5 gave 35), BB 135×5 for 12 → 110, and no load gives null',
+     tls[0] === 37.5 && tls[1] === 110 && tls[2] === null, tls);
+
+  const PUSH1 = 'PUSH 1', PUSH2 = 'PUSH 2';
+  const INC1 = app.PROGRAM[PUSH1].slots.findIndex(s => s.examples.includes('DB incline press'));
+  const INC2 = app.PROGRAM[PUSH2].slots.findIndex(s => s.examples.includes('DB incline press'));
+  eqRun(W, [ eqSess('sug-1', PUSH2, dayOff(-7), INC2, 'DB incline press', [[30, 20], [30, 20], [30, 20]]) ]);
+  eqCard(W, PUSH1, INC1);
+  W.DB.draft.entries[INC1].name = 'DB incline press';
+  const sugCard = () => W.viewActive().split('<div class="ex-card">')[INC1 + 1] || '';
+  const sugOf = card => { const m = /→ suggest <strong>([\s\S]*?)<\/strong>/.exec(card); return m ? m[1] : null; };
+  const sc = sugCard();
+  const draftW = W.DB.draft.entries[INC1].sets.map(x => x.w);
+  ok('D-13: DB incline press logged only on PUSH 2 at 30×20 suggests 37.5 lb on PUSH 1 (8–12), and never fills a set',
+     sc.includes('→ suggest') && sugOf(sc) === '37.5 lb' && draftW.length > 0 && draftW.every(w => w === ''),
+     { sug: sugOf(sc), draftW });
+  W.DB.unit = '<img src=x>';
+  const hostile = sugOf(sugCard());
+  W.DB.unit = 'lb';
+  ok('IN-04/T-9-16: a hostile unit in the suggest line is escaped — &lt;img, never a raw <img',
+     hostile !== null && hostile.includes('&lt;img') && !hostile.includes('<img'), hostile);
+  W.DB.draft = null;
+}
+{
+  /* WR-02 (09-REVIEW): a working weight under the bar is a preset or fixed bar (D-07: Ian's gym has
+     preset EZ bars under 25 lb), not the loaded bar. The ramp must not open with a heavier "Empty bar"
+     rung, and the deload must not claim the empty bar when a lighter bar exists. */
+  const U = loadApp(APP_PATH); spyPushes(U);
+  U.DB = U.normalize(U.blank()); U.DB.unit = 'lb';
+  const ramp = (name, w) => String(U.__sandbox.warmRampHTML({ name, note: '', sets: [0, 1, 2].map(() => ({ w: String(w), r: '', skipped: false, reason: '' })) }));
+  const loads = html => [...html.matchAll(/— (\d+(?:\.\d+)?) lb/g)].map(m => +m[1]);
+  const under = [['Preacher curl', 20], ['Barbell curl', 40]].map(([n, w]) => { const h = ramp(n, w); return { n, w, loads: loads(h),
+    emptyBar: h.includes('Empty bar'), plates: h.includes('warm-plates') || h.includes('Under bar weight') }; });
+  ok('WR-02: under the bar (Preacher curl at a 20 lb preset, Barbell curl at a 40 lb fixed bar) no warm-up rung is heavier than the working weight, none says "Empty bar", and none prints plates',
+     under.every(x => x.loads.length >= 3 && x.loads.every(v => v <= x.w) && !x.emptyBar && !x.plates), under);
+  const atBar = ramp('Preacher curl', 25), onBar = ramp('Preacher curl', 35);
+  ok('WR-02: at and above the bar the ramp still opens with "Empty bar — 25 lb"',
+     atBar.includes('Empty bar — 25 lb') && onBar.includes('Empty bar — 25 lb'), null);
+
+  const dp = U.__sandbox.deloadPlan;
+  const plans = [['Preacher curl', 20], ['Barbell curl', 40]].map(([n, w]) => ({ n, w, p: dp(n, w) }));
+  ok('WR-02: under the bar a deload steps down the type\'s ladder — Preacher curl 20 → 15, Barbell curl 40 → 35 — and never claims the empty bar',
+     plans[0].p.w === 15 && plans[1].p.w === 35 && plans.every(x => x.p.atBar === false), plans);
+
+  /* The card: a stalled Preacher curl at a 20 lb preset bar, Deload −10% through the dispatcher. */
+  eqRun(U, [0, 1, 2, 3].map(n => eqSess('wr2-' + n, EQ_PULL2, dayOff(-20 + 3 * n), EQ_PC, 'Preacher curl', [[20, 12], [20, 12], [20, 12]])));
+  const card = eqCard(U, EQ_PULL2, EQ_PC);
+  const ctl = controlsIn(card).find(c => c.data.action === 'deloadExercise');
+  if(ctl) fireAction(U, 'click', fakeEl(ctl.data));
+  const ws = U.DB.draft.entries[EQ_PC].sets.filter(x => !x.skipped).map(x => x.w);
+  const after = U.viewActive().split('<div class="ex-card">')[EQ_PC + 1] || '';
+  ok('WR-02: a stalled Preacher curl at a 20 lb preset bar deloads to 15 in every set and says "Deloaded −10%", never "Already at the empty bar"',
+     !!ctl && ws.length > 0 && ws.every(w => w === '15') && after.includes('Deloaded −10% this session') && !after.includes('Already at the empty bar'),
+     { ctl: !!ctl, ws });
+  U.DB.draft = null;
+}
+{
+  /* WR-03 (09-REVIEW): a deload on a light load used to return '' whenever 90% floored to 0, and
+     deloadExercise then blanked every set while the card still claimed −10%. It keeps the lightest
+     loadable weight now, and the card says it cannot go lighter. */
+  const V = loadApp(APP_PATH); spyPushes(V);
+  V.DB = V.normalize(V.blank()); V.DB.unit = 'lb';
+  const dp = V.__sandbox.deloadPlan;
+  const floors = [['DB curl', 2.5], ['Triceps pushdown', 2.5], ['Seated OHP', 5]].map(([n, w]) => ({ n, w, p: dp(n, w) }));
+  ok('WR-03: 2.5 lb dumbbell, 2.5 lb cable stack and 5 lb machine keep their weight and say atFloor, never \'\'',
+     floors.every(x => x.p.w === x.w && x.p.atFloor === true && x.p.atBar === false), floors);
+  const between = dp('Seated OHP', 5.5);
+  ok('WR-03: a 5.5 lb machine load, which 90% floors to 0, deloads to the lightest stack weight, 5 — lighter, so not atFloor',
+     between.w === 5 && !between.atFloor, between);
+  const names = ['DB curl', 'Triceps pushdown', 'Seated OHP', 'Barbell row', 'Preacher curl', 'Leg press', 'Chin-up'];
+  const bad = [];
+  ['lb', 'kg'].forEach(u => { V.DB.unit = u; names.forEach(n => { for(let w = 0.5; w <= 60; w += 0.5){ const p = dp(n, w);
+    if(p.w === '' || !(+p.w > 0) || +p.w > w + 1e-9) bad.push({ u, n, w, p }); } }); });
+  V.DB.unit = 'lb';
+  ok('WR-03: for every load from 0.5 to 60 in both units on every type, the deload weight is a positive number never above the load', bad.length === 0, bad.slice(0, 5));
+
+  /* The card, through the dispatcher: a stalled 2.5 lb DB lateral raise, and a bodyweight Pull-up at 0. */
+  const stall = (workout, slot, name, w) => {
+    eqRun(V, [0, 1, 2, 3].map(n => eqSess('wr3-' + slot + '-' + n, workout, dayOff(-20 + 3 * n), slot, name, [[w, 12], [w, 12], [w, 12]])));
+    const ctl = controlsIn(eqCard(V, workout, slot)).find(c => c.data.action === 'deloadExercise');
+    if(ctl) fireAction(V, 'click', fakeEl(ctl.data));
+    const card = V.viewActive().split('<div class="ex-card">')[slot + 1] || '';
+    return { ctl: !!ctl, ws: V.DB.draft.entries[slot].sets.filter(x => !x.skipped).map(x => x.w), deload: V.DB.draft.entries[slot].deload,
+             coach: (/<div class="coach deload">([\s\S]*?)<\/div>/.exec(card) || [])[1] || null };
+  };
+  const LAT = app.PROGRAM['PUSH 1'].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+  const lat = stall('PUSH 1', LAT, 'DB lateral raise', 2.5);
+  ok('WR-03: a stalled 2.5 lb DB lateral raise keeps 2.5 in every set on Deload, and the card says "Already at the lightest weight — cut a set or reps instead." with its undo',
+     lat.ctl && lat.deload === true && lat.ws.length > 0 && lat.ws.every(w => w === '2.5') &&
+       /Already at the lightest weight — cut a set or reps instead\. <button class="coach-btn" data-action="undeloadExercise"/.test(lat.coach || '') && !(lat.coach || '').includes('−10%'),
+     lat);
+  const pu = stall('PULL 1', 0, 'Pull-up', 0);
+  ok('WR-03: a stalled bodyweight Pull-up logged at 0 keeps its prefilled 0 on Deload instead of blanking it, and does not claim −10%',
+     pu.ctl && pu.deload === true && pu.ws.length > 0 && pu.ws.every(w => w === '0') && !(pu.coach || '').includes('−10%'), pu);
+  V.DB.draft = null;
+}
+{
+  /* WR-04 (09-REVIEW): ⬆ Add weight moves to the next weight the exercise can actually load. Adding the
+     step to an off-ladder weight gave numbers nobody can pick up (a 62 lb dumbbell → 67), and
+     startWorkout prefills that number, so it could become a logged one. */
+  const X = loadApp(APP_PATH); spyPushes(X);
+  const PUSH = 'PUSH 1';
+  const INC = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('DB incline press'));
+  const BENCH = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('Barbell bench press'));
+  const TRI = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('Triceps pushdown'));
+  const cardAt = (slot, name, load) => {
+    const hi = app.PROGRAM[PUSH].slots[slot].hi;
+    eqRun(X, [ eqSess('wr4-' + slot + '-' + load, PUSH, dayOff(-7), slot, name, [[load, hi], [load, hi], [load, hi]]) ]);
+    const card = eqCard(X, PUSH, slot);
+    return { name, load, flag: eqFlag(card), draft: X.DB.draft.entries[slot].sets.map(x => x.w) };
+  };
+  const cases = [[INC, 'DB incline press', 62, '65'], [INC, 'DB incline press', 22, '22.5'], [BENCH, 'Barbell bench press', 47, '50'],
+                 [TRI, 'Triceps pushdown', 26, '27.5'],
+                 [INC, 'DB incline press', 57.5, '60'], [INC, 'DB incline press', 60, '65'], [BENCH, 'Barbell bench press', 135, '140']]
+    .map(([slot, name, load, want]) => { const c = cardAt(slot, name, load); return Object.assign(c, { want,
+      good: c.flag !== null && c.flag.includes('→ ' + want + ' lb') && c.draft.length > 0 && c.draft.every(x => x === want) }); });
+  ok('WR-04: ⬆ Add weight snaps an off-ladder load up to the next loadable weight — 62 DB → 65, 22 DB → 22.5, 47 BB → 50, 26 cable → 27.5 — on-ladder loads move one step as before, and the prefill matches',
+     cases.every(x => x.good), cases.map(({ name, load, want, flag, draft }) => ({ name, load, want, flag, draft })));
+  X.DB.draft = null;
+}
+{
+  /* WR-05 (09-REVIEW): every equipment control shows the type of the row it writes to. Settings used to
+     read the type by the row's label and write it by id, and the card read it by the entry's name while
+     the picker wrote to the entry's exId. When the two resolve to different rows (curl-a still labelled
+     "Curl" after the newer curl row took the "curl" spelling, WR-01), a choice appeared to do nothing. */
+  const Y = loadApp(APP_PATH); spyPushes(Y);
+  const PUSH = 'PUSH 1';
+  Y.DB = Y.normalize(Y.blank()); Y.DB.unit = 'lb';
+  Y.DB.exercises = [ { id: 'curl-a', name: 'Curl', aliases: ['old curl'], mtime: 10, equip: 'cable', equipAt: 5 },
+                     { id: 'curl', name: 'Curl', aliases: ['curl'], mtime: 20, equip: 'dumbbell', equipAt: 5 } ];
+  Y.DB.sessions = [ eqSess('wr5-a', PUSH, dayOff(-9), 0, 'Curl', [[35, 10]], { exId: 'curl-a' }),
+                    eqSess('wr5-b', PUSH, dayOff(-8), 0, 'Curl', [[30, 10]], { exId: 'curl' }) ];
+  const html = Y.__sandbox.exercisesCardHTML();
+  const selA = eqSelectOf(html, 'curl-a'), selB = eqSelectOf(html, 'curl');
+  ok('WR-05: Settings → Exercises selects each row\'s own stored type, even when its label spells the other row\'s alias — curl-a cable, curl dumbbell',
+     !!selA && selA.selected === 'cable' && !!selB && selB.selected === 'dumbbell', { a: selA && selA.selected, b: selB && selB.selected });
+  fireAction(Y, 'change', fakeEl({ action: 'setExEquip', id: 'curl-a' }, { value: 'ez' }));
+  const after = eqSelectOf(Y.__sandbox.exercisesCardHTML(), 'curl-a');
+  ok('WR-05: choosing EZ bar for curl-a stores it and the re-rendered select shows EZ bar, instead of snapping back to the other row\'s type',
+     !!after && after.selected === 'ez' && Y.exRow('curl-a').equip === 'ez', { selected: after && after.selected, stored: Y.exRow('curl-a').equip });
+
+  /* The card, for a draft entry whose exId is curl-a and whose name spells the other row's alias. */
+  Y.__sandbox.startWorkout(PUSH);
+  Y.DB.draft.entries[0] = { name: 'Curl', exId: 'curl-a', note: '', sets: [0, 1, 2].map(() => ({ w: '35', r: '', skipped: false, reason: '' })) };
+  const card = eqUiCard(Y, 0);
+  const plates = (/<div class="muted" id="plates-0"[^>]*>([\s\S]*?)<\/div>/.exec(card) || [])[1] || null;
+  const ramp = String(Y.__sandbox.warmRampHTML(Y.DB.draft.entries[0]));
+  const live = Y.__sandbox.document.getElementById('equip-tag-0'); live.textContent = 'stale'; Y.__sandbox.updPlates(0);
+  const dl = Y.__sandbox.deloadPlan(Y.DB.draft.entries[0], 25);
+  const ezTag = app.EQUIP_LABEL.ez + ' · +5';
+  ok('WR-05: the card follows curl-a\'s type (EZ bar), not the name\'s row — tag "EZ bar · +5" rendered and live, "Per side: 1×5" at 35, a ramp from the 25 lb bar, and 25 is the empty bar',
+     eqTagOf(card, 0) === ezTag && live.textContent === ezTag && (plates || '').includes('Per side: 1×5') && ramp.includes('Empty bar — 25 lb') && dl.atBar === true,
+     { tag: eqTagOf(card, 0), live: live.textContent, plates, ramp: ramp.includes('Empty bar — 25 lb'), dl });
+  Y.equipAsk.add('curl-a');
+  const pk = eqPickerOf(eqUiCard(Y, 0));
+  ok('WR-05: the first-time picker for curl-a highlights curl-a\'s own type (EZ bar), the row it writes to',
+     pk.length === 6 && pk.every(b => b.id === 'curl-a') && pk.filter(b => b.active).map(b => b.equip).join() === 'ez', pk.filter(b => b.active));
+  Y.equipAsk.clear();
+  Y.DB.draft = null;
+  /* Passing an entry instead of a name keeps the loading style the name decides: sled, landmine, straight, EZ. */
+  const styleNames = ['Leg press', 'Hack squat', 'T-bar row', 'Meadows row', 'Chest Supported T-Bar Row', 'Barbell row', 'Preacher curl', 'DB curl'];
+  const styles = styleNames.map(n => ({ n, byName: Y.barStyle(n), byEntry: Y.barStyle({ name: n, sets: [] }) }));
+  ok('WR-05: an entry gets the same loading style as its name — sled, landmine, straight, EZ bar and none',
+     styles.every(x => x.byName === x.byEntry) && styles.map(x => x.byEntry).join() === 'sled,sled,landmine,landmine,landmine,straight,ez,', styles);
+}
+{
+  /* IN-09 (09-REVIEW, iteration 2): ⬆ Add weight and the "→ suggest" line step on the ladder of the row
+     the card's tag shows (the entry's exId), while history is still matched by name, as before. curl-a
+     is EZ bar (5 lb steps); the name "Curl" spells the dumbbell row (2.5 lb steps). */
+  const Z = loadApp(APP_PATH); spyPushes(Z);
+  const PUSH1 = 'PUSH 1', PUSH2 = 'PUSH 2';
+  const rows = () => [ { id: 'curl-a', name: 'Curl', aliases: ['old curl'], mtime: 10, equip: 'ez', equipAt: 5 },
+                       { id: 'curl', name: 'Curl', aliases: ['curl'], mtime: 20, equip: 'dumbbell', equipAt: 5 } ];
+  const split = () => ({ name: 'Curl', exId: 'curl-a', note: '', sets: [0, 1, 2].map(() => ({ w: '', r: '', skipped: false, reason: '' })) });
+
+  /* The flag: Curl all at the top of PUSH 1 slot 0 (5–8) at 35, history matched by name. */
+  Z.DB = Z.normalize(Z.blank()); Z.DB.unit = 'lb'; Z.DB.exercises = rows();
+  Z.DB.sessions = [ eqSess('in9-a', PUSH1, dayOff(-7), 0, 'Curl', [[35, 8], [35, 8], [35, 8]], { exId: 'curl' }) ];
+  Z.__sandbox.startWorkout(PUSH1);
+  Z.DB.draft.entries[0] = split();
+  const card = eqUiCard(Z, 0);
+  ok('IN-09: the card whose tag says EZ bar suggests ⬆ Add weight → 40 lb (35 + 5 on the EZ ladder), not the dumbbell row\'s 37.5',
+     (eqFlag(card) || '').includes('→ 40 lb') && eqTagOf(card, 0) === app.EQUIP_LABEL.ez + ' · +5', { flag: eqFlag(card), tag: eqTagOf(card, 0) });
+  Z.DB.draft = null;
+
+  /* The suggest line: Curl logged only on PUSH 2 at 30×20, shown on PUSH 1 slot 1 (8–12). 30×20 → 39.5
+     before flooring: 35 on the EZ ladder, 37.5 on the dumbbell rack. */
+  Z.DB = Z.normalize(Z.blank()); Z.DB.unit = 'lb'; Z.DB.exercises = rows();
+  Z.DB.sessions = [ eqSess('in9-b', PUSH2, dayOff(-7), 0, 'Curl', [[30, 20], [30, 20], [30, 20]], { exId: 'curl' }) ];
+  Z.__sandbox.startWorkout(PUSH1);
+  Z.DB.draft.entries[1] = split();
+  const sug = (/→ suggest <strong>([\s\S]*?)<\/strong>/.exec(eqUiCard(Z, 1)) || [])[1] || null;
+  ok('IN-09: the "→ suggest" line on that card floors to the EZ ladder — 35 lb, not the dumbbell row\'s 37.5',
+     sug === '35 lb', sug);
+  Z.DB.draft = null;
+}
+
+/* ── EQUIP UI: the first-time picker, the card tag, Settings states (Phase 9, plan 09-04) ──
+   Ian rejected silent guessing for a name the default table cannot place (D-04, D-16): a brand-new
+   exercise asks for its type once, with the guess highlighted, and one tap stores it on the synced
+   registry row. Every main card then says which type and step it is using (D-05), so a wrong type
+   is easy to spot at the rack. equipAsk is in-memory UI state only and never stored. */
+console.log('\n── EQUIP UI: the first-time picker and the card tag (D-04, D-05, D-16) ──');
+/* The i-th main exercise card of the current draft. */
+function eqUiCard(a, i){ return a.viewActive().split('<div class="ex-card">')[i + 1] || ''; }
+/* The pickExEquip buttons in rendered html, in order: { id, equip, active, pressed, label }. */
+function eqPickerOf(html){
+  const out = [];
+  const re = /<button\b([^>]*)data-action="pickExEquip"([^>]*)>([\s\S]*?)<\/button>/g;
+  let m;
+  while((m = re.exec(String(html || '')))){
+    const attrs = m[1] + m[2];
+    const at = n => { const x = new RegExp('\\b' + n + '="([^"]*)"').exec(attrs); return x ? x[1] : null; };
+    out.push({ id: at('data-id'), equip: at('data-equip'), active: /\bclass="[^"]*\bactive\b/.test(attrs),
+               pressed: at('aria-pressed'), label: m[3] });
+  }
+  return out;
+}
+/* The text inside the card's equip-tag element, or null when the card has none. */
+function eqTagOf(card, i){
+  const m = new RegExp('<div class="ex-meta" id="equip-tag-' + i + '"[^>]*>([\\s\\S]*?)</div>').exec(String(card || ''));
+  return m ? m[1] : null;
+}
+{
+  /* The tracer, end to end: "+ Custom…" on card 0 → exEnsureAsk → the picker on the card with the
+     guess highlighted → one tap through the dispatcher → setExerciseEquip → save → the picker is
+     gone and the tag shows the choice. */
+  const U = loadApp(APP_PATH);
+  const spy = spyPushes(U);
+  U.DB = populatedDB(U);
+  U.DB.draft = fullDraft(U, 'PUSH 1');
+  U.__sandbox.prompt = () => 'Zercher carry';
+  fireAction(U, 'change', fakeEl({ action: 'pickEx', i: '0' }, { value: '__custom' }));
+  const rowOf = id => (U.DB.exercises || []).find(x => x && x.id === id) || null;
+  const r0 = rowOf('zercher-carry');
+  const asked = !!(U.equipAsk && U.equipAsk.has('zercher-carry'));
+  ok('D-16 tracer: "+ Custom…" with a name the table cannot place stores the guess (machine, equipAt 0) and asks for the type',
+     !!r0 && r0.equip === 'machine' && r0.equipAt === 0 && asked, { row: r0, asked });
+  const c0 = eqUiCard(U, 0);
+  const pk = eqPickerOf(c0);
+  ok('D-16 tracer: card 0 shows six pickExEquip buttons for zercher-carry, in EQUIP_TYPES order, with the guess (machine) active and pressed, and no tag',
+     pk.length === 6 && pk.every(b => b.id === 'zercher-carry')
+       && JSON.stringify(pk.map(b => b.equip)) === JSON.stringify(app.EQUIP_TYPES)
+       && pk.every(b => (b.equip === 'machine') === (b.active && b.pressed === 'true'))
+       && pk.filter(b => b.pressed === 'false').length === 5
+       && !c0.includes('id="equip-tag-0"'), pk);
+  const pushesBefore = spy.n;
+  fireAction(U, 'click', fakeEl({ action: 'pickExEquip', id: 'zercher-carry', equip: 'dumbbell' }));
+  const r1 = rowOf('zercher-carry');
+  const stillAsked = !!(U.equipAsk && U.equipAsk.has('zercher-carry'));
+  ok('D-04 tracer: one tap stores dumbbell with a positive equipAt, pushes once (two in all with pickEx), and stops asking',
+     !!r1 && r1.equip === 'dumbbell' && r1.equipAt > 0 && spy.n === pushesBefore + 1 && spy.n === 2 && !stillAsked,
+     { row: r1, pushes: spy.n, before: pushesBefore, stillAsked });
+  const c1 = eqUiCard(U, 0);
+  ok('D-05 tracer: card 0 then has no picker, and its tag reads "dumbbell · +2.5"',
+     eqPickerOf(c1).length === 0 && eqTagOf(c1, 0) === 'dumbbell · +2.5', { picker: eqPickerOf(c1).length, tag: eqTagOf(c1, 0) });
+  ok('T-9-27: equipAsk is never stored', !JSON.stringify(U.__stored()).includes('equipAsk'), null);
+  U.DB.draft = null;
+}
+{
+  /* Every path: the picker asks only for a genuinely new name the table cannot place, and only on a
+     weighted card; the tag states the step for the type and unit, live. */
+  const W1 = 'PUSH 1', PL1 = 'PULL 1';
+  const LAT = app.PROGRAM[W1].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+  const FLY = app.PROGRAM[W1].slots.findIndex(s => s.examples.includes('DB fly'));
+  const asks = (a, id) => !!(a.equipAsk && a.equipAsk.has(id));
+  const custom = (a, i, typed, keep) => {
+    a.__sandbox.prompt = () => typed;
+    a.__sandbox.confirm = () => !keep;
+    fireAction(a, 'change', fakeEl({ action: 'pickEx', i: String(i) }, { value: '__custom' }));
+    a.__sandbox.confirm = () => true;
+  };
+
+  /* A program name on a fresh install: the row is made, and the table knows the name. */
+  const F = loadApp(APP_PATH);
+  spyPushes(F);
+  F.DB = F.blank();
+  F.DB.draft = fullDraft(F, W1);
+  fireAction(F, 'change', fakeEl({ action: 'pickEx', i: String(LAT) }, { value: 'Cable lateral raise' }));
+  const fRow = (F.DB.exercises || []).find(x => x && x.id === 'cable-lateral-raise');
+  ok('D-16: picking the program name "Cable lateral raise" on a fresh install makes its row and never asks',
+     !!fRow && !asks(F, 'cable-lateral-raise') && eqPickerOf(eqUiCard(F, LAT)).length === 0,
+     { row: fRow, asks: asks(F, 'cable-lateral-raise') });
+
+  /* A typed name that already has a row. */
+  const H = loadApp(APP_PATH);
+  spyPushes(H);
+  eqRun(H, [ eqSess('ui-lat', W1, dayOff(-7), LAT, 'DB lateral raise', [[25, 12], [25, 12], [25, 12]]),
+             eqSess('ui-fly', W1, dayOff(-14), FLY, 'Seated Fly', [[100, 12], [100, 12], [100, 12]]) ]);
+  eqCard(H, W1, LAT);
+  custom(H, LAT, 'DB lateral raise');
+  ok('D-16: "+ Custom…" typing "DB lateral raise", which already has a row, never asks',
+     H.DB.draft.entries[LAT].exId === 'db-lateral-raise' && H.equipAsk.size === 0 && eqPickerOf(eqUiCard(H, LAT)).length === 0,
+     { exId: H.DB.draft.entries[LAT].exId, asked: [...(H.equipAsk || [])] });
+
+  /* "Did you mean": confirming resolves to the existing row, keeping it separate makes a new one. */
+  custom(H, FLY, 'Seated Flyy');
+  ok('D-16: "Seated Flyy" confirmed as "Seated Fly" resolves to the existing row and never asks',
+     H.DB.draft.entries[FLY].exId === 'seated-fly' && H.equipAsk.size === 0 && eqPickerOf(eqUiCard(H, FLY)).length === 0,
+     { exId: H.DB.draft.entries[FLY].exId, asked: [...(H.equipAsk || [])] });
+  custom(H, FLY, 'Seated Flyy', true);
+  const flyy = H.DB.draft.entries[FLY].exId;
+  const flyyPk = eqPickerOf(eqUiCard(H, FLY));
+  ok('D-16: "Seated Flyy" kept separate makes a new row and the picker shows for it',
+     flyy === 'seated-flyy' && asks(H, 'seated-flyy') && flyyPk.length === 6 && flyyPk.every(b => b.id === 'seated-flyy'),
+     { exId: flyy, picker: flyyPk.length });
+  H.equipAsk.clear();
+
+  /* Accessory cards: a weighted one asks inside the card, a time-based one never does. */
+  const AC = loadApp(APP_PATH);
+  spyPushes(AC);
+  AC.DB = populatedDB(AC);
+  AC.DB.draft = fullDraft(AC, W1);
+  AC.accOpen.add('abs');
+  AC.__sandbox.prompt = () => 'Zercher sit-up';
+  fireAction(AC, 'change', fakeEl({ action: 'exPick', id: 'abs' }, { value: '__custom' }));
+  const absCard = AC.extraCard('abs');
+  const absPk = eqPickerOf(absCard);
+  const selAt = absCard.indexOf('data-action="exPick"'), askAt = absCard.indexOf('class="equip-ask"');
+  ok('D-16: "+ Custom…" on the open abs card with "Zercher sit-up" shows the picker inside that card, after its exPick select',
+     absPk.length === 6 && absPk.every(b => b.id === 'zercher-sit-up') && selAt >= 0 && askAt > selAt,
+     { picker: absPk.length, selAt, askAt });
+  AC.DB.draft = fullDraft(AC, PL1);
+  AC.accOpen.add('deadhang');
+  AC.__sandbox.prompt = () => 'Bar hang hold';
+  fireAction(AC, 'change', fakeEl({ action: 'exPick', id: 'deadhang' }, { value: '__custom' }));
+  const hangRow = (AC.DB.exercises || []).find(x => x && x.id === 'bar-hang-hold');
+  const hangCard = AC.extraCard('deadhang');
+  ok('D-16: "+ Custom…" on the time-based dead-hang card makes the row but shows no picker there',
+     !!hangRow && hangCard.includes('data-action="exPick"') && eqPickerOf(hangCard).length === 0 && !hangCard.includes('equip-ask'),
+     { row: !!hangRow, picker: eqPickerOf(hangCard).length });
+  ok('D-05: no accessory card carries an equipment tag', !AC.extraCard('deadhang').includes('equip-tag-') && !absCard.includes('equip-tag-'), null);
+  AC.equipAsk.clear(); AC.accOpen.clear(); AC.DB.draft = null;
+
+  /* Two new names on two cards: two pickers, each for its own id, and a tap on one leaves the other. */
+  const T = loadApp(APP_PATH);
+  spyPushes(T);
+  T.DB = populatedDB(T);
+  T.DB.draft = fullDraft(T, W1);
+  custom(T, 0, 'Zercher carry', true);
+  custom(T, 1, 'Viking press', true);
+  const pk0 = eqPickerOf(eqUiCard(T, 0)), pk1 = eqPickerOf(eqUiCard(T, 1));
+  ok('zero-one-many: two new names on cards 0 and 1 give two pickers, each with its own id',
+     pk0.length === 6 && pk0.every(b => b.id === 'zercher-carry') && pk1.length === 6 && pk1.every(b => b.id === 'viking-press'),
+     { pk0: pk0.map(b => b.id), pk1: pk1.map(b => b.id) });
+  fireAction(T, 'click', fakeEl({ action: 'pickExEquip', id: 'zercher-carry', equip: 'dumbbell' }));
+  const after0 = eqUiCard(T, 0), after1 = eqPickerOf(eqUiCard(T, 1));
+  ok('zero-one-many: a tap on card 0\'s dumbbell answers card 0 and leaves card 1\'s picker in place',
+     eqPickerOf(after0).length === 0 && eqTagOf(after0, 0) === 'dumbbell · +2.5'
+       && after1.length === 6 && after1.every(b => b.id === 'viking-press') && asks(T, 'viking-press'),
+     { tag0: eqTagOf(after0, 0), pk1: after1.length });
+  T.equipAsk.clear(); T.DB.draft = null;
+
+  /* Tags. Each case puts a name and its weights on the LAT card and reads the rendered tag. */
+  const G = loadApp(APP_PATH);
+  spyPushes(G);
+  eqRun(G, [ eqSess('tag-lat', W1, dayOff(-7), LAT, 'DB lateral raise', [[25, 12], [25, 12], [25, 12]]) ]);
+  eqCard(G, W1, LAT);
+  const tagFor = (name, ws) => {
+    const e = G.DB.draft.entries[LAT];
+    e.name = name; delete e.exId;
+    e.sets = ws.map(w => ({ w: String(w), r: '', skipped: false }));
+    return eqTagOf(eqUiCard(G, LAT), LAT);
+  };
+  const lbTags = {
+    lat25: tagFor('DB lateral raise', [25, 25, 25]),
+    bench: tagFor('Barbell bench press', [135, 135]),
+    push: tagFor('Triceps pushdown', [50]),
+    ohp: tagFor('Seated OHP', [90]),
+    chin: tagFor('Chin-up', ['', '']),
+    blank: tagFor('DB lateral raise', ['', '', '']),
+  };
+  ok('D-05: the tag reads dumbbell · +2.5, barbell · +5, cable · +2.5, machine · +5, bodyweight, and dumbbell · +2.5 with no weight entered',
+     lbTags.lat25 === 'dumbbell · +2.5' && lbTags.bench === 'barbell · +5' && lbTags.push === 'cable · +2.5'
+       && lbTags.ohp === 'machine · +5' && lbTags.chin === 'bodyweight' && lbTags.blank === 'dumbbell · +2.5', lbTags);
+
+  /* Live: the weight input's updPlates rewrites the tag with no re-render, on a card with no plate line. */
+  tagFor('DB lateral raise', ['', '', '']);
+  const liveEl = G.__sandbox.document.getElementById('equip-tag-' + LAT);
+  liveEl.textContent = 'stale';
+  G.setVal(LAT, 0, 'w', '65'); G.__sandbox.updPlates(LAT);
+  const at65 = liveEl.textContent;
+  G.setVal(LAT, 0, 'w', '25'); G.__sandbox.updPlates(LAT);
+  const at25 = liveEl.textContent;
+  ok('D-05: typing 65 on a DB lateral raise card flips its tag to "dumbbell · +5", and 25 flips it back to "dumbbell · +2.5", live',
+     at65 === 'dumbbell · +5' && at25 === 'dumbbell · +2.5', { at65, at25 });
+
+  /* kg: every non-bodyweight type moves 2.5 (D-10). */
+  G.DB.unit = 'kg';
+  const kgTags = { bench: tagFor('Barbell bench press', [60]), lat65: tagFor('DB lateral raise', [65]), chin: tagFor('Chin-up', ['']) };
+  G.DB.unit = 'lb';
+  ok('D-10: in kg the tag reads barbell · +2.5, dumbbell · +2.5 at 65, and bodyweight',
+     kgTags.bench === 'barbell · +2.5' && kgTags.lat65 === 'dumbbell · +2.5' && kgTags.chin === 'bodyweight', kgTags);
+
+  /* A hostile stored type renders as the guess, and nothing it holds reaches the card. */
+  const latRow = G.DB.exercises.find(x => x && x.id === 'db-lateral-raise');
+  latRow.equip = '"><img src=x>';
+  const hostileTag = tagFor('DB lateral raise', [25]);
+  const hostileCard = eqUiCard(G, LAT);
+  ok('T-9-24: a hostile stored equip on DB lateral raise tags the card "dumbbell · +2.5", and the card holds no <img',
+     hostileTag === 'dumbbell · +2.5' && !hostileCard.includes('<img'), hostileTag);
+  latRow.equip = 'dumbbell';
+
+  /* Collapsed cards keep their one-line summary and carry no tag. */
+  tagFor('DB lateral raise', [25]);
+  G.__sandbox.toggleExCollapse(LAT);
+  const collapsed = eqUiCard(G, LAT);
+  ok('D-05: a collapsed card carries no tag and no picker',
+     collapsed.includes('expand') && !collapsed.includes('equip-tag-') && eqPickerOf(collapsed).length === 0, null);
+  G.DB.draft = null;
+}
+{
+  /* Settings → Exercises in every state (S1), and every new surface escapes what it prints. */
+  console.log('\n── EQUIP UI: Settings → Exercises states and the hostile-name sweep (EQUIP-01, EQUIP-03) ──');
+  const S = loadApp(APP_PATH);
+  const spy = spyPushes(S);
+  const card = () => S.__sandbox.exercisesCardHTML();
+  const sess = (id, date, names) => ({ id, workout: 'PUSH 1', date, endedAt: 1, extras: {},
+    entries: names.map(n => ({ name: n, sets: [{ w: '50', r: '10', skipped: false, reason: '' }] })) });
+
+  /* Empty: nothing logged, so nothing to set. */
+  eqRun(S, []);
+  const empty = card();
+  ok('EQUIP-01: with nothing logged, Settings → Exercises says so, names equipment, and has no equipment select',
+     empty.includes('Log a workout and your exercises show up here to rename, merge or set their equipment.')
+       && !empty.includes('data-action="setExEquip"'), empty);
+
+  /* Populated: three exercises used 3, 2 and 1 times. */
+  const BB = 'Barbell bench press', DL = 'DB lateral raise', TP = 'Triceps pushdown';
+  eqRun(S, [ sess('st-1', dayOff(-9), [BB, DL, TP]), sess('st-2', dayOff(-6), [BB, DL]), sess('st-3', dayOff(-3), [BB]) ]);
+  const pop = card();
+  ok('EQUIP-01: the intro paragraph says the equipment under each name sets its weight step and plate math',
+     pop.includes('<p class="muted" style="margin-bottom:10px">Two spellings of the same lift split its history in two. Rename one, or merge them — your logged sets are never changed, only the label they sit under. The equipment under each name sets its weight step and plate math.</p>'),
+     (/<p class="muted"[^>]*>([\s\S]*?)<\/p>/.exec(pop) || [])[1]);
+  const ids = [...pop.matchAll(/<select\b[^>]*data-action="setExEquip"[^>]*data-id="([^"]*)"/g)].map(m => m[1]);
+  const sels = ids.map(id => eqSelectOf(pop, id));
+  const want = [BB, DL, TP].map(n => S.__sandbox.equipOf(n));
+  ok('EQUIP-01: three logged exercises give three equipment selects in use order, six options each, the current type selected',
+     JSON.stringify(ids) === JSON.stringify(['barbell-bench-press', 'db-lateral-raise', 'triceps-pushdown'])
+       && sels.every(s => s && s.opts.length === 6 && JSON.stringify(s.opts.map(o => o.value)) === JSON.stringify(app.EQUIP_TYPES))
+       && JSON.stringify(sels.map(s => s.selected)) === JSON.stringify(want)
+       && JSON.stringify(want) === JSON.stringify(['barbell', 'dumbbell', 'cable']),
+     { ids, selected: sels.map(s => s && s.selected), want });
+  ok('EQUIP-01: the session count keeps its plural — "1 session" and "2 sessions"',
+     pop.includes('· 1 session<') && pop.includes('· 2 sessions<') && pop.includes('· 3 sessions<'), null);
+
+  /* Layout markup (S1, S2): the select sits on its own line under the name, inside the wrapping
+     column; the picker prompt is a wrapping <p>; the grid and the 44px tap target are in the CSS. */
+  const colOk = ids.every(id => new RegExp('<span style="min-width:0;flex:1">(?:(?!</span>\\s*<button)[\\s\\S])*?<select\\b[^>]*data-id="' + id + '"[^>]*style="display:block').test(pop));
+  const picker = S.__sandbox.equipPickerHTML('x', 'Long exercise name that wraps');
+  const css = fs.readFileSync(APP_PATH, 'utf8');
+  const btnRule = (/\.equip-grid \.day-btn \{([^}]*)\}/.exec(css) || [])[1] || '';
+  ok('long-text/overflow: each Settings select is display:block inside the flex:1, min-width:0 column; the prompt is a <p> inside .equip-ask; the grid is auto-fit 88px and buttons are 44px tall',
+     colOk && /<div class="equip-ask"[^>]*>\s*<p>What equipment is/.test(picker)
+       && /\.equip-grid \{[^}]*repeat\(auto-fit, minmax\(88px, 1fr\)\)/.test(css) && /min-height: 44px/.test(btnRule),
+     { colOk, btnRule });
+
+  /* Partial: a logged key with no registry row shows its guessed type as text, with no select. */
+  S.DB.sessions.push({ id: 'st-ghost', workout: 'PUSH 1', date: dayOff(-2), endedAt: 1, extras: {},
+    entries: [{ name: 'Ghost lift', exId: 'ghost-lift', sets: [{ w: '40', r: '10', skipped: false, reason: '' }] }] });
+  const part = card();
+  const ghostRow = (/<strong style="font-size:13px">ghost-lift<\/strong>[\s\S]*?<\/span>\s*<button/.exec(part) || [''])[0];
+  const ghostLabel = app.EQUIP_LABEL[S.__sandbox.equipOf('ghost-lift')];
+  ok('partial: a logged key with no registry row renders its guessed type as a muted line and no select',
+     !!ghostRow && eqSelectOf(part, 'ghost-lift') === null && !ghostRow.includes('<select')
+       && ghostRow.includes(`<div class="muted" style="font-size:12px;margin-top:8px">${ghostLabel}</div>`),
+     { ghostRow, ghostLabel });
+  S.DB.sessions = S.DB.sessions.filter(s => s.id !== 'st-ghost');
+
+  /* Error, refused: a type outside EQUIP_TYPES from a control writes nothing and says nothing. */
+  const toastEl = S.__sandbox.document.getElementById('toast');
+  toastEl.textContent = 'sentinel';
+  const rowsBefore = JSON.stringify(S.DB.exercises), pushesBefore = spy.n;
+  S.equipAsk.add('barbell-bench-press');
+  fireAction(S, 'change', fakeEl({ action: 'setExEquip', id: 'barbell-bench-press' }, { value: 'laser' }));
+  fireAction(S, 'click', fakeEl({ action: 'pickExEquip', id: 'barbell-bench-press', equip: 'toString' }));
+  ok('EQUIP-03: setExEquip "laser" and pickExEquip "toString" change no row, push nothing and show no toast',
+     JSON.stringify(S.DB.exercises) === rowsBefore && spy.n === pushesBefore && toastEl.textContent === 'sentinel',
+     { pushes: spy.n - pushesBefore, toast: toastEl.textContent });
+  S.equipAsk.clear();
+
+  /* Error, rendered: a hostile stored type reads as the guess, in Settings and on the card. */
+  const bbRow = S.DB.exercises.find(x => x && x.id === 'barbell-bench-press');
+  bbRow.equip = '"><img src=x>';
+  const hostileSettings = card();
+  eqCard(S, 'PUSH 1', 0);
+  S.DB.draft.entries[0].name = BB; delete S.DB.draft.entries[0].exId;
+  const hostileMain = eqUiCard(S, 0);
+  ok('EQUIP-03: a hostile stored equip selects the guess (barbell) in Settings, and neither Settings nor the card holds <img',
+     (eqSelectOf(hostileSettings, 'barbell-bench-press') || {}).selected === 'barbell'
+       && !hostileSettings.includes('<img') && !hostileMain.includes('<img') && eqTagOf(hostileMain, 0) === 'barbell · +5',
+     { selected: (eqSelectOf(hostileSettings, 'barbell-bench-press') || {}).selected, tag: eqTagOf(hostileMain, 0) });
+  bbRow.equip = 'barbell';
+  S.DB.draft = null;
+
+  /* Hostile name: every new surface escapes it. */
+  const HN = 'Fly <img src=x onerror=1> "q"';
+  eqRun(S, [ sess('st-h', dayOff(-4), [HN]) ]);
+  const hostId = S.exIdByName(HN);
+  const hs = card();
+  const hsSel = eqSelectOf(hs, hostId);
+  eqCard(S, 'PUSH 1', 0);
+  S.__sandbox.prompt = () => HN + ' 2';
+  S.__sandbox.confirm = () => false;
+  fireAction(S, 'change', fakeEl({ action: 'pickEx', i: '0' }, { value: '__custom' }));
+  S.__sandbox.confirm = () => true;
+  const hostPickId = S.DB.draft.entries[0].exId;
+  const hc = eqUiCard(S, 0);
+  const ask = (/<div class="equip-ask"[\s\S]*?<\/div>\s*<\/div>/.exec(hc) || [''])[0];
+  const escName = 'Fly &lt;img src=x onerror=1&gt; &quot;q&quot;';
+  ok('T-9-23: a hostile exercise name renders escaped in the Settings name, the select\'s aria-label, the picker prompt and the picker\'s aria-label',
+     !!hostId && !!hsSel && hs.includes(`<strong style="font-size:13px">${escName}</strong>`)
+       && hsSel.tag.includes(`aria-label="Equipment for ${escName}"`)
+       && !!hostPickId && S.equipAsk.has(hostPickId)
+       && ask.includes(`aria-label="Equipment for ${escName} 2"`) && ask.includes(`<p>What equipment is “${escName} 2”?`)
+       && !hs.includes('<img') && !hc.includes('<img') && !hs.includes(' "q"') && !hc.includes(' "q"'),
+     { hostId, hostPickId, sel: hsSel && hsSel.tag, ask });
+  S.equipAsk.clear();
+  S.DB.draft = null;
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
