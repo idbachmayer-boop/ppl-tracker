@@ -8651,6 +8651,75 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
   ok('EQUIP-03: the registry merge is idempotent, commutative and associative on registry fixtures', laws.idempotent && laws.commutative && laws.associative, laws);
   ok('T-9-13: no registry merge above mutated either of its inputs', intact, intact);
 }
+{
+  /* A merged-away exercise stays merged (EQUIP-03, CLAUDE.md soft deletes). Now that the registry
+     unions per row, a hard delete would be resurrected by any device still holding the live row. */
+  const W = 'PUSH 1';
+  const seed = eqSeed18([eqRow('Seated fly', 1000), eqRow('Pec deck', 1000)], { sessions: [
+    eqSess('fly1', W, dayOff(-9), 0, 'Seated fly', [[100, 12]], { exId: 'seated-fly' }),
+    eqSess('pec1', W, dayOff(-8), 0, 'Pec deck', [[110, 12]], { exId: 'pec-deck' }),
+  ] });
+  const A = loadApp(APP_PATH, seed); spyPushes(A);
+  const live = id => (A.DB.exercises || []).find(x => x && x.id === id) || null;
+  /* B: a stale copy taken before the merge, where pec-deck is live with its alias, newer by updatedAt. */
+  const B = clone(A.DB); B.draft = null; B.updatedAt = Date.now() + 60000;
+  const bPec = (B.exercises || []).find(x => x && x.id === 'pec-deck') || {};
+  const label = A.exLabel('seated-fly');
+  const merged = A.exMerge('pec-deck', 'seated-fly');
+  const tomb = live('pec-deck');
+  ok('EQUIP-03: exMerge leaves a tombstone — the merged row stays in DB.exercises with a numeric deletedAt, mergedInto, empty aliases and a touched mtime',
+     merged === true && !!tomb && typeof tomb.deletedAt === 'number' && tomb.mergedInto === 'seated-fly' &&
+       Array.isArray(tomb.aliases) && tomb.aliases.length === 0 && tomb.mtime > 1001,
+     tomb);
+  ok('EQUIP-03: exRow reads live rows only — the tombstone reads as no row, and the survivor\'s label is unchanged',
+     A.exRow('pec-deck') === null && A.exLabel('seated-fly') === label && A.exIdByName('Pec deck') === 'seated-fly',
+     { exRow: A.exRow('pec-deck'), label: A.exLabel('seated-fly'), resolves: A.exIdByName('Pec deck') });
+
+  const R = loadApp(APP_PATH); spyPushes(R);
+  const adopted = db => { R.DB = db; return { tomb: !!(db.exercises || []).find(x => x && x.id === 'pec-deck' && x.deletedAt),
+    resolves: R.exIdByName('Pec deck'), row: R.exRow('pec-deck') }; };
+  const ba = A.mergeDB(clone(B), clone(A.DB)), ab = A.mergeDB(clone(A.DB), clone(B));
+  const res = [ba, ab, A.mergeDB(clone(B), clone(ba)), A.mergeDB(clone(ab), clone(B))].map(adopted);
+  ok('EQUIP-03: a stale device whose pec-deck is still live (alias \'pec deck\', mtime 1001, newer updatedAt) cannot resurrect it — both orders, replayed twice',
+     bPec.mtime === 1001 && (bPec.aliases || []).indexOf('pec deck') >= 0 && !bPec.deletedAt &&
+       res.every(x => x.tomb && x.resolves === 'seated-fly' && x.row === null),
+     res);
+
+  // The better type carries into the survivor; a worse one never replaces it.
+  const T = loadApp(APP_PATH); spyPushes(T);
+  T.DB.exercises = [eqRow('Seated fly', 100, { equip: 'machine', equipAt: 0 }), eqRow('Pec deck', 100, { equip: 'cable', equipAt: 7000 })];
+  T.exMerge('pec-deck', 'seated-fly');
+  const up = T.exRow('seated-fly');
+  T.DB.exercises = [eqRow('Seated fly', 100, { equip: 'cable', equipAt: 7000 }), eqRow('Pec deck', 100, { equip: 'machine', equipAt: 0 })];
+  T.exMerge('pec-deck', 'seated-fly');
+  const keep = T.exRow('seated-fly');
+  ok('EQUIP-03: exMerge carries the higher-equipAt type into the survivor (machine at 0 ← cable at 7000), and a lower one never replaces it',
+     !!up && up.equip === 'cable' && up.equipAt === 7000 && !!keep && keep.equip === 'cable' && keep.equipAt === 7000,
+     { up, keep });
+
+  // A tombstoned id is never reused.
+  T.DB.exercises = [eqRow('Foo', 100, { equip: 'machine', equipAt: 0 }), eqRow('Bar', 100, { equip: 'machine', equipAt: 0 })];
+  T.exMerge('foo', 'bar');
+  const fooId = T.exEnsure('Foo!');
+  ok('EQUIP-03: after foo is merged into bar, exEnsure(\'Foo!\') makes a new row foo-2, never reusing the tombstoned foo',
+     fooId === 'foo-2' && T.DB.exercises.filter(x => x.id === 'foo').length === 1 && !!T.DB.exercises.find(x => x.id === 'foo').deletedAt,
+     { fooId, rows: T.DB.exercises.map(x => x.id) });
+
+  // Refusals: a tombstone, a type outside EQUIP_TYPES, an unknown id. No write, no push, no toast.
+  const spy = spyPushes(A);
+  let toasts = 0; const realToast = A.__sandbox.toast; A.__sandbox.toast = () => { toasts++; };
+  const before = canon(A.DB.exercises);
+  const setEq = A.__sandbox.setExerciseEquip;
+  if(typeof setEq === 'function'){ setEq('pec-deck', 'machine'); setEq('seated-fly', 'laser'); setEq('constructor', 'cable'); }
+  A.__sandbox.toast = realToast;
+  ok('T-9-10: setExerciseEquip refuses a tombstoned id, a type outside EQUIP_TYPES and an unknown id, with no write, no push and no toast',
+     typeof setEq === 'function' && canon(A.DB.exercises) === before && spy.n === 0 && toasts === 0,
+     { fn: typeof setEq, changed: canon(A.DB.exercises) !== before, pushes: spy.n, toasts });
+
+  const html = A.__sandbox.exercisesCardHTML();
+  ok('EQUIP-03: after the merge, Settings → Exercises renders no control for the merged-away pec-deck',
+     !controlsIn(html).some(c => c.data.id === 'pec-deck') && !html.includes('data-id="pec-deck"'), controlsIn(html).map(c => c.data));
+}
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against

@@ -30,7 +30,9 @@ legitimately remove sets.
 **Deletes are soft.** Never splice a row out of `sessions`/`weights`/`cardio`/`ideas`/`todos`/
 `hobbyLog`/`petWeights` — the union merge would resurrect it from the cloud forever. Set `deletedAt`,
 call `touch()`, and read through `liveSessions()` / `liveWeights()` / etc. A missed filter ghosts a
-deleted row back into a view.
+deleted row back into a view. The exercise registry (`DB.exercises`) has merged per row since Phase 9,
+so `exMerge` tombstones the merged-away row (`deletedAt`, `mergedInto`, empty `aliases`), `exRow()`
+reads live rows only, and a registry row is never filtered out.
 
 **Absence never means "off".** `mobilityLog` and `lawnLog` take the whole inner object from the newer
 side, so a deleted key reads as "never logged" on the other device. Store an explicit `false`.

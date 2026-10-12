@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-hhymiTW4CEp9nUM2WYb2DZQoAzUCokFPrztrgrPCuxk=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Hr1NJl6poqISCTx+q25KNF2oHK4SSUuNaTPYH2uV6MI=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1353,7 +1353,8 @@ function sessionExercises(s){
 const normEx = s => String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,' ');
 const slugEx = s => normEx(s).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'ex';
 const exRows = () => DB.exercises || (DB.exercises = []);
-function exRow(id){ return exRows().find(x=>x && x.id===id) || null; }
+/* Live rows only: a row exMerge tombstoned (deletedAt) reads as no row. */
+function exRow(id){ return exRows().find(x=>x && x.id===id && !x.deletedAt) || null; }
 function exIdByName(name){
   const k = normEx(name); if(!k) return null;
   const rows = exRows();
@@ -1381,16 +1382,20 @@ function exEnsure(name){
   const k = normEx(name); if(!k) return null;
   const found = exIdByName(name); if(found) return found;
   let id = slugEx(name), n = 2;
-  while(exRow(id)) id = slugEx(name) + '-' + (n++);
+  while(exRows().some(x=>x && x.id===id)) id = slugEx(name) + '-' + (n++);   // every row, tombstones too: a merged-away id is never reused
   exRows().push(touch({ id, name:String(name).trim(), aliases:[k], equip: equipGuess(name), equipAt: 0 }));
   return id;
 }
 /* Fold `fromId` into `intoId`: the alias comes along, every logged row is restamped, and the merged
-   row is dropped. Rows are touched so the change survives the next sync. */
+   row becomes a tombstone (deletedAt, mergedInto, empty aliases). It is never removed: since Phase 9
+   the registry merges per row, so a removed row would come back from any device still holding it
+   live (CLAUDE.md, deletes are soft). The survivor takes the merged row's equipment type when that
+   choice is newer by the equipAt field clock. Rows are touched so the change survives the next sync. */
 function exMerge(fromId, intoId){
   if(!fromId || !intoId || fromId===intoId) return false;
   const a = exRow(fromId), b = exRow(intoId); if(!a || !b) return false;
   b.aliases = (b.aliases||[]).concat(a.aliases||[]).filter((v,i,arr)=>arr.indexOf(v)===i);
+  if(equipClock(a) > equipClock(b)){ b.equip = a.equip; b.equipAt = +a.equipAt; }
   touch(b);
   const restamp = e => { if(e && exKey(e)===fromId){ e.exId = intoId; e.name = b.name; return true; } return false; };
   (DB.sessions||[]).forEach(s=>{
@@ -1400,7 +1405,7 @@ function exMerge(fromId, intoId){
     if(hit) touch(s);
   });
   if(DB.draft){ (DB.draft.entries||[]).forEach(restamp); if(DB.draft.extras) Object.keys(DB.draft.extras).forEach(k=>restamp(DB.draft.extras[k])); }
-  DB.exercises = exRows().filter(x=>x.id!==fromId);
+  a.deletedAt = Date.now(); a.mergedInto = intoId; a.aliases = []; touch(a);
   return true;
 }
 /* How many logged sessions reference an identity — shown in the merge screen so it's obvious which
