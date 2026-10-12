@@ -8836,6 +8836,31 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
   ok('WR-01: two live rows sharing "db curl" leave it on the newer row only; the older keeps "curl" and stays live, both orders, replayed twice',
      rk.commutes && pk.every(x => !!x.curl && !x.curl.deletedAt && JSON.stringify(x.curl.aliases) === '["curl"]' && JSON.stringify(x.owners) === '["db-curl"]'), pk);
 }
+{
+  /* WR-07 (09-REVIEW, iteration 2): a stale edit of the survivor must not drop the merged-away row's
+     spellings. A merged X into Y (Y gained "x"); B, not yet synced, renamed Y or set its type, which
+     made B's copy of Y the newest without "x". Every copy's aliases count, live or tombstone, and a
+     tombstone's spellings go to its survivor, so "X" still resolves to y. Both orders, replayed twice. */
+  const M = app.mergeDB;
+  const R = loadApp(APP_PATH); spyPushes(R);
+  const regDB = (rows, updatedAt) => Object.assign(app.blank(), { exercises: rows, updatedAt });
+  const runs = (P, Q) => { const pq = M(clone(P), clone(Q)), qp = M(clone(Q), clone(P));
+    return [pq, qp, M(clone(P), clone(pq)), M(clone(qp), clone(P)), M(clone(Q), clone(pq)), M(clone(qp), clone(Q))]; };
+  const resolve = (db, names) => { R.DB = clone(db); return names.map(n => R.exIdByName(n)); };
+  const A = regDB([eqRow('X', 100, { aliases: [], deletedAt: 100, mergedInto: 'y' }), eqRow('Y', 100, { aliases: ['y', 'x'] })], 100);
+  const Brename = regDB([eqRow('X', 50), eqRow('Y', 200, { name: 'Y2', aliases: ['y', 'y2'] })], 300);
+  const Bretype = regDB([eqRow('X', 50), eqRow('Y', 200, { equip: 'cable', equipAt: 200 })], 300);
+  const Bfoo = regDB([eqRow('X', 250, { aliases: ['x', 'foo'] }), eqRow('Y', 50)], 300);
+  const rn = runs(A, Brename).map(db => resolve(db, ['X', 'Y', 'Y2']));
+  ok('WR-07: A merged X into Y; B renamed Y before it heard — "X", "Y" and "Y2" all still resolve to y, both orders, replayed twice',
+     rn.every(r => r.every(id => id === 'y')), rn);
+  const rt = runs(A, Bretype).map(db => resolve(db, ['X', 'Y']));
+  ok('WR-07: A merged X into Y; B set Y\'s type before it heard — "X" and "Y" still resolve to y, both orders, replayed twice',
+     rt.every(r => r.every(id => id === 'y')), rt);
+  const rf = runs(A, Bfoo).map(db => resolve(db, ['X', 'Foo', 'Y']));
+  ok('WR-07: B renamed the merged-away X to add "foo" before it heard — "foo" goes with X to y instead of vanishing, both orders, replayed twice',
+     rf.every(r => r.every(id => id === 'y')), rf);
+}
 
 /* ── EQUIP rounding: deloads, warm-ups and the suggest line follow the exercise's own ladder (Phase 9,
    plan 09-03, EQUIP-05). A 15 lb dumbbell deload used to round back to 15 through a flat 5-lb rounding,

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Pp7uOJjDKEzWir+kYF0jp4LiVKZJN7mpn5XagAs3PYA=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-9ji271Sh0gy75vlNnWT/kMKjhaUTC27waGNW5iOdAuk=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -4635,17 +4635,42 @@ function mergeExercises(r, l, localNewer){
     if(!b || !(equipClock(b) > equipClock(row))) return row;
     return Object.assign({}, row, { equip: b.equip, equipAt: +b.equipAt });
   });
+  /* Claims (WR-07). A row merges whole by mtime, so the newest copy of a survivor edited on a device
+     that had not heard of a merge lacks the spellings the merge gave it, and the merged-away row's own
+     tombstone has none. So every copy's aliases count, live or tombstone, and a tombstoned id's
+     spellings go to the live row its mergedInto chain ends at. Nothing in the app removes an alias from
+     a live row; only the one-owner pass below decides who keeps a contested one. */
+  const byId = new Map(typed.map(x => [x.id, x]));
+  const survivor = id => {
+    const seen = [];
+    let x = byId.get(id);
+    while(x && x.deletedAt && typeof x.mergedInto === 'string' && seen.indexOf(x.id) < 0){ seen.push(x.id); x = byId.get(x.mergedInto); }
+    return x && !x.deletedAt ? x.id : null;
+  };
+  const claims = new Map();
+  copies.forEach(c => {
+    if(!Array.isArray(c.aliases) || !byId.has(c.id)) return;
+    const to = byId.get(c.id).deletedAt ? survivor(c.id) : c.id;
+    if(to == null) return;
+    const a = claims.get(to) || []; claims.set(to, a);
+    c.aliases.forEach(k => { if(a.indexOf(k) < 0) a.push(k); });
+  });
   /* One live owner per alias. */
   const over = (a, b) => mt(a) > mt(b) || (mt(a) === mt(b) && String(a.id) > String(b.id));
   const owner = new Map();
-  typed.forEach(x => { if(x.deletedAt || !Array.isArray(x.aliases)) return;
-    x.aliases.forEach(k => { const o = owner.get(k); if(!o || over(x, o)) owner.set(k, x); }); });
+  typed.forEach(x => { if(x.deletedAt) return;
+    (claims.get(x.id) || []).forEach(k => { const o = owner.get(k); if(!o || over(x, o)) owner.set(k, x); }); });
   return typed.map(x => {
-    if(x.deletedAt || !Array.isArray(x.aliases)) return x;
-    const keep = x.aliases.filter(k => owner.get(k) === x);
-    if(keep.length === x.aliases.length) return x;
+    const mine = claims.get(x.id) || [];
+    if(x.deletedAt || !mine.length) return x;
+    const own = mine.filter(k => owner.get(k) === x);
+    /* The row's own order first, then any spelling it gained, sorted, so the result never depends on
+       which copy was seen first. */
+    const base = Array.isArray(x.aliases) ? x.aliases : [];
+    const keep = base.filter(k => own.indexOf(k) >= 0).concat(own.filter(k => base.indexOf(k) < 0).sort());
+    if(keep.length === base.length && keep.every((k, i) => k === base[i])) return x;
     if(keep.length) return Object.assign({}, x, { aliases: keep });
-    const into = x.aliases.map(k => owner.get(k)).reduce((a, b) => over(b, a) ? b : a);
+    const into = mine.map(k => owner.get(k)).reduce((a, b) => over(b, a) ? b : a);
     return Object.assign({}, x, { aliases: [], deletedAt: mt(into) || 1, mergedInto: into.id });
   });
 }
