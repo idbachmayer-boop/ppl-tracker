@@ -49,13 +49,18 @@ Declared values for new elements (multiples of 4):
 |-------|-------|---------------------|
 | xs | 4px | Tag `margin-top` under the exercise select (S3); horizontal padding inside picker buttons (S2) |
 | sm | 8px | Picker grid gap; picker panel top padding and prompt-to-grid gap; Settings select `margin-top` under the name (S1); picker panel `margin-top` |
-| md | 12px | Picker panel side and bottom padding; picker panel `margin-bottom` (matches the ~10-12px rhythm of `.lasttime`/`.coach` below it) |
-| lg | 16px | Not used by new elements (container and `.card` padding are inherited) |
+| md | 16px | Not used by new elements (container and `.card` padding are inherited) |
+| lg | 24px | Not used |
 | xl | 32px | Not used |
 | 2xl | 48px | Not used |
 | 3xl | 64px | Not used |
 
 Exceptions:
+- **12px on the picker panel (S2):** its side and bottom padding and its `margin-bottom`
+  (`padding: 8px 12px 12px; margin: 8px 0 12px`). The panel sits directly above `.lasttime` and `.coach`,
+  which run on a 10-12px rhythm. A 16px gap would read as a section break inside the card, and 8px would
+  crowd the "Last time" line. 12px is a multiple of 4. It is not in the standard scale, so it is
+  confined to this one rule.
 - **44px minimum height on each picker button (S2).** It is a mid-set, one-handed tap target. Existing
   `.day-btn` is about 33px tall, which is too small here.
 - **88px minimum column width in the picker grid** (`minmax(88px, 1fr)`), so "bodyweight" never
@@ -79,6 +84,11 @@ styles.
 | Meta | 12px | 400 | 1.5 | Equipment tag (S3, via `.ex-meta`); picker prompt and hint (S2) |
 | Note | 11px | 400 | normal | Warm-up rounding note (S4), same size as the line it replaces |
 
+- **No new sizes:** all four sizes are reused from existing controls, and none is a new choice:
+  - 14px from the global `select` rule;
+  - 13px from `.day-btn`;
+  - 12px from `.ex-meta`, `.lasttime` and `.coach`;
+  - 11px from the warm-up note this phase rewrites.
 - **Weights:** 400 and 600 only for new text. The exercise name inside the picker prompt is **not**
   bolded. It is set off with curly quotes (“…”), the way `resolveTypedName`'s confirm already quotes
   names.
@@ -157,6 +167,11 @@ not this wording, except where a decision fixes the text:
 ---
 
 ## Component Inventory
+
+**Focal point.** When the picker (S2) is showing, it is the card's main focal point: the only inset
+panel on the card, carrying the one accent-filled button. The rest of the time the set rows are the
+focal point. The tag (S3) is deliberately the quietest element on the card: muted 12px, no border, no
+fill, below both the ⬆ Add weight flag and the range badge.
 
 ### S1 — Settings → Exercises row (modified `.hist-item`)
 
