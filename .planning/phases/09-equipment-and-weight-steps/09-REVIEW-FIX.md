@@ -1,19 +1,115 @@
 ---
 phase: 09-equipment-and-weight-steps
-fixed_at: 2026-10-12T18:25:56Z
+fixed_at: 2026-10-12T18:45:30Z
 review_path: .planning/phases/09-equipment-and-weight-steps/09-REVIEW.md
-iteration: 1
-findings_in_scope: 6
-fixed: 6
+iteration: 2
+findings_in_scope: 10
+fixed: 10
 skipped: 0
 status: all_fixed
 ---
 
 # Phase 9: Code Review Fix Report
 
-**Fixed at:** 2026-10-12T18:25:56Z
-**Source review:** .planning/phases/09-equipment-and-weight-steps/09-REVIEW.md
-**Iteration:** 1
+**Fixed at:** 2026-10-12T18:45:30Z (iteration 1 at 18:25:56Z)
+**Source review:** .planning/phases/09-equipment-and-weight-steps/09-REVIEW.md (re-review at 4c62000)
+**Iteration:** 2
+
+## Iteration 2
+
+The re-review confirmed CR-01 and WR-01 to WR-05 as fixed. It found two new defects in the WR-01 merge
+rules (WR-07, WR-08), reconfirmed IN-02, and raised IN-09. Ian put all four in scope. Each fix shipped
+with a test that I watched fail first, and each new guard was mutation-checked (scratchpad copy,
+restore, `cmp`).
+
+- **Suite:** 1126 → **1136 passed, 0 failed, 2 skipped**. `npm run csp:check` passes with
+  `sha256-c21XVzCcRwMep642eFzbjNWAsgtThZ09OcXShNXTUM8=`.
+- **Golden:** unchanged (`git diff --quiet 879fa37 -- test/fixtures/merge-golden.json` exits 0). Ordinary
+  rows pass through the merge as the same objects; only rows in an alias contest gain the new fields.
+- **No migration and no SCHEMA bump.** The two new optional row fields, `lost` and `autoMerged`, are written
+  only by the merge, and no existing reader needs them.
+- **Where the gates ran:** this harness worktree, as in iteration 1.
+
+### WR-07: a stale edit of the survivor dropped the merged-away row's spellings
+
+**Status:** fixed: requires human verification · **Commit:** 179e064 · **Files:** `index.html`, `test/app.test.js`
+**Applied fix:** `mergeExercises` builds each row's claims as the union of the aliases on every copy of
+that id, live or tombstone. A tombstoned id's claims go to the live row its `mergedInto` chain ends at,
+and only then does the one-owner pass run. A stale rename or type change of Y can no longer drop "x".
+**Tests:** A merges X into Y, and B renames Y (or retypes it, or adds "foo" to the stale X). In both
+orders, replayed twice, "X", "Y", "Y2" and "foo" all resolve to y.
+**Mutants caught:** claims taken from the winning row only (all three checks fail); a tombstone's claims
+not handed to its survivor (the "foo" check fails).
+
+### WR-08: the merge was not associative, and an owner-pass tombstone was permanent
+
+**Status:** fixed: requires human verification · **Commit:** 5f46acf · **Files:** `index.html`, `test/app.test.js`, `CLAUDE.md`
+**Applied fix:** I took the reviewer's second option, recomputing the result from the set of copies:
+- A row that loses every spelling becomes a tombstone marked `autoMerged: true`, with its claims kept in
+  `lost`. On every merge an `autoMerged` copy is read back as the live row it was, so it is recomputed and
+  never gets the stickiness of a tombstone made by `exMerge`.
+- A live row that loses some spellings keeps them in `lost`. `lost` counts as a claim, so a later edit of
+  that row wins them back in any order. The "newer mtime keeps the spelling" rule is unchanged.
+- The winning `exMerge` tombstone is chosen from its own fields (mtime, then `deletedAt`, then
+  `mergedInto`), never by which side it came from.
+- CLAUDE.md now separates the permanent tombstones (`exMerge`) from the recomputed ones (`autoMerged`).
+
+**Tests:**
+- The reviewer's P/Q/R fixture agrees in all 12 association orders: x live with k and k2, y with y.
+- A seeded property test runs 400 three-replica trials. They mix stale copies, later live edits,
+  `exMerge` tombstones and contested spellings, and they reach `autoMerged` rows, rows coming back from
+  `autoMerged`, and `lost`. Each trial checks:
+  - the merge is commutative;
+  - it is associative in all 12 orders;
+  - it is idempotent;
+  - no row is dropped;
+  - no `exMerge` tombstone comes back live;
+  - every spelling has exactly one live owner.
+- Content is compared per id with `aliases` and `lost` read as sets, because their order means nothing to
+  `exIdByName`.
+
+**Mutants caught:** `autoMerged` not read back; `lost` not counted as a claim; `lost` not written for a
+partial loser; an `autoMerged` tombstone written without its `lost`. Tombstone precedence removed is now
+also caught by the "no `exMerge` tombstone comes back live" law.
+**Trade-off for Ian:** a tombstone's `lost` claims go to its survivor too, which associativity requires.
+In a rare case this can transfer a spelling. Suppose two devices once both used one name for different
+rows, and Ian later merges the row that lost that name into a third row. The third row is newest, so it
+takes the name, and the other row moves with it if that name was its only spelling. This follows the
+"same name, same lift" identity rule.
+
+### IN-02: an equipAt tie made the merge non-associative
+
+**Status:** fixed: requires human verification · **Commit:** e9dea48 · **Files:** `index.html`, `test/app.test.js`
+**Applied fix:** a tie on `equipAt` goes to the type that sorts first, read from the choice alone.
+Before, the merge kept the first tied copy it saw and replaced the winning row's type only on a strictly
+higher clock. This supersedes 09-02's "a tie keeps the mtime winner's own equip", and that test was
+updated (cable now beats machine at 500).
+**Tests:** the reviewer's D1/D2/D3 give `cable@50` in all 12 orders. 300 seeded trials draw `equipAt`
+from {0, 5}, so ties are the common case, and the merge stays commutative and associative in all 12
+orders.
+**Mutants caught:** the tie-break removed; the overlay back to "strictly higher only".
+
+### IN-09: Add weight, its prefill and the suggest line keyed the type by name
+
+**Status:** fixed: requires human verification · **Commit:** f8ad36c · **Files:** `index.html`, `test/app.test.js`
+**Applied fix:**
+- `addWeightInfo` takes the draft entry as an optional fourth argument and reads the step and the ladder
+  from it. History is still matched by name.
+- The card passes its entry, and the "→ suggest" line gives `translateLoad` the entry.
+- `startWorkout` builds each entry first and computes the prefill from it. A new draft entry has no exId
+  yet, so today the prefill is the same as before; it now follows whatever identity the card will read.
+- `isStalledSlot` reads no equipment (it compares weights and reps by `exKey`), so it is unchanged.
+
+**Tests:** in the split state (exId on an EZ row, a name that spells a dumbbell row), the card says
+"→ 40 lb" next to its "EZ bar · +5" tag, not 37.5, and suggests 35 lb, not 37.5.
+**Mutants caught:** the card not passing its entry; the suggest line passing the name; `addWeightInfo`
+ignoring the entry.
+
+### Still out of scope
+
+IN-08, WR-06, IN-01, IN-03, IN-04, IN-05 and IN-06 are unchanged.
+
+## Iteration 1
 
 **Summary:**
 - Findings in scope: 6 (CR-01, WR-01, WR-02, WR-03, WR-04, WR-05, as Ian selected)
@@ -133,6 +229,6 @@ None of the in-scope findings were skipped. These were outside the scope Ian set
 
 ---
 
-_Fixed: 2026-10-12T18:25:56Z_
+_Fixed: 2026-10-12T18:45:30Z (iteration 1: 18:25:56Z)_
 _Fixer: Claude (gsd-code-fixer)_
-_Iteration: 1_
+_Iteration: 2_
