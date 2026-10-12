@@ -8720,6 +8720,58 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
   ok('EQUIP-03: after the merge, Settings → Exercises renders no control for the merged-away pec-deck',
      !controlsIn(html).some(c => c.data.id === 'pec-deck') && !html.includes('data-id="pec-deck"'), controlsIn(html).map(c => c.data));
 }
+{
+  /* CR-01 (09-REVIEW): a merged-away id can still arrive after the merge. exMerge restamps every row
+     it can see, but two kinds of entry escape it: a session the other device finished before it heard
+     about the merge, and this device's own draft, which adoptMerged keeps exactly as it was (the
+     draft never crosses the wire). Identity follows the tombstone's mergedInto, so either one lists
+     under the survivor and the lift keeps one history. Both orders, replayed twice. */
+  const W = 'PUSH 1';
+  const pair = r => r.id === 'db-curl' || r.id === 'dumbbell-curl';
+  const seed = eqSeed18([eqRow('DB curl', 1000), eqRow('Dumbbell curl', 1000)], { sessions: [
+    eqSess('cr-a', W, dayOff(-9), 0, 'DB curl', [[30, 10]], { exId: 'db-curl' }),
+    eqSess('cr-b', W, dayOff(-8), 0, 'Dumbbell curl', [[30, 11]], { exId: 'dumbbell-curl' }),
+  ] });
+  const A = loadApp(APP_PATH, seed); spyPushes(A);
+  /* B: the other device, copied before the merge, which then finishes a session under db-curl. */
+  const B = clone(A.DB); B.draft = null;
+  A.exMerge('db-curl', 'dumbbell-curl');
+  B.sessions.push(Object.assign(eqSess('cr-c', W, dayOff(-1), 0, 'DB curl', [[30, 12]], { exId: 'db-curl' }), { mtime: Date.now() }));
+  B.updatedAt = Date.now() + 60000;
+  const ba = A.mergeDB(clone(B), clone(A.DB)), ab = A.mergeDB(clone(A.DB), clone(B));
+  const R = loadApp(APP_PATH); spyPushes(R);
+  const view = db => { R.DB = db; return { rows: R.__sandbox.exListRows().filter(pair), key: R.exKey({ name: 'DB curl', exId: 'db-curl' }) }; };
+  const res = [ba, ab, A.mergeDB(clone(B), clone(ba)), A.mergeDB(clone(ab), clone(B))].map(view);
+  ok('CR-01: a session the other device logged under the merged-away db-curl lists as one exercise, Dumbbell curl, 3 sessions — both orders, replayed twice',
+     res.every(x => x.rows.length === 1 && x.rows[0].id === 'dumbbell-curl' && x.rows[0].name === 'Dumbbell curl' && x.rows[0].n === 3 && x.key === 'dumbbell-curl'),
+     res);
+
+  /* This device's own draft, started before the merge arrived: still db-curl when Ian finishes it. */
+  const D = loadApp(APP_PATH, seed); spyPushes(D);
+  D.__sandbox.startWorkout(W);
+  D.DB.draft.entries[0] = { name: 'DB curl', exId: 'db-curl', note: '', sets: [{ w: '30', r: '12', skipped: false, reason: '' }] };
+  const C = loadApp(APP_PATH, seed); spyPushes(C);
+  C.exMerge('db-curl', 'dumbbell-curl');
+  const remote = clone(C.DB); remote.draft = null; remote.updatedAt = Date.now() + 60000;
+  D.adoptMerged(D.mergeDB(remote, clone(D.DB)), 'test');
+  const draftId = D.DB.draft && D.DB.draft.entries[0].exId;
+  D.finishWorkout();
+  const dRows = D.__sandbox.exListRows().filter(pair);
+  ok('CR-01: this device\'s draft, kept through adoptMerged with the merged-away db-curl, lists under Dumbbell curl once finished — one row, 3 sessions',
+     draftId === 'db-curl' && dRows.length === 1 && dRows[0].id === 'dumbbell-curl' && dRows[0].n === 3, { draftId, rows: dRows });
+  ok('CR-01: every listed row can be renamed and merged — exRow finds each one, so neither control returns silently',
+     dRows.length > 0 && dRows.every(r => !!D.exRow(r.id)), dRows.map(r => ({ id: r.id, row: !!D.exRow(r.id) })));
+
+  /* A hostile chain cannot loop: a two-row cycle, a self-loop and a non-string mergedInto all return,
+     and both members of the cycle resolve to the same id, so one history is never split in two. */
+  R.DB = R.normalize(R.blank());
+  R.DB.exercises = [{ id: 'a', name: 'A', aliases: [], deletedAt: 1, mergedInto: 'b' }, { id: 'b', name: 'B', aliases: [], deletedAt: 1, mergedInto: 'a' },
+    { id: 'c', name: 'C', aliases: [], deletedAt: 1, mergedInto: 'c' }, { id: 'd', name: 'D', aliases: [], deletedAt: 1, mergedInto: { x: 1 } },
+    { id: 'e', name: 'E', aliases: [], deletedAt: 1, mergedInto: 'f' }, { id: 'f', name: 'F', aliases: ['f'], mtime: 5 }];
+  const ks = ['a', 'b', 'c', 'd', 'e'].map(id => R.exKey({ name: id.toUpperCase(), exId: id }));
+  ok('CR-01: exKey follows a chain to the live row (e → f), resolves a cycle\'s members to one id, and stops on a self-loop or a non-string mergedInto',
+     ks[0] === ks[1] && (ks[0] === 'a' || ks[0] === 'b') && ks[2] === 'c' && ks[3] === 'd' && ks[4] === 'f', ks);
+}
 
 /* ── EQUIP rounding: deloads, warm-ups and the suggest line follow the exercise's own ladder (Phase 9,
    plan 09-03, EQUIP-05). A 15 lb dumbbell deload used to round back to 15 through a flat 5-lb rounding,

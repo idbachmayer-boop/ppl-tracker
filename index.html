@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-P2fjw+DYI5VcXtwpRU9MRW+8ARDxSa3Nr4lMett/Wt4=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-b/8QHAqcWW2dqnh3lsAwkOAET0azP2LyiECgOIEE+xA=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1443,12 +1443,31 @@ function exIdByName(name){
   for(let i=0;i<rows.length;i++){ const r=rows[i]; if(r && r.aliases && r.aliases.indexOf(k)>=0) return r.id; }
   return null;
 }
+/* Follow a merged-away id to the row it was merged into (CR-01). exMerge restamps every entry it can
+   see, but two kinds escape it: a session the other device finished before it heard about the merge,
+   and this device's own draft, which adoptMerged keeps exactly as it was. Both still carry the old id,
+   and without this they read as a ghost exercise no control could rename or merge. A chain (a into b,
+   then b into c) is followed to its end. A cycle can only come from two devices merging opposite ways
+   at once or from a hand-edited backup; every member resolves to the same id, the smallest, so it can
+   never loop and never splits one history in two. A non-string mergedInto ends the walk. */
+function exResolve(id){
+  const seen = [];
+  while(typeof id === 'string' && id && seen.indexOf(id) < 0){
+    const r = exRows().find(x => x && x.id === id);
+    if(!r || !r.deletedAt || typeof r.mergedInto !== 'string' || !r.mergedInto) return id;
+    seen.push(id);
+    id = r.mergedInto;
+  }
+  const at = seen.indexOf(id);
+  return at >= 0 ? seen.slice(at).sort()[0] : id;
+}
 /* The identity of a logged entry — or of a bare name. Falls back to the normalised name so data
-   logged before the registry existed still groups exactly as it did. */
+   logged before the registry existed still groups exactly as it did. Every id goes through exResolve,
+   so a merged-away id lands on the survivor. */
 function exKey(e){
   if(!e) return '';
-  if(typeof e === 'string') return exIdByName(e) || normEx(e);
-  return e.exId || exIdByName(e.name) || normEx(e.name);
+  if(typeof e === 'string') return exResolve(exIdByName(e)) || normEx(e);
+  return exResolve(e.exId) || exResolve(exIdByName(e.name)) || normEx(e.name);
 }
 /* What to show for an identity: the registry's label, else the raw key. */
 function exLabel(key){ const r = exRow(key); return r ? r.name : (key||''); }
