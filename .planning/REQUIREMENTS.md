@@ -46,9 +46,9 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
   machine; 2.5 lb for cable; 2.5 lb for dumbbells up to 60 lb and 5 lb above 60. No suggestion uses a
   flat 5 lb step for a dumbbell at 60 lb or under. (Amended 2026-10-10 by Ian in Phase 9 discussion:
   cable stacks take a 2.5 lb add-on, and the dumbbell rack goes in 5s above 60.)
-- [ ] **EQUIP-05**: Deloads and warm-ups round to the exercise's own step, so a 15 lb dumbbell deload
+- [x] **EQUIP-05**: Deloads and warm-ups round to the exercise's own step, so a 15 lb dumbbell deload
   at 90% suggests 12.5 lb instead of rounding back to 15.
-- [ ] **EQUIP-06**: Plate math follows the equipment type. The preacher curl is an EZ bar exercise with
+- [x] **EQUIP-06**: Plate math follows the equipment type. The preacher curl is an EZ bar exercise with
   a 25 lb bar and shows plate math against that bar.
 
 ### Log page (LOG)
@@ -174,8 +174,8 @@ proposed and awaiting Ian's approval.
 | EQUIP-02 | Phase 9 | Complete |
 | EQUIP-03 | Phase 9 | Pending |
 | EQUIP-04 | Phase 9 | Pending |
-| EQUIP-05 | Phase 9 | Pending |
-| EQUIP-06 | Phase 9 | Pending |
+| EQUIP-05 | Phase 9 | Complete |
+| EQUIP-06 | Phase 9 | Complete |
 | LOG-01 | Phase 10 | Pending |
 | LOG-02 | Phase 10 | Pending |
 | LOG-03 | Phase 10 | Pending |

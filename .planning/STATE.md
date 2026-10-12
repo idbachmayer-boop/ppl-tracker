@@ -5,15 +5,15 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 09
 current_phase_name: equipment-and-weight-steps
 status: executing
-stopped_at: Completed 09-02-PLAN.md
-last_updated: "2026-10-12T13:23:43.818Z"
+stopped_at: Completed 09-03-PLAN.md
+last_updated: "2026-10-12T13:39:54.731Z"
 last_activity: 2026-10-12
-last_activity_desc: Completed 09-02 (per-row registry merge, equipAt clock, exMerge tombstone)
+last_activity_desc: Completed 09-03 (deloads and warm-ups on the exercise ladder, EZ-bar plate math)
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 5
+  completed_plans: 6
   percent: 17
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 ## Current Position
 
 Phase: 09 (equipment-and-weight-steps) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
-Last activity: 2026-10-12 — Completed 09-02 (per-row registry merge, equipAt clock, exMerge tombstone)
+Last activity: 2026-10-12 — Completed 09-03 (deloads and warm-ups on the exercise ladder, EZ-bar plate math)
 
-Progress: [██████░░░░] 63% of planned v1.1 plans (Phase 9: 2 of 5 plans done)
+Progress: [████████░░] 75% of planned v1.1 plans (Phase 9: 3 of 5 plans done)
 
 ## Performance Metrics
 
@@ -102,6 +102,7 @@ Progress: [██████░░░░] 63% of planned v1.1 plans (Phase 9: 2
 | Phase 08 P03 | ~20min (incl. Ian's push, PR, CI, deploy) | 3 tasks | 0 files |
 | Phase 09 P01 | 13min | 3 tasks | 4 files |
 | Phase 09 P02 | 14 min | 3 tasks | 3 files |
+| Phase 09 P03 | 14 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,9 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [09-01]: weightStep(name, w) returns null for bodyweight in either unit, 2.5 flat in kg, and in lb dumbbell 2.5 below 60 then 5, cable 2.5, barbell/EZ/machine 5; every caller branches on null
 - [09-02]: equipClock is one hoisted rule shared by mergeExercises and exMerge; only a strictly higher equipAt replaces the mtime winner's type, which keeps the merge commutative on ties
 - [09-02]: exMerge tombstones the merged row (deletedAt, mergedInto, empty aliases); exRow reads live rows only and exEnsure never reuses a tombstoned id
+- [09-03]: deloadPlan floors 0.9 x lastW to the exercise's ladder (always strictly lighter); at or below the bar on a bar lift in lb it keeps the weight and the card shows the D-15 line, computed at render
+- [09-03]: barStyle is decided by equipOf(name); BAR_FOR and LANDMINE_RE only pick sled or landmine, and the EZ plate line is silent at or under the bar and on unloadable totals (D-07 supersedes the UI-SPEC Color sentence)
+- [09-03]: warm-up rungs use loadNearest with ties down, clamped to the bar on bar lifts in lb and capped at the working weight; translateLoad floors with loadFloor and the suggest line escapes its unit
 
 ### Pending Todos
 
@@ -163,8 +167,8 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-12T13:23:43.790Z
-Stopped at: Completed 09-02-PLAN.md
+Last session: 2026-10-12T13:39:54.708Z
+Stopped at: Completed 09-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
