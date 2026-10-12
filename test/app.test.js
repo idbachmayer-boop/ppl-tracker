@@ -8721,6 +8721,80 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
      !controlsIn(html).some(c => c.data.id === 'pec-deck') && !html.includes('data-id="pec-deck"'), controlsIn(html).map(c => c.data));
 }
 
+/* ── EQUIP rounding: deloads, warm-ups and the suggest line follow the exercise's own ladder (Phase 9,
+   plan 09-03, EQUIP-05). A 15 lb dumbbell deload used to round back to 15 through a flat 5-lb rounding,
+   so it was no deload at all. ── */
+{
+  /* The tracer: history → stall → Deload −10% through the dispatcher → the draft weights and the card. */
+  const D = loadApp(APP_PATH); spyPushes(D);
+  const stallAt = (workout, slot, name, sets) => {
+    eqRun(D, [0, 1, 2, 3].map(n => eqSess('dl-' + slot + '-' + n, workout, dayOff(-20 + 3 * n), slot, name, sets)));
+    const card = eqCard(D, workout, slot);
+    const ctl = controlsIn(card).find(c => c.data.action === 'deloadExercise');
+    const entry = D.DB.draft.entries[slot];
+    const keysBefore = Object.keys(entry).sort();
+    if(ctl) fireAction(D, 'click', fakeEl(ctl.data));
+    const after = D.DB.draft.entries[slot];
+    const card2 = D.viewActive().split('<div class="ex-card">')[slot + 1] || '';
+    const want = Array.from(new Set(keysBefore.concat(['deload']))).sort();
+    return { ctl: !!ctl, name: after.name, w: after.sets.filter(x => !x.skipped).map(x => x.w), deload: after.deload,
+             card: card2, keysOk: JSON.stringify(Object.keys(after).sort()) === JSON.stringify(want),
+             keys: Object.keys(after).sort() };
+  };
+  const PUSH = 'PUSH 1', PULL = 'PULL 1';
+  const LAT = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+  const ROW = app.PROGRAM[PULL].slots.findIndex(s => s.examples.includes('Barbell row'));
+  const coachOf = card => { const m = /<div class="coach deload">([\s\S]*?)<\/div>/.exec(card); return m ? m[1] : null; };
+
+  const lat = stallAt(PUSH, LAT, 'DB lateral raise', [[15, 20], [15, 18], [15, 16]]);
+  ok('EQUIP-05/D-11 tracer: a stalled 15 lb DB lateral raise\'s Deload −10% fills 12.5 into every unskipped set, not 15',
+     lat.ctl && lat.name === 'DB lateral raise' && lat.w.length > 0 && lat.w.every(w => w === '12.5') && lat.deload === true,
+     { ctl: lat.ctl, name: lat.name, w: lat.w, deload: lat.deload });
+  ok('EQUIP-05 tracer: the re-rendered card shows the standard "Deloaded −10%" coach line with its undo',
+     (coachOf(lat.card) || '').includes('Deloaded −10% this session') && (coachOf(lat.card) || '').includes('data-action="undeloadExercise"'),
+     coachOf(lat.card));
+  ok('T-9-20 tracer: the deload adds no field to the draft entry except deload (finishWorkout copies every field)',
+     lat.keysOk, lat.keys);
+
+  const row = stallAt(PULL, ROW, 'Barbell row', [[45, 12], [45, 10], [45, 9]]);
+  const rowCoach = coachOf(row.card) || '';
+  ok('D-15 tracer: a stalled Barbell row at the empty 45 lb bar keeps 45 in every set',
+     row.ctl && row.w.length > 0 && row.w.every(w => w === '45') && row.deload === true,
+     { ctl: row.ctl, w: row.w, deload: row.deload });
+  ok('D-15 tracer: the card says exactly "Already at the empty bar — cut a set or reps instead." followed by the undo control',
+     /Already at the empty bar — cut a set or reps instead\. <button class="coach-btn" data-action="undeloadExercise"/.test(rowCoach) &&
+     !rowCoach.includes('Deloaded −10%'),
+     rowCoach);
+  ok('T-9-20 tracer: the empty-bar case adds no field to the draft entry either (computed at render)', row.keysOk, row.keys);
+  D.DB.draft = null;
+
+  /* Direct checks on deloadPlan: down to the ladder, always a step lighter, the bar clamp (D-11, D-15). */
+  const P = (n, w) => { const f = D.__sandbox.deloadPlan; const p = typeof f === 'function' ? f(n, w) : null; return p ? p : { w: 'missing', atBar: null }; };
+  D.DB = D.normalize(D.blank()); D.DB.unit = 'lb';
+  const d11 = [['DB lateral raise', 15, 12.5], ['DB lateral raise', 10, 7.5], ['Barbell bench press', 135, 120],
+               ['DB incline press', 70, 60], ['DB incline press', 65, 57.5], ['DB incline press', 60, 52.5], ['DB lateral raise', 5, 2.5]]
+    .map(([n, w, want]) => ({ n, w, want, got: P(n, w) }));
+  ok('D-11: deloads round DOWN to the exercise\'s ladder — 15 DB → 12.5, 10 DB → 7.5, 135 BB → 120, 70 DB → 60 (0.9×70 float drift), 65 DB → 57.5',
+     d11.every(x => x.got.w === x.want && x.got.atBar === false), d11);
+  const lighter = [['Triceps pushdown', 25, 22.5], ['Barbell bench press', 155, 135], ['Leg press', 90, 80]]
+    .map(([n, w, want]) => ({ n, w, want, got: P(n, w) }));
+  ok('D-11: a deload is always at least one step lighter — 25 cable → 22.5, 155 BB → 135, 90 sled → 80 (a sled is never clamped)',
+     lighter.every(x => x.got.w === x.want && x.got.atBar === false), lighter);
+  const meadows = P('Meadows row', 47.5);
+  ok('D-15: Meadows row 47.5 → 40 is raised to the 45 lb bar, which is still lighter (atBar false)',
+     meadows.w === 45 && meadows.atBar === false, meadows);
+  const atBar = P('Barbell row', 45);
+  ok('D-15: Barbell row at 45 is at the empty bar — the weight stays 45 and atBar is true', atBar.w === 45 && atBar.atBar === true, atBar);
+  const tiny = P('DB lateral raise', 2.5), none = P('DB lateral raise', 0);
+  ok('D-11: 2.5 DB has nothing lighter to deload to, and no history gives no weight — both \'\'',
+     tiny.w === '' && tiny.atBar === false && none.w === '' && none.atBar === false, { tiny, none });
+  D.DB.unit = 'kg';
+  const kgBench = P('Barbell bench press', 60), kgLat = P('DB lateral raise', 10);
+  ok('D-10/D-11: in kg the ladder is 2.5 and no bar clamp applies — Barbell bench press 60 → 52.5, DB lateral raise 10 → 7.5',
+     kgBench.w === 52.5 && kgBench.atBar === false && kgLat.w === 7.5 && kgLat.atBar === false, { kgBench, kgLat });
+  D.DB.unit = 'lb';
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */

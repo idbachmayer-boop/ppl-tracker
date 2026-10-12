@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Hr1NJl6poqISCTx+q25KNF2oHK4SSUuNaTPYH2uV6MI=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-MNHdOeLjR6Lt0pDIbbVHHRo2wfcalbmqc8mqm6nEaZM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1187,6 +1187,42 @@ function weightStep(name, w){
   if(t === 'cable') return 2.5;
   return 5;
 }
+/* The exercise's own ladder of loadable weights (D-11, D-15, D-17). The 1e-9 inside every floor guards
+   float drift: 0.9 × 70 is 63.00000000000001, which must still floor to 60. */
+function ladderStep(name, x){ const s = weightStep(name, x); return s == null ? 2.5 : s; }   // a belt load moves in 2.5s
+function loadFloor(name, x){
+  x = +x; if(!isFinite(x) || x <= 0) return 0;
+  if(DB.unit !== 'kg' && equipOf(name) === 'dumbbell'){
+    if(x >= 60 - 1e-9) return 60 + Math.floor((x - 60) / 5 + 1e-9) * 5;   // the rack: 60, 65, 70 …
+    return Math.floor(x / 2.5 + 1e-9) * 2.5;                                // … and 2.5s below 60
+  }
+  const s = ladderStep(name, x);
+  return Math.floor(x / s + 1e-9) * s;
+}
+/* Nearest loadable weight; a tie goes down (a warm-up rung errs light). */
+function loadNearest(name, x){
+  const lo = loadFloor(name, x), hi = lo + ladderStep(name, lo);
+  return (+x - lo) <= (hi - +x) + 1e-9 ? lo : hi;
+}
+/* The heaviest worked weight of the history a deload starts from: this slot, else anywhere. */
+function deloadBaseW(workout, slotIndex, exName){
+  const ref = lastRealEntry(workout, slotIndex, exName) || lastAnywhere(exName);
+  if(!ref) return 0;
+  return Math.max(0, ...workedSets(ref.entry).map(setWeightNum));
+}
+/* A deload is 90% floored to the ladder, so it is always strictly lighter (D-11). On a bar lift in lb,
+   at or below the bar there is nothing to take off: the weight stays and atBar says so (D-15); a 90%
+   that lands under a still-lighter bar is raised to the bar. Never heavier than lastW. */
+function deloadPlan(name, lastW){
+  lastW = +lastW;
+  if(!(lastW > 0)) return { w:'', atBar:false };
+  const bar = DB.unit === 'lb' ? barWeight(name) : null;
+  if(bar > 0 && lastW <= bar + 1e-9) return { w:lastW, atBar:true };
+  let x = loadFloor(name, 0.9 * lastW);
+  if(!(x > 0)) return { w:'', atBar:false };
+  if(bar > 0 && x < bar) x = bar;
+  return { w:x, atBar:false };
+}
 /* Unlike lastRealEntry, an entry with no worked set still counts here, as long as it was on the card
    (it holds sets, or blankSets says its sets were left blank). lastRealEntry keeps feeding Last time
    and the prefilled weights. */
@@ -1323,9 +1359,9 @@ function isStalledSlot(name, workout, slotIndex){
 /* Deload: drop this exercise's working weight ~10% for the session and flag it,
    so lastRealEntry skips it and the baseline-to-beat stays your pre-deload best. */
 function deloadExercise(i){
-  const e=DB.draft.entries[i], ref=lastRealEntry(DB.draft.workout, i, e.name) || lastAnywhere(e.name);
-  let lastW=0; if(ref){ const real=ref.entry.sets.filter(x=>!x.skipped && x.r!==''); lastW=Math.max(0, ...real.map(x=> x.w===''?0:+x.w)); }
-  const dw = lastW>0 ? String(round5(lastW*0.9)) : '';
+  const e=DB.draft.entries[i];
+  const p = deloadPlan(e.name, deloadBaseW(DB.draft.workout, i, e.name));   // the ladder floor, a step lighter, the bar clamp
+  const dw = p.w === '' ? '' : String(p.w);
   e.deload=true; e.sets.forEach(st=>{ if(!st.skipped) st.w=dw; });
   saveLocal(); render();
 }
@@ -1997,7 +2033,14 @@ function viewActive(){
       if(alt.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(alt.entry.note)}</div>`;
     }
     let coachHint='';
-    if(entry.deload) coachHint = `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`;
+    if(entry.deload){
+      /* The empty-bar case is derived here from history, never stored: finishWorkout copies every draft
+         entry field into the session (D-15). */
+      const dp = deloadPlan(entry.name, deloadBaseW(name, i, entry.name));
+      coachHint = dp.atBar
+        ? `<div class="coach deload">↓ Already at the empty bar — cut a set or reps instead. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`
+        : `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`;
+    }
     else if(isStalledSlot(entry.name, name, i)) coachHint = `<div class="coach stall">⚠ Stalled — no extra rep or weight for 3 sessions in a row on ${esc(name)}. <button class="coach-btn" data-action="deloadExercise" data-i="${esc(i)}">Deload −10%</button> or swap the exercise above.</div>`;
     const opts = s.examples.map(e=>`<option ${e===entry.name?'selected':''}>${esc(e)}</option>`).join('') +
                  (s.examples.includes(entry.name)?'':`<option selected>${esc(entry.name)}</option>`) +
