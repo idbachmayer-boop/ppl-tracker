@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-MNHdOeLjR6Lt0pDIbbVHHRo2wfcalbmqc8mqm6nEaZM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-v0HqTXSDL++AHROUxBvLQ9Uk7N/WWTkayL1w9YFH/SM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1100,10 +1100,10 @@ function fmtMS(total){ total=+total||0; const m=Math.floor(total/60), s=total%60
 /* Estimated 1-rep max (Epley). BW(0) or blank → 0 (excluded from strength charts). */
 function e1rm(w,r){ w=+w; r=+r; if(!w||!r) return 0; return w*(1+r/30); }
 /* Plate calculator (lb): plates 45/25/10/5/2.5 per side, on a bar whose weight depends on the lift.
-   Which exercises take a bar is an explicit table rather than a name match — "Standing OHP",
-   "Back squat" and both deadlifts are barbell lifts that contain no "barbell" in their name, and
-   a name match silently skipped every one of them. Custom names you type in aren't in the table,
-   so they keep falling back to the old regex. Deliberately absent: Seated OHP (often a machine). */
+   The exercise's equipment type decides whether it has a bar at all (D-06): barbell and EZ bar do,
+   a sled machine is plates only, and dumbbell, cable, bodyweight and every other machine have no
+   plate line. BAR_FOR and LANDMINE_RE no longer decide that; they only pick a sled out of the
+   machines and a landmine out of the barbells. So changing a type in Settings moves the plate line. */
 const BARBELL_LB = 45, PLATES_LB = [45,25,10,5,2.5];
 /* Three loading styles, because "per side" is not universal:
    - straight / ez  → a bar with two sleeves; plates split evenly, so (total − bar) / 2.
@@ -1125,9 +1125,10 @@ const BAR_FOR = {
 /* Name test for the landmine variants people type by hand ("T bar row", "Tbar row", "T-Bar Row"). */
 const LANDMINE_RE = /t-?\s?bar|meadows|landmine/i;
 function barStyle(name){
-  const s = BAR_FOR[name]; if(s) return s;
-  if(LANDMINE_RE.test(name||'')) return 'landmine';
-  if(/barbell/i.test(name||'')) return 'straight';
+  const t = equipOf(name);
+  if(t === 'ez') return 'ez';
+  if(t === 'barbell') return (BAR_FOR[name] === 'landmine' || LANDMINE_RE.test(name||'')) ? 'landmine' : 'straight';
+  if(t === 'machine') return BAR_FOR[name] === 'sled' ? 'sled' : null;
   return null;
 }
 const barWeight = name => { const s=barStyle(name); return s ? BAR_LB[s] : null; };
@@ -1152,6 +1153,13 @@ function platesText(total, bar, style){
     /* Wording deliberately differs from "Per side" — loading a landmine as if it were a barbell is
        the mistake this is here to prevent. */
     return `🏋️ On the sleeve: ${plateGroups(b.plates)}${short(b)} <span class="muted">+ ${bar} lb bar</span>`;
+  }
+  /* An EZ bar is often a fixed preset bar, so at or under the bar, or a total the plates can't make,
+     the line stays silent instead of guessing (D-07). */
+  if(style==='ez'){
+    if(!(t > bar + 1e-9)) return '';   // NaN too
+    const b=plateBreakdown(t, bar, style); if(!b || b.leftover>0.01) return '';
+    return `🏋️ Per side: ${plateGroups(b.plates)}`;
   }
   if(bar===0){
     const b=plateBreakdown(t, 0, style); if(!b || !b.plates.length) return '';

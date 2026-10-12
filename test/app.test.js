@@ -8794,6 +8794,60 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
      kgBench.w === 52.5 && kgBench.atBar === false && kgLat.w === 7.5 && kgLat.atBar === false, { kgBench, kgLat });
   D.DB.unit = 'lb';
 }
+{
+  /* Plate math follows the type (EQUIP-06, D-06, D-07). Preacher curl is an EZ-bar lift, and Ian's
+     original report was "I've been doing ezbar, but I don't see the plate math". */
+  const E = loadApp(APP_PATH); spyPushes(E);
+  E.DB = E.normalize(E.blank()); E.DB.unit = 'lb';
+  ok('EQUIP-06: Preacher curl is an EZ-bar lift — barStyle ez, a 25 lb bar, and isBarbell',
+     E.barStyle('Preacher curl') === 'ez' && E.barWeight('Preacher curl') === 25 && E.isBarbell('Preacher curl') === true,
+     { style: E.barStyle('Preacher curl'), bar: E.barWeight('Preacher curl') });
+  const pt = (t) => E.platesText(t, 25, 'ez');
+  ok('EQUIP-06: on the 25 lb EZ bar, 35 is "Per side: 1×5" and 30 is "Per side: 1×2.5"',
+     pt(35).includes('Per side: 1×5') && pt(30).includes('Per side: 1×2.5'), { at35: pt(35), at30: pt(30) });
+  ok('D-07: the EZ plate line is silent at the bar (25), under it (a 20 lb preset bar) and when it can\'t be loaded (27)',
+     pt(25) === '' && pt(20) === '' && pt(27) === '', { at25: pt(25), at20: pt(20), at27: pt(27) });
+
+  const styles = {
+    sled: ['Leg press', 'Hack squat'].map(n => [n, E.barStyle(n), E.barWeight(n)]),
+    landmine: ['T-bar row', 'Meadows row', 'Chest Supported T-Bar Row'].map(n => [n, E.barStyle(n), E.barWeight(n)]),
+    straight: ['Barbell row', 'Standing OHP'].map(n => [n, E.barStyle(n), E.barWeight(n)]),
+    none: ['Deficit sumo squat', 'Triceps pushdown', 'Chin-up', 'Seated OHP'].map(n => [n, E.barStyle(n), E.barWeight(n)]),
+  };
+  ok('D-06: the type decides the bar — Leg press and Hack squat are sleds (bar 0); T-bar, Meadows and Chest Supported T-Bar rows are landmines (45); Barbell row and Standing OHP are straight',
+     styles.sled.every(([, s, b]) => s === 'sled' && b === 0) && styles.landmine.every(([, s, b]) => s === 'landmine' && b === 45) &&
+     styles.straight.every(([, s, b]) => s === 'straight' && b === 45), styles);
+  ok('D-06: a dumbbell, cable, bodyweight or non-sled machine lift has no bar — Deficit sumo squat, Triceps pushdown, Chin-up, Seated OHP',
+     styles.none.every(([, s, b]) => s === null && b === null), styles.none);
+
+  const PULL2 = 'PULL 2';
+  const PC = app.PROGRAM[PULL2].slots.findIndex(s => s.examples.includes('Preacher curl'));
+  const plateDiv = card => { const m = /<div class="muted" id="plates-\d+"[^>]*>([\s\S]*?)<\/div>/.exec(card); return m ? m[1] : null; };
+  const pcCard = w => { eqRun(E, [ eqSess('pc-' + w, PULL2, dayOff(-7), PC, 'Preacher curl', [[w, 12], [w, 12], [w, 12]]) ]); return eqCard(E, PULL2, PC); };
+  const at35 = plateDiv(pcCard(35));
+  ok('EQUIP-06: the Preacher curl card last logged at 35 shows "Per side: 1×5"', at35 !== null && at35.includes('Per side: 1×5'), at35);
+  const at20 = plateDiv(pcCard(20));
+  ok('D-07: the Preacher curl card at a 20 lb preset bar keeps its plate div, and it is empty', at20 === '', at20);
+
+  pcCard(35);
+  const setEq = E.__sandbox.setExerciseEquip;
+  if(typeof setEq === 'function') setEq('preacher-curl', 'dumbbell');
+  const asDb = E.viewActive().split('<div class="ex-card">')[PC + 1] || '';
+  if(typeof setEq === 'function') setEq('preacher-curl', 'ez');
+  const asEz = E.viewActive().split('<div class="ex-card">')[PC + 1] || '';
+  ok('EQUIP-06: changing Preacher curl to dumbbell in Settings removes its plate line, and changing it back to EZ bar restores it',
+     typeof setEq === 'function' && !asDb.includes('id="plates-') && asEz.includes('id="plates-') && (plateDiv(asEz) || '').includes('Per side: 1×5'),
+     { fn: typeof setEq, db: asDb.includes('id="plates-'), ez: plateDiv(asEz) });
+  E.DB.draft = null;
+
+  const dp = E.__sandbox.deloadPlan;
+  const ez25 = typeof dp === 'function' ? dp('Preacher curl', 25) : null, ez35 = typeof dp === 'function' ? dp('Preacher curl', 35) : null;
+  const ez20 = typeof dp === 'function' ? dp('Preacher curl', 20) : null;
+  ok('D-15 on EZ: Preacher curl at the 25 lb bar is atBar, 35 deloads to 30, and a 20 lb preset bar stays 20 (never heavier)',
+     !!ez25 && ez25.atBar === true && ez25.w === 25 && !!ez35 && ez35.w === 30 && ez35.atBar === false &&
+     !!ez20 && ez20.atBar === true && ez20.w === 20,
+     { ez25, ez35, ez20 });
+}
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
