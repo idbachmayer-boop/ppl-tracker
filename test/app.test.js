@@ -9322,6 +9322,37 @@ function eqAllAssoc(M, P, Q, R){
   ok('WR-05: an entry gets the same loading style as its name — sled, landmine, straight, EZ bar and none',
      styles.every(x => x.byName === x.byEntry) && styles.map(x => x.byEntry).join() === 'sled,sled,landmine,landmine,landmine,straight,ez,', styles);
 }
+{
+  /* IN-09 (09-REVIEW, iteration 2): ⬆ Add weight and the "→ suggest" line step on the ladder of the row
+     the card's tag shows (the entry's exId), while history is still matched by name, as before. curl-a
+     is EZ bar (5 lb steps); the name "Curl" spells the dumbbell row (2.5 lb steps). */
+  const Z = loadApp(APP_PATH); spyPushes(Z);
+  const PUSH1 = 'PUSH 1', PUSH2 = 'PUSH 2';
+  const rows = () => [ { id: 'curl-a', name: 'Curl', aliases: ['old curl'], mtime: 10, equip: 'ez', equipAt: 5 },
+                       { id: 'curl', name: 'Curl', aliases: ['curl'], mtime: 20, equip: 'dumbbell', equipAt: 5 } ];
+  const split = () => ({ name: 'Curl', exId: 'curl-a', note: '', sets: [0, 1, 2].map(() => ({ w: '', r: '', skipped: false, reason: '' })) });
+
+  /* The flag: Curl all at the top of PUSH 1 slot 0 (5–8) at 35, history matched by name. */
+  Z.DB = Z.normalize(Z.blank()); Z.DB.unit = 'lb'; Z.DB.exercises = rows();
+  Z.DB.sessions = [ eqSess('in9-a', PUSH1, dayOff(-7), 0, 'Curl', [[35, 8], [35, 8], [35, 8]], { exId: 'curl' }) ];
+  Z.__sandbox.startWorkout(PUSH1);
+  Z.DB.draft.entries[0] = split();
+  const card = eqUiCard(Z, 0);
+  ok('IN-09: the card whose tag says EZ bar suggests ⬆ Add weight → 40 lb (35 + 5 on the EZ ladder), not the dumbbell row\'s 37.5',
+     (eqFlag(card) || '').includes('→ 40 lb') && eqTagOf(card, 0) === app.EQUIP_LABEL.ez + ' · +5', { flag: eqFlag(card), tag: eqTagOf(card, 0) });
+  Z.DB.draft = null;
+
+  /* The suggest line: Curl logged only on PUSH 2 at 30×20, shown on PUSH 1 slot 1 (8–12). 30×20 → 39.5
+     before flooring: 35 on the EZ ladder, 37.5 on the dumbbell rack. */
+  Z.DB = Z.normalize(Z.blank()); Z.DB.unit = 'lb'; Z.DB.exercises = rows();
+  Z.DB.sessions = [ eqSess('in9-b', PUSH2, dayOff(-7), 0, 'Curl', [[30, 20], [30, 20], [30, 20]], { exId: 'curl' }) ];
+  Z.__sandbox.startWorkout(PUSH1);
+  Z.DB.draft.entries[1] = split();
+  const sug = (/→ suggest <strong>([\s\S]*?)<\/strong>/.exec(eqUiCard(Z, 1)) || [])[1] || null;
+  ok('IN-09: the "→ suggest" line on that card floors to the EZ ladder — 35 lb, not the dumbbell row\'s 37.5',
+     sug === '35 lb', sug);
+  Z.DB.draft = null;
+}
 
 /* ── EQUIP UI: the first-time picker, the card tag, Settings states (Phase 9, plan 09-04) ──
    Ian rejected silent guessing for a name the default table cannot place (D-04, D-16): a brand-new

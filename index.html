@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-YCoYUoaQf4rjMIWXnPJbEdLuUyF4+e1VGW9SpwnAI5o=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-c21XVzCcRwMep642eFzbjNWAsgtThZ09OcXShNXTUM8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1304,17 +1304,20 @@ function addWeightVerdict(entry, rng){
   const allTop = !blocked && worked.every(x=> setWeightNum(x)===W && +x.r >= rng.hi);
   return { allTop, lastW:W, hasLoad: W>0 };
 }
-function addWeightInfo(workout, slotIndex, name){
+/* `who` is the draft entry the card shows, when there is one: the step comes from the row its exId
+   names, the same row as the card's tag (IN-09). History is still matched by `name`, as before. */
+function addWeightInfo(workout, slotIndex, name, who){
   const prog = PROGRAM[workout], slot = prog && prog.slots ? prog.slots[slotIndex] : null;
   if(!slot) return null;
   const att = lastAttemptEntry(workout, slotIndex, name);
   if(!att) return null;
   const v = addWeightVerdict(att.entry, effRange(slot, name));
-  const step = weightStep(name, v.lastW);
+  const eq = who || name;
+  const step = weightStep(eq, v.lastW);
   /* The next weight the exercise can load, not lastW + step: an off-ladder 62 lb dumbbell goes to 65,
      never 67 (D-17). On the ladder this is exactly one step, as before (WR-04). */
-  const floor = loadFloor(name, v.lastW);
-  return { allTop:v.allTop, lastW:v.lastW, newW: step == null ? null : floor + ladderStep(name, floor), hasLoad:v.hasLoad };
+  const floor = loadFloor(eq, v.lastW);
+  return { allTop:v.allTop, lastW:v.lastW, newW: step == null ? null : floor + ladderStep(eq, floor), hasLoad:v.hasLoad };
 }
 /* Per-set "beat last time" badge: ✓ beat, = tied, '' under (compared at the matched weight). */
 function badgeState(st, t){
@@ -2039,13 +2042,16 @@ function startWorkout(name){
       entries: PROGRAM[name].slots.map((s,i)=>{
         const ref = lastRealEntry(name,i);
         const exName = ref? ref.entry.name : s.examples[0];
-        const aw = addWeightInfo(name, i, exName);
+        /* The prefill steps on the same identity the card will read: the entry being built (IN-09). */
+        const e = { name: exName, note:'', sets: [] };
+        const aw = addWeightInfo(name, i, exName, e);
         const real = ref? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
-        return { name: exName, note:'', sets: Array.from({length:s.sets},(_,k)=>{
+        e.sets = Array.from({length:s.sets},(_,k)=>{
           let w='';
           if(aw) w = (aw.allTop && aw.hasLoad && aw.newW != null) ? String(aw.newW) : (real[k]? real[k].w : (real.length? real[real.length-1].w : ''));
           return { w, r:'', skipped:false, reason:'' };
-        }) };
+        });
+        return e;
       }),
       stairs: { level:'', seconds:'', skipped:false, reason:'' },
       extras: blankExtras(name), sessionNote:''
@@ -2099,7 +2105,7 @@ function viewActive(){
     let lastLine = `<span class="muted">No previous data — set your baseline.</span>`, flag='', noteHint='';
     if(ref){
       lastLine = `Last time (${fmtDate(ref.date)}): <strong>${esc(real.map(x=> fmtSet(x.w,x.r)).join(',  '))||'—'}</strong>`;
-      const aw = addWeightInfo(name, i, entry.name);
+      const aw = addWeightInfo(name, i, entry.name, entry);
       /* Bodyweight (weight 0 or blank) at the top has no next number to suggest (PROG-05, D-08). */
       flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${(aw.hasLoad && aw.newW != null)?` → ${esc(aw.newW)} ${esc(DB.unit)}`:' (belt) or harder variation'}</span>` : '';
       if(ref.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(ref.entry.note)}</div>`;
@@ -2111,7 +2117,7 @@ function viewActive(){
          pre-filled: a suggestion shouldn't quietly become a logged number. */
       const best = altReal.reduce((a,x)=> e1rm(x.w,x.r) > e1rm(a.w,a.r) ? x : a, altReal[0]);
       const offRange = best && (+best.r < rng.lo || +best.r > rng.hi);
-      const sug = offRange ? translateLoad(best.w, best.r, rng.lo, entry.name) : null;
+      const sug = offRange ? translateLoad(best.w, best.r, rng.lo, entry) : null;   // the entry's own ladder (IN-09)
       if(sug) lastLine += ` <span class="muted">→ suggest <strong>${esc(sug)} ${esc(DB.unit)}</strong> for ${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>`;
       if(alt.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(alt.entry.note)}</div>`;
     }
