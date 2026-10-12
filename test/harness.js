@@ -155,6 +155,8 @@ function loadApp(htmlPath, seed, opts){
     'renderIdeasList',
     /* Equipment types and their defaults (Phase 9, EQUIP-01). */
     'EQUIP_TYPES','EQUIP_LABEL','EQUIP_DEFAULTS',
+    /* The D-16 first-time picker's in-memory queue (plan 09-04). A let, so it needs exporting. */
+    'equipAsk',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-icdWAkP0uVUDuK8z27W0BD2sE/m8tM0+YmZCaxOVWfY=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-rqEXF5guS0oXCQhefeqRXvZFALvMPYBZzJ/lf2ii0bg=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -88,6 +88,10 @@
     .ex-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .ex-title { font-size: 14px; font-weight: 700; }
     .lasttime { font-size: 12px; color: var(--text-2); background: var(--surface-2); border-radius: 8px; padding: 7px 9px; margin: 6px 0 10px; line-height: 1.5; }
+    .equip-ask { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px 12px; margin: 8px 0 12px; }
+    .equip-ask p { font-size: 12px; line-height: 1.5; color: var(--text-2); margin-bottom: 8px; }
+    .equip-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 8px; }
+    .equip-grid .day-btn { min-height: 44px; padding: 8px 4px; width: 100%; }
     .last-note { font-size: 12px; color: var(--warm-fg); background: var(--warm-bg); border: 1px solid var(--warm-bd); border-radius: 8px; padding: 7px 9px; margin: -4px 0 10px; line-height: 1.5; }
     select, input, textarea { font-family: inherit; font-size: 14px; border: 1.5px solid var(--border-2); border-radius: 8px; padding: 9px 10px; background: var(--surface); color: var(--text); width: 100%; }
     input[type=checkbox] { width: 20px; height: 20px; min-width: 20px; padding: 0; border: none; accent-color: var(--accent); }
@@ -1168,6 +1172,34 @@ function platesText(total, bar, style){
   const b=plateBreakdown(t, bar, style); if(!b) return `🏋️ Under bar weight (${bar} lb)`;
   return `🏋️ Per side: ${plateGroups(b.plates)}${short(b)}`;
 }
+/* The heaviest weight entered on a card: sets not skipped, with a non-empty, positive weight. 0 when
+   there is none, and never NaN, so the dumbbell step reads the low end of the rack until a weight is in. */
+function cardTopWeight(sets){
+  let top = 0;
+  (Array.isArray(sets) ? sets : []).forEach(s => {
+    if(!s || s.skipped || s.w === '' || s.w == null) return;
+    const w = +s.w;
+    if(isFinite(w) && w > top) top = w;
+  });
+  return top;
+}
+/* The card's equipment tag (D-05): "dumbbell · +2.5", "barbell · +5", or "bodyweight" with no step.
+   Built only from EQUIP_LABEL and the numeric step, so a hostile stored type reads as the guess. */
+function equipTagText(name, w){
+  const t = equipOf(name), s = weightStep(name, w);
+  return s == null ? EQUIP_LABEL[t] : EQUIP_LABEL[t] + ' · +' + s;
+}
+/* The first-time equipment picker (S2, D-16): six buttons in EQUIP_TYPES order, the current type
+   (the name-rule guess until Ian answers) highlighted. One tap calls setExerciseEquip. Labels come
+   from EQUIP_LABEL and data-equip from EQUIP_TYPES, never from a stored string. */
+function equipPickerHTML(id, name){
+  const cur = equipOf(name);
+  const btns = EQUIP_TYPES.map(t => `<button class="day-btn${t===cur?' active':''}" aria-pressed="${t===cur?'true':'false'}" data-action="pickExEquip" data-id="${esc(id)}" data-equip="${esc(t)}">${esc(EQUIP_LABEL[t])}</button>`).join('');
+  return `<div class="equip-ask" role="group" aria-label="Equipment for ${esc(name)}">
+          <p>What equipment is “${esc(name)}”?<br><span class="muted" style="font-size:12px">Sets its weight step. Tap one to confirm — change it any time in Settings → Exercises.</span></p>
+          <div class="equip-grid">${btns}</div>
+        </div>`;
+}
 /* Live plate readout for a barbell exercise → the heaviest weight entered across its sets. */
 function updPlates(i){ const el=document.getElementById(`plates-${i}`); if(!el) return;
   const name=DB.draft.entries[i].name, bar=barWeight(name); if(bar==null){ el.innerHTML=''; return; }
@@ -2075,6 +2107,9 @@ function viewActive(){
           </div>
         </div>
         <select data-action="pickEx" data-i="${esc(i)}">${opts}</select>
+        ${equipAsk.has(exKey(entry))
+          ? equipPickerHTML(exKey(entry), entry.name)
+          : `<div class="ex-meta" id="equip-tag-${i}" style="margin-top:4px">${esc(equipTagText(entry.name, cardTopWeight(entry.sets)))}</div>`}
         <div class="lasttime">${lastLine}</div>
         ${noteHint}
         ${coachHint}
@@ -2157,7 +2192,16 @@ function resolveTypedName(raw){
   if(near && confirm(`Did you mean “${near.name}”?\n\nOK — use ${near.name} (keeps one history)\nCancel — keep “${name}” as a separate exercise`)){
     return { name: near.name, exId: near.id };
   }
-  return { name, exId: exEnsure(name) };
+  return { name, exId: exEnsureAsk(name) };
+}
+/* exEnsure, plus the D-16 question: a registry row created just now for a name the default table
+   cannot place is queued for the first-time equipment picker. A name that already had a row, or one
+   the table knows, never asks. Reads and writes only the registry and equipAsk, never the workout. */
+function exEnsureAsk(name){
+  const known = !!exIdByName(name);
+  const id = exEnsure(name);
+  if(id && !known && !equipKnown(name)) equipAsk.add(id);
+  return id;
 }
 function pickEx(i, sel){
   const e = DB.draft.entries[i];
@@ -2166,7 +2210,7 @@ function pickEx(i, sel){
     if(picked){ e.name = picked.name; e.exId = picked.exId; }
     save(); render(); return;
   }
-  e.name = sel.value; e.exId = exEnsure(sel.value); save(); render();
+  e.name = sel.value; e.exId = exEnsureAsk(sel.value); save(); render();
 }
 function setVal(i,k,f,v){ DB.draft.entries[i].sets[k][f]=v; if(f==='r' && v!=='') restCtx=restTargetForSlot(i); saveLocal(); /* live save, no re-render to keep focus */ }
 function setNote(i,v){ DB.draft.entries[i].note=v; saveLocal(); }
@@ -2332,6 +2376,10 @@ function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be
 /* ───────────────────────── HISTORY ───────────────────────── */
 let openHist = -1, showBackdate = false, reviewWeekOffset = 0;
 let collapsedEx = new Set(); // slot indices collapsed to a summary in the active workout (ephemeral UI)
+/* Registry ids still waiting for the first-time equipment picker (D-16). In-memory UI state only:
+   never stored, synced, exported or written to the workout, so the picker lasts until it is tapped,
+   the slot switches exercise, or the app reloads. Ignoring it keeps the guess (equipAt 0). */
+let equipAsk = new Set();
 function toggleExCollapse(i){ if(collapsedEx.has(i)) collapsedEx.delete(i); else collapsedEx.add(i); render(); }
 function weekShift(d){ reviewWeekOffset = Math.min(0, reviewWeekOffset + d); render(); }
 /* Backfill a hobby/productivity item onto a past day from Week in Review (in case you forgot to log it). */
@@ -2908,7 +2956,9 @@ function setExerciseEquip(id, type){
   if(typeof type !== 'string' || EQUIP_TYPES.indexOf(type) < 0) return;
   r.equip = type;
   r.equipAt = Date.now();
-  touch(r); save(); toast('Equipment set ✓'); render();
+  touch(r);
+  equipAsk.delete(id);   // the first-time picker for this row is answered (D-16)
+  save(); toast('Equipment set ✓'); render();
 }
 function doExMerge(){
   const from = (document.getElementById('ex-merge-from')||{}).value;
@@ -3052,7 +3102,7 @@ function exPick(which, sel){
     if(picked){ e.name = picked.name; e.exId = picked.exId; }
     save(); render(); return;
   }
-  e.name = sel.value; e.exId = exEnsure(sel.value); save();
+  e.name = sel.value; e.exId = exEnsureAsk(sel.value); save();
 }
 function exSet(which,k,f,v){ DB.draft.extras[which].sets[k][f]=v; saveLocal(); }
 function exRoll(which,k,v){ const sets=DB.draft.extras[which].sets; sets[k].w=v; if(v!==''){ for(let j=k+1;j<sets.length;j++){ if(sets[j].w===''){ sets[j].w=v; const el=document.getElementById(`ex-${which}-w-${j}`); if(el) el.value=v; } } } saveLocal(); }
@@ -5222,7 +5272,8 @@ const ACTIONS = {
   setReps:   { input: el => { const i = +el.dataset.i, k = +el.dataset.k; setVal(i, k, 'r', el.value); updTargetBadge(i, k); },
                change: el => repCheck(+el.dataset.i, +el.dataset.k) },
   pickEx:           { change: el => pickEx(+el.dataset.i, el) },
-  setNote:          { input: el => setNote(+el.dataset.i, el.value) },
+  pickExEquip:      { click: el => setExerciseEquip(el.dataset.id, el.dataset.equip) },
+  setNote:         { input: el => setNote(+el.dataset.i, el.value) },
   unskipStairs:     { click: () => unskipStairs() },
   skipStairs:       { click: () => skipStairs() },
   stairVal:         { input: el => stairVal(el.dataset.field, el.value) },

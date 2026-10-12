@@ -163,7 +163,7 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'sleepUid', 'addSleep', 'removeSleep', 'viewSleep',
   'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown', 'exportShareFailed',
   'ACTIONS', 'dispatchAction',
-  'EQUIP_TYPES','EQUIP_LABEL','EQUIP_DEFAULTS'];
+  'EQUIP_TYPES','EQUIP_LABEL','EQUIP_DEFAULTS','equipAsk'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -8920,6 +8920,69 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
   ok('IN-04/T-9-16: a hostile unit in the suggest line is escaped — &lt;img, never a raw <img',
      hostile !== null && hostile.includes('&lt;img') && !hostile.includes('<img'), hostile);
   W.DB.draft = null;
+}
+
+/* ── EQUIP UI: the first-time picker, the card tag, Settings states (Phase 9, plan 09-04) ──
+   Ian rejected silent guessing for a name the default table cannot place (D-04, D-16): a brand-new
+   exercise asks for its type once, with the guess highlighted, and one tap stores it on the synced
+   registry row. Every main card then says which type and step it is using (D-05), so a wrong type
+   is easy to spot at the rack. equipAsk is in-memory UI state only and never stored. */
+console.log('\n── EQUIP UI: the first-time picker and the card tag (D-04, D-05, D-16) ──');
+/* The i-th main exercise card of the current draft. */
+function eqUiCard(a, i){ return a.viewActive().split('<div class="ex-card">')[i + 1] || ''; }
+/* The pickExEquip buttons in rendered html, in order: { id, equip, active, pressed, label }. */
+function eqPickerOf(html){
+  const out = [];
+  const re = /<button\b([^>]*)data-action="pickExEquip"([^>]*)>([\s\S]*?)<\/button>/g;
+  let m;
+  while((m = re.exec(String(html || '')))){
+    const attrs = m[1] + m[2];
+    const at = n => { const x = new RegExp('\\b' + n + '="([^"]*)"').exec(attrs); return x ? x[1] : null; };
+    out.push({ id: at('data-id'), equip: at('data-equip'), active: /\bclass="[^"]*\bactive\b/.test(attrs),
+               pressed: at('aria-pressed'), label: m[3] });
+  }
+  return out;
+}
+/* The text inside the card's equip-tag element, or null when the card has none. */
+function eqTagOf(card, i){
+  const m = new RegExp('<div class="ex-meta" id="equip-tag-' + i + '"[^>]*>([\\s\\S]*?)</div>').exec(String(card || ''));
+  return m ? m[1] : null;
+}
+{
+  /* The tracer, end to end: "+ Custom…" on card 0 → exEnsureAsk → the picker on the card with the
+     guess highlighted → one tap through the dispatcher → setExerciseEquip → save → the picker is
+     gone and the tag shows the choice. */
+  const U = loadApp(APP_PATH);
+  const spy = spyPushes(U);
+  U.DB = populatedDB(U);
+  U.DB.draft = fullDraft(U, 'PUSH 1');
+  U.__sandbox.prompt = () => 'Zercher carry';
+  fireAction(U, 'change', fakeEl({ action: 'pickEx', i: '0' }, { value: '__custom' }));
+  const rowOf = id => (U.DB.exercises || []).find(x => x && x.id === id) || null;
+  const r0 = rowOf('zercher-carry');
+  const asked = !!(U.equipAsk && U.equipAsk.has('zercher-carry'));
+  ok('D-16 tracer: "+ Custom…" with a name the table cannot place stores the guess (machine, equipAt 0) and asks for the type',
+     !!r0 && r0.equip === 'machine' && r0.equipAt === 0 && asked, { row: r0, asked });
+  const c0 = eqUiCard(U, 0);
+  const pk = eqPickerOf(c0);
+  ok('D-16 tracer: card 0 shows six pickExEquip buttons for zercher-carry, in EQUIP_TYPES order, with the guess (machine) active and pressed, and no tag',
+     pk.length === 6 && pk.every(b => b.id === 'zercher-carry')
+       && JSON.stringify(pk.map(b => b.equip)) === JSON.stringify(app.EQUIP_TYPES)
+       && pk.every(b => (b.equip === 'machine') === (b.active && b.pressed === 'true'))
+       && pk.filter(b => b.pressed === 'false').length === 5
+       && !c0.includes('id="equip-tag-0"'), pk);
+  const pushesBefore = spy.n;
+  fireAction(U, 'click', fakeEl({ action: 'pickExEquip', id: 'zercher-carry', equip: 'dumbbell' }));
+  const r1 = rowOf('zercher-carry');
+  const stillAsked = !!(U.equipAsk && U.equipAsk.has('zercher-carry'));
+  ok('D-04 tracer: one tap stores dumbbell with a positive equipAt, pushes once (two in all with pickEx), and stops asking',
+     !!r1 && r1.equip === 'dumbbell' && r1.equipAt > 0 && spy.n === pushesBefore + 1 && spy.n === 2 && !stillAsked,
+     { row: r1, pushes: spy.n, before: pushesBefore, stillAsked });
+  const c1 = eqUiCard(U, 0);
+  ok('D-05 tracer: card 0 then has no picker, and its tag reads "dumbbell · +2.5"',
+     eqPickerOf(c1).length === 0 && eqTagOf(c1, 0) === 'dumbbell · +2.5', { picker: eqPickerOf(c1).length, tag: eqTagOf(c1, 0) });
+  ok('T-9-27: equipAsk is never stored', !JSON.stringify(U.__stored()).includes('equipAsk'), null);
+  U.DB.draft = null;
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
