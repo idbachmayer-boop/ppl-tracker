@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-5YBRvkrAKYwIaW+ljkJM/Sr6/XrWxoZ8xNvF6xS6N3Q=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Pp7uOJjDKEzWir+kYF0jp4LiVKZJN7mpn5XagAs3PYA=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1128,10 +1128,11 @@ const BAR_FOR = {
 /* Name test for the landmine variants people type by hand ("T bar row", "Tbar row", "T-Bar Row"). */
 const LANDMINE_RE = /t-?\s?bar|meadows|landmine/i;
 function barStyle(name){
-  const t = equipOf(name);
+  const t = equipOf(name);                                                  // a name or an entry (WR-05)
+  const n = typeof name === 'string' ? name : (name && typeof name.name === 'string' ? name.name : '');
   if(t === 'ez') return 'ez';
-  if(t === 'barbell') return (BAR_FOR[name] === 'landmine' || LANDMINE_RE.test(name||'')) ? 'landmine' : 'straight';
-  if(t === 'machine') return BAR_FOR[name] === 'sled' ? 'sled' : null;
+  if(t === 'barbell') return (BAR_FOR[n] === 'landmine' || LANDMINE_RE.test(n)) ? 'landmine' : 'straight';
+  if(t === 'machine') return BAR_FOR[n] === 'sled' ? 'sled' : null;
   return null;
 }
 const barWeight = name => { const s=barStyle(name); return s ? BAR_LB[s] : null; };
@@ -1193,7 +1194,8 @@ function equipTagText(name, w){
    (the name-rule guess until Ian answers) highlighted. One tap calls setExerciseEquip. Labels come
    from EQUIP_LABEL and data-equip from EQUIP_TYPES, never from a stored string. */
 function equipPickerHTML(id, name){
-  const cur = equipOf(name);
+  const row = exRow(id);   // the row the tap writes to, never the row the name happens to spell (WR-05)
+  const cur = row && EQUIP_TYPES.indexOf(row.equip) >= 0 ? row.equip : equipGuess(name);
   const btns = EQUIP_TYPES.map(t => `<button class="day-btn${t===cur?' active':''}" aria-pressed="${t===cur?'true':'false'}" data-action="pickExEquip" data-id="${esc(id)}" data-equip="${esc(t)}">${esc(EQUIP_LABEL[t])}</button>`).join('');
   return `<div class="equip-ask" role="group" aria-label="Equipment for ${esc(name)}">
           <p>What equipment is “${esc(name)}”?<br><span class="muted" style="font-size:12px">Sets its weight step. Tap one to confirm — change it any time in Settings → Exercises.</span></p>
@@ -1204,13 +1206,13 @@ function equipPickerHTML(id, name){
    carries, then the plate line, which only bar lifts have. The tag goes first so the early return
    below never skips it; it is written as textContent, never markup. */
 function updPlates(i){
-  const entry = DB.draft.entries[i], name = entry.name;
+  const entry = DB.draft.entries[i];   // the entry, not its name: the type follows its exId (WR-05)
   const tag = document.getElementById(`equip-tag-${i}`);
-  if(tag) tag.textContent = equipTagText(name, cardTopWeight(entry.sets));
+  if(tag) tag.textContent = equipTagText(entry, cardTopWeight(entry.sets));
   const el=document.getElementById(`plates-${i}`); if(!el) return;
-  const bar=barWeight(name); if(bar==null){ el.innerHTML=''; return; }
+  const bar=barWeight(entry); if(bar==null){ el.innerHTML=''; return; }
   const ws=entry.sets.filter(s=>!s.skipped && s.w!=='' && +s.w>0).map(s=>+s.w);
-  el.innerHTML = ws.length ? platesText(Math.max(...ws), bar, barStyle(name)) : '';
+  el.innerHTML = ws.length ? platesText(Math.max(...ws), bar, barStyle(entry)) : '';
 }
 const INCREMENT = { lb:5, kg:2.5 };
 /* Should we bump the load, and to what? The verdict judges the latest attempt on the card for this
@@ -1419,7 +1421,7 @@ function isStalledSlot(name, workout, slotIndex){
    so lastRealEntry skips it and the baseline-to-beat stays your pre-deload best. */
 function deloadExercise(i){
   const e=DB.draft.entries[i];
-  const p = deloadPlan(e.name, deloadBaseW(DB.draft.workout, i, e.name));   // the ladder floor, a step lighter, the bar clamp
+  const p = deloadPlan(e, deloadBaseW(DB.draft.workout, i, e.name));   // the ladder floor, a step lighter, the bar clamp; the type follows the entry (WR-05)
   /* No weight to write (no load at all) leaves the sets as they are: a deload never blanks them (WR-03). */
   e.deload=true; if(p.w !== '') e.sets.forEach(st=>{ if(!st.skipped) st.w=String(p.w); });
   saveLocal(); render();
@@ -1486,10 +1488,13 @@ function exKey(e){
 function exLabel(key){ const r = exRow(key); return r ? r.name : (key||''); }
 /* The equipment type of a name (EQUIP-01): the registry row's stored value when it is one of
    EQUIP_TYPES, else the guess from the name. A missing, empty or hostile stored value never changes
-   behaviour, and renaming a row never re-guesses a stored type. */
-function equipOf(name){
-  const r = exRow(exKey(name));
-  return (r && EQUIP_TYPES.indexOf(r.equip) >= 0) ? r.equip : equipGuess(name);
+   behaviour, and renaming a row never re-guesses a stored type. It also takes a logged or draft entry,
+   which resolves through its exId the way exKey does: the card reads the type of the row its picker
+   writes to, even when the entry's name spells another row's alias (WR-05). So do weightStep,
+   loadFloor, barStyle and deloadPlan, which only pass their argument on. */
+function equipOf(x){
+  const r = exRow(exKey(x));
+  return (r && EQUIP_TYPES.indexOf(r.equip) >= 0) ? r.equip : equipGuess(typeof x === 'string' ? x : (x && x.name));
 }
 /* Register a name and return its id, creating the row when it's genuinely new. */
 function exEnsure(name){
@@ -2114,7 +2119,7 @@ function viewActive(){
     if(entry.deload){
       /* The empty-bar case is derived here from history, never stored: finishWorkout copies every draft
          entry field into the session (D-15). */
-      const dp = deloadPlan(entry.name, deloadBaseW(name, i, entry.name));
+      const dp = deloadPlan(entry, deloadBaseW(name, i, entry.name));
       coachHint = dp.atBar
         ? `<div class="coach deload">↓ Already at the empty bar — cut a set or reps instead. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`
         : dp.atFloor
@@ -2150,14 +2155,14 @@ function viewActive(){
         <select data-action="pickEx" data-i="${esc(i)}">${opts}</select>
         ${equipAsk.has(exKey(entry))
           ? equipPickerHTML(exKey(entry), entry.name)
-          : `<div class="ex-meta" id="equip-tag-${i}" style="margin-top:4px">${esc(equipTagText(entry.name, cardTopWeight(entry.sets)))}</div>`}
+          : `<div class="ex-meta" id="equip-tag-${i}" style="margin-top:4px">${esc(equipTagText(entry, cardTopWeight(entry.sets)))}</div>`}
         <div class="lasttime">${lastLine}</div>
         ${noteHint}
         ${coachHint}
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
         ${setRows}
         <button class="addset" data-action="addSet" data-i="${esc(i)}">+ Add set</button>
-        ${isBarbell(entry.name)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'', barWeight(entry.name), barStyle(entry.name))}</div>`:''}
+        ${isBarbell(entry)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'', barWeight(entry), barStyle(entry))}</div>`:''}
         ${i===0?`<div class="warm">
           <button class="warm-toggle" data-action="toggleWarm" data-i="${esc(i)}">${ph('fire')}Warm-up ramp</button>
           <div class="warm-table hidden" id="warm-${i}"></div>
@@ -2329,21 +2334,21 @@ function warmRampHTML(entry){
      Non-barbell lifts (and kg) fall through to the plain percentages. A working weight under the bar
      in lb is a preset or fixed bar (D-07), not the loaded bar, so it ramps like a lift with no bar:
      no "Empty bar" rung heavier than the working weight, and no plate lines (WR-02). */
-  const bar0 = barWeight(entry.name);
+  const bar0 = barWeight(entry);   // the entry, so the type follows its exId (WR-05)
   const bar = (DB.unit === 'lb' && bar0 > 0 && w < bar0 - 1e-9) ? null : bar0;
-  const style = barStyle(entry.name);
+  const style = barStyle(entry);
   const plates = t => { const s = bar==null ? '' : platesText(t, bar, style); return s ? `<div class="warm-plates">${s}</div>` : ''; };
   const rung = (label, target, reps) => `<div><span>${label}${plates(target)}</span><span>${reps}</span></div>`;
   /* Rungs round to the nearest weight on this exercise's ladder, ties down. On a bar lift in lb a rung
      never drops under the bar, and no rung is ever above the working weight. */
   const lbBar = DB.unit === 'lb' && bar > 0;
   const clamp = r => Math.min(w, (lbBar && w >= bar && r < bar) ? bar : r);
-  const w50 = clamp(loadNearest(entry.name, w*0.5)), w75 = clamp(loadNearest(entry.name, w*0.75));
+  const w50 = clamp(loadNearest(entry, w*0.5)), w75 = clamp(loadNearest(entry, w*0.75));
   /* No bar means the first rung is your own bodyweight, and the loads land on the type's own steps. */
   const first = bar > 0 ? `<div><span>Empty bar — ${bar} ${DB.unit}</span><span>a few reps</span></div>`
               : bar === 0 ? `<div><span>Empty sled — no plates</span><span>a few reps</span></div>`
               : `<div><span>Bodyweight — no load</span><span>5–10 reps</span></div>`;
-  const t = equipOf(entry.name);
+  const t = equipOf(entry);
   const noteText = DB.unit === 'kg' ? 'Rounded to the nearest 2.5 kg.'
                  : t === 'dumbbell' ? 'Rounded to the nearest dumbbell — 2.5 lb steps up to 60, 5 lb above.'
                  : t === 'cable' ? 'Rounded to the nearest 2.5 lb.'
@@ -2965,7 +2970,8 @@ function exercisesCardHTML(){
     ${rows.map(r=>{
       /* S1: the type sits under the name. A listed key with no registry row gets a plain line, since
          there is no row to store a choice on. Labels come from EQUIP_LABEL, never the stored string. */
-      const cur = equipOf(r.name);
+      const row = exRow(r.id);   // read the type from the row the select writes to, never by the label (WR-05)
+      const cur = row && EQUIP_TYPES.indexOf(row.equip) >= 0 ? row.equip : equipGuess(r.name);
       const equipUI = exRow(r.id)
         ? `<select data-action="setExEquip" data-id="${esc(r.id)}" aria-label="Equipment for ${esc(r.name)}" style="display:block;width:auto;min-width:140px;margin-top:8px">${EQUIP_TYPES.map(t=>`<option value="${esc(t)}"${t===cur?' selected':''}>${esc(EQUIP_LABEL[t])}</option>`).join('')}</select>`
         : `<div class="muted" style="font-size:12px;margin-top:8px">${esc(EQUIP_LABEL[cur])}</div>`;

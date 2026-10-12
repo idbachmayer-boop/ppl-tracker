@@ -9137,6 +9137,51 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
      cases.every(x => x.good), cases.map(({ name, load, want, flag, draft }) => ({ name, load, want, flag, draft })));
   X.DB.draft = null;
 }
+{
+  /* WR-05 (09-REVIEW): every equipment control shows the type of the row it writes to. Settings used to
+     read the type by the row's label and write it by id, and the card read it by the entry's name while
+     the picker wrote to the entry's exId. When the two resolve to different rows (curl-a still labelled
+     "Curl" after the newer curl row took the "curl" spelling, WR-01), a choice appeared to do nothing. */
+  const Y = loadApp(APP_PATH); spyPushes(Y);
+  const PUSH = 'PUSH 1';
+  Y.DB = Y.normalize(Y.blank()); Y.DB.unit = 'lb';
+  Y.DB.exercises = [ { id: 'curl-a', name: 'Curl', aliases: ['old curl'], mtime: 10, equip: 'cable', equipAt: 5 },
+                     { id: 'curl', name: 'Curl', aliases: ['curl'], mtime: 20, equip: 'dumbbell', equipAt: 5 } ];
+  Y.DB.sessions = [ eqSess('wr5-a', PUSH, dayOff(-9), 0, 'Curl', [[35, 10]], { exId: 'curl-a' }),
+                    eqSess('wr5-b', PUSH, dayOff(-8), 0, 'Curl', [[30, 10]], { exId: 'curl' }) ];
+  const html = Y.__sandbox.exercisesCardHTML();
+  const selA = eqSelectOf(html, 'curl-a'), selB = eqSelectOf(html, 'curl');
+  ok('WR-05: Settings → Exercises selects each row\'s own stored type, even when its label spells the other row\'s alias — curl-a cable, curl dumbbell',
+     !!selA && selA.selected === 'cable' && !!selB && selB.selected === 'dumbbell', { a: selA && selA.selected, b: selB && selB.selected });
+  fireAction(Y, 'change', fakeEl({ action: 'setExEquip', id: 'curl-a' }, { value: 'ez' }));
+  const after = eqSelectOf(Y.__sandbox.exercisesCardHTML(), 'curl-a');
+  ok('WR-05: choosing EZ bar for curl-a stores it and the re-rendered select shows EZ bar, instead of snapping back to the other row\'s type',
+     !!after && after.selected === 'ez' && Y.exRow('curl-a').equip === 'ez', { selected: after && after.selected, stored: Y.exRow('curl-a').equip });
+
+  /* The card, for a draft entry whose exId is curl-a and whose name spells the other row's alias. */
+  Y.__sandbox.startWorkout(PUSH);
+  Y.DB.draft.entries[0] = { name: 'Curl', exId: 'curl-a', note: '', sets: [0, 1, 2].map(() => ({ w: '35', r: '', skipped: false, reason: '' })) };
+  const card = eqUiCard(Y, 0);
+  const plates = (/<div class="muted" id="plates-0"[^>]*>([\s\S]*?)<\/div>/.exec(card) || [])[1] || null;
+  const ramp = String(Y.__sandbox.warmRampHTML(Y.DB.draft.entries[0]));
+  const live = Y.__sandbox.document.getElementById('equip-tag-0'); live.textContent = 'stale'; Y.__sandbox.updPlates(0);
+  const dl = Y.__sandbox.deloadPlan(Y.DB.draft.entries[0], 25);
+  const ezTag = app.EQUIP_LABEL.ez + ' · +5';
+  ok('WR-05: the card follows curl-a\'s type (EZ bar), not the name\'s row — tag "EZ bar · +5" rendered and live, "Per side: 1×5" at 35, a ramp from the 25 lb bar, and 25 is the empty bar',
+     eqTagOf(card, 0) === ezTag && live.textContent === ezTag && (plates || '').includes('Per side: 1×5') && ramp.includes('Empty bar — 25 lb') && dl.atBar === true,
+     { tag: eqTagOf(card, 0), live: live.textContent, plates, ramp: ramp.includes('Empty bar — 25 lb'), dl });
+  Y.equipAsk.add('curl-a');
+  const pk = eqPickerOf(eqUiCard(Y, 0));
+  ok('WR-05: the first-time picker for curl-a highlights curl-a\'s own type (EZ bar), the row it writes to',
+     pk.length === 6 && pk.every(b => b.id === 'curl-a') && pk.filter(b => b.active).map(b => b.equip).join() === 'ez', pk.filter(b => b.active));
+  Y.equipAsk.clear();
+  Y.DB.draft = null;
+  /* Passing an entry instead of a name keeps the loading style the name decides: sled, landmine, straight, EZ. */
+  const styleNames = ['Leg press', 'Hack squat', 'T-bar row', 'Meadows row', 'Chest Supported T-Bar Row', 'Barbell row', 'Preacher curl', 'DB curl'];
+  const styles = styleNames.map(n => ({ n, byName: Y.barStyle(n), byEntry: Y.barStyle({ name: n, sets: [] }) }));
+  ok('WR-05: an entry gets the same loading style as its name — sled, landmine, straight, EZ bar and none',
+     styles.every(x => x.byName === x.byEntry) && styles.map(x => x.byEntry).join() === 'sled,sled,landmine,landmine,landmine,straight,ez,', styles);
+}
 
 /* ── EQUIP UI: the first-time picker, the card tag, Settings states (Phase 9, plan 09-04) ──
    Ian rejected silent guessing for a name the default table cannot place (D-04, D-16): a brand-new
