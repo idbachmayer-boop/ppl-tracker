@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-7P9ItEidIBCduiseTHqtjMzmxf0vUQpXcP3dQNB8szk=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-6JwZpwhfGdgBtnlUR2Axh0ZCyV2CNkgvLCP26qDMxj4=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1261,15 +1261,21 @@ function deloadBaseW(workout, slotIndex, exName){
    that lands under a still-lighter bar is raised to the bar. A weight UNDER the bar is not on that
    bar at all: it is a preset or fixed bar (D-07, Ian's preset EZ bars under 25 lb), a lighter one
    exists, so it steps down the type's ladder like any load and is never raised to the bar (WR-02).
-   Never heavier than lastW. */
+   Never heavier than lastW, and never '' for a real load: when 90% floors to nothing (a 2.5 lb
+   dumbbell, a 5 lb stack), the lightest loadable weight is one step, and a load already at or under it
+   stays and atFloor says so, so the weights are never blanked under a "−10%" line (WR-03). With no
+   load at all (bodyweight) there is nothing to write, which is atFloor too. */
 function deloadPlan(name, lastW){
   lastW = +lastW;
-  if(!(lastW > 0)) return { w:'', atBar:false };
+  if(!(lastW > 0)) return { w:'', atBar:false, atFloor:true };
   const bar = DB.unit === 'lb' ? barWeight(name) : null;
   const onBar = bar > 0 && lastW >= bar - 1e-9;
   if(onBar && lastW <= bar + 1e-9) return { w:lastW, atBar:true };
   let x = loadFloor(name, 0.9 * lastW);
-  if(!(x > 0)) return { w:'', atBar:false };
+  if(!(x > 0)){
+    const s = ladderStep(name, 0);
+    return lastW > s + 1e-9 ? { w:s, atBar:false } : { w:lastW, atBar:false, atFloor:true };
+  }
   if(onBar && x < bar) x = bar;
   return { w:x, atBar:false };
 }
@@ -1411,8 +1417,8 @@ function isStalledSlot(name, workout, slotIndex){
 function deloadExercise(i){
   const e=DB.draft.entries[i];
   const p = deloadPlan(e.name, deloadBaseW(DB.draft.workout, i, e.name));   // the ladder floor, a step lighter, the bar clamp
-  const dw = p.w === '' ? '' : String(p.w);
-  e.deload=true; e.sets.forEach(st=>{ if(!st.skipped) st.w=dw; });
+  /* No weight to write (no load at all) leaves the sets as they are: a deload never blanks them (WR-03). */
+  e.deload=true; if(p.w !== '') e.sets.forEach(st=>{ if(!st.skipped) st.w=String(p.w); });
   saveLocal(); render();
 }
 function undeloadExercise(i){ DB.draft.entries[i].deload=false; saveLocal(); render(); }
@@ -2108,6 +2114,8 @@ function viewActive(){
       const dp = deloadPlan(entry.name, deloadBaseW(name, i, entry.name));
       coachHint = dp.atBar
         ? `<div class="coach deload">↓ Already at the empty bar — cut a set or reps instead. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`
+        : dp.atFloor
+        ? `<div class="coach deload">↓ Already at the lightest weight — cut a set or reps instead. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`
         : `<div class="coach deload">↓ Deloaded −10% this session — rebuild from here. <button class="coach-btn" data-action="undeloadExercise" data-i="${esc(i)}">undo</button></div>`;
     }
     else if(isStalledSlot(entry.name, name, i)) coachHint = `<div class="coach stall">⚠ Stalled — no extra rep or weight for 3 sessions in a row on ${esc(name)}. <button class="coach-btn" data-action="deloadExercise" data-i="${esc(i)}">Deload −10%</button> or swap the exercise above.</div>`;

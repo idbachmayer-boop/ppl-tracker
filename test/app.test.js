@@ -8902,8 +8902,9 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
   const atBar = P('Barbell row', 45);
   ok('D-15: Barbell row at 45 is at the empty bar — the weight stays 45 and atBar is true', atBar.w === 45 && atBar.atBar === true, atBar);
   const tiny = P('DB lateral raise', 2.5), none = P('DB lateral raise', 0);
-  ok('D-11: 2.5 DB has nothing lighter to deload to, and no history gives no weight — both \'\'',
-     tiny.w === '' && tiny.atBar === false && none.w === '' && none.atBar === false, { tiny, none });
+  /* WR-03 (09-REVIEW) supersedes 09-03's '' here: a deload keeps the lightest weight instead of blanking it. */
+  ok('D-11/WR-03: 2.5 DB has nothing lighter, so it stays 2.5 and says so (atFloor); no load gives no weight to write, also atFloor',
+     tiny.w === 2.5 && tiny.atBar === false && tiny.atFloor === true && none.w === '' && none.atBar === false && none.atFloor === true, { tiny, none });
   D.DB.unit = 'kg';
   const kgBench = P('Barbell bench press', 60), kgLat = P('DB lateral raise', 10);
   ok('D-10/D-11: in kg the ladder is 2.5 and no bar clamp applies — Barbell bench press 60 → 52.5, DB lateral raise 10 → 7.5',
@@ -9071,6 +9072,46 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
      !!ctl && ws.length > 0 && ws.every(w => w === '15') && after.includes('Deloaded −10% this session') && !after.includes('Already at the empty bar'),
      { ctl: !!ctl, ws });
   U.DB.draft = null;
+}
+{
+  /* WR-03 (09-REVIEW): a deload on a light load used to return '' whenever 90% floored to 0, and
+     deloadExercise then blanked every set while the card still claimed −10%. It keeps the lightest
+     loadable weight now, and the card says it cannot go lighter. */
+  const V = loadApp(APP_PATH); spyPushes(V);
+  V.DB = V.normalize(V.blank()); V.DB.unit = 'lb';
+  const dp = V.__sandbox.deloadPlan;
+  const floors = [['DB curl', 2.5], ['Triceps pushdown', 2.5], ['Seated OHP', 5]].map(([n, w]) => ({ n, w, p: dp(n, w) }));
+  ok('WR-03: 2.5 lb dumbbell, 2.5 lb cable stack and 5 lb machine keep their weight and say atFloor, never \'\'',
+     floors.every(x => x.p.w === x.w && x.p.atFloor === true && x.p.atBar === false), floors);
+  const between = dp('Seated OHP', 5.5);
+  ok('WR-03: a 5.5 lb machine load, which 90% floors to 0, deloads to the lightest stack weight, 5 — lighter, so not atFloor',
+     between.w === 5 && !between.atFloor, between);
+  const names = ['DB curl', 'Triceps pushdown', 'Seated OHP', 'Barbell row', 'Preacher curl', 'Leg press', 'Chin-up'];
+  const bad = [];
+  ['lb', 'kg'].forEach(u => { V.DB.unit = u; names.forEach(n => { for(let w = 0.5; w <= 60; w += 0.5){ const p = dp(n, w);
+    if(p.w === '' || !(+p.w > 0) || +p.w > w + 1e-9) bad.push({ u, n, w, p }); } }); });
+  V.DB.unit = 'lb';
+  ok('WR-03: for every load from 0.5 to 60 in both units on every type, the deload weight is a positive number never above the load', bad.length === 0, bad.slice(0, 5));
+
+  /* The card, through the dispatcher: a stalled 2.5 lb DB lateral raise, and a bodyweight Pull-up at 0. */
+  const stall = (workout, slot, name, w) => {
+    eqRun(V, [0, 1, 2, 3].map(n => eqSess('wr3-' + slot + '-' + n, workout, dayOff(-20 + 3 * n), slot, name, [[w, 12], [w, 12], [w, 12]])));
+    const ctl = controlsIn(eqCard(V, workout, slot)).find(c => c.data.action === 'deloadExercise');
+    if(ctl) fireAction(V, 'click', fakeEl(ctl.data));
+    const card = V.viewActive().split('<div class="ex-card">')[slot + 1] || '';
+    return { ctl: !!ctl, ws: V.DB.draft.entries[slot].sets.filter(x => !x.skipped).map(x => x.w), deload: V.DB.draft.entries[slot].deload,
+             coach: (/<div class="coach deload">([\s\S]*?)<\/div>/.exec(card) || [])[1] || null };
+  };
+  const LAT = app.PROGRAM['PUSH 1'].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+  const lat = stall('PUSH 1', LAT, 'DB lateral raise', 2.5);
+  ok('WR-03: a stalled 2.5 lb DB lateral raise keeps 2.5 in every set on Deload, and the card says "Already at the lightest weight — cut a set or reps instead." with its undo',
+     lat.ctl && lat.deload === true && lat.ws.length > 0 && lat.ws.every(w => w === '2.5') &&
+       /Already at the lightest weight — cut a set or reps instead\. <button class="coach-btn" data-action="undeloadExercise"/.test(lat.coach || '') && !(lat.coach || '').includes('−10%'),
+     lat);
+  const pu = stall('PULL 1', 0, 'Pull-up', 0);
+  ok('WR-03: a stalled bodyweight Pull-up logged at 0 keeps its prefilled 0 on Deload instead of blanking it, and does not claim −10%',
+     pu.ctl && pu.deload === true && pu.ws.length > 0 && pu.ws.every(w => w === '0') && !(pu.coach || '').includes('−10%'), pu);
+  V.DB.draft = null;
 }
 
 /* ── EQUIP UI: the first-time picker, the card tag, Settings states (Phase 9, plan 09-04) ──
