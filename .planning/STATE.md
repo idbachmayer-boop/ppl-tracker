@@ -4,16 +4,16 @@ milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
 current_phase: 09
 current_phase_name: equipment-and-weight-steps
-status: executing
-stopped_at: Completed 09-04-PLAN.md
-last_updated: "2026-10-12T17:51:52.355Z"
+status: verifying
+stopped_at: Completed 09-05-PLAN.md
+last_updated: "2026-10-12T19:05:00.000Z"
 last_activity: 2026-10-12
-last_activity_desc: Completed 09-04 (the first-time equipment picker, the card tag, the Settings copy)
+last_activity_desc: Phase 09 shipped (PR #14, merge 8a20832); phone UAT pending
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
   percent: 17
 ---
 
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 
 ## Current Position
 
-Phase: 09 (equipment-and-weight-steps) — EXECUTING
+Phase: 09 (equipment-and-weight-steps) — VERIFYING (live on main, phone UAT pending)
 Plan: 5 of 5
-Status: Ready to execute
-Last activity: 2026-10-12 — Completed 09-04 (the first-time equipment picker, the card tag, the Settings copy)
+Status: Phase complete — ready for verification
+Last activity: 2026-10-12 — Phase 09 shipped as PR #14 (merge commit 8a20832), live build verified
 
-Progress: [█████████░] 88% of planned v1.1 plans (Phase 9: 4 of 5 plans done)
+Progress: [██████████] 100% of Phase 9 plans (v1.1: Phase 8 verified; Phase 9 awaits the phone UAT)
 
 ## Performance Metrics
 
@@ -104,6 +104,7 @@ Progress: [█████████░] 88% of planned v1.1 plans (Phase 9: 4
 | Phase 09 P02 | 14 min | 3 tasks | 3 files |
 | Phase 09 P03 | 14 min | 3 tasks | 2 files |
 | Phase 09 P04 | 10 min | 3 tasks | 3 files |
+| Phase 09 P05 | ~25min (incl. the push, PR, CI, deploy) | 3 tasks | 0 files |
 
 ## Accumulated Context
 
@@ -130,6 +131,9 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [09-04]: the picker is keyed by registry id in equipAsk, so it follows the exercise, not the slot; it stays until answered, the slot switches exercise, or the app reloads
 - [09-04]: on a time-based accessory card exEnsureAsk still queues the id and extraCard declines to render it; the row keeps its guess
 - [09-04]: equipAsk.delete(id) sits after setExerciseEquip's validity checks, so a refused type leaves the picker in place
+- [09-05]: Phase 9 shipped as PR #14, merge commit 8a20832 on main; live stamp 2026-10-12T18:58:25Z 8a20832, csp --check OK, SCHEMA 19, helper grep 4. Phone workout and cross-device type change are the pending end-of-phase UAT
+- [09-05]: Revert is git revert -m 1 --no-edit 8a20832 on main. Once schema 19 has synced, a revert keeps all data but pauses sync on every device until a 19+ build ships; a blank app means nothing migrated and the revert is clean
+- [09-05]: Shipped with WR-09, WR-06 and the info items open (none blocking); WR-09 (order-dependent conflicting concurrent merges) is the post-ship fix candidate
 
 ### Pending Todos
 
@@ -140,8 +144,7 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 
 No blockers. Open questions for discuss-phase, raised while drafting the v1.1 roadmap (details in the ROADMAP.md phase notes):
 
-- Phase 9: `DB.exercises` is not a `COLLECTIONS` entry, and `mergeDB()` appears to take the whole array from the side with the newer `updatedAt`, so an equipment edit could lose to the other device's next save. Check before planning; the stale-device replay test must cover that path.
-- Phase 9: kg decided in 09-CONTEXT D-10 (lb only; kg keeps a flat 2.5).
+- Phase 9: resolved. The registry merges per row with an equipAt clock (09-02, replays in the suite), and kg keeps a flat 2.5 (D-10). Open post-ship: WR-09 in 09-REVIEW.md.
 - Phase 11: rain rows come from the weather fetch, but derived data uses `saveLocal()`. Decide how a rain row persists and reaches the cloud without letting a stale device look newest. The weather cache keeps only 3 past days.
 - Phase 12: Ian chooses whether `wipe()` goes through `keepLocalDraft()` or becomes the documented exception (SLP-03).
 
@@ -171,10 +174,10 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-12T17:51:52.341Z
-Stopped at: Completed 09-04-PLAN.md
+Last session: 2026-10-12T19:05:00.000Z
+Stopped at: Completed 09-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute Phase 9: `/gsd-execute-phase 9`; run `/gsd-code-review 9` after 09-04, before the 09-05 ship plan.
+- Phone UAT for Phase 9 (09-05-SUMMARY.md § UAT item): Settings → This version must end `8a20832` on the phone AND the PC. On failure, `git revert -m 1 --no-edit 8a20832` on `main` and push (sync then pauses until a 19+ build ships; data stays). On pass, write the vault changelog entry, then `/gsd-verify-work 9`.
