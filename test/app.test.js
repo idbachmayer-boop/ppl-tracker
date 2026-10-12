@@ -3034,9 +3034,9 @@ asyncBlock('DRAFT restore a cloud version', async () => {
     const d = populatedDB(a); d.draft = fullDraft(a, 'PUSH 1'); a.DB = d;
     a.importReplace(oldDocWithDraftOnlyLift(a));
     out.replace = hasDraftOnlyLift(a.DB.exercises);
-    /* Merge: the backup must be NEWER. `exercises` is not a COLLECTIONS entry, so mergeDB() takes it
-       whole from the newer side; an older backup's registry would be thrown away and the check would
-       pass for the wrong reason. */
+    /* Merge: the backup is NEWER. Since Phase 9 the registry merges per row (mergeExercises), so an
+       older backup's rows would be unioned in too; a newer backup keeps this a check that the draft-only
+       lift never reaches the registry from either side, not that one side's array was thrown away. */
     const b = loadApp(APP_PATH); spyPushes(b);
     const e = populatedDB(b); e.draft = fullDraft(b, 'PUSH 1'); e.updatedAt = 1000; b.DB = e;
     const backup = oldDocWithDraftOnlyLift(b); backup.updatedAt = Date.now() + 60000;
@@ -3862,8 +3862,8 @@ asyncBlock('DRAFT a brand-new exercise picked mid-workout', async () => {
     const hasZercher = rows => (rows || []).some(r => r && r.name === 'Zercher carry');
     a.__sandbox.pickEx(0, { value: 'Zercher carry' });
     const local = { row: hasZercher(a.DB.exercises), pushes: spy.n, updatedAt: a.DB.updatedAt };
-    /* The cloud is OLDER than the frozen clock: `exercises` is not a COLLECTIONS entry, so mergeDB()
-       takes the whole registry from the newer side. */
+    /* The cloud is OLDER than the frozen clock. Since Phase 9 the registry merges per row
+       (mergeExercises), so the new row reaches the written blob by the union, whichever side is newer. */
     const remote = populatedDB(a); remote.updatedAt = 1000;
     const cloud = fakeCloud(a, remote, { signedIn: true });
     await a.pushNow(true);
@@ -8560,6 +8560,97 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
        last && last.weights);
   } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
 });
+{
+  /* Two devices, every order, replayed twice (EQUIP-02, D-14, EQUIP-03). A registry row's fields come
+     from the copy with the newest mtime, and its equip from the copy with the newest valid equipAt. */
+  const M = app.mergeDB, types = app.EQUIP_TYPES || [];
+  const rowOf = (db, id) => ((db && db.exercises) || []).find(x => x && x.id === id) || null;
+  const allTyped = db => ((db && db.exercises) || []).length > 0 && db.exercises.every(x => types.indexOf(x.equip) >= 0);
+  const regDB = (rows, updatedAt) => Object.assign(app.blank(), { exercises: rows, updatedAt });
+  /* Runs fn(a, b) on fresh clones, and reports whether either input was changed by the call. */
+  const pure = (a, b, fn) => { const ca = canon(a), cb = canon(b); const out = fn(a, b); return { out, intact: canon(a) === ca && canon(b) === cb }; };
+  let intact = true;
+  const merge = (a, b) => { const p = pure(a, b, M); if(!p.intact) intact = false; return p.out; };
+
+  // EQUIP-02: an older device that never ran migration 19, newer by updatedAt.
+  const seedRows = () => [eqRow('Preacher curl', 1000), eqRow('DB lateral raise', 1000)];
+  const L = app.normalize(clone(eqSeed18(seedRows())));
+  const S = clone(eqSeed18(seedRows())); S.updatedAt = 9e12;
+  const sl = merge(S, L), ls = merge(L, S), slAgain = merge(clone(S), sl), lsAgain = merge(ls, clone(S));
+  ok('EQUIP-02/D-14: the migrated copy\'s rows are at mtime old + 1, so the stale un-migrated copy (no equip, mtime 1000, newer updatedAt) loses on every row',
+     L.exercises.every(x => x.mtime === 1001) && S.exercises.every(x => x.mtime === 1000 && !('equip' in x)),
+     { L: L.exercises, S: S.exercises });
+  ok('EQUIP-02: merging the stale un-migrated device in both orders, then replaying it again, leaves every exercise\'s type in place',
+     [sl, ls, slAgain, lsAgain].every(allTyped) &&
+       [sl, ls, slAgain, lsAgain].every(db => rowOf(db, 'preacher-curl').equip === 'ez' && rowOf(db, 'db-lateral-raise').equip === 'dumbbell'),
+     [sl, ls, slAgain, lsAgain].map(db => db.exercises));
+
+  // D-14: a rename made on the stale device later than the migration still wins, and keeps the type.
+  const S2 = clone(S);
+  Object.assign(rowOf(S2, 'preacher-curl'), { name: 'EZ preacher curl', aliases: ['preacher curl', 'ez preacher curl'], mtime: 5000 });
+  const rn = [merge(S2, L), merge(L, S2)];
+  rn.push(merge(clone(S2), rn[0]), merge(rn[1], clone(S2)));
+  ok('D-14: a rename on the un-migrated device with a later mtime wins its name AND keeps a valid type, in both orders, replayed twice',
+     rn.every(db => { const x = rowOf(db, 'preacher-curl'); return !!x && x.name === 'EZ preacher curl' && types.indexOf(x.equip) >= 0; }) && rn.every(allTyped),
+     rn.map(db => rowOf(db, 'preacher-curl')));
+
+  // EQUIP-03: Ian's choice on A against a later rename of the same row on B.
+  const A = regDB([eqRow('Preacher curl', 7000, { equip: 'dumbbell', equipAt: 7000 })], 100);
+  const B = regDB([{ id: 'preacher-curl', name: 'EZ preacher curl', aliases: ['preacher curl', 'ez preacher curl'], mtime: 9000, equip: 'ez', equipAt: 0 }], 200);
+  const ch = [merge(A, B), merge(B, A)];
+  ch.push(merge(clone(A), ch[0]), merge(ch[1], clone(B)), merge(clone(B), ch[0]), merge(ch[1], clone(A)));
+  ok('EQUIP-03: Ian\'s choice (dumbbell, equipAt 7000) survives a later rename on the other device: the merged row has the rename AND the choice, both orders, replayed twice',
+     ch.every(db => { const x = rowOf(db, 'preacher-curl'); return !!x && x.name === 'EZ preacher curl' && x.equip === 'dumbbell' && x.equipAt === 7000; }),
+     ch.map(db => rowOf(db, 'preacher-curl')));
+
+  // EQUIP-03: a row created on one device survives the other device being newer.
+  const NA = regDB([eqRow('Preacher curl', 100, { equip: 'ez', equipAt: 0 }), eqRow('Zercher carry', 50, { equip: 'machine', equipAt: 0 })], 100);
+  const NB = regDB([eqRow('Preacher curl', 100, { equip: 'ez', equipAt: 0 })], 9e12);
+  const nr = [merge(NA, NB), merge(NB, NA)];
+  ok('EQUIP-03: a registry row created on one device (Zercher carry) survives the other device being newer, in both orders',
+     nr.every(db => !!rowOf(db, 'zercher-carry') && rowOf(db, 'zercher-carry').equip === 'machine'), nr.map(db => db.exercises));
+
+  // T-9-10: hostile clocks. B wins the row on mtime but its equip clock is no clock at all.
+  const HA = regDB([eqRow('Preacher curl', 100, { equip: 'ez', equipAt: 0 })], 100);
+  const HL = regDB([eqRow('Preacher curl', 200, { equip: 'laser', equipAt: 9e15 })], 200);
+  const HC = regDB([eqRow('Preacher curl', 200, { equip: 'cable', equipAt: 'abc' })], 200);
+  const hl = [merge(HA, HL), merge(HL, HA)], hc = [merge(HA, HC), merge(HC, HA)];
+  ok('T-9-10: an equip of \'laser\' at equipAt 9e15 never replaces the other device\'s valid ez, in both orders',
+     hl.every(db => rowOf(db, 'preacher-curl').equip === 'ez'), hl.map(db => rowOf(db, 'preacher-curl')));
+  ok('T-9-10: an equipAt of \'abc\' counts as no clock, so equipAt 0 ez wins the field even though the other row wins on mtime',
+     hc.every(db => { const x = rowOf(db, 'preacher-curl'); return x.equip === 'ez' && x.equipAt === 0 && x.mtime === 200; }),
+     hc.map(db => rowOf(db, 'preacher-curl')));
+
+  // A tie on equipAt leaves the mtime winner's own equip, whichever side is remote.
+  const TA = regDB([eqRow('Preacher curl', 100, { equip: 'cable', equipAt: 500 })], 100);
+  const TB = regDB([eqRow('Preacher curl', 200, { equip: 'machine', equipAt: 500 })], 200);
+  const tie = [merge(TA, TB), merge(TB, TA)];
+  ok('EQUIP-03: two copies at the same equipAt keep the mtime winner\'s own equip, in both orders',
+     tie.every(db => rowOf(db, 'preacher-curl').equip === 'machine'), tie.map(db => rowOf(db, 'preacher-curl')));
+
+  // T-9-13: the newer side's order, then the older side's new rows, never sorted.
+  const ON = regDB([eqRow('x', 10), eqRow('y', 11)], 200), OO = regDB([eqRow('z', 12), eqRow('x', 9)], 100);
+  const ord = [merge(ON, OO), merge(OO, ON)].map(db => db.exercises.map(x => x.id).join());
+  ok('T-9-13: the merged registry keeps the newer side\'s order, then the older side\'s new rows, in both orders (never sorted)',
+     ord.every(s => s === 'x,y,z'), ord);
+
+  // The merge laws, on three devices with overlapping ids, distinct mtimes and distinct equipAts.
+  const content = db => canon(((db && db.exercises) || []).reduce((o, x) => { o[x.id] = x; return o; }, {}));
+  const D1 = regDB([eqRow('Preacher curl', 110, { equip: 'ez', equipAt: 0 }), eqRow('Lunges', 300, { equip: 'bodyweight', equipAt: 20 }),
+    eqRow('Face pull', 140, { equip: 'cable', equipAt: 40 })], 100);
+  const D2 = regDB([eqRow('Preacher curl', 220, { equip: 'machine', equipAt: 60 }), eqRow('Lunges', 230, { equip: 'dumbbell', equipAt: 80 }),
+    eqRow('Zercher carry', 240, { equip: 'barbell', equipAt: 10 })], 200);
+  const D3 = regDB([eqRow('Preacher curl', 330, { equip: 'cable', equipAt: 30 }), eqRow('Face pull', 340, { equip: 'machine', equipAt: 5 }),
+    eqRow('Zercher carry', 350, { equip: 'machine', equipAt: 90 }), eqRow('Lunges', 360, { equip: 'barbell', equipAt: 1 })], 300);
+  const laws = {
+    idempotent: [D1, D2, D3].every(d => content(merge(d, clone(d))) === content(d)),
+    commutative: [[D1, D2], [D1, D3], [D2, D3]].every(([p, q]) => content(merge(p, q)) === content(merge(q, p))),
+    associative: content(merge(merge(D1, D2), D3)) === content(merge(D1, merge(D2, D3))) &&
+                 content(merge(merge(D3, D1), D2)) === content(merge(D3, merge(D1, D2))),
+  };
+  ok('EQUIP-03: the registry merge is idempotent, commutative and associative on registry fixtures', laws.idempotent && laws.commutative && laws.associative, laws);
+  ok('T-9-13: no registry merge above mutated either of its inputs', intact, intact);
+}
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against

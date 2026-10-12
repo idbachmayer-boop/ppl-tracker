@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-uVRhOyi4nEtZSRM6eppB1Yai/EBtfEe8S+LEFiGzYpI=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-hhymiTW4CEp9nUM2WYb2DZQoAzUCokFPrztrgrPCuxk=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -4407,9 +4407,33 @@ function mergeCollections(r, l, localNewer, out){
    made on one device was lost on the other device's next save. Rows are keyed by id, the newest
    mtime wins and a tie goes to the newer side (mergeUnion). There is no sort: the newer side's
    order is kept, then the older side's new rows, which is what keeps legacy parity and the merge
-   golden unchanged. It reads only r.exercises and l.exercises, and never mutates an input row. */
+   golden unchanged. It reads only r.exercises and l.exercises, and never mutates an input row.
+
+   The identity rule: a row's other fields come from the copy with the newest mtime, and its `equip`
+   comes from the copy with the newest equipAt (the field clock, equipClock below). So a migration
+   default (equipAt 0) never beats Ian's choice, and a later rename on the other device never erases
+   it. Only a STRICTLY higher clock replaces the winning row's own type, which keeps the merge
+   commutative when two copies tie; the replaced row is a new object, never the input. */
 function mergeExercises(r, l, localNewer){
-  return mergeUnion(Array.isArray(r.exercises) ? r.exercises : [], Array.isArray(l.exercises) ? l.exercises : [], x => x.id, localNewer);
+  const ra = Array.isArray(r.exercises) ? r.exercises : [], la = Array.isArray(l.exercises) ? l.exercises : [];
+  const rows = mergeUnion(ra, la, x => x.id, localNewer);
+  const best = new Map();
+  ra.concat(la).forEach(x => {
+    if(!x || typeof x !== 'object') return;
+    const prev = best.get(x.id);
+    if(prev === undefined || equipClock(x) > equipClock(prev)) best.set(x.id, x);
+  });
+  return rows.map(row => {
+    const b = best.get(row.id);
+    if(!b || !(equipClock(b) > equipClock(row))) return row;
+    return Object.assign({}, row, { equip: b.equip, equipAt: +b.equipAt });
+  });
+}
+/* A registry row's equipment field clock: its equipAt, but only when its equip is one of
+   EQUIP_TYPES and equipAt is a finite number. Anything else (a missing, unknown or hostile type,
+   or a clock like 'abc') scores -1, so it can never win the field against a real choice. */
+function equipClock(x){
+  return (x && typeof x === 'object' && EQUIP_TYPES.indexOf(x.equip) >= 0 && isFinite(+x.equipAt)) ? +x.equipAt : -1;
 }
 /* localWins: on a straight tie (same updatedAt) prefer `local`. Used after a round trip so
    keystrokes typed while the transaction was in flight aren't discarded. */
