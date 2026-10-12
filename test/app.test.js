@@ -8959,9 +8959,11 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
   const dp = E.__sandbox.deloadPlan;
   const ez25 = typeof dp === 'function' ? dp('Preacher curl', 25) : null, ez35 = typeof dp === 'function' ? dp('Preacher curl', 35) : null;
   const ez20 = typeof dp === 'function' ? dp('Preacher curl', 20) : null;
-  ok('D-15 on EZ: Preacher curl at the 25 lb bar is atBar, 35 deloads to 30, and a 20 lb preset bar stays 20 (never heavier)',
+  /* WR-02 (09-REVIEW) supersedes 09-03's "a 20 lb preset stays 20": a preset bar under 25 is not the
+     empty 25 lb bar, and a lighter preset exists (D-07), so it deloads on the EZ ladder like any load. */
+  ok('D-15 on EZ: Preacher curl at the 25 lb bar is atBar, 35 deloads to 30, and a 20 lb preset bar deloads to 15 (WR-02: lighter, never atBar)',
      !!ez25 && ez25.atBar === true && ez25.w === 25 && !!ez35 && ez35.w === 30 && ez35.atBar === false &&
-     !!ez20 && ez20.atBar === true && ez20.w === 20,
+     !!ez20 && ez20.atBar === false && ez20.w === 15,
      { ez25, ez35, ez20 });
 }
 {
@@ -9036,6 +9038,39 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
   ok('IN-04/T-9-16: a hostile unit in the suggest line is escaped — &lt;img, never a raw <img',
      hostile !== null && hostile.includes('&lt;img') && !hostile.includes('<img'), hostile);
   W.DB.draft = null;
+}
+{
+  /* WR-02 (09-REVIEW): a working weight under the bar is a preset or fixed bar (D-07: Ian's gym has
+     preset EZ bars under 25 lb), not the loaded bar. The ramp must not open with a heavier "Empty bar"
+     rung, and the deload must not claim the empty bar when a lighter bar exists. */
+  const U = loadApp(APP_PATH); spyPushes(U);
+  U.DB = U.normalize(U.blank()); U.DB.unit = 'lb';
+  const ramp = (name, w) => String(U.__sandbox.warmRampHTML({ name, note: '', sets: [0, 1, 2].map(() => ({ w: String(w), r: '', skipped: false, reason: '' })) }));
+  const loads = html => [...html.matchAll(/— (\d+(?:\.\d+)?) lb/g)].map(m => +m[1]);
+  const under = [['Preacher curl', 20], ['Barbell curl', 40]].map(([n, w]) => { const h = ramp(n, w); return { n, w, loads: loads(h),
+    emptyBar: h.includes('Empty bar'), plates: h.includes('warm-plates') || h.includes('Under bar weight') }; });
+  ok('WR-02: under the bar (Preacher curl at a 20 lb preset, Barbell curl at a 40 lb fixed bar) no warm-up rung is heavier than the working weight, none says "Empty bar", and none prints plates',
+     under.every(x => x.loads.length >= 3 && x.loads.every(v => v <= x.w) && !x.emptyBar && !x.plates), under);
+  const atBar = ramp('Preacher curl', 25), onBar = ramp('Preacher curl', 35);
+  ok('WR-02: at and above the bar the ramp still opens with "Empty bar — 25 lb"',
+     atBar.includes('Empty bar — 25 lb') && onBar.includes('Empty bar — 25 lb'), null);
+
+  const dp = U.__sandbox.deloadPlan;
+  const plans = [['Preacher curl', 20], ['Barbell curl', 40]].map(([n, w]) => ({ n, w, p: dp(n, w) }));
+  ok('WR-02: under the bar a deload steps down the type\'s ladder — Preacher curl 20 → 15, Barbell curl 40 → 35 — and never claims the empty bar',
+     plans[0].p.w === 15 && plans[1].p.w === 35 && plans.every(x => x.p.atBar === false), plans);
+
+  /* The card: a stalled Preacher curl at a 20 lb preset bar, Deload −10% through the dispatcher. */
+  eqRun(U, [0, 1, 2, 3].map(n => eqSess('wr2-' + n, EQ_PULL2, dayOff(-20 + 3 * n), EQ_PC, 'Preacher curl', [[20, 12], [20, 12], [20, 12]])));
+  const card = eqCard(U, EQ_PULL2, EQ_PC);
+  const ctl = controlsIn(card).find(c => c.data.action === 'deloadExercise');
+  if(ctl) fireAction(U, 'click', fakeEl(ctl.data));
+  const ws = U.DB.draft.entries[EQ_PC].sets.filter(x => !x.skipped).map(x => x.w);
+  const after = U.viewActive().split('<div class="ex-card">')[EQ_PC + 1] || '';
+  ok('WR-02: a stalled Preacher curl at a 20 lb preset bar deloads to 15 in every set and says "Deloaded −10%", never "Already at the empty bar"',
+     !!ctl && ws.length > 0 && ws.every(w => w === '15') && after.includes('Deloaded −10% this session') && !after.includes('Already at the empty bar'),
+     { ctl: !!ctl, ws });
+  U.DB.draft = null;
 }
 
 /* ── EQUIP UI: the first-time picker, the card tag, Settings states (Phase 9, plan 09-04) ──

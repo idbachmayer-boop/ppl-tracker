@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-bU8qYRz/fF5mw7lAg/IlyWdP6cJrqtQ/zsJYq/TFAyQ=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-7P9ItEidIBCduiseTHqtjMzmxf0vUQpXcP3dQNB8szk=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1257,16 +1257,20 @@ function deloadBaseW(workout, slotIndex, exName){
   return Math.max(0, ...workedSets(ref.entry).map(setWeightNum));
 }
 /* A deload is 90% floored to the ladder, so it is always strictly lighter (D-11). On a bar lift in lb,
-   at or below the bar there is nothing to take off: the weight stays and atBar says so (D-15); a 90%
-   that lands under a still-lighter bar is raised to the bar. Never heavier than lastW. */
+   at the empty bar there is nothing to take off: the weight stays and atBar says so (D-15); a 90%
+   that lands under a still-lighter bar is raised to the bar. A weight UNDER the bar is not on that
+   bar at all: it is a preset or fixed bar (D-07, Ian's preset EZ bars under 25 lb), a lighter one
+   exists, so it steps down the type's ladder like any load and is never raised to the bar (WR-02).
+   Never heavier than lastW. */
 function deloadPlan(name, lastW){
   lastW = +lastW;
   if(!(lastW > 0)) return { w:'', atBar:false };
   const bar = DB.unit === 'lb' ? barWeight(name) : null;
-  if(bar > 0 && lastW <= bar + 1e-9) return { w:lastW, atBar:true };
+  const onBar = bar > 0 && lastW >= bar - 1e-9;
+  if(onBar && lastW <= bar + 1e-9) return { w:lastW, atBar:true };
   let x = loadFloor(name, 0.9 * lastW);
   if(!(x > 0)) return { w:'', atBar:false };
-  if(bar > 0 && x < bar) x = bar;
+  if(onBar && x < bar) x = bar;
   return { w:x, atBar:false };
 }
 /* Unlike lastRealEntry, an entry with no worked set still counts here, as long as it was on the card
@@ -2311,8 +2315,11 @@ function warmRampHTML(entry){
   const w = Math.max(...sets.map(s=> +s.w || 0), 0);
   if(!w) return `<div><span>Enter a working weight first</span></div>`;
   /* Loading the bar is exactly when you want the plate breakdown, so each rung carries its own.
-     Non-barbell lifts (and kg) fall through to the plain percentages. */
-  const bar = barWeight(entry.name);
+     Non-barbell lifts (and kg) fall through to the plain percentages. A working weight under the bar
+     in lb is a preset or fixed bar (D-07), not the loaded bar, so it ramps like a lift with no bar:
+     no "Empty bar" rung heavier than the working weight, and no plate lines (WR-02). */
+  const bar0 = barWeight(entry.name);
+  const bar = (DB.unit === 'lb' && bar0 > 0 && w < bar0 - 1e-9) ? null : bar0;
   const style = barStyle(entry.name);
   const plates = t => { const s = bar==null ? '' : platesText(t, bar, style); return s ? `<div class="warm-plates">${s}</div>` : ''; };
   const rung = (label, target, reps) => `<div><span>${label}${plates(target)}</span><span>${reps}</span></div>`;
