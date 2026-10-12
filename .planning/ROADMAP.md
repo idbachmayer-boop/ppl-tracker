@@ -101,7 +101,7 @@ Plans:
 
 Plans:
 - [x] 09-01-PLAN.md — Every exercise gets a type: the default table above MIGRATIONS, SCHEMA 19 with migration 19 (mtime + 1, persisted at boot), equip on new rows, equipOf, and ⬆ Add weight moving by the type's step (EQUIP-01, EQUIP-02, EQUIP-04)
-- [ ] 09-02-PLAN.md — Equipment syncs: the Settings → Exercises select, setExerciseEquip, a per-row registry merge with an equipAt clock, the two-device replays, and exMerge tombstones (EQUIP-01, EQUIP-02, EQUIP-03)
+- [x] 09-02-PLAN.md — Equipment syncs: the Settings → Exercises select, setExerciseEquip, a per-row registry merge with an equipAt clock, the two-device replays, and exMerge tombstones (EQUIP-01, EQUIP-02, EQUIP-03)
 - [ ] 09-03-PLAN.md — Loadable weights: deloads round down and are always lighter (empty-bar exception), warm-ups round to the ladder with honest notes, the suggest line floors and escapes, and plate math follows the type, with Preacher curl on the 25 lb EZ bar (EQUIP-05, EQUIP-06)
 - [ ] 09-04-PLAN.md — The first-time equipment picker for unplaceable new names, the "dumbbell · +2.5" card tag, and the Settings copy, states and hostile-name sweep (EQUIP-01, EQUIP-03, EQUIP-04)
 - [ ] 09-05-PLAN.md — Ship after the code review: pre-flight, Ian pushes and merges with a merge commit (the schema-19 door, with an honest rollback), live bytes checked, then the real workout and the cross-device type change (end-of-phase UAT)
@@ -195,7 +195,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 6. F4 — .gitattributes | v1.0 | 2/2 | Complete | 2026-10-02 |
 | 7. Content Security Policy | v1.0 | 7/7 | Complete | 2026-10-09 |
 | 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
-| 9. Equipment and Weight Steps | v1.1 | 1/5 | In Progress | - |
+| 9. Equipment and Weight Steps | v1.1 | 2/5 | In Progress | - |
 | 10. Log Page — History and Skip | v1.1 | 0/TBD | Not started | - |
 | 11. Lawn, Journal and Weather Loop | v1.1 | 0/TBD | Not started | - |
 | 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |

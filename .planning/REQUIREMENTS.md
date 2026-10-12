@@ -36,7 +36,7 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
 
 - [ ] **EQUIP-01**: Each exercise has one equipment type: barbell, EZ bar, dumbbell, machine, cable or
   bodyweight. It is stored on the synced exercise-registry row.
-- [ ] **EQUIP-02**: Existing exercises get an equipment type defaulted from their name. The migration
+- [x] **EQUIP-02**: Existing exercises get an equipment type defaulted from their name. The migration
   that writes it bumps `SCHEMA`, stamps `mtime` on every row it rewrites (`touch()`), persists
   immediately, is idempotent and never downgrades `_schema`. A stale-device merge replay test proves
   an older device cannot revert it, and replaying that device again still keeps it.
@@ -171,7 +171,7 @@ proposed and awaiting Ian's approval.
 | PROG-04 | Phase 8 | Complete |
 | PROG-05 | Phase 8 | Complete |
 | EQUIP-01 | Phase 9 | Pending |
-| EQUIP-02 | Phase 9 | Pending |
+| EQUIP-02 | Phase 9 | Complete |
 | EQUIP-03 | Phase 9 | Pending |
 | EQUIP-04 | Phase 9 | Pending |
 | EQUIP-05 | Phase 9 | Pending |

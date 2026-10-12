@@ -5,15 +5,15 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 09
 current_phase_name: equipment-and-weight-steps
 status: executing
-stopped_at: Completed 09-01-PLAN.md
-last_updated: "2026-10-12T13:08:31.288Z"
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-10-12T13:23:43.818Z"
 last_activity: 2026-10-12
-last_activity_desc: Completed 09-01 (equipment types, migration 19, rack steps)
+last_activity_desc: Completed 09-02 (per-row registry merge, equipAt clock, exMerge tombstone)
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 8
-  completed_plans: 4
+  completed_plans: 5
   percent: 17
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 ## Current Position
 
 Phase: 09 (equipment-and-weight-steps) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
-Last activity: 2026-10-12 — Completed 09-01 (equipment types, migration 19, rack steps)
+Last activity: 2026-10-12 — Completed 09-02 (per-row registry merge, equipAt clock, exMerge tombstone)
 
-Progress: [█████░░░░░] 50% of planned v1.1 plans (Phase 9: 1 of 5 plans done)
+Progress: [██████░░░░] 63% of planned v1.1 plans (Phase 9: 2 of 5 plans done)
 
 ## Performance Metrics
 
@@ -101,6 +101,7 @@ Progress: [█████░░░░░] 50% of planned v1.1 plans (Phase 9: 1
 | Phase 08 P02 | 8 min | 3 tasks | 2 files |
 | Phase 08 P03 | ~20min (incl. Ian's push, PR, CI, deploy) | 3 tasks | 0 files |
 | Phase 09 P01 | 13min | 3 tasks | 4 files |
+| Phase 09 P02 | 14 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,8 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [08-UAT]: WR-02 resolved by Ian: keep comparing total reps even when the set count changes (matches PROG-02)
 - [09-01]: Registry rows carry equip (one of EQUIP_TYPES) and equipAt (0 = a default); migration 19 stamps them with mtime old + 1, never now (D-14), and the boot save persists it
 - [09-01]: weightStep(name, w) returns null for bodyweight in either unit, 2.5 flat in kg, and in lb dumbbell 2.5 below 60 then 5, cable 2.5, barbell/EZ/machine 5; every caller branches on null
+- [09-02]: equipClock is one hoisted rule shared by mergeExercises and exMerge; only a strictly higher equipAt replaces the mtime winner's type, which keeps the merge commutative on ties
+- [09-02]: exMerge tombstones the merged row (deletedAt, mergedInto, empty aliases); exRow reads live rows only and exEnsure never reuses a tombstoned id
 
 ### Pending Todos
 
@@ -160,8 +163,8 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-12T13:08:31.261Z
-Stopped at: Completed 09-01-PLAN.md
+Last session: 2026-10-12T13:23:43.790Z
+Stopped at: Completed 09-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
