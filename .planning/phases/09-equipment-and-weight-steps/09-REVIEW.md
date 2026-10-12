@@ -1,6 +1,8 @@
 ---
 phase: 09-equipment-and-weight-steps
 reviewed: 2026-10-12T00:00:00Z
+re_reviewed: 2026-10-12T00:00:00Z
+re_review_range: 879fa37..HEAD
 depth: standard
 files_reviewed: 4
 files_reviewed_list:
@@ -9,264 +11,189 @@ files_reviewed_list:
   - test/harness.js
   - CLAUDE.md
 findings:
-  critical: 1
-  warning: 6
-  info: 7
-  total: 14
+  critical: 0
+  warning: 3
+  info: 8
+  total: 11
+resolved:
+  - CR-01
+  - WR-01
+  - WR-02
+  - WR-03
+  - WR-04
+  - WR-05
+  - IN-07
 status: issues_found
 ---
 
-# Phase 9: Code Review Report
+# Phase 9: Code Review Report (re-review after fixes)
 
-**Reviewed:** 2026-10-12
-**Depth:** standard (phase-9 diff `19dc8a4..HEAD`; merge-golden fixture skipped as regenerated data)
+**Reviewed:** 2026-10-12. The first pass covered `19dc8a4..HEAD`. The re-review covers the fix commits `879fa37..HEAD`
+(06aeaa5, 45fb68b, 2ff094d, 955cd5f, b61a959, 019b4fb).
+**Depth:** standard
 **Files Reviewed:** 4
 **Status:** issues_found
 
 ## Summary
 
-`npm test` is green (1102 passed, 0 failed, 2 skipped). The CSP hash is current.
+`npm test` is green (1126 passed, 0 failed, 2 skipped). I checked every fix by running the real app
+in the test-harness sandbox from a scratch script that ends with `process.exit`.
 
-Migration 19 holds up. `stampEquipment` reads only `EQUIP_TYPES`, `EQUIP_DEFAULTS` and the hoisted
-`equipGuess`. All three are declared above `MIGRATIONS` and above `let DB = load()` (index.html:550-599,
-801-802), so there is no temporal-dead-zone exposure. It is idempotent: a row with a valid type, a
-tombstone or a non-object is skipped. It stamps `mtime + 1`, and the bottom-of-script
-`if(migrationRan) save()` persists it at boot. The `esc()` and `data-action` hygiene on the picker,
-the tag and the Settings select is clean. `equipAsk` is never persisted, and `setExerciseEquip`
-touches only the registry before it calls `save()`.
+**Resolved and verified:**
+- **CR-01.** `exKey` now resolves through `exResolve`. The foreign-session repro now lists one row:
+  `[{"id":"dumbbell-curl","name":"Dumbbell curl","n":2}]`. Every direct `.exId` reader goes through
+  `exKey`.
+- **Hop and cycle handling.** `exResolve` stops on a live row, a missing row, or a non-string or
+  empty `mergedInto`. On a cycle it returns the ring's smallest id, so it can't loop.
+- **WR-01's three paths.** Each is closed:
+  - a row hard-deleted before Phase 9 no longer comes back;
+  - Import → Merge of an older backup no longer brings it back;
+  - a later live edit no longer beats a tombstone.
+- **Cycles.** The cycle-breaker is commutative and idempotent, and stable when a side is replayed
+  (two devices merging opposite ways resolve to the later merge either way).
+- **Rows and inputs.** A row on only one device survives. No row is ever filtered out, and no input
+  is mutated.
+- **WR-02 to WR-05.** The behaviour is correct:
+  - EZ 20 lb deloads to 15;
+  - Barbell 40 deloads to 35;
+  - a 2.5 lb dumbbell, a 2.5 lb cable and a 5 lb machine stay put and say `atFloor`;
+  - 62 DB → 65, 22 → 22.5, 47 BB → 50;
+  - Settings, the picker and the card tag read the row they write.
+- **IN-07.** The CLAUDE.md sentence is now consistent.
 
-The defects are in the registry's new per-row identity model and in the bar-weight rounding edges.
-`exMerge` now writes `mergedInto`, but nothing reads it. As a result, a session or draft that arrives
-carrying a merged-away id becomes a permanent ghost exercise that can't be renamed or merged. I
-reproduced this against the real app through the harness sandbox. The per-row union also brings back
-registry rows that were hard-deleted before Phase 9, and a later live edit beats a tombstone. The
-known EZ-bar suspect is confirmed, and the same root cause also produces a wrong deload message on
-Ian's real 20 lb Preacher curl.
+**Still wrong:** the new alias and tombstone rules in `mergeExercises` break two of the invariants
+they claim. An alias can end up with **zero** live owners (WR-07). The new rules are not associative,
+so whether a row is permanently tombstoned depends on sync order (WR-08). Neither loses a logged set.
+Both can silently re-split or fold an exercise's history, and the result is irreversible. IN-02
+(equipAt-tie associativity) is unchanged and still reproduces.
 
-## Critical Issues
+## Resolved
 
-### CR-01: A merged-away exercise id that arrives from another device becomes a permanent ghost that can't be merged or renamed
-
-**File:** `index.html:1448-1454` (`exKey`, `exLabel`), `index.html:1490` (`mergedInto` written, never read), `index.html:2906-2914` (`exListRows`), `index.html:2970-2976` (`doExMerge`)
-**Issue:** `exKey(e)` returns `e.exId` as-is. After `exMerge(from, into)`, any logged entry still
-carrying `exId: from` keeps resolving to the tombstoned id. These are the entries `exMerge` could not
-restamp:
-- a session finished on the other device before it received the merge;
-- this device's own in-progress draft. `adoptMerged` reattaches it with `keepLocalDraft` and never
-  restamps it, so when Ian finishes the workout, the session is saved with the dead id.
-
-`exRow(from)` now returns null because of the new `!x.deletedAt` filter, so:
-- `exLabel(from)` returns the raw slug. Settings → Exercises lists an exercise called `db-curl`.
-- `exMerge(from, …)` returns false, and `doExMerge` returns silently with no toast (line 2974).
-- `renameExercise(from)` returns at `if(!r) return`.
-- Charts and PRs group by `exKey`, so the merged lift's history is split again, and no UI action can
-  repair it.
-
-Reproduced in the harness: exEnsure both rows, merge `db-curl` into `dumbbell-curl`, then a foreign
-session arrives with `exId:'db-curl'`. The result is
-`exListRows()` → `[{"id":"dumbbell-curl","name":"Dumbbell curl","n":2},{"id":"db-curl","name":"db-curl","n":1}]`.
-
-Phase 9 added `mergedInto` specifically so the merge could be followed, but no reader was written.
-The new tests only cover a stale device with an older `mtime` and no new sessions (app.test.js:8654-8686).
-**Fix:** Resolve through the tombstone wherever an identity is computed. Bound the hops so a hostile
-cycle can't loop:
-```js
-function exResolve(id){
-  for(let hop=0; id && hop<8; hop++){
-    const r = exRows().find(x=>x && x.id===id);
-    if(!r || !r.deletedAt || !r.mergedInto) return id;
-    id = r.mergedInto;
-  }
-  return id;
-}
-function exKey(e){
-  if(!e) return '';
-  if(typeof e === 'string') return exIdByName(e) || normEx(e);
-  return (e.exId ? exResolve(e.exId) : null) || exIdByName(e.name) || normEx(e.name);
-}
-```
-Also add a test that replays a foreign session (and an adopted draft) with the merged-away `exId`,
-and assert that `exListRows()` has one row.
+| ID | Fix commit | Verified |
+|----|-----------|----------|
+| CR-01 | 06aeaa5 | `exListRows()` lists one row for the foreign-session repro, and the draft path is covered by a test. `exResolve` handles chains, cycles, self-loops and non-string `mergedInto` safely. |
+| WR-01 | 45fb68b | All three paths reproduce as tombstoned now. The two-device cycle comes out the same in both orders and stays stable when replayed. A one-device row is kept. The two new defects in the same function are listed below as WR-07 and WR-08. |
+| WR-02 | 2ff094d | `deloadPlan('Preacher curl',20)` → 15. The ramp at 20 no longer has a rung above the working weight. At 25 and above it still opens with "Empty bar — 25 lb". |
+| WR-03 | 955cd5f | Light loads keep their weight and say `atFloor`. A 5.5 lb machine load → 5. `deloadExercise` never blanks the sets. |
+| WR-04 | b61a959 | `newW = loadFloor(lastW) + ladderStep(floor)`, so off-ladder loads snap up and on-ladder loads move exactly one step. |
+| WR-05 | 019b4fb | Settings and the picker read `exRow(id)`, and the card tag, plates, warm-up and deload read the entry. (Some name-keyed readers are left; see IN-09.) |
+| IN-07 | 45fb68b | CLAUDE.md now reads "never spliced out of `DB.exercises`". |
 
 ## Warnings
 
-### WR-01: The per-row registry union brings back rows hard-deleted before Phase 9, and a later live edit beats a tombstone
+### WR-07 (NEW): A merged-away row's aliases can end up with no live owner, so its name stops resolving and the next pick founds a new row
 
-**File:** `index.html:4543-4556` (`mergeExercises`), `index.html:4304-4322` (`mergeUnion`), `index.html:1440-1445` (`exIdByName`)
-**Issue:** Before this phase, `exMerge` spliced the row out of `DB.exercises`, and the registry rode
-along whole from the newer side, so the deletion propagated. Now every row unions by id. Three paths
-bring a merged-away row back as live, with an alias that the survivor also owns:
-1. **Old hard deletes.** A pre-Phase-9 merge left no tombstone. Any device whose local blob still
-   holds the row, or one that ran the old build's `exMerge` while `remoteTooNew` blocked it, puts the
-   row back on its next sync. Reproduced: merging `{db-curl, dumbbell-curl}` with
-   `{dumbbell-curl(aliases incl. 'db curl')}` yields both rows live, with `'db curl'` on each.
-2. **Import → Merge of any backup older than such a merge** (`importMerge` → `mergeDB(backup, DB, true)`)
-   does the same, deterministically.
-3. **A later live edit.** Device A tombstones X. Device B, not yet synced, renames X or sets its
-   equipment, which gives it a later `mtime`. `mergeUnion` takes the newer `mtime`, so X comes back
-   live with its aliases and no `deletedAt`. Reproduced: tombstone at mtime 100 against a live copy
-   at 200 gives the live row.
+**File:** `index.html:4605` (tombstone beats live), `index.html:4638-4650` (alias owner rule), `index.html:1516,1527` (`exMerge`)
+**Issue:** `exMerge` moves X's aliases onto Y and touches Y. Every registry row still merges whole by
+`mtime`, so any later edit to Y on a device that hasn't heard of the merge replaces Y's aliases with
+a copy that lacks X's. Such an edit is a rename, or a **Settings → Exercises type change**
+(`setExerciseEquip` touches the row), which is a primary Phase 9 flow. X itself is now a tombstone
+with `aliases: []`. Nothing owns `'x'` any more.
 
-Once two live rows share an alias, `exIdByName` returns whichever comes first in array order, and
-that order depends on which side was newer by `updatedAt`. Typed names can then resolve to the ghost
-and split history again.
-**Fix:** After `mergeUnion`, run a deterministic, commutative clean-up in `mergeExercises`:
-- A tombstone wins over a live copy of the same id unless the live copy is a deliberate restore.
-  Simplest rule: once a copy has `deletedAt`, keep it.
-- When two live rows claim the same alias, keep the alias on the row with the newer `mtime`. Turn the
-  other row into a tombstone with `mergedInto` set to the survivor, but only if it is left with no
-  aliases.
+Reproduced:
+- Device A: X is a tombstone into Y; Y has aliases `[y, x]` at mtime 100.
+- Device B: X is live with `[x]` at 50; Y is renamed, with `[y, y2]` at 200.
+- Both orders give `x(T→y)[]  y[y|y2]`, and `exIdByName('X')` → `null`.
 
-Add a replay test for each of the three paths, in both orders, run twice.
+Typing or picking "X" then goes `exEnsure` → a new row `x-2`, because the tombstone owns the slug, and
+the D-16 picker may ask again. New sessions split from the merged history, which is the outcome CR-01
+and WR-01 set out to prevent. The tombstone-beats-live rule drops aliases the same way: B's
+rename-only alias on a stale live X (e.g. `'foo'`) disappears with that copy. This predates the fix
+(row-level `mtime` wins was already per-row), but WR-01 claims "never leaves an alias with zero live
+owners" and the WR-01 tests never edit the survivor on the stale side.
+**Fix:** In `mergeExercises`, build each id's aliases as the **union over all copies of that id**,
+live or tombstone. A live row never legitimately loses an alias except to the owner rule, which runs
+afterwards. For an id that ends as a tombstone, hand the aliases of its live copies to
+`exResolve`-style target resolution over the merged `rows` (follow `mergedInto` to the live
+survivor), then run the existing one-owner pass. Add a replay test: A merges X→Y, B renames or
+retypes Y. Assert that `exIdByName('X') === 'y'` in both orders, replayed twice.
 
-### WR-02: Under-bar lifts: the warm-up's first rung is heavier than the working weight, and a 20 lb preset EZ bar is told it is "already at the empty bar"
+### WR-08 (NEW): The registry merge is not associative, so whether a row is permanently tombstoned depends on sync order
 
-**File:** `index.html:2303-2306` (`warmRampHTML`), `index.html:1262-1268` (`deloadPlan`), `index.html:2087`
-**Issue:** The known suspect is confirmed in the harness. `warmRampHTML({name:'Preacher curl', sets:[{w:'20'}]})` renders
-`Empty bar — 25 lb / ~50% — 10 lb / ~75% — 15 lb / Working — 20 lb`, with the first rung 5 lb above
-the working set. That breaks the comment two lines above ("no rung is ever above the working weight").
-`clamp` only applies when `w >= bar`, and `first` is unconditional. The same happens on any
-barbell-type lift under 45 (`Barbell curl` at 40 gives "Empty bar — 45 lb" plus "Under bar weight"
-on every rung). The ramp is only drawn on slot 0, which limits how often this shows.
+**File:** `index.html:4605`, `index.html:4638-4650`
+**Issue:** The owner pass turns a live row that lost all its aliases into a **synthesized tombstone**
+(`deletedAt: mt(into)`, keeping the row's old `mtime`). Under tombstone-beats-live, that tombstone is
+permanent, even against a later live copy of the same row. So the outcome depends on which copies
+met first.
 
-The deload has the same root cause and is reachable on every slot. Ian's real 20 lb Preacher curl
-(D-07) goes `deloadPlan('Preacher curl', 20)` → `{w:20, atBar:true}`. If the slot stalls, the Deload
-button leaves the weight unchanged and says "Already at the empty bar — cut a set or reps instead".
-That is false: D-07 records preset EZ bars 10 lb apart below 25, so a lighter bar exists.
-**Fix:** When the working weight is below the bar, treat the lift as not bar-loaded. In
-`warmRampHTML`, render the first rung as "Bodyweight — no load" or omit it when `w < bar`, and clamp
-every rung to `w`. In `deloadPlan`, apply the at-bar rule only when `lastW` is within a step of the
-bar from above (`bar <= lastW`). For `lastW < bar` on an EZ lift, fall through to the normal 90%
-floor so 20 → 15 (or 10 on the preset ladder).
+Reproduced with three copies:
+- P: `y[y,k]`@100.
+- Q: a stale `x[k]`@50, for example an old backup or a device that never synced.
+- R: the same `x` renamed later, `x[k,k2]`@300.
 
-### WR-03: A deload on a light load blanks every set's weight while the card says "Deloaded −10%"
+| Order | Result |
+|-------|--------|
+| (P+Q)+R | `x(T→y)[]  y[y,k]`. Ian's later rename is gone, `'k2'` has no owner (WR-07), and x's sessions fold into y. |
+| P+(Q+R) | `x[k,k2]  y[y]` |
+| (P+R)+Q | `x[k,k2]  y[y]` |
 
-**File:** `index.html:1268`, `index.html:1407-1412` (`deloadExercise`)
-**Issue:** `deloadPlan` returns `{w:''}` whenever 90% floors to 0. Reproduced on a 2.5 lb dumbbell
-(`deloadPlan('DB curl', 2.5)` → `w:''`) and a 2.5 lb cable stack. A 5 lb machine does the same
-(4.5 floors to 0 on a 5 step). `deloadExercise` then writes `st.w = ''` into every unskipped set,
-which wipes the prefilled weights, and the coach line still claims a 10% drop. D-11 says "always at
-least one step lighter" but has no lightest-weight floor.
-**Fix:** If `x <= 0`, return `{ w:lastW, atBar:true }` (or a separate `atFloor` flag with its own
-copy, "Already at the lightest weight — cut a set or reps instead"), so the weights stay and the
-message is truthful.
+So one ordering of the same three replicas permanently merges two exercises, and the other keeps
+them apart. The comment on `mergeExercises` claims "the result is the same in either order and stable
+when replayed". That holds pairwise, but not across three replicas, and the suite's law test never
+mixes the owner pass with a stale copy.
+**Fix:** Don't let a *synthesized* tombstone gain tombstone-beats-live stickiness. Options:
+- mark it (`autoMerged: true`) and let a live copy with a strictly newer `mtime` than the tombstone's
+  `deletedAt` beat it;
+- stamp the synthesized tombstone's `mtime` and `deletedAt` from its *own* row and let the owner rule
+  be recomputed on every merge from the union of aliases (WR-07), so it is a pure function of the set
+  of copies.
 
-### WR-04: "⬆ Add weight" adds the step to an off-ladder weight instead of moving to the next loadable one
+Extend the law test with three replicas that mix a stale copy, a later live edit and an alias
+collision, and assert `content(merge(merge(a,b),c)) === content(merge(a,merge(b,c)))`.
 
-**File:** `index.html:1295-1302` (`addWeightInfo`), consumed at `startWorkout` (prefill) and `viewActive`
-**Issue:** `newW = v.lastW + weightStep(name, v.lastW)`. D-17 defines the dumbbell step as "the gap
-to the next dumbbell on the rack", but the code adds blindly:
-- a logged 62 lb dumbbell suggests 67, which isn't on the rack (the next is 65);
-- a 22 lb dumbbell suggests 24.5;
-- a 47 lb barbell suggests 52.
+### WR-06 (open, unchanged): The kg warm-up labels the lb bar weight as kg
 
-`startWorkout` prefills that value into the draft, so it can become a logged number.
-`loadFloor` and `loadNearest` already exist for exactly this.
-**Fix:** `newW = step == null ? null : loadFloor(name, v.lastW + 1e-9) + ladderStep(name, loadFloor(name, v.lastW))`,
-or more simply, the smallest ladder value strictly greater than `lastW`:
-`const f = loadFloor(name, v.lastW); newW = f + ladderStep(name, f);`. This is equivalent for
-on-ladder weights and snaps off-ladder ones up to the next real weight.
-
-### WR-05: Settings → Exercises shows the type looked up by name but writes it by id; the card tag and picker are split the same way
-
-**File:** `index.html:2931` (`const cur = equipOf(r.name)`), `index.html:1458-1461` (`equipOf`), `index.html:2120-2122`
-**Issue:** The select's `selected` option comes from `equipOf(r.name)`, which goes
-`exKey(name)` → `exIdByName` → the first row owning that alias. The change handler writes
-`setExerciseEquip(r.id, …)`. Likewise, the workout card's tag and step resolve by `entry.name`, while
-the picker writes to `exKey(entry)` (the `exId`). When the two identities differ, the control shows
-one row's type and stores to another. They differ in the duplicate-alias state from WR-01, and when
-a name resolves to a different row than the entry's `exId`. In that case, picking a type appears to
-do nothing, because the select re-renders with the other row's value.
-**Fix:** Read the type by id where the id is known. In Settings, use
-`const row = exRow(r.id); const cur = row && EQUIP_TYPES.indexOf(row.equip)>=0 ? row.equip : equipGuess(r.name);`.
-Give `equipOf` an id-aware variant, `equipOfEntry(e)`, built on `exRow(exKey(e))`, and use it for the
-card tag, `weightStep`, `barStyle` and the warm-up on draft entries.
-
-### WR-06: The kg warm-up labels the lb bar weight as kg
-
-**File:** `index.html:2306`
-**Issue:** `barWeight()` returns the lb constants (45 or 25), and `first` prints them with `DB.unit`.
-Reproduced in kg: `Empty bar — 45 kg`, followed by a `~75% — 45 kg` rung. `deloadPlan` was
-deliberately written to ignore the bar outside lb (line 1265), and `lbBar` does the same for the
-clamp, but the first rung was missed. This predates Phase 9, but this phase rewrote the function.
-Ian doesn't use kg (D-10), so the impact is low. It is still a wrong number printed to the user.
-**Fix:** `const first = (bar > 0 && DB.unit === 'lb') ? … : bar === 0 ? … : …`, or show
-"Empty bar" without a number when the unit is kg.
+**File:** `index.html:2348`
+**Issue:** It still prints `Empty bar — 45 kg`. The WR-02 change only nulls the bar for an under-bar
+lb weight. Ian doesn't use kg (D-10), so the impact is low.
+**Fix:** Gate `first`'s bar label on `DB.unit === 'lb'`, as `lbBar` already does.
 
 ## Info
 
-### IN-01: `exIdByName` still matches tombstones
+### IN-01 (open): `exIdByName` still matches tombstones
+**File:** `index.html:1455-1460`. Unchanged. Add `!r.deletedAt && Array.isArray(r.aliases)`.
 
-**File:** `index.html:1440-1445`
-**Issue:** It iterates every row, including `deletedAt` ones, and relies on `exMerge` having emptied
-their aliases. A tombstone carrying aliases resolves names to a dead id, which then flows into
-`exEnsure` → `e.exId` and turns into CR-01's ghost. That can come from a hand-edited backup, or from
-an older copy that loses the alias-emptying through a field-level merge in future.
-**Fix:** `if(r && !r.deletedAt && Array.isArray(r.aliases) && r.aliases.indexOf(k)>=0)`. The
-`Array.isArray` check also stops a string `aliases` from doing substring matching.
+### IN-02 (open, reconfirmed): A tie on `equipAt` makes the registry merge non-associative
+**File:** `index.html:4627-4635`. The `best` pass is unchanged and still keeps the first copy seen on
+a tie. `(D1+D3)+D2` → `ez`, but `D1+(D2+D3)` → `cable`. Break ties deterministically, for example by
+`EQUIP_TYPES.indexOf`, and add a tied three-replica fixture.
 
-### IN-02: The registry merge is not associative when two copies tie on `equipAt`
+### IN-03 (open): `translateLoad` can suggest an unloadable weight on a bar lift
+**File:** `index.html:1020-1024`. `translateLoad(30,5,12,'Barbell bench press')` → 25 lb.
 
-**File:** `index.html:4546-4555`
-**Issue:** `best` keeps the first-seen copy on a tie. With D1 (`ez@50`, mtime 1), D2 (`cable@50`,
-mtime 2) and D3 (`machine@0`, mtime 3), `(D1+D3)+D2` gives `ez`, but `D1+(D2+D3)` gives `cable`
-(reproduced). The law test (app.test.js:8637-8651) uses all-distinct `equipAt`, so it can't see this.
-In practice it needs two choices made in the same millisecond.
-**Fix:** Break `equipAt` ties deterministically, for example by `EQUIP_TYPES.indexOf(equip)`, and add
-a tied three-device fixture to the law test.
+### IN-04 (open): The unit checks are inconsistent
+**File:** `index.html:1231`, `1241`, `1265`, `2339`. `=== 'kg'`, `!== 'kg'` and `=== 'lb'` are all still mixed.
 
-### IN-03: `translateLoad` can suggest an unloadable weight on a bar lift
+### IN-05 (open): Name rules misfile some plausible names
+**File:** `index.html:586-592`, `1129`. "Straight bar curl" is still read as a landmine, and "Hang
+clean" is still read as bodyweight.
 
-**File:** `index.html:1020-1024`
-**Issue:** The floor is `ladderStep(name, 0)`, not the bar. Reproduced: `translateLoad(30, 5, 12, 'Barbell bench press')` → 25 lb.
-The line is display-only, but it is a number nobody can load.
-**Fix:** In lb, `Math.max(barWeight(name) || ladderStep(name,0), loadFloor(name, raw))`.
+### IN-06 (open): Some tests pin wording
+**File:** `test/app.test.js` (the no-"kettlebell"-anywhere grep, the literal CSS values, the exact
+coach copy). The fix commits add more exact-copy assertions. One example is the new "Already at the
+lightest weight — cut a set or reps instead." test.
 
-### IN-04: The unit checks are inconsistent
+### IN-08 (NEW): An under-bar preset lift's warm-up opens with "Bodyweight — no load, 5–10 reps"
 
-**File:** `index.html:1231`, `1241`, `1265`, `2302`
-**Issue:** `weightStep` tests `=== 'kg'`, `loadFloor` tests `!== 'kg'`, and `deloadPlan` and
-`warmRampHTML` test `=== 'lb'`. `normalize()` accepts any string unit, so a value that is neither
-gets lb steps, the dumbbell rack, and no bar clamp in the same render.
-**Fix:** Derive one `const isLb = DB.unit !== 'kg'` (or validate `unit` in `normalize`) and use it
-everywhere.
+**File:** `index.html:2336-2350`
+**Issue:** With `bar` nulled for a weight under the bar, the ramp for a 20 lb preset Preacher curl
+starts with "Bodyweight — no load / 5–10 reps". That's the bodyweight-lift wording, and it is
+nonsense on a curl. The note under the ramp says "Rounded to the nearest 5 lb", which is right.
+**Fix:** Add a third branch for an under-bar bar type, for example "Lightest preset bar — a few
+reps", or omit the first rung.
 
-### IN-05: Name rules misfile some plausible custom names
+### IN-09 (NEW): Some readers still key the type by name, not by entry
 
-**File:** `index.html:586-592` (`equipGuess`), `index.html:1129` (`LANDMINE_RE`)
-**Issue:**
-- `/t-?\s?bar/` matches "straigh**t bar** curl" and "Straigh**t-bar** curl". Both are guessed
-  barbell, and then `LANDMINE_RE` gives them one-sleeve landmine plate math.
-- `\bhang\b` files "Hang clean" and "Hang power clean" as bodyweight, which gives no step and no
-  plate line.
-
-The picker pre-selects the guess for unknown names (D-16), so this is mitigated, but a migration-19
-guess for a name already in history is applied silently.
-**Fix:** Anchor the landmine test, e.g. `/(^|\s)t-?\s?bar\b|meadows|landmine/`, and exclude
-`clean|snatch` from the bodyweight `hang` rule.
-
-### IN-06: Some new tests pin wording rather than properties
-
-**File:** `test/app.test.js:8896-8897`, `9182`, `8764-8765`
-**Issue:**
-- One test asserts the whole of `index.html` never contains "kettlebell". Any future comment
-  mentioning kettlebells would fail it.
-- One pins the literal CSS `repeat(auto-fit, minmax(88px, 1fr))` and `min-height: 44px`.
-- One pins the exact coach copy and the markup of the button that follows it.
-
-CLAUDE.md asks for property assertions over wording. These will go red on harmless edits.
-**Fix:** Assert the rendered warm-up output only, and drop the whole-file grep. Assert the grid's
-computed intent (the class is present and the buttons carry `day-btn`) rather than the CSS text.
-
-### IN-07: The new CLAUDE.md sentence contradicts itself
-
-**File:** `CLAUDE.md:32-34`
-**Issue:** "…`exRow()` reads live rows only, and a registry row is never filtered out." The second
-clause means "never removed from the array", but it reads as the opposite of the first clause.
-**Fix:** "…`exRow()` reads live rows only; a registry row is never spliced out of `DB.exercises`."
+**File:** `index.html:1307-1317` (`addWeightInfo`, which calls `weightStep(name, …)` and `loadFloor(name, …)`), `index.html:1020` (`translateLoad(…, entry.name)`), `isStalledSlot`
+**Issue:** The WR-05 fix moved the tag, plates, warm-up and deload onto the entry. ⬆ Add weight and
+its prefill, and the "→ suggest" line, still resolve the type from the name. In the
+split-identity state WR-05 covered, the card tag can say "EZ bar · +5" while Add weight steps on the
+other row's ladder.
+**Fix:** Pass the draft entry (or `{name, exId}`) through `addWeightInfo` and `translateLoad`, as
+`deloadPlan` now does.
 
 ---
 
-_Reviewed: 2026-10-12_
+_Reviewed: 2026-10-12 (re-review of 879fa37..HEAD)_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
