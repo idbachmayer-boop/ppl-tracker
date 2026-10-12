@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-6JwZpwhfGdgBtnlUR2Axh0ZCyV2CNkgvLCP26qDMxj4=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-5YBRvkrAKYwIaW+ljkJM/Sr6/XrWxoZ8xNvF6xS6N3Q=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1309,7 +1309,10 @@ function addWeightInfo(workout, slotIndex, name){
   if(!att) return null;
   const v = addWeightVerdict(att.entry, effRange(slot, name));
   const step = weightStep(name, v.lastW);
-  return { allTop:v.allTop, lastW:v.lastW, newW: step == null ? null : v.lastW + step, hasLoad:v.hasLoad };
+  /* The next weight the exercise can load, not lastW + step: an off-ladder 62 lb dumbbell goes to 65,
+     never 67 (D-17). On the ladder this is exactly one step, as before (WR-04). */
+  const floor = loadFloor(name, v.lastW);
+  return { allTop:v.allTop, lastW:v.lastW, newW: step == null ? null : floor + ladderStep(name, floor), hasLoad:v.hasLoad };
 }
 /* Per-set "beat last time" badge: ✓ beat, = tied, '' under (compared at the matched weight). */
 function badgeState(st, t){

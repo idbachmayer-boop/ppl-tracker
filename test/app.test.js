@@ -9113,6 +9113,30 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
      pu.ctl && pu.deload === true && pu.ws.length > 0 && pu.ws.every(w => w === '0') && !(pu.coach || '').includes('−10%'), pu);
   V.DB.draft = null;
 }
+{
+  /* WR-04 (09-REVIEW): ⬆ Add weight moves to the next weight the exercise can actually load. Adding the
+     step to an off-ladder weight gave numbers nobody can pick up (a 62 lb dumbbell → 67), and
+     startWorkout prefills that number, so it could become a logged one. */
+  const X = loadApp(APP_PATH); spyPushes(X);
+  const PUSH = 'PUSH 1';
+  const INC = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('DB incline press'));
+  const BENCH = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('Barbell bench press'));
+  const TRI = app.PROGRAM[PUSH].slots.findIndex(s => s.examples.includes('Triceps pushdown'));
+  const cardAt = (slot, name, load) => {
+    const hi = app.PROGRAM[PUSH].slots[slot].hi;
+    eqRun(X, [ eqSess('wr4-' + slot + '-' + load, PUSH, dayOff(-7), slot, name, [[load, hi], [load, hi], [load, hi]]) ]);
+    const card = eqCard(X, PUSH, slot);
+    return { name, load, flag: eqFlag(card), draft: X.DB.draft.entries[slot].sets.map(x => x.w) };
+  };
+  const cases = [[INC, 'DB incline press', 62, '65'], [INC, 'DB incline press', 22, '22.5'], [BENCH, 'Barbell bench press', 47, '50'],
+                 [TRI, 'Triceps pushdown', 26, '27.5'],
+                 [INC, 'DB incline press', 57.5, '60'], [INC, 'DB incline press', 60, '65'], [BENCH, 'Barbell bench press', 135, '140']]
+    .map(([slot, name, load, want]) => { const c = cardAt(slot, name, load); return Object.assign(c, { want,
+      good: c.flag !== null && c.flag.includes('→ ' + want + ' lb') && c.draft.length > 0 && c.draft.every(x => x === want) }); });
+  ok('WR-04: ⬆ Add weight snaps an off-ladder load up to the next loadable weight — 62 DB → 65, 22 DB → 22.5, 47 BB → 50, 26 cable → 27.5 — on-ladder loads move one step as before, and the prefill matches',
+     cases.every(x => x.good), cases.map(({ name, load, want, flag, draft }) => ({ name, load, want, flag, draft })));
+  X.DB.draft = null;
+}
 
 /* ── EQUIP UI: the first-time picker, the card tag, Settings states (Phase 9, plan 09-04) ──
    Ian rejected silent guessing for a name the default table cannot place (D-04, D-16): a brand-new
