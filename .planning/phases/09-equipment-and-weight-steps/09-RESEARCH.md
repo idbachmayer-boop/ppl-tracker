@@ -582,14 +582,15 @@ Fallback for custom names, in this order (proposed; the regexes are literals ins
 | A6 | The D-04 picker appears only when a genuinely new row's name is not in `EQUIP_DEFAULTS`. Program names never ask | Pattern 7 | Medium. "asks the first time" could be read as "every new row". Asking for program names on a fresh install would be noise the table already answers |
 | A7 | Straight-bar, landmine and sled plate wording ("Under bar weight", "(+x can't load)") stays. The D-07 silence applies to `ez` only | Pattern 6 | Low. Existing tests pin those strings |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Literal `touch()` versus a migration stamp that cannot beat later edits.**
    - What we know: EQUIP-02 and CLAUDE.md require `touch()` (`mtime = Date.now()`). Pitfall 3 shows that a device migrating *after* Ian edits on his other device wins every row on `mtime`. `equipAt` neutralises this for equipment, which is the requirement. It does not for renames, merges or aliases made in that window, or for Import→Merge of an older backup.
    - What's unclear: whether Ian accepts that residual, or wants migration 19 to stamp `mtime = (+row.mtime||0) + 1`. That still beats the un-migrated copy of the same row, which is the rule's purpose, and never beats a later real action. It does reinterpret the literal `touch()` wording.
    - Recommendation: plan the literal `touch()` (a locked constraint) plus `equipAt`. Raise the `+1` variant with Ian at plan review, as a one-line change if he prefers it.
-2. **Should Settings → Exercises list every program exercise?** Today it lists only logged ones (L2659 comment). EQUIP-01 is satisfied for everything Ian can see. Recommendation: keep it as is.
-3. **Deload at the empty bar** (Barbell row at 45): nothing lighter is loadable. Recommendation: keep 45 prefilled and let the coach line say deload isn't possible below the bar, or leave the weights unchanged. Planner's call.
+   - **RESOLVED: D-14** (Ian, 2026-10-12): stamp old `mtime` + 1, plus `equipAt`.
+2. **Should Settings → Exercises list every program exercise?** Today it lists only logged ones (L2659 comment). EQUIP-01 is satisfied for everything Ian can see. Recommendation: keep it as is. **RESOLVED:** keep the logged-only list (the plans follow this).
+3. **Deload at the empty bar** (Barbell row at 45): nothing lighter is loadable. Recommendation: keep 45 prefilled and let the coach line say deload isn't possible below the bar, or leave the weights unchanged. Planner's call. **RESOLVED: D-15** (Ian, 2026-10-12): stay at the bar weight and show "Already at the empty bar — cut a set or reps instead."
 
 ## Environment Availability
 

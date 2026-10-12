@@ -97,7 +97,14 @@ Plans:
 - The `SCHEMA` bump stales `test/fixtures/merge-golden.json`: regenerate it with `WRITE_MERGE_GOLDEN=1 node test/app.test.js`, and grep `test/app.test.js` for the old schema number as a bare literal (`docs/adding-a-collection.md`).
 - The equipment picker is a `data-action` control with its value through `esc()`. Changing it edits synced data, so it goes through `save()`, not `saveLocal()`.
 - The brief states steps in lb. What a kg user sees (today `INCREMENT.kg` is 2.5) is a question for discuss-phase, not something this roadmap decides.
-**Plans**: TBD
+**Plans:** 5 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Every exercise gets a type: the default table above MIGRATIONS, SCHEMA 19 with migration 19 (mtime + 1, persisted at boot), equip on new rows, equipOf, and ⬆ Add weight moving by the type's step (EQUIP-01, EQUIP-02, EQUIP-04)
+- [ ] 09-02-PLAN.md — Equipment syncs: the Settings → Exercises select, setExerciseEquip, a per-row registry merge with an equipAt clock, the two-device replays, and exMerge tombstones (EQUIP-01, EQUIP-02, EQUIP-03)
+- [ ] 09-03-PLAN.md — Loadable weights: deloads round down and are always lighter (empty-bar exception), warm-ups round to the ladder with honest notes, the suggest line floors and escapes, and plate math follows the type, with Preacher curl on the 25 lb EZ bar (EQUIP-05, EQUIP-06)
+- [ ] 09-04-PLAN.md — The first-time equipment picker for unplaceable new names, the "dumbbell · +2.5" card tag, and the Settings copy, states and hostile-name sweep (EQUIP-01, EQUIP-03, EQUIP-04)
+- [ ] 09-05-PLAN.md — Ship after the code review: pre-flight, Ian pushes and merges with a merge commit (the schema-19 door, with an honest rollback), live bytes checked, then the real workout and the cross-device type change (end-of-phase UAT)
 **UI hint**: yes
 
 ### Phase 10: Log Page — History and Skip
