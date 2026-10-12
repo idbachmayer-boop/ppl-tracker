@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-v0HqTXSDL++AHROUxBvLQ9Uk7N/WWTkayL1w9YFH/SM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-icdWAkP0uVUDuK8z27W0BD2sE/m8tM0+YmZCaxOVWfY=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -939,7 +939,6 @@ const fmtDate = iso => { const [y,m,d]=iso.split('-'); return new Date(y,m-1,d).
 /* Whole days from today to an ISO date (midnight-to-midnight). Negative once past → null. */
 const WEDDING_DATE = '2026-08-21';
 function daysUntil(iso){ const [y,m,d]=iso.split('-').map(Number); const target=new Date(y,m-1,d); target.setHours(0,0,0,0); const now=new Date(); now.setHours(0,0,0,0); const diff=Math.round((target-now)/86400000); return diff<0 ? null : diff; }
-const round5 = n => Math.max(0, Math.round(n/5)*5);
 const accClass = g => g==='push'?'acc-push':g==='legs'?'acc-legs':'acc-pull';
 const barClass = g => g==='push'?'acc-bar-push':g==='legs'?'acc-bar-legs':'acc-bar-pull';
 const rangeText = s => s.lo===s.hi ? `${s.lo}${s.note==='each leg'?'/leg':''}` : `${s.lo}–${s.hi}`;
@@ -1012,13 +1011,13 @@ function lastAnywhere(exName){
 }
 /* Estimate the load that carries a past set over to a different rep range: hold the estimated 1RM
    constant and solve Epley for the bottom of the new range (the rep you'd restart a range on).
-   Rounded down to a loadable increment so the suggestion errs light. */
-function translateLoad(w, r, targetReps){
+   Floored to the exercise's own step so the suggestion errs light (D-13). Display only: nothing
+   writes it into a set. */
+function translateLoad(w, r, targetReps, name){
   const one = e1rm(w, r);
   if(!one || !targetReps) return null;
   const raw = one / (1 + targetReps/30);
-  const inc = INCREMENT[DB.unit] || 5;
-  return Math.max(inc, Math.floor(raw/inc)*inc);
+  return Math.max(ladderStep(name, 0), loadFloor(name, raw));
 }
 function lastRealStairs(){
   const ls = liveSessions();
@@ -2036,8 +2035,8 @@ function viewActive(){
          pre-filled: a suggestion shouldn't quietly become a logged number. */
       const best = altReal.reduce((a,x)=> e1rm(x.w,x.r) > e1rm(a.w,a.r) ? x : a, altReal[0]);
       const offRange = best && (+best.r < rng.lo || +best.r > rng.hi);
-      const sug = offRange ? translateLoad(best.w, best.r, rng.lo) : null;
-      if(sug) lastLine += ` <span class="muted">→ suggest <strong>${sug} ${DB.unit}</strong> for ${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>`;
+      const sug = offRange ? translateLoad(best.w, best.r, rng.lo, entry.name) : null;
+      if(sug) lastLine += ` <span class="muted">→ suggest <strong>${esc(sug)} ${esc(DB.unit)}</strong> for ${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>`;
       if(alt.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(alt.entry.note)}</div>`;
     }
     let coachHint='';
@@ -2236,30 +2235,43 @@ function confettiBurst(){
 }
 function skipStairs(){ const reason=prompt('Why skipping the stair stepper? (optional)',''); if(reason===null)return; DB.draft.stairs.skipped=true; DB.draft.stairs.reason=reason.trim(); saveLocal(); render(); }
 function unskipStairs(){ DB.draft.stairs.skipped=false; DB.draft.stairs.reason=''; saveLocal(); render(); }
-function toggleWarm(i){
-  const box = document.getElementById('warm-'+i); box.classList.toggle('hidden');
-  if(box.classList.contains('hidden')) return;
-  const entry = DB.draft.entries[i], sets = entry.sets;
+/* The warm-up ramp for one draft entry (D-12). Pure: toggleWarm owns the show/hide and writes this in. */
+function warmRampHTML(entry){
+  const sets = entry.sets;
   const w = Math.max(...sets.map(s=> +s.w || 0), 0);
-  if(!w){ box.innerHTML = `<div><span>Enter a working weight first</span></div>`; return; }
+  if(!w) return `<div><span>Enter a working weight first</span></div>`;
   /* Loading the bar is exactly when you want the plate breakdown, so each rung carries its own.
      Non-barbell lifts (and kg) fall through to the plain percentages. */
   const bar = barWeight(entry.name);
   const style = barStyle(entry.name);
   const plates = t => { const s = bar==null ? '' : platesText(t, bar, style); return s ? `<div class="warm-plates">${s}</div>` : ''; };
   const rung = (label, target, reps) => `<div><span>${label}${plates(target)}</span><span>${reps}</span></div>`;
-  const w50 = round5(w*0.5), w75 = round5(w*0.75);
-  /* There is no bar on a dumbbell or kettlebell lift — a goblet squat's first rung is your own
-     bodyweight, and the loads round to the nearest 5 lb (bells jump further; take the nearest). */
+  /* Rungs round to the nearest weight on this exercise's ladder, ties down. On a bar lift in lb a rung
+     never drops under the bar, and no rung is ever above the working weight. */
+  const lbBar = DB.unit === 'lb' && bar > 0;
+  const clamp = r => Math.min(w, (lbBar && w >= bar && r < bar) ? bar : r);
+  const w50 = clamp(loadNearest(entry.name, w*0.5)), w75 = clamp(loadNearest(entry.name, w*0.75));
+  /* No bar means the first rung is your own bodyweight, and the loads land on the type's own steps. */
   const first = bar > 0 ? `<div><span>Empty bar — ${bar} ${DB.unit}</span><span>a few reps</span></div>`
               : bar === 0 ? `<div><span>Empty sled — no plates</span><span>a few reps</span></div>`
               : `<div><span>Bodyweight — no load</span><span>5–10 reps</span></div>`;
-  box.innerHTML = `
+  const t = equipOf(entry.name);
+  const noteText = DB.unit === 'kg' ? 'Rounded to the nearest 2.5 kg.'
+                 : t === 'dumbbell' ? 'Rounded to the nearest dumbbell — 2.5 lb steps up to 60, 5 lb above.'
+                 : t === 'cable' ? 'Rounded to the nearest 2.5 lb.'
+                 : t === 'bodyweight' ? 'Rounded to the nearest 2.5 lb.'
+                 : 'Rounded to the nearest 5 lb.';
+  return `
     ${first}
     ${rung(`~50% — ${w50} ${DB.unit}`, w50, '3–4 reps')}
     ${rung(`~75% — ${w75} ${DB.unit}`, w75, '2–3 reps')}
     ${rung(`<strong>Working — ${w} ${DB.unit}</strong>`, w, 'per plan')}
-    ${bar==null ? '<div class="muted" style="font-size:11px;padding-top:4px">Rounded to 5 lb — with kettlebells, take the nearest bell.</div>' : ''}`;
+    ${bar==null ? `<div class="muted" style="font-size:11px;padding-top:4px">${noteText}</div>` : ''}`;
+}
+function toggleWarm(i){
+  const box = document.getElementById('warm-'+i); box.classList.toggle('hidden');
+  if(box.classList.contains('hidden')) return;
+  box.innerHTML = warmRampHTML(DB.draft.entries[i]);
 }
 function finishWorkout(){
   const d = DB.draft;

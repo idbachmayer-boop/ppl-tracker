@@ -8848,6 +8848,79 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
      !!ez20 && ez20.atBar === true && ez20.w === 20,
      { ez25, ez35, ez20 });
 }
+{
+  /* Warm-up rungs land on the exercise's own ladder with an honest note (D-12), and the "→ suggest"
+     line floors to the step and escapes its unit (D-13, IN-04). */
+  const W = loadApp(APP_PATH); spyPushes(W);
+  W.DB = W.normalize(W.blank()); W.DB.unit = 'lb';
+  const ramp = (name, w, n) => {
+    const f = W.__sandbox.warmRampHTML;
+    const entry = { name, note: '', sets: Array.from({ length: n || 3 }, () => ({ w: w === '' ? '' : String(w), r: '', skipped: false, reason: '' })) };
+    const html = typeof f === 'function' ? String(f(entry)) : '';
+    const r50 = /~50% — ([^ <]+) /.exec(html), r75 = /~75% — ([^ <]+) /.exec(html);
+    const note = /<div class="muted" style="font-size:11px;padding-top:4px">([\s\S]*?)<\/div>/.exec(html);
+    return { html, r50: r50 ? r50[1] : null, r75: r75 ? r75[1] : null, note: note ? note[1] : null };
+  };
+  const rungPlates = (html, pct) => new RegExp('~' + pct + '% — [^<]*<div class="warm-plates">🏋️ Per side').test(html);
+  const bench = ramp('Barbell bench press', 135);
+  ok('D-12: Barbell bench press at 135 warms up at 65 (67.5 is a tie, so it goes down) and 100, each rung with its Per side plates, and no rounding note',
+     bench.r50 === '65' && bench.r75 === '100' && rungPlates(bench.html, 50) && rungPlates(bench.html, 75) && bench.note === null,
+     { r50: bench.r50, r75: bench.r75, note: bench.note });
+  const table = [
+    ['DB bench press', 65, '32.5', '47.5', 'Rounded to the nearest dumbbell — 2.5 lb steps up to 60, 5 lb above.'],
+    ['Cable fly', 25, '12.5', '17.5', 'Rounded to the nearest 2.5 lb.'],
+    ['Seated OHP', 50, '25', '35', 'Rounded to the nearest 5 lb.'],
+    ['Weighted push-up', 25, '12.5', '17.5', 'Rounded to the nearest 2.5 lb.'],
+  ].map(([n, w, a, b, note]) => { const r = ramp(n, w); return { n, w, want: [a, b, note], got: [r.r50, r.r75, r.note] }; });
+  ok('D-12: rungs round to the nearest loadable weight with ties going down, and the note names the real step — DB 65 → 32.5/47.5, cable 25 → 12.5/17.5, machine 50 → 25/35, weighted push-up 25 → 12.5/17.5',
+     table.every(x => JSON.stringify(x.want) === JSON.stringify(x.got)), table);
+  W.DB.unit = 'kg';
+  const kg = ramp('DB bench press', 30);
+  W.DB.unit = 'lb';
+  ok('D-10/D-12: in kg, DB bench press at 30 warms up at 15 and 22.5, noted "Rounded to the nearest 2.5 kg."',
+     kg.r50 === '15' && kg.r75 === '22.5' && kg.note === 'Rounded to the nearest 2.5 kg.', kg);
+  const row = ramp('Barbell row', 45);
+  ok('D-12: Barbell row at 45 never warms up under the bar — both rungs are 45', row.r50 === '45' && row.r75 === '45', { r50: row.r50, r75: row.r75 });
+  const pc = ramp('Preacher curl', 35);
+  ok('D-12: Preacher curl at 35 starts at "Empty bar — 25 lb" and both rungs are the 25 lb bar',
+     pc.html.includes('Empty bar — 25 lb') && pc.r50 === '25' && pc.r75 === '25', { r50: pc.r50, r75: pc.r75 });
+  const preset = ramp('Preacher curl', 20);
+  ok('D-12: an EZ preset bar at 20 gets no warm-up rung above 20',
+     preset.r50 !== null && preset.r75 !== null && +preset.r50 <= 20 && +preset.r75 <= 20, { r50: preset.r50, r75: preset.r75 });
+  const sled = ramp('Leg press', 90);
+  ok('D-12: Leg press at 90 warms up at 45 and 65 (67.5 is a tie, so it goes down), with no rounding note',
+     sled.r50 === '45' && sled.r75 === '65' && sled.note === null, { r50: sled.r50, r75: sled.r75, note: sled.note });
+  const empty = ramp('DB bench press', '');
+  ok('D-12: with no working weight the ramp says "Enter a working weight first"', empty.html.includes('Enter a working weight first'), empty.html);
+  const allRamps = [bench, row, pc, preset, sled, kg].concat(table.map(x => ramp(x.n, x.w))).map(r => r.html).join('');
+  ok('D-12: no warm-up output mentions a kettlebell, and neither does the app',
+     !/kettlebell/i.test(allRamps) && !/kettlebell/i.test(fs.readFileSync(APP_PATH, 'utf8')), null);
+
+  const tl = W.__sandbox.translateLoad;
+  const tls = typeof tl === 'function' ? [tl(30, 20, 8, 'DB incline press'), tl(135, 5, 12, 'Barbell bench press'), tl(0, 10, 8, 'Chin-up')] : [];
+  ok('D-13: translateLoad floors to the exercise\'s own step — DB 30×20 for 8 → 37.5 (a flat 5 gave 35), BB 135×5 for 12 → 110, and no load gives null',
+     tls[0] === 37.5 && tls[1] === 110 && tls[2] === null, tls);
+
+  const PUSH1 = 'PUSH 1', PUSH2 = 'PUSH 2';
+  const INC1 = app.PROGRAM[PUSH1].slots.findIndex(s => s.examples.includes('DB incline press'));
+  const INC2 = app.PROGRAM[PUSH2].slots.findIndex(s => s.examples.includes('DB incline press'));
+  eqRun(W, [ eqSess('sug-1', PUSH2, dayOff(-7), INC2, 'DB incline press', [[30, 20], [30, 20], [30, 20]]) ]);
+  eqCard(W, PUSH1, INC1);
+  W.DB.draft.entries[INC1].name = 'DB incline press';
+  const sugCard = () => W.viewActive().split('<div class="ex-card">')[INC1 + 1] || '';
+  const sugOf = card => { const m = /→ suggest <strong>([\s\S]*?)<\/strong>/.exec(card); return m ? m[1] : null; };
+  const sc = sugCard();
+  const draftW = W.DB.draft.entries[INC1].sets.map(x => x.w);
+  ok('D-13: DB incline press logged only on PUSH 2 at 30×20 suggests 37.5 lb on PUSH 1 (8–12), and never fills a set',
+     sc.includes('→ suggest') && sugOf(sc) === '37.5 lb' && draftW.length > 0 && draftW.every(w => w === ''),
+     { sug: sugOf(sc), draftW });
+  W.DB.unit = '<img src=x>';
+  const hostile = sugOf(sugCard());
+  W.DB.unit = 'lb';
+  ok('IN-04/T-9-16: a hostile unit in the suggest line is escaped — &lt;img, never a raw <img',
+     hostile !== null && hostile.includes('&lt;img') && !hostile.includes('<img'), hostile);
+  W.DB.draft = null;
+}
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
