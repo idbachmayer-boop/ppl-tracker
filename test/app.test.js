@@ -8507,6 +8507,60 @@ const EQ_EXPORT_NAMES = [
   F.DB.draft = null;
 }
 
+/* ── EQUIP sync: the registry merges per row (Phase 9, plan 09-02) ──
+   DB.exercises used to ride along whole from the side with the newer updatedAt, so an equipment
+   choice made on one device was lost on the other device's next save. These checks replay that. */
+/* The setExEquip select for `id` in rendered Settings HTML: its options and the selected one. */
+function eqSelectOf(html, id){
+  const re = /<select\b[^>]*data-action="setExEquip"[^>]*>([\s\S]*?)<\/select>/g;
+  let m;
+  while((m = re.exec(String(html || '')))){
+    const idm = /data-id="([^"]*)"/.exec(m[0]);
+    if(!idm || idm[1] !== id) continue;
+    const opts = [];
+    const ore = /<option value="([^"]*)"([^>]*)>([\s\S]*?)<\/option>/g;
+    let o;
+    while((o = ore.exec(m[1]))) opts.push({ value: o[1], selected: /\bselected\b/.test(o[2]), label: o[3] });
+    return { tag: m[0].slice(0, m[0].indexOf('>') + 1), opts, selected: (opts.find(x => x.selected) || {}).value || null };
+  }
+  return null;
+}
+const EQ_PULL2 = 'PULL 2';
+const EQ_PC = app.PROGRAM[EQ_PULL2].slots.findIndex(s => s.examples.includes('Preacher curl'));
+asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud past a newer device', async () => {
+  const seed = eqSeed18([eqRow('Preacher curl', 1000)], {
+    sessions: [eqSess('pc1', EQ_PULL2, dayOff(-5), EQ_PC, 'Preacher curl', [[35, 12], [35, 12], [35, 12]], { exId: 'preacher-curl' })] });
+  const a = loadApp(APP_PATH, seed);
+  const spy = spyPushes(a);
+  try{
+    /* Device B, the cloud: the same history, a newer updatedAt, and one weigh-in A never saw. */
+    const remote = a.normalize(clone(seed));
+    remote.updatedAt = Date.now() + 60000;
+    remote.weights = (remote.weights || []).concat([{ date: dayOff(-1), value: 190, mtime: 5 }]);
+    const html = a.__sandbox.exercisesCardHTML();
+    const sel = eqSelectOf(html, 'preacher-curl');
+    const ctl = controlsIn(html).find(c => c.data.action === 'setExEquip' && c.data.id === 'preacher-curl');
+    ok('EQUIP-03 tracer: Settings → Exercises shows one equipment select for Preacher curl, six options in EQUIP_TYPES order, EZ bar selected',
+       !!sel && !!ctl && ctl.tag === 'select' && sel.opts.length === 6 &&
+         sel.opts.map(o => o.value).join() === (a.EQUIP_TYPES || []).join() && sel.selected === 'ez',
+       sel);
+    fireAction(a, 'change', fakeEl({ action: 'setExEquip', id: 'preacher-curl' }, { value: 'dumbbell' }));
+    const row = (a.DB.exercises || []).find(r => r && r.id === 'preacher-curl') || {};
+    ok('EQUIP-03 tracer: the change stores dumbbell on the registry row with a positive equipAt, and pushes once',
+       row.equip === 'dumbbell' && typeof row.equipAt === 'number' && row.equipAt > 0 && spy.n === 1,
+       { equip: row.equip, equipAt: row.equipAt, pushes: spy.n });
+    const cloud = fakeCloud(a, remote, { signedIn: true });
+    await a.pushNow(true);
+    const last = cloud.writes.length ? JSON.parse(cloud.writes[cloud.writes.length - 1].blob) : null;
+    const wRow = last && (last.exercises || []).find(r => r && r.id === 'preacher-curl');
+    ok('EQUIP-03 tracer: the blob written to the cloud past the newer device says dumbbell for Preacher curl',
+       !!wRow && wRow.equip === 'dumbbell', { writes: cloud.writes.length, row: wRow, status: a.SYNC.status });
+    ok('EQUIP-03 tracer: the same push keeps the other device\'s weigh-in (union, never overwrite)',
+       !!last && (last.weights || []).some(w => w && w.date === dayOff(-1) && +w.value === 190),
+       last && last.weights);
+  } finally { a.SYNC.docRef = null; a.SYNC.user = null; }
+});
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */

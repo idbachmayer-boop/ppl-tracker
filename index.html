@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-8tZwW4E8wuj9fY2A1xJsOLD6NQT1+I/i/bY1SqC0F/0=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-uVRhOyi4nEtZSRM6eppB1Yai/EBtfEe8S+LEFiGzYpI=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -2802,11 +2802,20 @@ function exercisesCardHTML(){
       <select id="ex-merge-into" style="flex:1;min-width:130px">${opts}</select>
       <button class="btn btn-sm" data-action="doExMerge">Merge</button>
     </div>
-    ${rows.map(r=>`<div class="hist-item">
-      <span style="min-width:0"><strong style="font-size:13px">${esc(r.name)}</strong>
-        <span class="muted" style="font-size:11px">· ${r.n} session${r.n===1?'':'s'}</span></span>
+    ${rows.map(r=>{
+      /* S1: the type sits under the name. A listed key with no registry row gets a plain line, since
+         there is no row to store a choice on. Labels come from EQUIP_LABEL, never the stored string. */
+      const cur = equipOf(r.name);
+      const equipUI = exRow(r.id)
+        ? `<select data-action="setExEquip" data-id="${esc(r.id)}" aria-label="Equipment for ${esc(r.name)}" style="display:block;width:auto;min-width:140px;margin-top:8px">${EQUIP_TYPES.map(t=>`<option value="${esc(t)}"${t===cur?' selected':''}>${esc(EQUIP_LABEL[t])}</option>`).join('')}</select>`
+        : `<div class="muted" style="font-size:12px;margin-top:8px">${esc(EQUIP_LABEL[cur])}</div>`;
+      return `<div class="hist-item" style="align-items:flex-start">
+      <span style="min-width:0;flex:1"><strong style="font-size:13px">${esc(r.name)}</strong>
+        <span class="muted" style="font-size:11px">· ${r.n} session${r.n===1?'':'s'}</span>
+        ${equipUI}</span>
       <button class="btn btn-sm btn-ghost" data-action="renameExercise" data-id="${esc(r.id)}">${ph('pencil-simple')}Rename</button>
-    </div>`).join('')}
+    </div>`;
+    }).join('')}
   </div>`;
 }
 function renameExercise(id){
@@ -2819,6 +2828,19 @@ function renameExercise(id){
   r.name = name;
   const k = normEx(name); if(r.aliases.indexOf(k)<0) r.aliases.push(k);   // keep the old spelling resolving
   touch(r); save(); toast('Renamed ✓'); render();
+}
+/* Set an exercise's equipment type from Settings → Exercises (EQUIP-01, EQUIP-03). This writes synced
+   registry data, so it calls save(), and it reads and writes only the registry row: the in-progress
+   workout is never touched (CLAUDE.md, the draft rule). equipAt is the field clock the registry merge
+   compares, so this choice outlives a later rename of the same row on the other device. A type
+   outside EQUIP_TYPES, or an unknown or merged-away id, is refused with no write and no push. */
+function setExerciseEquip(id, type){
+  const r = exRow(id);
+  if(!r) return;
+  if(typeof type !== 'string' || EQUIP_TYPES.indexOf(type) < 0) return;
+  r.equip = type;
+  r.equipAt = Date.now();
+  touch(r); save(); toast('Equipment set ✓'); render();
 }
 function doExMerge(){
   const from = (document.getElementById('ex-merge-from')||{}).value;
@@ -4380,6 +4402,15 @@ function mergeCollections(r, l, localNewer, out){
     }
   }
 }
+/* The exercise registry (DB.exercises) merges per row (EQUIP-03, Phase 9). It used to ride along
+   whole from the side with the newer updatedAt, so an equipment choice, a new exercise or a merge
+   made on one device was lost on the other device's next save. Rows are keyed by id, the newest
+   mtime wins and a tie goes to the newer side (mergeUnion). There is no sort: the newer side's
+   order is kept, then the older side's new rows, which is what keeps legacy parity and the merge
+   golden unchanged. It reads only r.exercises and l.exercises, and never mutates an input row. */
+function mergeExercises(r, l, localNewer){
+  return mergeUnion(Array.isArray(r.exercises) ? r.exercises : [], Array.isArray(l.exercises) ? l.exercises : [], x => x.id, localNewer);
+}
 /* localWins: on a straight tie (same updatedAt) prefer `local`. Used after a round trip so
    keystrokes typed while the transaction was in flight aren't discarded. */
 function mergeDB(remote, local, localWins){
@@ -4403,6 +4434,8 @@ function mergeDB(remote, local, localWins){
   const newer = localNewer ? l : r, older = localNewer ? r : l;
   const out = Object.assign({}, blank(), older, newer); // start from newer's scalars, guarantee all blank() keys
   mergeCollections(r, l, localNewer, out);
+  /* EQUIP-03: the exercise registry merges per row, never whole from the newer side. */
+  out.exercises = mergeExercises(r, l, localNewer);
   /* draft: device-local (D-04), removed from every merge result below. The 2026-07-25 loop — a stale
      draft resurrected on every merge and re-pushed by the live listener — cannot recur, because no
      draft crosses the wire at all; adoptMerged() puts this device's own draft back. The frozen
@@ -4967,6 +5000,7 @@ const ACTIONS = {
   wipe:           { click: () => wipe() },
   doExMerge:      { click: () => doExMerge() },
   renameExercise: { click: el => renameExercise(el.dataset.id) },
+  setExEquip:     { change: el => setExerciseEquip(el.dataset.id, el.value) },
   /* Recently deleted, Version history and Cloud Sync. Restores take a NUMBER index or the exact
      id; the functions they call own the confirm and the snapshot taken first. */
   toggleTrash:         { click: () => toggleTrash() },
