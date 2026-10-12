@@ -8772,6 +8772,70 @@ asyncBlock('EQUIP-03 tracer: an equipment choice in Settings reaches the cloud p
   ok('CR-01: exKey follows a chain to the live row (e → f), resolves a cycle\'s members to one id, and stops on a self-loop or a non-string mergedInto',
      ks[0] === ks[1] && (ks[0] === 'a' || ks[0] === 'b') && ks[2] === 'c' && ks[3] === 'd' && ks[4] === 'f', ks);
 }
+{
+  /* WR-01 (09-REVIEW): the per-row registry union must not bring a merged-away row back to life. Three
+     ways it could: a merge made by a pre-Phase-9 build, which spliced the row out and left no
+     tombstone, against a device that still holds the row; Import → Merge of a backup older than such
+     a merge; and a later rename or type change on a device that had not heard about the merge yet.
+     A tombstone keeps winning, and two live rows never share a spelling. Both orders, replayed twice. */
+  const M = app.mergeDB;
+  const R = loadApp(APP_PATH); spyPushes(R);
+  const regDB = (rows, updatedAt) => Object.assign(app.blank(), { exercises: rows, updatedAt });
+  const rowOf = (db, id) => (db.exercises || []).find(x => x && x.id === id) || null;
+  const owners = (db, k) => (db.exercises || []).filter(x => x && !x.deletedAt && (x.aliases || []).indexOf(k) >= 0).map(x => x.id);
+  const content = db => canon((db.exercises || []).reduce((o, x) => { o[x.id] = x; return o; }, {}));
+  /* P and Q merged in both orders, then each result replayed against P and against Q. */
+  const replay = (P, Q) => { const pq = M(clone(P), clone(Q)), qp = M(clone(Q), clone(P));
+    return { all: [pq, qp, M(clone(P), clone(pq)), M(clone(qp), clone(P)), M(clone(Q), clone(pq)), M(clone(qp), clone(Q))],
+             commutes: content(pq) === content(qp) }; };
+  const see = db => { R.DB = clone(db); return { curl: rowOf(db, 'db-curl'), owners: owners(db, 'db curl'),
+    byName: R.exIdByName('DB curl'), key: R.exKey({ name: 'DB curl', exId: 'db-curl' }), live: !!R.exRow('db-curl') }; };
+  const merged = x => !!x.curl && !!x.curl.deletedAt && x.curl.mergedInto === 'dumbbell-curl' && !x.live &&
+    JSON.stringify(x.owners) === '["dumbbell-curl"]' && x.byName === 'dumbbell-curl' && x.key === 'dumbbell-curl';
+
+  // 1. A pre-Phase-9 merge: the cloud has no db-curl row at all, and the survivor owns its spelling.
+  const cloud = regDB([eqRow('Dumbbell curl', 2000, { aliases: ['dumbbell curl', 'db curl'], equip: 'dumbbell', equipAt: 0 })], 100);
+  const stale = regDB([eqRow('DB curl', 1001, { equip: 'dumbbell', equipAt: 0 }), eqRow('Dumbbell curl', 1001, { equip: 'dumbbell', equipAt: 0 })], 9e12);
+  const r1 = replay(cloud, stale), p1 = r1.all.map(see);
+  ok('WR-01: a device still holding a row an older build merged away (no tombstone) cannot bring it back live — it tombstones into the survivor, which alone owns "db curl", both orders, replayed twice',
+     r1.commutes && p1.every(merged), p1);
+
+  // 2. Import → Merge of a backup taken before that merge: mergeDB(backup, DB, true), imported twice.
+  const once = M(clone(stale), clone(cloud), true);
+  const p2 = [once, M(clone(stale), clone(once), true)].map(see);
+  ok('WR-01: Import → Merge of a backup taken before an older build\'s merge leaves db-curl merged, imported twice',
+     p2.every(merged), p2);
+
+  // 3. A later live edit: B renames db-curl and sets its type after A merged it, before B heard.
+  const A3 = regDB([eqRow('DB curl', 100, { aliases: [], deletedAt: 100, mergedInto: 'dumbbell-curl', equip: 'dumbbell', equipAt: 0 }),
+                    eqRow('Dumbbell curl', 100, { aliases: ['dumbbell curl', 'db curl'], equip: 'dumbbell', equipAt: 0 })], 100);
+  const B3 = regDB([eqRow('DB curl', 200, { name: 'DB curls', aliases: ['db curl', 'db curls'], equip: 'cable', equipAt: 200 }),
+                    eqRow('Dumbbell curl', 50, { equip: 'dumbbell', equipAt: 0 })], 200);
+  const r3 = replay(A3, B3), p3 = r3.all.map(see);
+  ok('WR-01: a rename and a type change on a device that had not heard of the merge (mtime 200 against the tombstone\'s 100) do not revive db-curl, both orders, replayed twice',
+     r3.commutes && p3.every(merged), p3);
+
+  /* Two devices merge the same pair opposite ways at once. The later merge decides, and the pair never
+     ends as two tombstones, which would leave the lift with no live row to rename or merge. */
+  const O1 = regDB([eqRow('DB curl', 300, { aliases: [], deletedAt: 300, mergedInto: 'dumbbell-curl' }),
+                    eqRow('Dumbbell curl', 300, { aliases: ['dumbbell curl', 'db curl'] })], 300);
+  const O2 = regDB([eqRow('Dumbbell curl', 400, { aliases: [], deletedAt: 400, mergedInto: 'db-curl' }),
+                    eqRow('DB curl', 400, { aliases: ['db curl', 'dumbbell curl'] })], 400);
+  const ro = replay(O1, O2);
+  const po = ro.all.map(db => { R.DB = clone(db); const t = rowOf(db, 'dumbbell-curl');
+    return { live: !!R.exRow('db-curl'), tomb: !!t && !!t.deletedAt && t.mergedInto === 'db-curl',
+             keys: [R.exKey({ exId: 'db-curl' }), R.exKey({ exId: 'dumbbell-curl' })], byName: R.exIdByName('Dumbbell curl') }; });
+  ok('WR-01: two devices merging one pair opposite ways keep the later merge — db-curl live, dumbbell-curl a tombstone into it, both ids resolving to db-curl, both orders, replayed twice',
+     ro.commutes && po.every(x => x.live && x.tomb && x.keys.every(k => k === 'db-curl') && x.byName === 'db-curl'), po);
+
+  /* A live row that shares one spelling with a newer row loses only that spelling and stays live. */
+  const K1 = regDB([eqRow('Curl', 500, { aliases: ['curl', 'db curl'] })], 100);
+  const K2 = regDB([eqRow('DB curl', 600, { aliases: ['db curl'] })], 200);
+  const rk = replay(K1, K2);
+  const pk = rk.all.map(db => ({ curl: rowOf(db, 'curl'), owners: owners(db, 'db curl') }));
+  ok('WR-01: two live rows sharing "db curl" leave it on the newer row only; the older keeps "curl" and stays live, both orders, replayed twice',
+     rk.commutes && pk.every(x => !!x.curl && !x.curl.deletedAt && JSON.stringify(x.curl.aliases) === '["curl"]' && JSON.stringify(x.owners) === '["db-curl"]'), pk);
+}
 
 /* ── EQUIP rounding: deloads, warm-ups and the suggest line follow the exercise's own ladder (Phase 9,
    plan 09-03, EQUIP-05). A 15 lb dumbbell deload used to round back to 15 through a flat 5-lb rounding,

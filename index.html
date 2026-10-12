@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-b/8QHAqcWW2dqnh3lsAwkOAET0azP2LyiECgOIEE+xA=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-bU8qYRz/fF5mw7lAg/IlyWdP6cJrqtQ/zsJYq/TFAyQ=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -4558,20 +4558,71 @@ function mergeCollections(r, l, localNewer, out){
    comes from the copy with the newest equipAt (the field clock, equipClock below). So a migration
    default (equipAt 0) never beats Ian's choice, and a later rename on the other device never erases
    it. Only a STRICTLY higher clock replaces the winning row's own type, which keeps the merge
-   commutative when two copies tie; the replaced row is a new object, never the input. */
+   commutative when two copies tie; the replaced row is a new object, never the input.
+
+   A merged-away row stays merged (WR-01). Nothing in the app revives a registry tombstone on purpose:
+   exEnsure never reuses a tombstoned id, and there is no restore for exercises. So once any copy of
+   a row is a tombstone, the newest tombstone copy wins, even against a live copy with a later mtime,
+   which is a rename or a type change made on a device that had not heard about the merge yet. Two
+   devices merging one pair opposite ways at once would then leave two tombstones pointing at each
+   other and no live row at all; the later merge decides that cycle, and its target comes back live.
+   Last, two live rows never share a spelling. A pre-Phase-9 merge spliced the row out instead of
+   tombstoning it, so a device still holding the row, or a backup older than the merge, brings it back
+   alongside the survivor that also owns its alias. Each shared alias stays on the row with the newer
+   mtime (the id breaks a tie), and a row left with no alias becomes a tombstone merged into the row
+   that took it. Every rule reads only the set of copies, never which side they came from, so the
+   result is the same in either order and stable when replayed. */
 function mergeExercises(r, l, localNewer){
   const ra = Array.isArray(r.exercises) ? r.exercises : [], la = Array.isArray(l.exercises) ? l.exercises : [];
-  const rows = mergeUnion(ra, la, x => x.id, localNewer);
+  /* Newer side first, replaced only on a strictly newer mtime: the same tie rule as mergeUnion. */
+  const copies = (localNewer ? la.concat(ra) : ra.concat(la)).filter(x => x && typeof x === 'object');
+  const mt = x => +x.mtime || 0;
+  const newest = (id, test) => { let b = null; copies.forEach(x => { if(x.id === id && test(x) && (!b || mt(x) > mt(b))) b = x; }); return b; };
+  const rows = mergeUnion(ra, la, x => x.id, localNewer).map(row => row.deletedAt ? row : (newest(row.id, x => !!x.deletedAt) || row));
+  /* A cycle of tombstones: the merge with the latest deletedAt (then the larger id) decides, and its
+     target is revived from its newest live copy, or from the tombstone itself when no live copy is left. */
+  const at = new Map(rows.map((x, i) => [x.id, i]));
+  rows.forEach(t => {
+    const path = [];
+    let cur = t;
+    while(cur && cur.deletedAt && typeof cur.mergedInto === 'string' && path.indexOf(cur.id) < 0){
+      path.push(cur.id);
+      cur = at.has(cur.mergedInto) ? rows[at.get(cur.mergedInto)] : null;
+    }
+    if(!cur || !cur.deletedAt || path.indexOf(cur.id) < 0) return;
+    const ring = path.slice(path.indexOf(cur.id)).map(id => rows[at.get(id)]);
+    const last = ring.reduce((a, x) => ((+x.deletedAt || 0) > (+a.deletedAt || 0) || ((+x.deletedAt || 0) === (+a.deletedAt || 0) && String(x.id) > String(a.id))) ? x : a);
+    const j = at.get(last.mergedInto);
+    let back = newest(last.mergedInto, x => !x.deletedAt);
+    if(!back){
+      back = Object.assign({}, rows[j]); delete back.deletedAt; delete back.mergedInto;
+      if(!Array.isArray(back.aliases) || !back.aliases.length) back.aliases = [normEx(back.name)];
+    }
+    rows[j] = back;
+  });
   const best = new Map();
   ra.concat(la).forEach(x => {
     if(!x || typeof x !== 'object') return;
     const prev = best.get(x.id);
     if(prev === undefined || equipClock(x) > equipClock(prev)) best.set(x.id, x);
   });
-  return rows.map(row => {
+  const typed = rows.map(row => {
     const b = best.get(row.id);
     if(!b || !(equipClock(b) > equipClock(row))) return row;
     return Object.assign({}, row, { equip: b.equip, equipAt: +b.equipAt });
+  });
+  /* One live owner per alias. */
+  const over = (a, b) => mt(a) > mt(b) || (mt(a) === mt(b) && String(a.id) > String(b.id));
+  const owner = new Map();
+  typed.forEach(x => { if(x.deletedAt || !Array.isArray(x.aliases)) return;
+    x.aliases.forEach(k => { const o = owner.get(k); if(!o || over(x, o)) owner.set(k, x); }); });
+  return typed.map(x => {
+    if(x.deletedAt || !Array.isArray(x.aliases)) return x;
+    const keep = x.aliases.filter(k => owner.get(k) === x);
+    if(keep.length === x.aliases.length) return x;
+    if(keep.length) return Object.assign({}, x, { aliases: keep });
+    const into = x.aliases.map(k => owner.get(k)).reduce((a, b) => over(b, a) ? b : a);
+    return Object.assign({}, x, { aliases: [], deletedAt: mt(into) || 1, mergedInto: into.id });
   });
 }
 /* A registry row's equipment field clock: its equipAt, but only when its equip is one of

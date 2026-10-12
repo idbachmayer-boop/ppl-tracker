@@ -31,8 +31,10 @@ legitimately remove sets.
 `hobbyLog`/`petWeights` — the union merge would resurrect it from the cloud forever. Set `deletedAt`,
 call `touch()`, and read through `liveSessions()` / `liveWeights()` / etc. A missed filter ghosts a
 deleted row back into a view. The exercise registry (`DB.exercises`) has merged per row since Phase 9,
-so `exMerge` tombstones the merged-away row (`deletedAt`, `mergedInto`, empty `aliases`), `exRow()`
-reads live rows only, and a registry row is never filtered out.
+so `exMerge` tombstones the merged-away row (`deletedAt`, `mergedInto`, empty `aliases`), and a
+registry row is never spliced out of `DB.exercises`. `exRow()` reads live rows only, and `exKey()`
+follows `mergedInto` to the survivor. In the merge a registry tombstone beats a live copy of the same
+id, even a newer one, and two live rows never share an alias. Nothing revives a registry tombstone.
 
 **Absence never means "off".** `mobilityLog` and `lawnLog` take the whole inner object from the newer
 side, so a deleted key reads as "never logged" on the other device. Store an explicit `false`.
