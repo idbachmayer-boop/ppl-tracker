@@ -8984,6 +8984,158 @@ function eqTagOf(card, i){
   ok('T-9-27: equipAsk is never stored', !JSON.stringify(U.__stored()).includes('equipAsk'), null);
   U.DB.draft = null;
 }
+{
+  /* Every path: the picker asks only for a genuinely new name the table cannot place, and only on a
+     weighted card; the tag states the step for the type and unit, live. */
+  const W1 = 'PUSH 1', PL1 = 'PULL 1';
+  const LAT = app.PROGRAM[W1].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+  const FLY = app.PROGRAM[W1].slots.findIndex(s => s.examples.includes('DB fly'));
+  const asks = (a, id) => !!(a.equipAsk && a.equipAsk.has(id));
+  const custom = (a, i, typed, keep) => {
+    a.__sandbox.prompt = () => typed;
+    a.__sandbox.confirm = () => !keep;
+    fireAction(a, 'change', fakeEl({ action: 'pickEx', i: String(i) }, { value: '__custom' }));
+    a.__sandbox.confirm = () => true;
+  };
+
+  /* A program name on a fresh install: the row is made, and the table knows the name. */
+  const F = loadApp(APP_PATH);
+  spyPushes(F);
+  F.DB = F.blank();
+  F.DB.draft = fullDraft(F, W1);
+  fireAction(F, 'change', fakeEl({ action: 'pickEx', i: String(LAT) }, { value: 'Cable lateral raise' }));
+  const fRow = (F.DB.exercises || []).find(x => x && x.id === 'cable-lateral-raise');
+  ok('D-16: picking the program name "Cable lateral raise" on a fresh install makes its row and never asks',
+     !!fRow && !asks(F, 'cable-lateral-raise') && eqPickerOf(eqUiCard(F, LAT)).length === 0,
+     { row: fRow, asks: asks(F, 'cable-lateral-raise') });
+
+  /* A typed name that already has a row. */
+  const H = loadApp(APP_PATH);
+  spyPushes(H);
+  eqRun(H, [ eqSess('ui-lat', W1, dayOff(-7), LAT, 'DB lateral raise', [[25, 12], [25, 12], [25, 12]]),
+             eqSess('ui-fly', W1, dayOff(-14), FLY, 'Seated Fly', [[100, 12], [100, 12], [100, 12]]) ]);
+  eqCard(H, W1, LAT);
+  custom(H, LAT, 'DB lateral raise');
+  ok('D-16: "+ Custom…" typing "DB lateral raise", which already has a row, never asks',
+     H.DB.draft.entries[LAT].exId === 'db-lateral-raise' && H.equipAsk.size === 0 && eqPickerOf(eqUiCard(H, LAT)).length === 0,
+     { exId: H.DB.draft.entries[LAT].exId, asked: [...(H.equipAsk || [])] });
+
+  /* "Did you mean": confirming resolves to the existing row, keeping it separate makes a new one. */
+  custom(H, FLY, 'Seated Flyy');
+  ok('D-16: "Seated Flyy" confirmed as "Seated Fly" resolves to the existing row and never asks',
+     H.DB.draft.entries[FLY].exId === 'seated-fly' && H.equipAsk.size === 0 && eqPickerOf(eqUiCard(H, FLY)).length === 0,
+     { exId: H.DB.draft.entries[FLY].exId, asked: [...(H.equipAsk || [])] });
+  custom(H, FLY, 'Seated Flyy', true);
+  const flyy = H.DB.draft.entries[FLY].exId;
+  const flyyPk = eqPickerOf(eqUiCard(H, FLY));
+  ok('D-16: "Seated Flyy" kept separate makes a new row and the picker shows for it',
+     flyy === 'seated-flyy' && asks(H, 'seated-flyy') && flyyPk.length === 6 && flyyPk.every(b => b.id === 'seated-flyy'),
+     { exId: flyy, picker: flyyPk.length });
+  H.equipAsk.clear();
+
+  /* Accessory cards: a weighted one asks inside the card, a time-based one never does. */
+  const AC = loadApp(APP_PATH);
+  spyPushes(AC);
+  AC.DB = populatedDB(AC);
+  AC.DB.draft = fullDraft(AC, W1);
+  AC.accOpen.add('abs');
+  AC.__sandbox.prompt = () => 'Zercher sit-up';
+  fireAction(AC, 'change', fakeEl({ action: 'exPick', id: 'abs' }, { value: '__custom' }));
+  const absCard = AC.extraCard('abs');
+  const absPk = eqPickerOf(absCard);
+  const selAt = absCard.indexOf('data-action="exPick"'), askAt = absCard.indexOf('class="equip-ask"');
+  ok('D-16: "+ Custom…" on the open abs card with "Zercher sit-up" shows the picker inside that card, after its exPick select',
+     absPk.length === 6 && absPk.every(b => b.id === 'zercher-sit-up') && selAt >= 0 && askAt > selAt,
+     { picker: absPk.length, selAt, askAt });
+  AC.DB.draft = fullDraft(AC, PL1);
+  AC.accOpen.add('deadhang');
+  AC.__sandbox.prompt = () => 'Bar hang hold';
+  fireAction(AC, 'change', fakeEl({ action: 'exPick', id: 'deadhang' }, { value: '__custom' }));
+  const hangRow = (AC.DB.exercises || []).find(x => x && x.id === 'bar-hang-hold');
+  const hangCard = AC.extraCard('deadhang');
+  ok('D-16: "+ Custom…" on the time-based dead-hang card makes the row but shows no picker there',
+     !!hangRow && hangCard.includes('data-action="exPick"') && eqPickerOf(hangCard).length === 0 && !hangCard.includes('equip-ask'),
+     { row: !!hangRow, picker: eqPickerOf(hangCard).length });
+  ok('D-05: no accessory card carries an equipment tag', !AC.extraCard('deadhang').includes('equip-tag-') && !absCard.includes('equip-tag-'), null);
+  AC.equipAsk.clear(); AC.accOpen.clear(); AC.DB.draft = null;
+
+  /* Two new names on two cards: two pickers, each for its own id, and a tap on one leaves the other. */
+  const T = loadApp(APP_PATH);
+  spyPushes(T);
+  T.DB = populatedDB(T);
+  T.DB.draft = fullDraft(T, W1);
+  custom(T, 0, 'Zercher carry', true);
+  custom(T, 1, 'Viking press', true);
+  const pk0 = eqPickerOf(eqUiCard(T, 0)), pk1 = eqPickerOf(eqUiCard(T, 1));
+  ok('zero-one-many: two new names on cards 0 and 1 give two pickers, each with its own id',
+     pk0.length === 6 && pk0.every(b => b.id === 'zercher-carry') && pk1.length === 6 && pk1.every(b => b.id === 'viking-press'),
+     { pk0: pk0.map(b => b.id), pk1: pk1.map(b => b.id) });
+  fireAction(T, 'click', fakeEl({ action: 'pickExEquip', id: 'zercher-carry', equip: 'dumbbell' }));
+  const after0 = eqUiCard(T, 0), after1 = eqPickerOf(eqUiCard(T, 1));
+  ok('zero-one-many: a tap on card 0\'s dumbbell answers card 0 and leaves card 1\'s picker in place',
+     eqPickerOf(after0).length === 0 && eqTagOf(after0, 0) === 'dumbbell · +2.5'
+       && after1.length === 6 && after1.every(b => b.id === 'viking-press') && asks(T, 'viking-press'),
+     { tag0: eqTagOf(after0, 0), pk1: after1.length });
+  T.equipAsk.clear(); T.DB.draft = null;
+
+  /* Tags. Each case puts a name and its weights on the LAT card and reads the rendered tag. */
+  const G = loadApp(APP_PATH);
+  spyPushes(G);
+  eqRun(G, [ eqSess('tag-lat', W1, dayOff(-7), LAT, 'DB lateral raise', [[25, 12], [25, 12], [25, 12]]) ]);
+  eqCard(G, W1, LAT);
+  const tagFor = (name, ws) => {
+    const e = G.DB.draft.entries[LAT];
+    e.name = name; delete e.exId;
+    e.sets = ws.map(w => ({ w: String(w), r: '', skipped: false }));
+    return eqTagOf(eqUiCard(G, LAT), LAT);
+  };
+  const lbTags = {
+    lat25: tagFor('DB lateral raise', [25, 25, 25]),
+    bench: tagFor('Barbell bench press', [135, 135]),
+    push: tagFor('Triceps pushdown', [50]),
+    ohp: tagFor('Seated OHP', [90]),
+    chin: tagFor('Chin-up', ['', '']),
+    blank: tagFor('DB lateral raise', ['', '', '']),
+  };
+  ok('D-05: the tag reads dumbbell · +2.5, barbell · +5, cable · +2.5, machine · +5, bodyweight, and dumbbell · +2.5 with no weight entered',
+     lbTags.lat25 === 'dumbbell · +2.5' && lbTags.bench === 'barbell · +5' && lbTags.push === 'cable · +2.5'
+       && lbTags.ohp === 'machine · +5' && lbTags.chin === 'bodyweight' && lbTags.blank === 'dumbbell · +2.5', lbTags);
+
+  /* Live: the weight input's updPlates rewrites the tag with no re-render, on a card with no plate line. */
+  tagFor('DB lateral raise', ['', '', '']);
+  const liveEl = G.__sandbox.document.getElementById('equip-tag-' + LAT);
+  liveEl.textContent = 'stale';
+  G.setVal(LAT, 0, 'w', '65'); G.__sandbox.updPlates(LAT);
+  const at65 = liveEl.textContent;
+  G.setVal(LAT, 0, 'w', '25'); G.__sandbox.updPlates(LAT);
+  const at25 = liveEl.textContent;
+  ok('D-05: typing 65 on a DB lateral raise card flips its tag to "dumbbell · +5", and 25 flips it back to "dumbbell · +2.5", live',
+     at65 === 'dumbbell · +5' && at25 === 'dumbbell · +2.5', { at65, at25 });
+
+  /* kg: every non-bodyweight type moves 2.5 (D-10). */
+  G.DB.unit = 'kg';
+  const kgTags = { bench: tagFor('Barbell bench press', [60]), lat65: tagFor('DB lateral raise', [65]), chin: tagFor('Chin-up', ['']) };
+  G.DB.unit = 'lb';
+  ok('D-10: in kg the tag reads barbell · +2.5, dumbbell · +2.5 at 65, and bodyweight',
+     kgTags.bench === 'barbell · +2.5' && kgTags.lat65 === 'dumbbell · +2.5' && kgTags.chin === 'bodyweight', kgTags);
+
+  /* A hostile stored type renders as the guess, and nothing it holds reaches the card. */
+  const latRow = G.DB.exercises.find(x => x && x.id === 'db-lateral-raise');
+  latRow.equip = '"><img src=x>';
+  const hostileTag = tagFor('DB lateral raise', [25]);
+  const hostileCard = eqUiCard(G, LAT);
+  ok('T-9-24: a hostile stored equip on DB lateral raise tags the card "dumbbell · +2.5", and the card holds no <img',
+     hostileTag === 'dumbbell · +2.5' && !hostileCard.includes('<img'), hostileTag);
+  latRow.equip = 'dumbbell';
+
+  /* Collapsed cards keep their one-line summary and carry no tag. */
+  tagFor('DB lateral raise', [25]);
+  G.__sandbox.toggleExCollapse(LAT);
+  const collapsed = eqUiCard(G, LAT);
+  ok('D-05: a collapsed card carries no tag and no picker',
+     collapsed.includes('expand') && !collapsed.includes('equip-tag-') && eqPickerOf(collapsed).length === 0, null);
+  G.DB.draft = null;
+}
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against

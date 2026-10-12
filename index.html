@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-rqEXF5guS0oXCQhefeqRXvZFALvMPYBZzJ/lf2ii0bg=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-ShJnkRlX6mslvnGo3jbEDqwWgLOE3pP5NyJs9pFV5pI=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1200,11 +1200,18 @@ function equipPickerHTML(id, name){
           <div class="equip-grid">${btns}</div>
         </div>`;
 }
-/* Live plate readout for a barbell exercise → the heaviest weight entered across its sets. */
-function updPlates(i){ const el=document.getElementById(`plates-${i}`); if(!el) return;
-  const name=DB.draft.entries[i].name, bar=barWeight(name); if(bar==null){ el.innerHTML=''; return; }
-  const ws=DB.draft.entries[i].sets.filter(s=>!s.skipped && s.w!=='' && +s.w>0).map(s=>+s.w);
-  el.innerHTML = ws.length ? platesText(Math.max(...ws), bar, barStyle(name)) : ''; }
+/* Live readouts on a card as a weight is typed: first the equipment tag (D-05), which every main card
+   carries, then the plate line, which only bar lifts have. The tag goes first so the early return
+   below never skips it; it is written as textContent, never markup. */
+function updPlates(i){
+  const entry = DB.draft.entries[i], name = entry.name;
+  const tag = document.getElementById(`equip-tag-${i}`);
+  if(tag) tag.textContent = equipTagText(name, cardTopWeight(entry.sets));
+  const el=document.getElementById(`plates-${i}`); if(!el) return;
+  const bar=barWeight(name); if(bar==null){ el.innerHTML=''; return; }
+  const ws=entry.sets.filter(s=>!s.skipped && s.w!=='' && +s.w>0).map(s=>+s.w);
+  el.innerHTML = ws.length ? platesText(Math.max(...ws), bar, barStyle(name)) : '';
+}
 const INCREMENT = { lb:5, kg:2.5 };
 /* Should we bump the load, and to what? The verdict judges the latest attempt on the card for this
    exercise in this slot (even one where every set was skipped or left blank, D-09): every set done
@@ -3159,6 +3166,7 @@ function extraCard(id){
     <button class="phase-header" data-action="toggleAcc" data-key="${esc(id)}"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${ph(def.icon)}${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
     ${open?`<div class="phase-body">
       <select data-action="exPick" data-id="${esc(id)}" style="margin-bottom:8px">${opts}</select>
+      ${(!isSec && equipAsk.has(exKey(e))) ? equipPickerHTML(exKey(e), e.name) : ''}
       <div class="set-grid" style="grid-template-columns:${cols};margin-bottom:4px"><span></span>${isSec?'':'<span class="colhead">Weight</span>'}<span class="colhead">${isSec?'Sec':'Reps'}</span><span></span></div>
       ${rows}
       <button class="addset" data-action="exAddSet" data-id="${esc(id)}">+ Add set</button>
