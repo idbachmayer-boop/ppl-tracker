@@ -153,6 +153,8 @@ function loadApp(htmlPath, seed, opts){
     'ACTIONS', 'dispatchAction', 'buildTabBar',
     /* Settings and the Ideas sheet (plan 05-02). */
     'renderIdeasList',
+    /* Equipment types and their defaults (Phase 9, EQUIP-01). */
+    'EQUIP_TYPES','EQUIP_LABEL','EQUIP_DEFAULTS',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-vIizx9pDW8e7DQXXv28JrxiESnjc7wUnpzuz431d1vM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-8tZwW4E8wuj9fY2A1xJsOLD6NQT1+I/i/bY1SqC0F/0=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -478,7 +478,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 18;
+const SCHEMA = 19;
 /* Which build is this? The deploy job stamps <meta name="ppl-build"> in <head> with
    "<ISO time> <short sha>", in the published copy only, so Settings can say which version a device
    is actually running — a phone still on a stale build has cost real confusion before.
@@ -533,6 +533,66 @@ const COLLECTIONS = {
   const problems = collectionProblems(COLLECTIONS);
   if(problems.length) throw new Error('COLLECTIONS is invalid: ' + problems.join('; '));
 }
+/* ───────────────────────── Equipment types (Phase 9, EQUIP-01/02) ─────────────────────────
+   Every exercise-registry row carries one synced `equip` value from EQUIP_TYPES. Migration 19 reads
+   this block while the stored blob boots (the boot load a few dozen lines down runs the migrations
+   table below), so everything here is a literal or a hoisted `function` declaration. Nothing in this
+   block may call normEx, slugEx, BAR_FOR, LANDMINE_RE, ACCESSORIES, or anything else declared further
+   down: a temporal-dead-zone error during that load is swallowed by normalize()'s silent catch while
+   `_schema` still advances, and the migration never runs again (how migration 15 died).
+   The stored string is never rendered. Display goes through EQUIP_LABEL, after the value is checked
+   against EQUIP_TYPES. Keys of EQUIP_DEFAULTS are normalised names: trimmed, lower-case, runs of
+   whitespace collapsed to one space (the same normalisation exKey uses). */
+const EQUIP_TYPES = ['barbell','ez','dumbbell','machine','cable','bodyweight'];
+const EQUIP_LABEL = { barbell:'barbell', ez:'EZ bar', dumbbell:'dumbbell', machine:'machine', cable:'cable', bodyweight:'bodyweight' };
+const EQUIP_DEFAULTS = {
+  "barbell bench press":'barbell', "barbell incline press":'barbell', "standing ohp":'barbell',
+  "romanian deadlift":'barbell', "barbell row":'barbell', "barbell curl":'barbell',
+  "t-bar row":'barbell', "meadows row":'barbell', "chest supported t-bar row":'barbell',
+  "back squat":'barbell', "front squat":'barbell', "stiff-leg deadlift":'barbell', "good mornings":'barbell',
+  "behind-the-back wrist curls":'barbell',
+  "ez-bar curl":'ez', "skull crusher":'ez', "preacher curl":'ez', "overhand grip curl":'ez',
+  "db bench press":'dumbbell', "db incline press":'dumbbell', "db fly":'dumbbell', "db shoulder press":'dumbbell',
+  "db lateral raise":'dumbbell', "db pullover":'dumbbell', "db curl":'dumbbell', "one-arm db row":'dumbbell',
+  "dumbbell row":'dumbbell', "hammer curl":'dumbbell', "deficit sumo squat":'dumbbell',
+  "bulgarian split squat":'dumbbell', "overhead triceps extension":'dumbbell', "wrist curls":'dumbbell',
+  "rear delt fly":'dumbbell', "concentration curl":'dumbbell', "reverse wrist curls":'dumbbell',
+  "farmer carry":'dumbbell',
+  "seated fly":'machine', "seated flys":'machine', "reverse pec deck":'machine', "machine crunch":'machine',
+  "leg press":'machine', "hack squat":'machine', "machine hamstring curl":'machine', "calf raise machine":'machine',
+  "leg extensions":'machine', "seated ohp":'machine',
+  "lat pulldown":'cable', "triceps pushdown":'cable', "seated cable row":'cable', "straight-arm pulldown":'cable',
+  "cable fly":'cable', "cable lateral raise":'cable', "cable crunch":'cable', "face pull":'cable',
+  "glute kickbacks":'cable',
+  "chin-up":'bodyweight', "pull-up":'bodyweight', "nordic hamstring curl":'bodyweight', "dead hang":'bodyweight',
+  "hanging leg raise":'bodyweight', "diamond push-ups":'bodyweight', "lunges":'bodyweight',
+  "weighted push-up":'bodyweight', "weighted decline push-up":'bodyweight', "dips":'bodyweight',
+  "weighted sit-up":'bodyweight', "dead bug":'bodyweight', "plank":'bodyweight', "plate/stair raise":'bodyweight',
+  "active hang":'bodyweight', "towel dead hang":'bodyweight',
+};
+/* The type a name defaults to. An own key of EQUIP_DEFAULTS wins first; then the name rules below, in
+   this fixed order, first match wins (dumbbell before cable before machine before EZ, so a cable or
+   machine variant of a preacher curl is not read as an EZ bar); then 'machine' — 5 lb and no plate
+   line, which is what an unclassifiable name got before this phase. The own-key test keeps names
+   such as 'constructor' or '__proto__' from reading the prototype. */
+function equipGuess(name){
+  const norm = s => String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,' ');
+  const k = norm(name);
+  if(Object.prototype.hasOwnProperty.call(EQUIP_DEFAULTS, k) && EQUIP_TYPES.indexOf(EQUIP_DEFAULTS[k]) >= 0) return EQUIP_DEFAULTS[k];
+  if(/\bdb\b|dumbbell/.test(k)) return 'dumbbell';
+  if(/cable|pulldown|pushdown|face pull/.test(k)) return 'cable';
+  if(/\bmachine\b|pec deck|smith/.test(k)) return 'machine';
+  if(/\bez\b|skull crusher|preacher/.test(k)) return 'ez';
+  if(/t-?\s?bar|meadows|landmine|barbell/.test(k)) return 'barbell';
+  if(/push-?ups?\b|pull-?ups?\b|chin-?ups?\b|\bdips?\b|\bhang\b|plank|nordic|\blunges?\b|dead bug/.test(k)) return 'bodyweight';
+  return 'machine';
+}
+/* True when the normalised name has its own row in the default table (the D-16 first-time picker
+   asks only for a name that does not). */
+function equipKnown(name){
+  const norm = s => String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,' ');
+  return Object.prototype.hasOwnProperty.call(EQUIP_DEFAULTS, norm(name));
+}
 /* Ordered schema migrations. Each takes the data object up one version. Must be idempotent. */
 const MIGRATIONS = {
   1:d=>{ if(!d.hobbies) d.hobbies=DEFAULT_HOBBIES.slice(); if(!d.hobbyLog) d.hobbyLog=[]; if(!('lawn' in d)) d.lawn=null; if(!('wx' in d)) d.wx=null; return d; },
@@ -577,6 +637,7 @@ const MIGRATIONS = {
   /* Exercises stop being strings and become things with ids. See buildExerciseRegistry(). */
   17:d=>buildExerciseRegistry(d),
   18:d=>ensureCollectionDefaults(d), // sleep log — creates absent collections only (COLLECTIONS registry, F1)
+  19:d=>stampEquipment(d), // equipment type per registry row (EQUIP-02), mtime old + 1 (D-14) — see stampEquipment()
 };
 /* Creates ABSENT collections only — never rewrites a row that already carries an mtime, so the
    four REG-16 guards a row-rewriting migration must satisfy (touch, persist immediately, stay
@@ -642,6 +703,24 @@ function buildExerciseRegistry(d){
     (d.draft.entries||[]).forEach(e=>stamp(e));
     if(d.draft.extras) Object.keys(d.draft.extras).forEach(k=>stamp(d.draft.extras[k], k==='forearms'?FOREARM_ORPHAN:null));
   }
+  return d;
+}
+/* Migration 19 (EQUIP-02): give every registry row an equipment type, guessed from its name, with
+   `equipAt` 0 meaning "a default, not Ian's choice". Reads only EQUIP_TYPES and equipGuess, both above
+   the migrations table, so it is safe during the boot load. Idempotent: a row already holding a valid
+   type, a tombstone and a non-object are left alone, so a second boot rewrites nothing.
+   The row's `mtime` becomes its old value + 1 (a row with no usable mtime gets 1), never now (D-14).
+   That is just enough to beat the stale un-migrated copy of the same row on another device, and never
+   enough to outrun a real rename or merge Ian made there in the meantime — a now-stamp on a device
+   that updates late would revert his edits. Nothing here persists; the boot save does, before any
+   pull can run. */
+function stampEquipment(d){
+  (Array.isArray(d.exercises) ? d.exercises : []).forEach(r=>{
+    if(!r || typeof r !== 'object' || r.deletedAt || EQUIP_TYPES.indexOf(r.equip) >= 0) return;
+    r.equip = equipGuess(r.name);
+    r.equipAt = 0;
+    r.mtime = (isFinite(+r.mtime) ? +r.mtime : 0) + 1;
+  });
   return d;
 }
 function renameLoggedExercise(d, map){
@@ -1094,8 +1173,20 @@ const INCREMENT = { lb:5, kg:2.5 };
    every set at the top of the range. Computed at render time, never stored. */
 function setWeightNum(x){ const v = (!x || x.w==='' || x.w==null) ? 0 : +x.w; return isFinite(v) && v>0 ? v : 0; }
 function workedSets(e){ return (e && Array.isArray(e.sets) ? e.sets : []).filter(x=> x && !x.skipped && x.r!=='' && x.r!=null); }
-/* The one seam Phase 9 (EQUIP-04) replaces: only the body changes, so `name` is kept though unused. */
-function weightStep(name){ return INCREMENT[DB.unit] || 5; }
+/* How far ⬆ Add weight moves (EQUIP-04), by the exercise's equipment type. null means "no number":
+   a bodyweight exercise is told to add a belt or a harder variation, never a weight, in either unit.
+   kg keeps a flat 2.5 for every other type (D-10). In lb, dumbbells follow the rack: 2.5 below 60,
+   5 from 60 up, so 57.5 → 60 → 65 → 70 (D-08, D-17); cable stacks move 2.5; barbell, EZ bar and
+   machine move 5 (D-09). The unit is compared with the literal 'kg' and never used as an index, so a
+   hostile unit cannot reach Object.prototype. */
+function weightStep(name, w){
+  const t = equipOf(name);
+  if(t === 'bodyweight') return null;
+  if(DB.unit === 'kg') return INCREMENT.kg;
+  if(t === 'dumbbell') return (+w || 0) >= 60 ? 5 : 2.5;
+  if(t === 'cable') return 2.5;
+  return 5;
+}
 /* Unlike lastRealEntry, an entry with no worked set still counts here, as long as it was on the card
    (it holds sets, or blankSets says its sets were left blank). lastRealEntry keeps feeding Last time
    and the prefilled weights. */
@@ -1125,7 +1216,8 @@ function addWeightInfo(workout, slotIndex, name){
   const att = lastAttemptEntry(workout, slotIndex, name);
   if(!att) return null;
   const v = addWeightVerdict(att.entry, effRange(slot, name));
-  return { allTop:v.allTop, lastW:v.lastW, newW: v.lastW + weightStep(name), hasLoad:v.hasLoad };
+  const step = weightStep(name, v.lastW);
+  return { allTop:v.allTop, lastW:v.lastW, newW: step == null ? null : v.lastW + step, hasLoad:v.hasLoad };
 }
 /* Per-set "beat last time" badge: ✓ beat, = tied, '' under (compared at the matched weight). */
 function badgeState(st, t){
@@ -1277,13 +1369,20 @@ function exKey(e){
 }
 /* What to show for an identity: the registry's label, else the raw key. */
 function exLabel(key){ const r = exRow(key); return r ? r.name : (key||''); }
+/* The equipment type of a name (EQUIP-01): the registry row's stored value when it is one of
+   EQUIP_TYPES, else the guess from the name. A missing, empty or hostile stored value never changes
+   behaviour, and renaming a row never re-guesses a stored type. */
+function equipOf(name){
+  const r = exRow(exKey(name));
+  return (r && EQUIP_TYPES.indexOf(r.equip) >= 0) ? r.equip : equipGuess(name);
+}
 /* Register a name and return its id, creating the row when it's genuinely new. */
 function exEnsure(name){
   const k = normEx(name); if(!k) return null;
   const found = exIdByName(name); if(found) return found;
   let id = slugEx(name), n = 2;
   while(exRow(id)) id = slugEx(name) + '-' + (n++);
-  exRows().push(touch({ id, name:String(name).trim(), aliases:[k] }));
+  exRows().push(touch({ id, name:String(name).trim(), aliases:[k], equip: equipGuess(name), equipAt: 0 }));
   return id;
 }
 /* Fold `fromId` into `intoId`: the alias comes along, every logged row is restamped, and the merged
@@ -1820,7 +1919,7 @@ function startWorkout(name){
         const real = ref? ref.entry.sets.filter(x=>!x.skipped && x.r!=='') : [];
         return { name: exName, note:'', sets: Array.from({length:s.sets},(_,k)=>{
           let w='';
-          if(aw) w = (aw.allTop && aw.hasLoad) ? String(aw.newW) : (real[k]? real[k].w : (real.length? real[real.length-1].w : ''));
+          if(aw) w = (aw.allTop && aw.hasLoad && aw.newW != null) ? String(aw.newW) : (real[k]? real[k].w : (real.length? real[real.length-1].w : ''));
           return { w, r:'', skipped:false, reason:'' };
         }) };
       }),
@@ -1878,7 +1977,7 @@ function viewActive(){
       lastLine = `Last time (${fmtDate(ref.date)}): <strong>${esc(real.map(x=> fmtSet(x.w,x.r)).join(',  '))||'—'}</strong>`;
       const aw = addWeightInfo(name, i, entry.name);
       /* Bodyweight (weight 0 or blank) at the top has no next number to suggest (PROG-05, D-08). */
-      flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${aw.hasLoad?` → ${esc(aw.newW)} ${esc(DB.unit)}`:' (belt) or harder variation'}</span>` : '';
+      flag = (aw && aw.allTop) ? `<span class="flag">⬆ Add weight${(aw.hasLoad && aw.newW != null)?` → ${esc(aw.newW)} ${esc(DB.unit)}`:' (belt) or harder variation'}</span>` : '';
       if(ref.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(ref.entry.note)}</div>`;
     } else if(alt){
       const altReal = alt.entry.sets.filter(x=>!x.skipped && x.r!=='');

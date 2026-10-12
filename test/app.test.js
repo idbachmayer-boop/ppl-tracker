@@ -162,7 +162,8 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'validateBackup_legacy', 'mergeDB_legacy', 'mergeCollections', 'ensureCollectionDefaults',
   'sleepUid', 'addSleep', 'removeSleep', 'viewSleep',
   'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown', 'exportShareFailed',
-  'ACTIONS', 'dispatchAction'];
+  'ACTIONS', 'dispatchAction',
+  'EQUIP_TYPES','EQUIP_LABEL','EQUIP_DEFAULTS'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -1332,7 +1333,7 @@ ok('sleep: blank() has an empty sleep list', Array.isArray(app.blank().sleep) &&
   const mtimesAfter = JSON.stringify(LEGACY_LISTS.reduce((acc, name) => acc.concat((after[name] || []).map(r => r.mtime)), []).sort());
   const legacyUnchanged = LEGACY_COLLECTIONS.every(name => legacyBefore[name] === legacyAfter[name]);
   ok('sleep: migration 18 rewrites no existing row (REG-16 guards not triggered)',
-     legacyUnchanged && mtimesBefore === mtimesAfter && Array.isArray(after.sleep) && after.sleep.length === 0 && after._schema === 18,
+     legacyUnchanged && mtimesBefore === mtimesAfter && Array.isArray(after.sleep) && after.sleep.length === 0 && after._schema === app.SCHEMA,
      { legacyUnchanged, mtimesBefore, mtimesAfter, sleepLen: after.sleep.length, schema: after._schema });
 }
 
@@ -1357,8 +1358,8 @@ ok('sleep: blank() has an empty sleep list', Array.isArray(app.blank().sleep) &&
 
   const s17 = Object.assign(app.blank(), { _schema:17, updatedAt:100 }); delete s17.sleep;
   const s18 = Object.assign(app.blank(), { _schema:18, updatedAt:200 });
-  const mergeStamped = app.mergeDB(clone(s17), clone(s18), false)._schema === 18
-    && app.mergeDB(clone(s18), clone(s17), false)._schema === 18;
+  const mergeStamped = app.mergeDB(clone(s17), clone(s18), false)._schema === app.SCHEMA
+    && app.mergeDB(clone(s18), clone(s17), false)._schema === app.SCHEMA;
 
   ok('sleep: _schema never goes down', normKept && mergeStamped, { normKept, mergeStamped });
 }
@@ -7754,12 +7755,13 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
      ['addWeightVerdict', 'lastAttemptEntry', 'weightStep', 'workedSets', 'setWeightNum', 'addWeightInfo'].every(n => typeof S[n] === 'function'),
      ['addWeightVerdict', 'lastAttemptEntry', 'weightStep', 'workedSets', 'setWeightNum', 'addWeightInfo'].filter(n => typeof S[n] !== 'function'));
 
-  // Positive control: every set done, at 25 and at the top of 15-20, earns the bump to 30.
+  /* Positive control: every set done, at 25 and at the top of 15-20, earns the bump to 27.5. DB lateral
+     raise is a dumbbell, so since Phase 9 it moves by the rack's 2.5 below 60, not a flat 5 (EQUIP-04). */
   latRun([ latSess(dayOff(-7), [[25, 20], [25, 20], [25, 20]]) ]);
   {
     const card = latCard(LAT), flag = flagOf(card);
-    ok('PROG-01: every set at the top earns ⬆ Add weight with the next weight, and the prefill bumps',
-       LAT >= 0 && flag !== null && flag.includes('30') && draftW().length === 3 && draftW().every(w => w === '30'),
+    ok('PROG-01: every set at the top earns ⬆ Add weight with the next weight, and the prefill bumps (EQUIP-04: 25 → 27.5)',
+       LAT >= 0 && flag !== null && flag.includes('27.5') && draftW().length === 3 && draftW().every(w => w === '27.5'),
        { LAT, flag, w: draftW() });
   }
 
@@ -7815,8 +7817,8 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
   {
     finishLat([[25, 20], [25, 20], [25, 20], [25, 20]], () => S.addSet(LAT));
     const flag = flagOf(latCard(LAT));
-    ok('D-01: a set added with + Add set counts: four sets at the top earn ⬆ Add weight → 30',
-       flag !== null && flag.includes('30'), flag);
+    ok('D-01: a set added with + Add set counts: four sets at the top earn ⬆ Add weight → 27.5 (EQUIP-04)',
+       flag !== null && flag.includes('27.5'), flag);
     finishLat([[25, 20], [25, 20], [25, 20], [25, 19]], () => S.addSet(LAT));
     const card = latCard(LAT);
     ok('D-01: an added set below the top blocks ⬆ Add weight',
@@ -7825,8 +7827,8 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
   {
     const row = finishLat([[25, 20], [25, 20]], () => S.rmSet(LAT, 2)), e = row && row.entries[LAT];
     const flag = flagOf(latCard(LAT));
-    ok('D-01: a set removed with rmSet is not missing: two sets at the top earn ⬆ Add weight → 30, with no blankSets',
-       !!e && !('blankSets' in e) && e.sets.length === 2 && flag !== null && flag.includes('30'),
+    ok('D-01: a set removed with rmSet is not missing: two sets at the top earn ⬆ Add weight → 27.5 (EQUIP-04), with no blankSets',
+       !!e && !('blankSets' in e) && e.sets.length === 2 && flag !== null && flag.includes('27.5'),
        { e, flag });
   }
   {
@@ -7866,8 +7868,8 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
   {
     latRun([ latSess(dayOff(-14), TOP3), latSess(dayOff(-7), []) ]);
     const flag = flagOf(latCard(LAT));
-    ok('D-07/D-09: a legacy later entry with sets [] and no blankSets was never on the card, so the all-top attempt still earns ⬆ Add weight',
-       flag !== null && flag.includes('30'), flag);
+    ok('D-07/D-09: a legacy later entry with sets [] and no blankSets was never on the card, so the all-top attempt still earns ⬆ Add weight (→ 27.5, EQUIP-04)',
+       flag !== null && flag.includes('27.5'), flag);
   }
 
   // D-01 / T-8-04: sessions merge as whole rows by mtime, so a stale copy cannot drop the marker.
@@ -7911,7 +7913,7 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
        !card.includes('class="flag"') && !!aw && aw.allTop === false, { flag: flagOf(card), aw });
     latRun([ latSess(dayOff(-7), [[30, 20], [30, 20], [30, 20]]) ]);
     const flag = flagOf(latCard(LAT));
-    ok('D-02: 30/30/30 lb all at the top gives ⬆ Add weight → 35', flag !== null && flag.includes('35'), flag);
+    ok('D-02: 30/30/30 lb all at the top gives ⬆ Add weight → 32.5 (EQUIP-04)', flag !== null && flag.includes('32.5'), flag);
   }
 
   // PROG-05 / D-08: bodyweight (weight 0 or blank) at the top gets a belt or a harder variation, no number.
@@ -8179,9 +8181,10 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
 
   /* WR-03: a row the draft creates or restores takes a weight from its neighbours. A blank weight reads
      as bodyweight, so under D-02 a row Ian fills with reps only would quietly block ⬆ Add weight.
-     History is all-top at 25, so the draft prefills 30 and Ian types reps only. */
+     History is all-top at 25, so the draft prefills 27.5 (a dumbbell's 2.5 step, EQUIP-04) and Ian types
+     reps only. */
   {
-    // 30 lb beats the 25 lb history, so these finishes are PRs; the stub keeps the canvas out of it.
+    // 27.5 lb beats the 25 lb history, so these finishes are PRs; the stub keeps the canvas out of it.
     const realConfetti = S.confettiBurst; S.confettiBurst = () => {};
     const repsOnly = n => { for(let k = 0; k < n; k++) P.setVal(LAT, k, 'r', '20'); };
     latRun([ latSess(dayOff(-7), TOP3) ]);
@@ -8191,8 +8194,8 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
     repsOnly(4);
     P.finishWorkout();
     const flag = flagOf(latCard(LAT));
-    ok('WR-03: + Add set takes the weight above it (30), so four sets with only reps typed earn ⬆ Add weight → 35',
-       added === '30' && flag !== null && flag.includes('35'), { added, flag });
+    ok('WR-03: + Add set takes the weight above it (27.5), so four sets with only reps typed earn ⬆ Add weight → 30 (EQUIP-04)',
+       added === '27.5' && flag !== null && flag.includes('30'), { added, flag });
 
     latRun([ latSess(dayOff(-7), TOP3) ]);
     latCard(LAT);
@@ -8202,8 +8205,8 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
     repsOnly(3);
     P.finishWorkout();
     const flag2 = flagOf(latCard(LAT));
-    ok('WR-03: undoing a skip gives the set its weight back (30), so three sets with only reps typed earn ⬆ Add weight → 35',
-       restored === '30' && flag2 !== null && flag2.includes('35'), { restored, flag: flag2 });
+    ok('WR-03: undoing a skip gives the set its weight back (27.5), so three sets with only reps typed earn ⬆ Add weight → 30 (EQUIP-04)',
+       restored === '27.5' && flag2 !== null && flag2.includes('30'), { restored, flag: flag2 });
 
     const row = finishLat([[25, 20], [25, 20], null]);
     const id = row && row.id;
@@ -8217,13 +8220,86 @@ console.log('\n── PROG: add weight and stall follow what was lifted (PROG-01
       e = same.length === 1 ? same[0].entries[LAT] : null;
     }catch(err){ threw = String(err && err.stack || err); }
     const flag3 = flagOf(latCard(LAT));
-    ok('WR-03: editSession restores a blank row at the last worked weight (25), so filling its reps stores 25×20 three times and earns ⬆ Add weight → 30',
+    ok('WR-03: editSession restores a blank row at the last worked weight (25), so filling its reps stores 25×20 three times and earns ⬆ Add weight → 27.5 (EQUIP-04)',
        !threw && blankW === '25' && !!e && !('blankSets' in e) && e.sets.length === 3 && e.sets.every(x => x.w === '25' && x.r === '20') &&
-       flag3 !== null && flag3.includes('30'),
+       flag3 !== null && flag3.includes('27.5'),
        { threw, blankW, sets: e && e.sets, flag: flag3 });
     S.confettiBurst = realConfetti;
   }
   P.DB.draft = null;
+}
+
+/* ── EQUIP: equipment and weight steps (Phase 9) ──
+   Every exercise-registry row carries one synced equipment type, and ⬆ Add weight moves by that type's
+   step. Shared builders, reused by the later Phase 9 plans:
+     eqNorm(s) / eqSlug(s)      the app's normEx / slugEx, retyped here so a fixture names its row id
+                                without reaching into the app.
+     eqRow(name, mtime, extra)  one registry row as a schema-18 device stored it (no equip).
+     eqSeed18(rows, extra)      a stored blob at _schema 18 holding those rows: the device that updates.
+     eqSess(id, workout, date, slotIdx, name, sets, o)
+                                one session with an entry for every slot of that workout; the target
+                                slot gets the [w, r] pairs, every other slot its first example with
+                                sets []. Options: exId, deload, skippedDay.
+     eqCard(a, workout, i)      rebuilds the draft from history and returns the i-th exercise card.
+     eqRun(a, sessions, extra)  replaces a.DB with those sessions seeded at _schema 16, so migration 17
+                                stamps real ids and migration 19 stamps types: the path real history
+                                took. A fixture that needs a specific stored equip or mtime sets it on
+                                a.DB.exercises AFTER this call, because the migrations rewrite both. */
+function eqNorm(s){ return String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' '); }
+function eqSlug(s){ return eqNorm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'ex'; }
+function eqRow(name, mtime, extra){ return Object.assign({ id: eqSlug(name), name, aliases: [eqNorm(name)], mtime }, extra); }
+function eqSeed18(rows, extra){
+  return Object.assign(app.blank(), { _schema: 18, draft: null, unit: 'lb', sessions: [], exercises: rows }, extra);
+}
+function eqSess(id, workout, date, slotIdx, name, sets, o){
+  o = o || {};
+  return { id, workout, date, endedAt: 1, extras: {}, skipped: !!o.skippedDay,
+    entries: app.PROGRAM[workout].slots.map((s, i) => i !== slotIdx ? { name: s.examples[0], sets: [] }
+      : Object.assign({ name, sets: sets.map(([w, r]) => ({ w: String(w), r: String(r), skipped: false, reason: '' })) },
+          o.exId ? { exId: o.exId } : {}, o.deload ? { deload: true } : {})) };
+}
+function eqCard(a, workout, i){
+  a.DB.draft = null;
+  a.__sandbox.startWorkout(workout);
+  return a.viewActive().split('<div class="ex-card">')[i + 1] || '';
+}
+function eqRun(a, sessions, extra){
+  a.DB = a.normalize(Object.assign(a.blank(), { _schema: 16, sessions, draft: null, unit: 'lb' }, extra));
+}
+function eqFlag(card){ const m = /<span class="flag">([\s\S]*?)<\/span>/.exec(card); return m ? m[1] : null; }
+console.log('\n── EQUIP: equipment and weight steps (EQUIP-01..06) ──');
+{
+  /* The tracer, end to end on a device that updates: a schema-18 blob boots, migration 19 types every
+     registry row, the boot save stores it, and the card's ⬆ Add weight moves by the type's step. */
+  const W = 'PUSH 1';
+  const LAT = app.PROGRAM[W].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+  const BENCH = app.PROGRAM[W].slots.findIndex(s => s.examples.includes('Barbell bench press'));
+  const benchTop = app.PROGRAM[W].slots[BENCH].hi;
+  const seed = eqSeed18([ eqRow('DB lateral raise', 1000), eqRow('Barbell bench press', 1000), eqRow('Lunges', 1000) ], {
+    sessions: [
+      eqSess('eq-lat', W, dayOff(-7), LAT, 'DB lateral raise', [[25, 20], [25, 20], [25, 20]], { exId: 'db-lateral-raise' }),
+      eqSess('eq-bench', W, dayOff(-6), BENCH, 'Barbell bench press', [[155, benchTop], [155, benchTop], [155, benchTop]], { exId: 'barbell-bench-press' }),
+    ] });
+  const EQ = loadApp(APP_PATH, seed); spyPushes(EQ);
+  const stored = EQ.__stored() || {};
+  const rows = Array.isArray(stored.exercises) ? stored.exercises : [];
+  const types = EQ.EQUIP_TYPES || [];
+  const lat = rows.find(r => r && r.id === 'db-lateral-raise');
+  ok('EQUIP-02/D-14: a schema-18 device boots into schema 19, and every STORED registry row carries a valid equip, mtime old + 1 and equipAt 0',
+     stored._schema === 19 && rows.length === 3 && rows.every(r => types.indexOf(r.equip) >= 0 && r.mtime === 1001 && r.equipAt === 0) &&
+     !!lat && lat.equip === 'dumbbell',
+     { schema: stored._schema, rows });
+
+  const latCard = eqCard(EQ, W, LAT), latFlag = eqFlag(latCard);
+  const latW = EQ.DB.draft.entries[LAT].sets.map(x => x.w);
+  ok('EQUIP-04: DB lateral raise at 25×20 three times earns ⬆ Add weight → 27.5, and the next draft prefills 27.5',
+     latFlag !== null && latFlag.includes('27.5') && latW.length === 3 && latW.every(w => w === '27.5'),
+     { flag: latFlag, w: latW });
+
+  const benchFlag = eqFlag(eqCard(EQ, W, BENCH));
+  ok('EQUIP-04: Barbell bench press at 155 at the top still moves +5 → 160 (the barbell control)',
+     benchFlag !== null && benchFlag.includes('160'), benchFlag);
+  EQ.DB.draft = null;
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
