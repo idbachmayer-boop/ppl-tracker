@@ -1,7 +1,8 @@
 ---
 phase: 9
 slug: equipment-and-weight-steps
-status: draft
+status: approved
+reviewed_at: 2026-10-12
 shadcn_initialized: false
 preset: none
 created: 2026-10-12
@@ -296,7 +297,7 @@ from the stored `equip` string. `setExerciseEquip` never reads `DB.draft`, so it
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: 9 covered, 1 backstop, 0 unresolved
+Applicable state considerations resolved: 12 covered, 1 backstop, 0 unresolved (probe run 2026-10-12: 25 candidates across S1–S4; Ian accepted this coverage)
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
@@ -309,6 +310,9 @@ Applicable state considerations resolved: 9 covered, 1 backstop, 0 unresolved
 | long-text | Settings row name (S1), picker prompt (S2) | ✅ covered | Names wrap inside the `flex:1; min-width:0` column, with the select on its own line beneath. The prompt is a wrapping `<p>`. Neither truncates |
 | overflow | Picker grid (S2) | ✅ covered | `repeat(auto-fit, minmax(88px, 1fr))` gives 3 × 2 at about 380px and 2 × 3 below about 300px of content width, so "bodyweight" (the longest label) never overflows a button |
 | long-text | Equipment tag (S3) | ✅ covered | The longest possible tag is "bodyweight" or "dumbbell · +2.5", well under one line at 12px. It never wraps on a 380px phone |
+| partial | Equipment tag (S3) | ✅ covered | With no weight entered yet, a dumbbell tag shows the step for the low end of the rack ("+2.5"). The tag updates live as the weight crosses 60 (via `updPlates`), and is hidden while the S2 picker shows on that card |
+| populated | Bodyweight tag (S3) | ✅ covered | A bodyweight exercise’s tag reads "bodyweight" with no step number, matching Phase 8’s "(belt) or harder variation" flag |
+| unclassified → copy | Deload coach line and warm-up note | ✅ covered | The empty-bar line reads exactly "Already at the empty bar — cut a set or reps instead." (D-15), and the warm-up note names the real step per type (Copywriting Contract). Asserted verbatim by tests |
 | populated | Picker (S2), tag (S3), Settings (S1) rendered on the phone | 🧪 backstop | On Ian's Android PWA at about 380px: the picker shows 3 × 2 with each button at least 44px tall, the guess highlighted, and the tag legible under the select; Settings rows stack the select under the name. Verified in the end-of-phase real workout (Settings → This version first) |
 
 Not applicable (dismissed with reason):
@@ -329,11 +333,11 @@ Not applicable (dismissed with reason):
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-10-12 (gsd-ui-checker, after one spacing revision)
