@@ -8302,6 +8302,128 @@ console.log('\n── EQUIP: equipment and weight steps (EQUIP-01..06) ──');
   EQ.DB.draft = null;
 }
 
+/* Every exercise name in Ian's 2026-10-10 export, with the type a locked decision gives it (D-01, D-02,
+   D-03, D-06). Listed literally: the export itself never enters the repo. */
+const EQ_EXPORT_NAMES = [
+  ['Barbell bench press','barbell'], ['Romanian deadlift','barbell'], ['Barbell row','barbell'], ['Standing OHP','barbell'],
+  ['Barbell incline press','barbell'], ['Barbell curl','barbell'], ['Meadows row','barbell'],
+  ['Chest Supported T-Bar Row','barbell'], ['T-bar Row','barbell'],
+  ['Rear delt fly','dumbbell'], ['Overhead triceps extension','dumbbell'], ['DB incline press','dumbbell'],
+  ['DB lateral raise','dumbbell'], ['Deficit sumo squat','dumbbell'], ['DB fly','dumbbell'], ['DB shoulder press','dumbbell'],
+  ['Bulgarian split squat','dumbbell'], ['Hammer curl','dumbbell'], ['Wrist curls','dumbbell'],
+  ['Triceps pushdown','cable'], ['Lat pulldown','cable'], ['Straight-arm pulldown','cable'], ['Seated cable row','cable'],
+  ['EZ-bar curl','ez'], ['Preacher curl','ez'],
+  ['Calf raise machine','machine'], ['Leg press','machine'], ['Reverse pec deck','machine'], ['Seated Fly','machine'],
+  ['Seated Flys','machine'], ['Machine crunch','machine'],
+  ['Nordic hamstring curl','bodyweight'], ['Lunges','bodyweight'], ['Dead hang','bodyweight'], ['Hanging leg raise','bodyweight'],
+  ['Chin-up','bodyweight'], ['Pull-up','bodyweight'], ['Diamond push-ups','bodyweight'],
+];
+{
+  /* The default table and migration 19 on every edge (EQUIP-01, EQUIP-02). */
+  const E = loadApp(APP_PATH); spyPushes(E);
+  const S = E.__sandbox, types = E.EQUIP_TYPES || [];
+  const guess = n => S.equipGuess(n), known = n => S.equipKnown(n);
+
+  const pickable = [];
+  Object.keys(E.PROGRAM).forEach(w => (E.PROGRAM[w].slots || []).forEach(s => (s.examples || []).forEach(n => pickable.push(n))));
+  Object.keys(E.ACCESSORIES).forEach(id => (E.ACCESSORIES[id].examples || []).forEach(n => pickable.push(n)));
+  const unknown = pickable.filter(n => !known(n) || types.indexOf(guess(n)) < 0);
+  ok('EQUIP-01: every PROGRAM and ACCESSORIES example has its own row in the default table and a valid type',
+     pickable.length > 40 && unknown.length === 0, { count: pickable.length, unknown });
+
+  const wrong = EQ_EXPORT_NAMES.filter(([n, t]) => guess(n) !== t).map(([n, t]) => ({ n, want: t, got: guess(n) }));
+  ok('D-01/D-02/D-03/D-06: all 38 names in Ian\'s 2026-10-10 export map to their locked type (Preacher curl EZ bar, Rear delt fly dumbbell, Chest Supported T-Bar Row barbell, Seated Flys machine, Lunges bodyweight)',
+     EQ_EXPORT_NAMES.length === 38 && wrong.length === 0, wrong);
+
+  ok('EQUIP-01: the default lookup normalises names the way exKey does (trim, lower-case, collapse whitespace)',
+     ['Preacher Curl ', '  PREACHER   curl', 'preacher curl'].every(n => guess(n) === 'ez') && known('  PREACHER   curl'),
+     ['Preacher Curl ', '  PREACHER   curl', 'preacher curl'].map(guess));
+  ok('EQUIP-01: \'T bar row\' and \'Tbar row\' fall to the T-bar rule and read as barbell',
+     guess('T bar row') === 'barbell' && guess('Tbar row') === 'barbell', [guess('T bar row'), guess('Tbar row')]);
+
+  const order = [['DB spider curl', 'dumbbell'], ['Cable preacher curl', 'cable'], ['Machine preacher curl', 'machine'],
+                 ['Landmine press', 'barbell'], ['Archer push-ups', 'bodyweight'], ['Zercher carry', 'machine']];
+  const misordered = order.filter(([n, t]) => guess(n) !== t).map(([n, t]) => ({ n, want: t, got: guess(n) }));
+  ok('EQUIP-01: the name rules run in their fixed order, first match wins (cable and machine beat preacher\'s EZ), and an unknown name falls back to machine',
+     misordered.length === 0, misordered);
+
+  const hostile = ['', '   ', null, 'constructor', '__proto__', 'toString'];
+  ok('T-9-04: an empty, whitespace or prototype name (constructor, __proto__, toString) reads as machine and is not a known name',
+     hostile.every(n => guess(n) === 'machine' && known(n) === false),
+     hostile.map(n => ({ n, guess: typeof guess(n) === 'string' ? guess(n) : typeof guess(n), known: known(n) })));
+
+  // equipOf: a stored value counts only when it is one of EQUIP_TYPES.
+  const withPreacher = equip => {
+    E.DB = E.normalize(E.blank());
+    const row = { id: 'preacher-curl', name: 'Preacher curl', aliases: ['preacher curl'], mtime: 1 };
+    if(equip !== undefined) row.equip = equip;
+    E.DB.exercises = [row];
+    return S.equipOf('Preacher curl');
+  };
+  const junk = [undefined, '', 'laser', '"><img src=x>', {}];
+  const read = junk.map(withPreacher);
+  ok('T-9-03/EQUIP-01: a missing, empty, unknown, markup or object stored equip reads as the name\'s guess (Preacher curl → ez)',
+     read.every(t => t === 'ez'), read.map(t => typeof t === 'string' ? t : typeof t));
+  ok('EQUIP-01: a valid stored equip wins over the guess', withPreacher('cable') === 'cable', withPreacher('cable'));
+
+  // Two spellings that normalise to one exKey share one row and one type.
+  E.DB = E.normalize(E.blank());
+  const sfId = E.exEnsure('Seated Fly');
+  ok('EQUIP-01: two spellings of one name share one row and one type',
+     E.exKey('  seated   FLY ') === E.exKey('Seated Fly') && E.exKey('Seated Fly') === sfId &&
+     S.equipOf('  seated   FLY ') === 'machine' && S.equipOf('Seated Fly') === 'machine' && E.DB.exercises.length === 1,
+     { a: E.exKey('  seated   FLY '), b: E.exKey('Seated Fly'), rows: E.DB.exercises });
+  eqRun(E, [ eqSess('sf1', 'PUSH 1', dayOff(-9), 2, 'Seated Fly', [[100, 12]]),
+             eqSess('sf2', 'PUSH 1', dayOff(-8), 2, 'Seated Flys', [[100, 12]]) ]);
+  const sfRows = E.DB.exercises.filter(r => r && (r.aliases || []).some(k => k === 'seated fly' || k === 'seated flys'));
+  ok('EQUIP-01: \'Seated Fly\' and \'Seated Flys\' logged at schema 16 migrate to one registry row with one type, machine',
+     sfRows.length === 1 && E.exKey('Seated Flys') === E.exKey('Seated Fly') &&
+     S.equipOf('Seated Flys') === 'machine' && S.equipOf('Seated Fly') === 'machine' && sfRows[0].equip === 'machine',
+     sfRows);
+
+  E.DB = E.normalize(E.blank());
+  const zId = E.exEnsure('Zercher carry'), zRow = E.exRow(zId);
+  ok('EQUIP-01: a row exEnsure creates carries the guess and equipAt 0 (Zercher carry → machine)',
+     !!zRow && zRow.equip === 'machine' && zRow.equipAt === 0, zRow);
+
+  // Migration 19 settles: replaying it on migrated rows rewrites nothing.
+  const seed = eqSeed18([ eqRow('DB lateral raise', 1000), eqRow('Preacher curl', 2000), eqRow('Lunges', 'abc') ]);
+  const once = app.normalize(clone(seed));
+  const twice = app.normalize(clone(once));
+  const replayed = app.normalize(Object.assign(clone(once), { _schema: 18 }));
+  ok('EQUIP-02/T-9-05: migration 19 is idempotent — a second normalize, and migration 19 replayed on its own output, change no row\'s mtime, equip or equipAt',
+     canon(once.exercises) === canon(twice.exercises) && canon(once.exercises) === canon(replayed.exercises),
+     { once: once.exercises, replayed: replayed.exercises });
+  const abc = once.exercises.find(r => r.id === 'lunges');
+  ok('D-14: a row whose mtime is not a number gets mtime 1, never now', !!abc && abc.mtime === 1 && abc.equip === 'bodyweight', abc);
+
+  const empty = app.normalize(eqSeed18([]));
+  ok('EQUIP-02: an empty registry stays empty and still reaches schema 19',
+     Array.isArray(empty.exercises) && empty.exercises.length === 0 && empty._schema === 19, { ex: empty.exercises, schema: empty._schema });
+  const typedRows = [ eqRow('Preacher curl', 7, { equip: 'cable', equipAt: 5 }), eqRow('DB fly', 7, { equip: 'dumbbell', equipAt: 5 }) ];
+  const typed = app.normalize(eqSeed18(clone(typedRows)));
+  ok('EQUIP-02/T-9-05: rows that already hold a valid equip come back byte-identical',
+     JSON.stringify(typed.exercises) === JSON.stringify(typedRows), typed.exercises);
+  const tomb = eqRow('Pec deck', 40, { deletedAt: 50 });
+  const tombed = app.normalize(eqSeed18([clone(tomb)]));
+  ok('EQUIP-02: a tombstoned row is left exactly as it was',
+     JSON.stringify(tombed.exercises) === JSON.stringify([tomb]), tombed.exercises);
+
+  const tooNew = app.normalize(eqSeed18([ eqRow('DB fly', 3) ], { _schema: app.SCHEMA + 1 }));
+  ok('EQUIP-02: _schema never goes down — a blob from a newer build keeps its number', tooNew._schema === app.SCHEMA + 1, tooNew._schema);
+
+  // D-03: migration 19 rewrites registry rows only, so the June Rear delt fly sessions stay where they are.
+  const RD = app.PROGRAM['PULL 1'].slots.findIndex(s => s.examples.includes('Rear delt fly'));
+  const rdSessions = [
+    Object.assign(eqSess('rd1', 'PULL 1', '2026-06-08', RD, 'Rear delt fly', [[40, 15], [40, 15]], { exId: 'rear-delt-fly' }), { mtime: 500 }),
+    Object.assign(eqSess('rd2', 'PULL 1', '2026-06-15', RD, 'Rear delt fly', [[55, 15], [55, 15]], { exId: 'rear-delt-fly' }), { mtime: 500 }),
+  ];
+  const rdOut = app.normalize(eqSeed18([ eqRow('Rear delt fly', 300) ], { sessions: clone(rdSessions) }));
+  ok('D-03: migration 19 touches no session — both Rear delt fly sessions are unchanged and still say Rear delt fly',
+     canon(rdOut.sessions) === canon(rdSessions) && rdOut.sessions.every(s => s.entries[RD].name === 'Rear delt fly'),
+     rdOut.sessions.map(s => ({ id: s.id, mtime: s.mtime, name: s.entries[RD].name })));
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
