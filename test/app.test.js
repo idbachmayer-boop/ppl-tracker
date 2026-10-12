@@ -9136,6 +9136,115 @@ function eqTagOf(card, i){
      collapsed.includes('expand') && !collapsed.includes('equip-tag-') && eqPickerOf(collapsed).length === 0, null);
   G.DB.draft = null;
 }
+{
+  /* Settings → Exercises in every state (S1), and every new surface escapes what it prints. */
+  console.log('\n── EQUIP UI: Settings → Exercises states and the hostile-name sweep (EQUIP-01, EQUIP-03) ──');
+  const S = loadApp(APP_PATH);
+  const spy = spyPushes(S);
+  const card = () => S.__sandbox.exercisesCardHTML();
+  const sess = (id, date, names) => ({ id, workout: 'PUSH 1', date, endedAt: 1, extras: {},
+    entries: names.map(n => ({ name: n, sets: [{ w: '50', r: '10', skipped: false, reason: '' }] })) });
+
+  /* Empty: nothing logged, so nothing to set. */
+  eqRun(S, []);
+  const empty = card();
+  ok('EQUIP-01: with nothing logged, Settings → Exercises says so, names equipment, and has no equipment select',
+     empty.includes('Log a workout and your exercises show up here to rename, merge or set their equipment.')
+       && !empty.includes('data-action="setExEquip"'), empty);
+
+  /* Populated: three exercises used 3, 2 and 1 times. */
+  const BB = 'Barbell bench press', DL = 'DB lateral raise', TP = 'Triceps pushdown';
+  eqRun(S, [ sess('st-1', dayOff(-9), [BB, DL, TP]), sess('st-2', dayOff(-6), [BB, DL]), sess('st-3', dayOff(-3), [BB]) ]);
+  const pop = card();
+  ok('EQUIP-01: the intro paragraph says the equipment under each name sets its weight step and plate math',
+     pop.includes('<p class="muted" style="margin-bottom:10px">Two spellings of the same lift split its history in two. Rename one, or merge them — your logged sets are never changed, only the label they sit under. The equipment under each name sets its weight step and plate math.</p>'),
+     (/<p class="muted"[^>]*>([\s\S]*?)<\/p>/.exec(pop) || [])[1]);
+  const ids = [...pop.matchAll(/<select\b[^>]*data-action="setExEquip"[^>]*data-id="([^"]*)"/g)].map(m => m[1]);
+  const sels = ids.map(id => eqSelectOf(pop, id));
+  const want = [BB, DL, TP].map(n => S.__sandbox.equipOf(n));
+  ok('EQUIP-01: three logged exercises give three equipment selects in use order, six options each, the current type selected',
+     JSON.stringify(ids) === JSON.stringify(['barbell-bench-press', 'db-lateral-raise', 'triceps-pushdown'])
+       && sels.every(s => s && s.opts.length === 6 && JSON.stringify(s.opts.map(o => o.value)) === JSON.stringify(app.EQUIP_TYPES))
+       && JSON.stringify(sels.map(s => s.selected)) === JSON.stringify(want)
+       && JSON.stringify(want) === JSON.stringify(['barbell', 'dumbbell', 'cable']),
+     { ids, selected: sels.map(s => s && s.selected), want });
+  ok('EQUIP-01: the session count keeps its plural — "1 session" and "2 sessions"',
+     pop.includes('· 1 session<') && pop.includes('· 2 sessions<') && pop.includes('· 3 sessions<'), null);
+
+  /* Layout markup (S1, S2): the select sits on its own line under the name, inside the wrapping
+     column; the picker prompt is a wrapping <p>; the grid and the 44px tap target are in the CSS. */
+  const colOk = ids.every(id => new RegExp('<span style="min-width:0;flex:1">(?:(?!</span>\\s*<button)[\\s\\S])*?<select\\b[^>]*data-id="' + id + '"[^>]*style="display:block').test(pop));
+  const picker = S.__sandbox.equipPickerHTML('x', 'Long exercise name that wraps');
+  const css = fs.readFileSync(APP_PATH, 'utf8');
+  const btnRule = (/\.equip-grid \.day-btn \{([^}]*)\}/.exec(css) || [])[1] || '';
+  ok('long-text/overflow: each Settings select is display:block inside the flex:1, min-width:0 column; the prompt is a <p> inside .equip-ask; the grid is auto-fit 88px and buttons are 44px tall',
+     colOk && /<div class="equip-ask"[^>]*>\s*<p>What equipment is/.test(picker)
+       && /\.equip-grid \{[^}]*repeat\(auto-fit, minmax\(88px, 1fr\)\)/.test(css) && /min-height: 44px/.test(btnRule),
+     { colOk, btnRule });
+
+  /* Partial: a logged key with no registry row shows its guessed type as text, with no select. */
+  S.DB.sessions.push({ id: 'st-ghost', workout: 'PUSH 1', date: dayOff(-2), endedAt: 1, extras: {},
+    entries: [{ name: 'Ghost lift', exId: 'ghost-lift', sets: [{ w: '40', r: '10', skipped: false, reason: '' }] }] });
+  const part = card();
+  const ghostRow = (/<strong style="font-size:13px">ghost-lift<\/strong>[\s\S]*?<\/span>\s*<button/.exec(part) || [''])[0];
+  const ghostLabel = app.EQUIP_LABEL[S.__sandbox.equipOf('ghost-lift')];
+  ok('partial: a logged key with no registry row renders its guessed type as a muted line and no select',
+     !!ghostRow && eqSelectOf(part, 'ghost-lift') === null && !ghostRow.includes('<select')
+       && ghostRow.includes(`<div class="muted" style="font-size:12px;margin-top:8px">${ghostLabel}</div>`),
+     { ghostRow, ghostLabel });
+  S.DB.sessions = S.DB.sessions.filter(s => s.id !== 'st-ghost');
+
+  /* Error, refused: a type outside EQUIP_TYPES from a control writes nothing and says nothing. */
+  const toastEl = S.__sandbox.document.getElementById('toast');
+  toastEl.textContent = 'sentinel';
+  const rowsBefore = JSON.stringify(S.DB.exercises), pushesBefore = spy.n;
+  S.equipAsk.add('barbell-bench-press');
+  fireAction(S, 'change', fakeEl({ action: 'setExEquip', id: 'barbell-bench-press' }, { value: 'laser' }));
+  fireAction(S, 'click', fakeEl({ action: 'pickExEquip', id: 'barbell-bench-press', equip: 'toString' }));
+  ok('EQUIP-03: setExEquip "laser" and pickExEquip "toString" change no row, push nothing and show no toast',
+     JSON.stringify(S.DB.exercises) === rowsBefore && spy.n === pushesBefore && toastEl.textContent === 'sentinel',
+     { pushes: spy.n - pushesBefore, toast: toastEl.textContent });
+  S.equipAsk.clear();
+
+  /* Error, rendered: a hostile stored type reads as the guess, in Settings and on the card. */
+  const bbRow = S.DB.exercises.find(x => x && x.id === 'barbell-bench-press');
+  bbRow.equip = '"><img src=x>';
+  const hostileSettings = card();
+  eqCard(S, 'PUSH 1', 0);
+  S.DB.draft.entries[0].name = BB; delete S.DB.draft.entries[0].exId;
+  const hostileMain = eqUiCard(S, 0);
+  ok('EQUIP-03: a hostile stored equip selects the guess (barbell) in Settings, and neither Settings nor the card holds <img',
+     (eqSelectOf(hostileSettings, 'barbell-bench-press') || {}).selected === 'barbell'
+       && !hostileSettings.includes('<img') && !hostileMain.includes('<img') && eqTagOf(hostileMain, 0) === 'barbell · +5',
+     { selected: (eqSelectOf(hostileSettings, 'barbell-bench-press') || {}).selected, tag: eqTagOf(hostileMain, 0) });
+  bbRow.equip = 'barbell';
+  S.DB.draft = null;
+
+  /* Hostile name: every new surface escapes it. */
+  const HN = 'Fly <img src=x onerror=1> "q"';
+  eqRun(S, [ sess('st-h', dayOff(-4), [HN]) ]);
+  const hostId = S.exIdByName(HN);
+  const hs = card();
+  const hsSel = eqSelectOf(hs, hostId);
+  eqCard(S, 'PUSH 1', 0);
+  S.__sandbox.prompt = () => HN + ' 2';
+  S.__sandbox.confirm = () => false;
+  fireAction(S, 'change', fakeEl({ action: 'pickEx', i: '0' }, { value: '__custom' }));
+  S.__sandbox.confirm = () => true;
+  const hostPickId = S.DB.draft.entries[0].exId;
+  const hc = eqUiCard(S, 0);
+  const ask = (/<div class="equip-ask"[\s\S]*?<\/div>\s*<\/div>/.exec(hc) || [''])[0];
+  const escName = 'Fly &lt;img src=x onerror=1&gt; &quot;q&quot;';
+  ok('T-9-23: a hostile exercise name renders escaped in the Settings name, the select\'s aria-label, the picker prompt and the picker\'s aria-label',
+     !!hostId && !!hsSel && hs.includes(`<strong style="font-size:13px">${escName}</strong>`)
+       && hsSel.tag.includes(`aria-label="Equipment for ${escName}"`)
+       && !!hostPickId && S.equipAsk.has(hostPickId)
+       && ask.includes(`aria-label="Equipment for ${escName} 2"`) && ask.includes(`<p>What equipment is “${escName} 2”?`)
+       && !hs.includes('<img') && !hc.includes('<img') && !hs.includes(' "q"') && !hc.includes(' "q"'),
+     { hostId, hostPickId, sel: hsSel && hsSel.tag, ask });
+  S.equipAsk.clear();
+  S.DB.draft = null;
+}
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against

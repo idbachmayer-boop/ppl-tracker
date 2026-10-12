@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-ShJnkRlX6mslvnGo3jbEDqwWgLOE3pP5NyJs9pFV5pI=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-P2fjw+DYI5VcXtwpRU9MRW+8ARDxSa3Nr4lMett/Wt4=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -2915,10 +2915,10 @@ function exListRows(){
 }
 function exercisesCardHTML(){
   const rows = exListRows();
-  if(!rows.length) return `<div class="card"><p class="muted">Log a workout and your exercises show up here to rename or merge.</p></div>`;
+  if(!rows.length) return `<div class="card"><p class="muted">Log a workout and your exercises show up here to rename, merge or set their equipment.</p></div>`;
   const opts = rows.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');
   return `<div class="card">
-    <p class="muted" style="margin-bottom:10px">Two spellings of the same lift split its history in two. Rename one, or merge them — your logged sets are never changed, only the label they sit under.</p>
+    <p class="muted" style="margin-bottom:10px">Two spellings of the same lift split its history in two. Rename one, or merge them — your logged sets are never changed, only the label they sit under. The equipment under each name sets its weight step and plate math.</p>
     <div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:12px">
       <select id="ex-merge-from" style="flex:1;min-width:130px">${opts}</select>
       <span class="muted" style="align-self:center;font-size:12px">into</span>
