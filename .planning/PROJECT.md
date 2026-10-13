@@ -18,11 +18,11 @@ every other feature can fail before that one does.
 
 **Shipped:** v1.0 Collections & lockdown (2026-10-09). Live on `main` as merge commit `f71c6e4` and
 later docs-only commits. See `.planning/MILESTONES.md`. v1.1 in progress: Phase 8 (progression
-correctness) live as merge commit `99e10c8` (2026-10-10).
+correctness) live as `99e10c8` (2026-10-10); Phase 9 (equipment and weight steps) live as `8a20832` (2026-10-12).
 
-- `index.html` is 5,043 lines: HTML, CSS and inline JS, with no build step and no dependencies.
-  `SCHEMA = 18`.
-- The test suite has 984 checks (0 failed, 2 skipped; 928 at v1.0 close, 226 at the start of v1.0). It blocks the
+- `index.html` is 5,480 lines: HTML, CSS and inline JS, with no build step and no dependencies.
+  `SCHEMA = 19`.
+- The test suite has 1,136 checks (0 failed, 2 skipped; 928 at v1.0 close, 226 at the start of v1.0). It blocks the
   deploy, and `npm run csp:check` runs in the deploy job.
 - Tech stack: vanilla JS, a service worker, Firebase Auth plus Firestore (union-merge sync),
   Open-Meteo weather, and GitHub Pages via Actions.
@@ -43,7 +43,7 @@ correctness) live as merge commit `99e10c8` (2026-10-10).
 - ✓ Soft delete across every collection — `deletedAt` + `touch()`, read through `liveX()` filters, so a union merge cannot resurrect a deleted row — existing
 - ✓ Generation counter (`gen`) so "Erase all data" and Import→Replace survive the union merge — existing
 - ✓ Local snapshot ring in its own localStorage key — the undo buffer that was missing when a bad sync wiped four days of data — existing
-- ✓ Schema migrations with a never-downgrade guard (`SCHEMA = 18`) — existing; migration 18 only creates absent collections
+- ✓ Schema migrations with a never-downgrade guard (`SCHEMA = 19`) — existing; migration 18 only creates absent collections; migration 19 stamps equipment types at old `mtime` + 1
 - ✓ Offline-first PWA — service worker, inlined Phosphor icons, no CDN, no build step, no dependencies — existing
 - ✓ Backup export/import with shape validation (`validateBackup()`) — existing
 - ✓ Lawn scheduler with weather-driven mow forecasting — existing
@@ -56,6 +56,7 @@ correctness) live as merge commit `99e10c8` (2026-10-10).
 - ✓ **F4: `.gitattributes`** (`* text=auto eol=lf`), landed alone as `17b5a66`, with the suite asking git for the property — v1.0
 - ✓ **Content-Security-Policy.** Hash-based `script-src`, with `npm run csp:hash` / `csp:check` and the deploy check. Live as `f71c6e4`, with a signed-in sync round trip confirmed on the PC and the phone — v1.0
 - ✓ **Progression correctness (PROG-01..05).** ⬆ Add weight only after every set on the card hit the top of the range at the working weight (a skipped or blank set blocks it, recorded as `blankSets`); stall is 3 flat sessions in a row, each against the one before, per slot by `exKey`, bodyweight included. Live as `99e10c8`; phone UAT passed — v1.1 Phase 8
+- ✓ **Equipment and weight steps (EQUIP-01..06).** Every exercise has a synced equipment type (defaulted by migration 19, editable in Settings, asked once for an unknown name); add weight, deloads, warm-ups and the suggest line move by that type's loadable step; Preacher curl gets EZ-bar plate math; the exercise registry merges per row with an equipment clock and soft-deleted merges. Live as `8a20832`; phone UAT passed — v1.1 Phase 9
 - ✓ A test suite that blocks the deploy — 928 checks at v1.0 close (226 at initialization) — existing
 
 ### Active
@@ -65,7 +66,6 @@ correctness) live as merge commit `99e10c8` (2026-10-10).
 v1.1 Training accuracy, lawn & sleep. Full list with REQ-IDs in `.planning/REQUIREMENTS.md`; source
 of every rule is `.planning/v1.1-BRIEF.md`.
 
-- [ ] Equipment type per exercise with its own weight step, rounding and plate math (EQUIP)
 - [ ] Log page: last 5 sessions inline from "Last time", and skip exercise with undo (LOG)
 - [ ] Lawn: cool-day hold, rain history in its own synced collection, watering in the outlook, journal marks, weather fetch backoff (LAWN)
 - [ ] Sleep card on Today, and a local Erase that keeps the workout in progress (SLP)
@@ -178,6 +178,7 @@ across three devices (documented, accepted). v2 backlog: VAL-01, VAL-02, EXP-09,
 | Dry Run B's evidence is the written record, not a preserved scratch-branch diff | The branch carried a real `SCHEMA` bump that must never reach `main` | ✓ Good — Ian accepted it in UAT 2026-09-22 |
 | A stall compares total reps even when the set count changes (review WR-02) | Matches PROG-02 as written; Ian kept it at the Phase 8 UAT | ✓ Good — Ian, 2026-10-10 |
 | Run the code review before the deploy plan, not after the last wave | A review that lands after the code is live can only produce follow-up work | ✓ Good — Phase 8: 3 warnings fixed before shipping |
+| The exercise registry merges per row, not as a whole array | A whole-array merge let one device silently erase the other's equipment choice or new exercise | ✓ Good — Phase 9; law-tested over three replicas. ⚠️ WR-09: conflicting concurrent merges of one exercise are order-dependent (no data loss) |
 | Leave sync, features, capacity, auth and layout alone | Each was put to Ian on 2026-09-09 and answered; see Out of Scope | ✓ Good — re-audited at v1.0 close |
 
 ## Evolution
@@ -198,4 +199,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-10 after Phase 8*
+*Last updated: 2026-10-13 after Phase 9*

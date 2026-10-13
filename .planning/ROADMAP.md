@@ -36,7 +36,7 @@ onto Phases 8-13, and every threshold below is his decision, not a default. Requ
 in `.planning/REQUIREMENTS.md`.
 
 - [x] **Phase 8: Progression Correctness** - Add weight only when every planned set hit the top of the range; progress and stall are measured session to session by `exKey`, bodyweight included. (completed 2026-10-10)
-- [ ] **Phase 9: Equipment and Weight Steps** - Each exercise gets a synced equipment type, its own 2.5 or 5 lb step, step-aware deloads and warm-ups, and plate math for its own bar.
+- [x] **Phase 9: Equipment and Weight Steps** - Each exercise gets a synced equipment type, its own 2.5 or 5 lb step, step-aware deloads and warm-ups, and plate math for its own bar. (completed 2026-10-13)
 - [ ] **Phase 10: Log Page — History and Skip** - The last 5 sessions open inline from "Last time", and a whole exercise can be skipped with an optional reason and undone.
 - [ ] **Phase 11: Lawn, Journal and Weather Loop** - Cool-day watering hold, rain history in its own synced collection, 💧 in the outlook, journal marks, and a weather fetch that backs off offline.
 - [ ] **Phase 12: Sleep Card and Erase** - A morning sleep card on Today, and a local Erase that keeps the workout in progress or is the documented exception.
@@ -195,7 +195,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 6. F4 — .gitattributes | v1.0 | 2/2 | Complete | 2026-10-02 |
 | 7. Content Security Policy | v1.0 | 7/7 | Complete | 2026-10-09 |
 | 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
-| 9. Equipment and Weight Steps | v1.1 | 5/5 | In Progress | - |
+| 9. Equipment and Weight Steps | v1.1 | 5/5 | Complete    | 2026-10-13 |
 | 10. Log Page — History and Skip | v1.1 | 0/TBD | Not started | - |
 | 11. Lawn, Journal and Weather Loop | v1.1 | 0/TBD | Not started | - |
 | 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |

@@ -1,29 +1,36 @@
 ---
 phase: 09-equipment-and-weight-steps
 verified: 2026-10-12T21:00:00Z
-status: human_needed
+status: passed
 score: 5/5 roadmap success criteria verified by automated evidence; 56/58 plan truths verified, 2 backstop truths await the phone UAT
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
+
   - test: "On Ian's phone, with Settings → This version ending in 8a20832 on BOTH the phone and the PC, open the PUSH workout with DB lateral raise and look at the card before logging."
     expected: "A muted 'dumbbell · +2.5' under the exercise select. Any ⬆ Add weight number is last time + 2.5 (or the next rack weight from 60 up)."
     why_human: "Real device, real stored data after migration 19 ran on Ian's actual blob; the suite uses fixtures."
+
   - test: "Open the PULL workout with Preacher curl, type 35 as the working weight."
     expected: "'🏋️ Per side: 1×5' under the sets. At 25 or less, no plate line."
     why_human: "Rendered on the phone against Ian's real registry row."
+
   - test: "Open Settings → Exercises."
     expected: "Every logged exercise listed with an equipment dropdown under its name, already set: Preacher curl = EZ bar, Rear delt fly = dumbbell, Leg press = machine, Lunges = bodyweight."
     why_human: "Depends on the migrated stored blob on Ian's devices."
+
   - test: "On the PC, change one exercise's type, wait for 'Synced', then reopen Settings → Exercises on the phone. Change it back on either device."
     expected: "The phone shows the PC's new type after sync, and the revert shows on both."
     why_human: "Real Firestore runTransaction and the live listener between two signed-in devices. The suite drives the same mergeDB path through a mocked transaction only."
+
   - test: "Mid-workout, '+ Custom…' with a name the app has never seen; look at the card, tap one type; Discard the draft if it was only a test."
     expected: "A box asks 'What equipment is “…”?' with six buttons, one highlighted. After the tap the box goes and the tag shows the choice."
     why_human: "Touch interaction on the installed PWA."
+
   - test: "Layout backstop at about 380px on Ian's Android PWA."
     expected: "Picker is 3 × 2 with every button at least 44px tall and the guess highlighted; the tag is legible under the select; Settings rows stack the dropdown under the name, never beside Rename."
     why_human: "Visual layout on the physical device (09-05 truth with verification: backstop)."
+
   - test: "Do the workout as usual and finish it."
     expected: "It saves normally, and Settings shows no sync error on either device."
     why_human: "End-to-end on the real device with the schema-19 cloud doc."
@@ -77,10 +84,12 @@ If Ian wants the two amended 09-03 truths formally accepted in this file, add:
 
 ```yaml
 overrides:
+
   - must_have: "A deload is never heavier than the last working weight: an EZ preset bar logged at 20 stays 20"
     reason: "WR-02 (09-REVIEW-FIX): under the bar a lighter preset exists, so it steps down the type's ladder (20 → 15). Still never heavier."
     accepted_by: "Ian"
     accepted_at: "<ISO timestamp>"
+
   - must_have: "at or below the bar on a barbell/EZ lift the weight stays at the bar"
     reason: "WR-02: only AT the bar stays (D-15); under the bar steps down. WR-03 adds 'Already at the lightest weight' at the lightest step."
     accepted_by: "Ian"

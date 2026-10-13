@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
-current_phase: 09
-current_phase_name: equipment-and-weight-steps
-status: verifying
-stopped_at: Completed 09-05-PLAN.md
-last_updated: "2026-10-12T19:05:00.000Z"
-last_activity: 2026-10-12
-last_activity_desc: Phase 09 shipped (PR #14, merge 8a20832); phone UAT pending
+current_phase: 10
+current_phase_name: Log Page — History and Skip
+status: planning
+stopped_at: Phase 9 complete, ready to plan Phase 10
+last_updated: "2026-10-13T11:45:37.740Z"
+last_activity: 2026-10-13
+last_activity_desc: Phase 9 complete, transitioned to Phase 10
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
   completed_plans: 8
-  percent: 17
+  percent: 33
 ---
 
 # Project State
@@ -24,22 +24,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 09 — equipment-and-weight-steps
+**Current focus:** Phase 10 — Log Page — History and Skip
 
 ## Current Position
 
-Phase: 09 (equipment-and-weight-steps) — VERIFYING (live on main, phone UAT pending)
-Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-10-12 — Phase 09 shipped as PR #14 (merge commit 8a20832), live build verified
+Phase: 10 — Log Page — History and Skip
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-13 — Phase 9 complete, transitioned to Phase 10
 
-Progress: [██████████] 100% of Phase 9 plans (v1.1: Phase 8 verified; Phase 9 awaits the phone UAT)
+Progress: [██████████] Phase 9 complete (v1.1: 2 of 6 phases verified)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 36
+- Total plans completed: 41
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -55,6 +55,7 @@ Progress: [██████████] 100% of Phase 9 plans (v1.1: Phase 8 
 | 7 | 7 | - | - |
 | 6 | 2 | - | - |
 | 8 | 3 | - | - |
+| 9 | 5 | - | - |
 
 **Recent Trend:**
 
@@ -132,6 +133,7 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [09-04]: on a time-based accessory card exEnsureAsk still queues the id and extraCard declines to render it; the row keeps its guess
 - [09-04]: equipAsk.delete(id) sits after setExerciseEquip's validity checks, so a refused type leaves the picker in place
 - [09-05]: Phase 9 shipped as PR #14, merge commit 8a20832 on main; live stamp 2026-10-12T18:58:25Z 8a20832, csp --check OK, SCHEMA 19, helper grep 4. Phone workout and cross-device type change are the pending end-of-phase UAT
+- [09-UAT]: Phone UAT passed 2026-10-13 (tag, Preacher-curl plates, pre-set types, cross-device type change both ways, first-time picker, 380px layout, clean finish); 09-SECURITY.md verified, 37/37 closed
 - [09-05]: Revert is git revert -m 1 --no-edit 8a20832 on main. Once schema 19 has synced, a revert keeps all data but pauses sync on every device until a 19+ build ships; a blank app means nothing migrated and the revert is clean
 - [09-05]: Shipped with WR-09, WR-06 and the info items open (none blocking); WR-09 (order-dependent conflicting concurrent merges) is the post-ship fix candidate
 
@@ -175,9 +177,9 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 ## Session Continuity
 
 Last session: 2026-10-12T19:05:00.000Z
-Stopped at: Completed 09-05-PLAN.md
+Stopped at: Phase 9 complete, ready to plan Phase 10
 Resume file: None
 
 ## Operator Next Steps
 
-- Phone UAT for Phase 9 (09-05-SUMMARY.md § UAT item): Settings → This version must end `8a20832` on the phone AND the PC. On failure, `git revert -m 1 --no-edit 8a20832` on `main` and push (sync then pauses until a 19+ build ships; data stays). On pass, write the vault changelog entry, then `/gsd-verify-work 9`.
+- Discuss Phase 10: `/gsd-discuss-phase 10` (Log page: last 5 sessions inline from "Last time", and skip a whole exercise).
