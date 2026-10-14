@@ -111,6 +111,19 @@ Carried forward (not re-asked):
   collapsed cards collapsed.** Every set is unchanged. This return state is screen-only and never goes
   into `DB.draft` or a save.
 
+### Settled after research (2026-10-13, research Open Questions 1–4)
+- **D-22:** **A skip with no done set clears `deload`**, so a deload-then-skip still blocks Add weight
+  next time (`lastAttemptEntry` ignores deloaded entries). The pre-skip snapshot keeps the deload, so
+  Undo puts it back. When some sets were done, the deload stays.
+- **D-23:** **The exporter stays unchanged.** A skipped set keeps exporting as a row of `—`, and skip
+  reasons are visible only in the app. This corrects D-18's premise that the export carries reasons.
+- **D-24:** When an exercise's only history is skipped or deloaded attempts, the Last time line reads
+  **"No previous data — set your baseline."** and is **not tappable** (D-07 applied literally). The D-17
+  muted skip note **still shows** under it.
+- **D-25:** **Re-editing a finished workout keeps a skipped exercise skipped**: the exercise-level marker
+  and reason carry through `editSession` into the draft. Undo still works; with no pre-skip snapshot it
+  restores the sets as unskipped empty sets.
+
 ### Claude's Discretion
 - The data shape of the exercise-level skip (D-09), within the rules stated there.
 - How the pre-skip snapshot is stored in the draft (D-13), within the draft rules.
