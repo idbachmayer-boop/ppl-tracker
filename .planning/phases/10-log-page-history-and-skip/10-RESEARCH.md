@@ -609,22 +609,22 @@ const skipNote = (att && att.entry && att.entry.skipped === true)
 | A3 | Ian wants the skip button and inline history on **main slot cards only**, not on the accessory "extras" cards (abs, forearms, dead hang). Extras cards have no Last-time line, no per-set skip and no Add weight (`extraCard`, `index.html:3196-3223`, read via `sed`) | Edit map | Low: if he wants them, it is a follow-up |
 | A4 | Five rows means five **entries**; in the rare session holding the exercise twice (a slot and an extras card) both rows count | Pattern 3 | Cosmetic |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Deload, then skip the whole exercise (Pitfall 10).**
+1. **Deload, then skip the whole exercise (Pitfall 10).** RESOLVED: D-22 (10-CONTEXT.md)
    - What we know: `lastAttemptEntry` ignores `deload` entries, so a deloaded, fully skipped entry does not block Add weight; the attempt before it is judged.
    - What's unclear: whether Ian sees "deload then skip" as a real case.
    - Recommendation: `skipExercise` sets `deload=false` when no set is done (snapshot restores it on Undo). If some sets were done at the deload weight, keep `deload` (those numbers must not become the baseline). Confirm with Ian or the planner records it as a decision.
 
-2. **D-18 wording vs the actual export.**
+2. **D-18 wording vs the actual export.** RESOLVED: D-23 (10-CONTEXT.md)
    - What we know: the Markdown export never carried set reasons; a skipped set exports as `— | —`. The JSON backup carries everything.
    - Recommendation: no exporter change (CLAUDE.md step 6, and EXP-02 forbids exporter functions naming collections). Note it in the SUMMARY so Ian is not surprised.
 
-3. **History that holds only skipped or deloaded attempts (D-07 edge).**
+3. **History that holds only skipped or deloaded attempts (D-07 edge).** RESOLVED: D-24 (10-CONTEXT.md)
    - What we know: `lastRealEntry` and `lastAnywhere` both ignore no-worked and deload entries, so the line reads "No previous data" even when `exerciseRecent` has rows.
    - Recommendation: follow D-07 literally (`ref || alt` gates tappability), but still show the D-17 note when the last attempt in the slot was skipped. Low impact.
 
-4. **Re-editing a session with a skipped exercise (Pitfall 9).**
+4. **Re-editing a session with a skipped exercise (Pitfall 9).** RESOLVED: D-25 (10-CONTEXT.md)
    - Recommendation: carry the marker through `editSession`; Undo there uses the no-snapshot fallback (un-skip sets with no reason of their own, refill weights with `nearWeight`).
 
 ## Environment Availability

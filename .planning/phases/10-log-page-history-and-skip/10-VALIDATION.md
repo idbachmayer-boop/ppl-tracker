@@ -41,7 +41,25 @@ Baseline at research time: `1136 passed, 0 failed, 2 skipped`.
 
 ## Per-Task Verification Map
 
-Filled when plans exist. Requirement-level map (from research):
+Task-level map, from each plan's `<validation_map>`. Every code task runs `npm run csp:hash && npm run csp:check && TZ=America/Chicago npm test`.
+
+| Task ID | Plan | Wave | Rows covered | Automated Command | Status |
+|---------|------|------|--------------|-------------------|--------|
+| 10-01-01 | 10-01 | 1 | LOG-03, D-08, D-10, D-14; D-14 DRAFT-05 rows + pin; LOG-05, D-09, D-16 | `npm test` | ⬜ pending |
+| 10-01-02 | 10-01 | 1 | D-11, D-12; LOG-04, D-13; Security (reason in S2) | `npm test` | ⬜ pending |
+| 10-01-03 | 10-01 | 1 | LOG-05, D-09, D-16; D-09 old build + sync; D-18 export | `npm test` | ⬜ pending |
+| 10-02-01 | 10-02 | 2 | D-15, D-17 | `npm test` | ⬜ pending |
+| 10-02-02 | 10-02 | 2 | D-15, D-17, D-24; Security (S6 + note) | `npm test` | ⬜ pending |
+| 10-02-03 | 10-02 | 2 | LOG-04 via edit path (D-25) | `npm test` | ⬜ pending |
+| 10-03-01 | 10-03 | 3 | LOG-01, D-06; LOG-02, D-19..D-21 | `npm test` | ⬜ pending |
+| 10-03-02 | 10-03 | 3 | LOG-01, D-01..D-05; D-07; Security (S4) | `npm test` | ⬜ pending |
+| 10-03-03 | 10-03 | 3 | LOG-02, D-19..D-21 (paths back, one-shot, resets) | `npm test` | ⬜ pending |
+| 10-04-01 | 10-04 | 4 | CSP; full suite on the tip | `npm run csp:check && TZ=America/Chicago npm test` | ⬜ pending |
+| 10-04-03 | 10-04 | 4 | Manual-Only Verifications (human check); live bytes | `node scripts/csp-hash.js --check` (live page) | ⬜ pending |
+
+10-04-02 is the blocking push checkpoint and has no automated row.
+
+Requirement-level map (from research):
 
 | Req / Decision | Behavior | Test Type | Automated Command | File Exists | Status |
 |----------------|----------|-----------|-------------------|-------------|--------|

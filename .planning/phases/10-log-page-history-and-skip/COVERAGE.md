@@ -1,0 +1,1 @@
+No external API integration: the phase adds an on-card inline history, a chart link with a scroll return and a whole-exercise skip, all local to index.html over the existing data and sync. The only "API" mention is 10-04's read-only `gh api` check of the merge commit during shipping, which is tooling, not an integration.
