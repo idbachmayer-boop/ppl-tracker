@@ -3774,13 +3774,22 @@ const DRAFT_ONLY_MUTATORS = [
                              db => [db.sessions.findIndex(s => s.id === 's1')],
                                                       db => !!db.draft && db.draft.editRef === 's1'],
   ['discardWorkout',   null, () => [],                  db => db.draft === null],
+  /* Phase 10 (LOG-03, D-14): the exercise skip and its Undo. The setup reaches the skipped state through
+     the real function, so the Undo row restores a real `_preSkip` snapshot. */
+  ['skipExercise',     null, () => [0],                 db => db.draft.entries[0].skipped === true && db.draft.entries[0].sets[0].skipped === true],
+  ['unskipExercise',   (db, a) => { a.DB = db; a.__sandbox.skipExercise(0); },
+                             () => [0],               db => db.draft.entries[0].skipped === undefined && db.draft.entries[0].sets[0].skipped === false],
 ];
 {
   const a = loadApp(APP_PATH);
   const failing = [];
   DRAFT_ONLY_MUTATORS.forEach(([name, setup, args, changed]) => {
     const db = populatedDB(a); db.draft = fullDraft(a, 'PUSH 1'); db.updatedAt = 1000;
-    if(setup) setup(db, a);
+    /* A setup that throws (a function it calls is missing) names its row instead of ending the run. */
+    if(setup){
+      try{ setup(db, a); }
+      catch(e){ failing.push({ name, reason: 'setup threw: ' + (e && e.message) }); return; }
+    }
     a.DB = db;
     const spy = spyPushes(a);
     a.__sandbox.localStorage.removeItem('ppl_tracker_v1');   // a row that stores nothing reads as a mismatch
@@ -3797,7 +3806,7 @@ const DRAFT_ONLY_MUTATORS = [
     if(why.length) failing.push({ name, reason: why.join(', ') });
   });
   ok('DRAFT-05: every draft-only edit is stored on this device with no updatedAt bump and no push',
-     failing.length === 0 && DRAFT_ONLY_MUTATORS.length === 25, failing);
+     failing.length === 0 && DRAFT_ONLY_MUTATORS.length === 27, failing);
 
   /* Every function the script declares, whose comment-stripped source reads DB.draft and calls bare
      save() (saveLocal() does not match). A new one fails here by name. */
@@ -9676,6 +9685,1425 @@ function eqTagOf(card, i){
      { hostId, hostPickId, sel: hsSel && hsSel.tag, ask });
   S.equipAsk.clear();
   S.DB.draft = null;
+}
+
+/* ── LOG: history and skip on the workout card (Phase 10, LOG-01..05) ──
+   The helpers are top-level function declarations, so 10-02 and 10-03 reuse them. They read only their
+   arguments. Fixtures are built at the current schema through blank(), so no migration rewrites them.
+     lgLat(a)                          the PUSH 1 slot whose examples include 'DB lateral raise' (range 15-20).
+     lgSess(a, id, date, slot, sets, o) one finished session: slot `slot` gets the [w, r, skipped, reason]
+                                       sets (a skipped set stores w '' and r ''), every other slot `sets: []`.
+                                       Options: workout (default PUSH 1), endedAt (default 1), name, deload,
+                                       note, blankSets, and the exercise marker skipped/reason.
+     lgRun(a, list)                    replaces a.DB with those sessions and no draft.
+     lgCard(a, i, workout)             rebuilds the draft from history and returns the i-th exercise card. */
+console.log('\n── LOG: history and skip on the workout card (LOG-01..05) ──');
+function lgLat(a){
+  return a.PROGRAM['PUSH 1'].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+}
+function lgSess(a, id, date, slot, sets, o){
+  o = o || {};
+  const wk = o.workout || 'PUSH 1';
+  return { id, workout: wk, date, endedAt: o.endedAt != null ? o.endedAt : 1, extras: {},
+    entries: a.PROGRAM[wk].slots.map((s, i) => i !== slot ? { name: s.examples[0], sets: [] }
+      : Object.assign({ name: o.name || 'DB lateral raise',
+          sets: sets.map(([w, r, sk, why]) => ({ w: sk ? '' : String(w), r: sk ? '' : String(r), skipped: !!sk, reason: sk && why ? String(why) : '' })) },
+        o.deload ? { deload: true } : {},
+        o.note != null ? { note: o.note } : {},
+        o.blankSets != null ? { blankSets: o.blankSets } : {},
+        o.skipped ? { skipped: o.skipped, reason: o.reason != null ? o.reason : '' } : {})) };
+}
+function lgRun(a, list){
+  a.DB = a.normalize(Object.assign(a.blank(), { sessions: list, draft: null, unit: 'lb' }));
+}
+function lgCard(a, i, workout){
+  a.DB.draft = null;
+  a.__sandbox.startWorkout(workout || 'PUSH 1');
+  return a.viewActive().split('<div class="ex-card">')[i + 1] || '';
+}
+/* Tracer (LOG-03, LOG-04, LOG-05): skip the lateral raise from its header icon, see the one-line card,
+   Undo it, skip it again, finish, and the next PUSH 1 card offers no Add weight. Each step is its own
+   check so a red names the step that broke. */
+{
+  const a = loadApp(APP_PATH), S = a.__sandbox, spy = spyPushes(a), LAT = lgLat(a);
+  const r = {};
+  const step = (k, fn) => { if(r.threw) return; try{ fn(); }catch(e){ r.threw = k + ': ' + (e && e.stack || e); } };
+  const latCardNow = () => a.viewActive().split('<div class="ex-card">')[LAT + 1] || '';
+  step('a', () => {
+    lgRun(a, [lgSess(a, 't0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])]);
+    S.startWorkout('PUSH 1');
+    r.flagBefore = latCardNow().includes('class="flag"');
+  });
+  ok('LOG-05 tracer (a): the positive control, three sets at the top earn the Add weight flag before any skip',
+     !r.threw && r.flagBefore === true, r);
+  step('b', () => {
+    r.u = a.DB.updatedAt; r.n = spy.n;
+    r.cardsBefore = a.viewActive().split('<div class="ex-card">').length;
+    r.before = canon(a.DB.draft.entries[LAT].sets);
+    const ctrl = f2Find(a, f2At('skipExercise', LAT));
+    r.tag = ctrl && ctrl.tag;
+    S.prompt = () => 'shoulder';
+    if(ctrl) fireListener(a, 'click', fakeEl(ctrl.data));
+    const e = a.DB.draft.entries[LAT];
+    r.b = { skipped: e.skipped, reason: e.reason, sets: e.sets.map(x => [x.skipped, x.w, x.r]),
+            snap: e._preSkip && Array.isArray(e._preSkip.sets) ? e._preSkip.sets.length : null,
+            u: a.DB.updatedAt, n: spy.n, stored: canon((a.__stored() || {}).draft) === canon(a.DB.draft) };
+  });
+  ok('LOG-03 tracer (b): the header skip button skips every unfinished set with the reason, on this device only',
+     !r.threw && r.tag === 'button' && r.b && r.b.skipped === true && r.b.reason === 'shoulder'
+       && r.b.sets.length === 3 && r.b.sets.every(([sk, w, rp]) => sk === true && w === '' && rp === '')
+       && r.b.snap === 3 && r.b.u === r.u && r.b.n === r.n && r.b.stored === true,
+     r);
+  step('c', () => {
+    const card = latCardNow();
+    r.c = { notes: (card.match(/class="skip-note"/g) || []).length,
+            text: card.includes('<strong>DB lateral raise</strong> · skipped: <em>shoulder</em>'),
+            undo: controlsIn(card).filter(c => c.data.action === 'unskipExercise').map(c => [c.tag, c.data.i]),
+            cards: a.viewActive().split('<div class="ex-card">').length };
+  });
+  ok('LOG-03 tracer (c): the skipped card is one note with the name, the reason and an Undo button, and no card shifts',
+     !r.threw && r.c && r.c.notes === 1 && r.c.text && JSON.stringify(r.c.undo) === JSON.stringify([['button', String(LAT)]])
+       && r.c.cards === r.cardsBefore,
+     r.c || r);
+  step('d', () => {
+    const ctrl = f2Find(a, f2At('unskipExercise', LAT));
+    if(ctrl) fireListener(a, 'click', fakeEl(ctrl.data));
+    const e = a.DB.draft.entries[LAT];
+    r.d = { same: canon(e.sets) === r.before, keys: ['_preSkip', 'skipped', 'reason'].filter(k => k in e) };
+  });
+  ok('LOG-04 tracer (d): Undo restores the sets exactly and leaves no snapshot or marker on the entry',
+     !r.threw && r.d && r.d.same && r.d.keys.length === 0, r.d || r);
+  step('e', () => {
+    const ctrl = f2Find(a, f2At('skipExercise', LAT));
+    S.prompt = () => 'shoulder';
+    if(ctrl) fireListener(a, 'click', fakeEl(ctrl.data));
+    const n = spy.n;
+    S.finishWorkout();
+    const row = a.DB.sessions.find(s => s.workout === 'PUSH 1' && s.date === a.todayISO() && !s.deletedAt);
+    const e = row && row.entries[LAT];
+    r.e = { row: !!row, skipped: e && e.skipped, reason: e && e.reason,
+            allSkipped: !!e && e.sets.length > 0 && e.sets.every(x => x.skipped === true),
+            under: e ? Object.keys(e).filter(k => k.charAt(0) === '_').concat(...e.sets.map(x => Object.keys(x).filter(k => k.charAt(0) === '_'))) : null,
+            pushed: spy.n - n };
+  });
+  ok('LOG-05 tracer (e): the finished session keeps the skip marker and per-set flags, with no draft-only field',
+     !r.threw && r.e && r.e.row && r.e.skipped === true && r.e.reason === 'shoulder' && r.e.allSkipped
+       && Array.isArray(r.e.under) && r.e.under.length === 0 && r.e.pushed >= 1,
+     r.e || r);
+  step('f', () => {
+    const card = lgCard(a, LAT);
+    r.f = { flag: card.includes('class="flag"'), last: card.includes('Last time (') };
+  });
+  ok('LOG-05 tracer (f): the next PUSH 1 card offers no Add weight for the skipped exercise and still shows Last time',
+     !r.threw && r.f && r.f.flag === false && r.f.last === true, r.f || r);
+  a.DB.draft = null;
+}
+
+/* The skip rules mid-workout (D-08, D-10, D-11, D-12, D-13, D-22, D-25). Most checks start from f2Mid():
+   populatedDB with a full PUSH 1 draft, every slot holding one blank set, on Train → Log. */
+const lgRaw = a => a.__sandbox.localStorage.getItem('ppl_tracker_v1');
+const lgCardOf = (a, i) => a.viewActive().split('<div class="ex-card">')[i + 1] || '';
+const lgTry = fn => { try{ return fn(); }catch(e){ return { threw: String(e && e.stack || e) }; } };
+{
+  const r = lgTry(() => {
+    const a = f2Mid(d => {
+      d.draft.entries[0].sets = [{ w: '135', r: '8', skipped: false, reason: '' }];
+      d.draft.entries[1].sets = [{ w: '100', r: '8', skipped: false, reason: '' }, { w: '100', r: '', skipped: false, reason: '' }];
+    });
+    a.__sandbox.prompt = () => '';
+    a.__sandbox.skipSet(1, 1);
+    const cs = controlsIn(f2AppHtml(a));
+    const card = lgCardOf(a, 2);
+    const col = card.indexOf('<div style="text-align:right;white-space:nowrap">');
+    const sk = card.indexOf('data-action="skipExercise"'), ca = card.indexOf('data-action="toggleExCollapse"');
+    const rb = card.indexOf('class="range-badge"');
+    return { s0: cs.some(f2At('skipExercise', 0)), s1: cs.some(f2At('skipExercise', 1)), s2: cs.some(f2At('skipExercise', 2)),
+             order: col >= 0 && col < sk && sk < ca && ca < rb && !card.slice(col, ca).includes('</div>') };
+  });
+  ok('D-12: the skip button shows only on a card with an unfinished set, first in the header column, ahead of the caret and the range badge',
+     !r.threw && r.s0 === false && r.s1 === false && r.s2 === true && r.order === true, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(d => {
+      d.draft.entries[0].sets = [{ w: '135', r: '8', skipped: false, reason: '' }];
+      Object.assign(d.draft.entries[3], { skipped: true, reason: 'x', sets: [{ w: '', r: '', skipped: false, reason: '' }] });
+    });
+    let calls = 0;
+    a.__sandbox.prompt = () => { calls++; return 'x'; };
+    a.saveLocal();
+    const blob = lgRaw(a);
+    a.__sandbox.skipExercise(0);
+    const allDone = { calls, same: lgRaw(a) === blob };
+    a.__sandbox.skipExercise(3);
+    return { allDone, already: { calls, same: lgRaw(a) === blob } };
+  });
+  ok('D-12: a stale tap on a card with nothing left to skip, or on a skipped card, asks nothing and writes nothing',
+     !r.threw && r.allDone.calls === 0 && r.allDone.same && r.already.calls === 0 && r.already.same, r);
+}
+{
+  const r = lgTry(() => {
+    const out = {};
+    const a = f2Mid();
+    a.saveLocal();
+    const blob = lgRaw(a);
+    let asked = null;
+    a.__sandbox.prompt = (q, def) => { asked = [q, def]; return null; };
+    a.__sandbox.skipExercise(0);
+    const e0 = a.DB.draft.entries[0];
+    out.cancel = { same: lgRaw(a) === blob, keys: ['skipped', 'reason', '_preSkip'].filter(k => k in e0),
+                   asked: asked && asked[0] === `Why skipping ${e0.name}? (optional)` && asked[1] === '' };
+    a.__sandbox.prompt = () => '   ';
+    a.__sandbox.skipExercise(0);
+    const card = lgCardOf(a, 0);
+    out.blank = { reason: a.DB.draft.entries[0].reason,
+                  text: card.includes(`<strong>${a.esc(e0.name)}</strong> · skipped</span>`), em: card.includes('<em>') };
+    a.__sandbox.prompt = () => '  knee  ';
+    a.__sandbox.skipExercise(1);
+    out.trim = a.DB.draft.entries[1].reason;
+    return out;
+  });
+  ok('D-10: the reason prompt asks by name; Cancel writes nothing, a blank answer skips with no reason, and a reason is stored trimmed',
+     !r.threw && r.cancel.same && r.cancel.keys.length === 0 && r.cancel.asked
+       && r.blank.reason === '' && r.blank.text && r.blank.em === false && r.trim === 'knee', r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(d => {
+      d.draft.entries[0].sets = [{ w: '120', r: '10', skipped: false, reason: '' }, { w: '120', r: '9', skipped: false, reason: '' },
+                                 { w: '120', r: '', skipped: false, reason: '' }];
+    });
+    const S = a.__sandbox, e = a.DB.draft.entries[0];
+    const s0 = canon(e.sets[0]), s1 = canon(e.sets[1]);
+    S.prompt = () => 'shoulder';
+    S.skipExercise(0);
+    const card = lgCardOf(a, 0);
+    return { kept: canon(e.sets[0]) === s0 && canon(e.sets[1]) === s1,
+             third: canon(e.sets[2]) === canon({ w: '', r: '', skipped: true, reason: '', exSkip: true }),   // exSkip: the skip's own mark (WR-03)
+             text: card.includes(`<strong>${a.esc(e.name)}</strong> · ${a.esc(S.fmtSet('120', '10'))}, ${a.esc(S.fmtSet('120', '9'))} · rest skipped: <em>shoulder</em>`) };
+  });
+  ok('D-08/D-11: a skip after two done sets keeps them exactly and the card reads "{name} · 120×10, 120×9 · rest skipped: shoulder"',
+     !r.threw && r.kept && r.third && r.text, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(d => { d.draft.entries[0].sets = [0, 1].map(() => ({ w: '', r: '', skipped: false, reason: '' })); });
+    const S = a.__sandbox;
+    S.prompt = () => 'elbow'; S.skipSet(0, 0);
+    S.prompt = () => 'shoulder'; S.skipExercise(0);
+    const e = a.DB.draft.entries[0];
+    return { reasons: e.sets.map(x => x.reason), entry: e.reason };
+  });
+  ok('D-08: a set skipped earlier keeps its own reason, and the exercise reason lives on the entry only',
+     !r.threw && JSON.stringify(r.reasons) === '["elbow",""]' && r.entry === 'shoulder', r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    lgRun(a, [lgSess(a, 't0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])]);
+    S.startWorkout('PUSH 1');
+    S.deloadExercise(LAT);
+    S.prompt = () => '';
+    S.skipExercise(LAT);
+    const e = a.DB.draft.entries[LAT];
+    const none = { deload: e.deload, snap: e._preSkip && e._preSkip.deload };
+    S.unskipExercise(LAT);
+    none.undone = a.DB.draft.entries[LAT].deload;
+    a.setVal(LAT, 0, 'r', '18');
+    S.skipExercise(LAT);
+    return { none, oneDone: a.DB.draft.entries[LAT].deload };
+  });
+  ok('D-22: a skip that leaves no done set clears deload (the snapshot keeps it, Undo brings it back); with a done set deload stays',
+     !r.threw && r.none.deload === false && r.none.snap === true && r.none.undone === true && r.oneDone === true, r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    lgRun(a, [lgSess(a, 't0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])]);
+    S.startWorkout('PUSH 1');
+    a.setVal(LAT, 0, 'w', '30');
+    a.setVal(LAT, 0, 'r', '18');
+    S.prompt = () => 'elbow'; S.skipSet(LAT, 2);
+    const before = canon(a.DB.draft.entries[LAT].sets), deload = !!a.DB.draft.entries[LAT].deload;
+    S.prompt = () => 'shoulder'; S.skipExercise(LAT);
+    const b = loadApp(APP_PATH, a.__stored());
+    const eb = b.DB.draft && b.DB.draft.entries[LAT];
+    const out = { reloaded: !!eb && canon(eb) === canon(a.DB.draft.entries[LAT]) && !!eb._preSkip,
+                  s2: (b.viewActive().split('<div class="ex-card">')[LAT + 1] || '').includes('data-action="unskipExercise"') };
+    b.__sandbox.unskipExercise(LAT);
+    const e = b.DB.draft.entries[LAT];
+    out.exact = canon(e.sets) === before && !!e.deload === deload;
+    out.prefill = e.sets[1] && e.sets[1].w === '27.5';
+    out.elbow = e.sets[2] && e.sets[2].skipped === true && e.sets[2].reason === 'elbow';
+    out.keys = ['_preSkip', 'skipped', 'reason'].filter(k => k in e);
+    return out;
+  });
+  ok('D-13/LOG-04: the skip survives a reload, and Undo after the reload restores typed and prefilled weights, an earlier single skip and the deload exactly',
+     !r.threw && r.reloaded && r.s2 && r.exact && r.prefill && r.elbow && r.keys.length === 0, r);
+}
+{
+  const r = lgTry(() => {
+    const seed = d => { d.draft.entries[0].sets = [{ w: '100', r: '8', skipped: false, reason: '' }, { w: '100', r: '', skipped: false, reason: '' }]; };
+    const a1 = f2Mid(seed), a2 = f2Mid(seed);
+    a1.__sandbox.prompt = a2.__sandbox.prompt = () => 'x';
+    a1.__sandbox.skipExercise(0); a1.__sandbox.unskipExercise(0); a1.__sandbox.skipExercise(0);
+    a2.__sandbox.skipExercise(0);
+    return { same: canon(a1.DB.draft.entries[0]) === canon(a2.DB.draft.entries[0]),
+             order: a1.DB.draft.entries[0].sets.map(x => x.r) };
+  });
+  ok('LOG-03/LOG-04: skip, Undo, skip ends in the same entry as a single skip, set order unchanged',
+     !r.threw && r.same && JSON.stringify(r.order) === '["8",""]', r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(d => {
+      d.draft.entries[0] = { name: d.draft.entries[0].name, note: '', deload: false, skipped: true, reason: 'x',
+        sets: [{ w: '100', r: '8', skipped: false, reason: '' }, { w: '', r: '', skipped: true, reason: '' }, { w: '', r: '', skipped: true, reason: 'elbow' }] };
+    });
+    a.__sandbox.unskipExercise(0);
+    const e = a.DB.draft.entries[0];
+    return { s1: canon(e.sets[1]) === canon({ w: '100', r: '', skipped: false, reason: '' }),
+             s2: canon(e.sets[2]) === canon({ w: '', r: '', skipped: true, reason: 'elbow' }),
+             keys: ['_preSkip', 'skipped', 'reason'].filter(k => k in e) };
+  });
+  ok('D-25: Undo with no snapshot un-skips each set with no reason of its own at the nearest weight, and leaves a set skipped with its own reason',
+     !r.threw && r.s1 && r.s2 && r.keys.length === 0, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid();
+    a.saveLocal();
+    const blob = lgRaw(a), entry = canon(a.DB.draft.entries[0]);
+    a.__sandbox.unskipExercise(0);
+    return { same: lgRaw(a) === blob && canon(a.DB.draft.entries[0]) === entry };
+  });
+  ok('LOG-04: Undo on an exercise that is not skipped does nothing', !r.threw && r.same, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(), S = a.__sandbox;
+    S.prompt = () => '';
+    S.toggleExCollapse(0);
+    const collapsed = lgCardOf(a, 0).includes('▾ expand');
+    S.skipExercise(0);
+    const sk = lgCardOf(a, 0);
+    const skipped = sk.includes('class="skip-note"') && !sk.includes('▾ expand');
+    S.unskipExercise(0);
+    return { collapsed, skipped, back: lgCardOf(a, 0).includes('▾ expand') };
+  });
+  ok('S2 over collapse: a skipped card ignores its collapsed state without clearing it, so Undo brings back the collapsed card',
+     !r.threw && r.collapsed && r.skipped && r.back, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(), S = a.__sandbox;
+    S.prompt = () => '';
+    S.skipExercise(0); S.skipExercise(1); S.unskipExercise(0);
+    const c0 = lgCardOf(a, 0), c1 = lgCardOf(a, 1);
+    const b = f2Mid();
+    b.__sandbox.prompt = () => '';
+    b.__sandbox.skipExercise(1);
+    const c2 = b.viewActive().split('<div class="ex-card">')[3] || '';
+    return { full0: c0.includes('class="ex-head"') && !c0.includes('data-action="unskipExercise"'),
+             still1: c1.includes('data-action="unskipExercise"') && a.DB.draft.entries[1].skipped === true,
+             index: c2.includes('data-i="2"') && !c2.includes('data-i="1"') };
+  });
+  ok('S2 across cards: several skips each keep their own Undo by slot, undoing one leaves the others, and later cards keep their index',
+     !r.threw && r.full0 && r.still1 && r.index, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid();
+    a.__sandbox.prompt = () => '';
+    a.__sandbox.skipExercise(1);
+    const skipCalls = spyOn(a, 'skipExercise'), undoCalls = spyOn(a, 'unskipExercise');
+    const s1 = f2Find(a, f2At('skipExercise', 2)), u1 = f2Find(a, f2At('unskipExercise', 1));
+    if(s1) fireListener(a, 'click', fakeEl(s1.data));
+    if(u1) fireListener(a, 'click', fakeEl(u1.data));
+    return { tags: [s1 && s1.tag, u1 && u1.tag], skip: skipCalls, undo: undoCalls };
+  });
+  ok('LOG-03/LOG-04: the skip and Undo controls are buttons that call skipExercise(2) and unskipExercise(1) with exactly the slot',
+     !r.threw && JSON.stringify(r.tags) === '["button","button"]' && JSON.stringify(r.skip) === '[[2]]' && JSON.stringify(r.undo) === '[[1]]', r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid();
+    a.__sandbox.prompt = () => EVIL;
+    a.__sandbox.skipExercise(0);
+    const card = lgCardOf(a, 0);
+    const b = f2Mid(d => { d.draft.entries[0].name = EVIL; });
+    b.__sandbox.prompt = () => '';
+    b.__sandbox.skipExercise(0);
+    const nameCard = lgCardOf(b, 0);
+    return { em: card.includes('<em>' + a.esc(EVIL) + '</em>') && card.includes('&quot;&gt;&lt;img'), img: card.includes('<img'),
+             attrs: JSON.stringify(controlsIn(card)).includes('img'),
+             name: nameCard.includes('<strong>' + b.esc(EVIL) + '</strong>') && !nameCard.includes('<img') };
+  });
+  ok('T-10-01: a hostile reason or name renders escaped as text in the skipped card and in no attribute',
+     !r.threw && r.em && r.img === false && r.attrs === false && r.name, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(), long = 'abcdefghij'.repeat(30);
+    a.__sandbox.prompt = () => long;
+    a.__sandbox.skipExercise(0);
+    const m = /<div class="skip-note"[^>]*><span>([\s\S]*?)<\/span>(<button[^>]*>Undo<\/button>)<\/div>/.exec(lgCardOf(a, 0));
+    return { whole: !!m && m[1].includes('<em>' + long + '</em>'), undo: !!m && m[2].includes('data-action="unskipExercise"') };
+  });
+  ok('long text: a 300-character reason sits whole inside the note\'s first span, and Undo stays a separate button',
+     !r.threw && r.whole && r.undo, r);
+}
+
+/* The finished session (D-09, D-13, D-16, D-18, D-22, D-23, LOG-05). finishWorkout's save() is the one
+   sanctioned copy from the draft into synced data: the per-set flags and the exercise marker go across,
+   nothing whose name starts with `_` does. */
+const lgToday = a => a.DB.sessions.find(s => s.workout === 'PUSH 1' && s.date === a.todayISO() && !s.deletedAt) || null;
+const lgUnderscored = row => {
+  const bad = [];
+  (row && Array.isArray(row.entries) ? row.entries : []).forEach((e, i) => {
+    Object.keys(e).filter(k => k.charAt(0) === '_').forEach(k => bad.push(i + '.' + k));
+    (Array.isArray(e.sets) ? e.sets : []).forEach((x, k) => Object.keys(x || {}).filter(n => n.charAt(0) === '_').forEach(n => bad.push(i + '.sets.' + k + '.' + n)));
+  });
+  return bad;
+};
+const lgHist = (a, LAT) => [lgSess(a, 'h0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])];
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox;
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    lgRun(a, []);
+    S.startWorkout('PUSH 1');
+    S.prompt = () => '';
+    a.DB.draft.entries.forEach((_, i) => S.skipExercise(i));
+    let alerts = 0;
+    S.alert = () => { alerts++; };
+    S.finishWorkout();
+    const row = lgToday(a);
+    return { alerts, row: !!row, n: row ? row.entries.length : 0,
+             every: !!row && row.entries.every(e => e.skipped === true && Array.isArray(e.sets) && e.sets.some(x => x && x.skipped === true)) };
+  });
+  ok('D-16: a workout with every exercise skipped finishes as a normal session, every entry marked and holding a skipped set',
+     !r.threw && r.alerts === 0 && r.row && r.n > 0 && r.every, r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    S.startWorkout('PUSH 1');
+    a.setVal(0, 0, 'w', '100'); a.setVal(0, 0, 'r', '8');
+    a.DB.draft.entries[0].sets[0]._cel = true;
+    S.prompt = () => 'shoulder';
+    S.skipExercise(LAT);
+    const had = { cel: a.DB.draft.entries[0].sets[0]._cel === true, snap: !!a.DB.draft.entries[LAT]._preSkip };
+    S.finishWorkout();
+    return { had, bad: lgUnderscored(lgToday(a)), row: !!lgToday(a) };
+  });
+  ok('T-10-02: no field starting with `_` survives on any entry or set of the finished session (_cel and _preSkip included)',
+     !r.threw && r.had.cel && r.had.snap && r.row && r.bad.length === 0, r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox;
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    lgRun(a, []);
+    S.startWorkout('PUSH 1');
+    Object.assign(a.DB.draft.entries[0], { skipped: 'true', reason: 'x', sets: [{ w: '100', r: '8', skipped: false, reason: '' }] });
+    Object.assign(a.DB.draft.entries[1], { skipped: true, reason: 42, sets: [{ w: '', r: '', skipped: true, reason: '' }] });
+    S.finishWorkout();
+    const row = lgToday(a);
+    return { e0: row && ['skipped', 'reason'].filter(k => k in row.entries[0]), e1: row && [row.entries[1].skipped, row.entries[1].reason] };
+  });
+  ok('T-10-04: a marker that is not the boolean true is dropped with its reason, and a non-string reason is stored as ""',
+     !r.threw && Array.isArray(r.e0) && r.e0.length === 0 && JSON.stringify(r.e1) === '[true,""]', r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    const flat = [-13, -11, -9, -7].map((off, n) => lgSess(a, 'f' + n, dayOff(off), LAT, [[25, 18], [25, 18], [25, 18]], { endedAt: 10 + n }));
+    lgRun(a, flat);
+    const streak0 = S.stallStreak('PUSH 1', LAT, 'DB lateral raise');
+    S.startWorkout('PUSH 1');
+    S.prompt = () => 'shoulder';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    const row = lgToday(a), e = row && row.entries[LAT];
+    const w1 = S.addWeightInfo('PUSH 1', LAT, 'DB lateral raise'), s1 = S.stallStreak('PUSH 1', LAT, 'DB lateral raise');
+    const marked = !!e && e.skipped === true;
+    delete e.skipped; delete e.reason;
+    const w2 = S.addWeightInfo('PUSH 1', LAT, 'DB lateral raise'), s2 = S.stallStreak('PUSH 1', LAT, 'DB lateral raise');
+    return { streak0, marked, top: [w1 && w1.allTop, w2 && w2.allTop], streak: [s1, s2] };
+  });
+  ok('D-09: with the marker deleted (what an older build sees) Add weight stays blocked and the stall streak is unchanged',
+     !r.threw && r.streak0 >= 3 && r.marked && JSON.stringify(r.top) === '[false,false]' && r.streak[0] === r.streak[1], r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    const before = lgCard(a, LAT).includes('class="flag"');
+    S.deloadExercise(LAT);
+    S.prompt = () => '';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    const row = lgToday(a);
+    return { before, deload: row && row.entries[LAT].deload, flag: lgCard(a, LAT).includes('class="flag"') };
+  });
+  ok('D-22/LOG-05: deload then skip with nothing done still blocks Add weight next time',
+     !r.threw && r.before === true && r.deload === false && r.flag === false, r);
+}
+let lgExportApp = null;
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    S.startWorkout('PUSH 1');
+    a.setVal(LAT, 0, 'w', '27.5'); a.setVal(LAT, 0, 'r', '20');
+    S.prompt = () => 'shoulder';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    lgExportApp = a;
+    const e = lgToday(a).entries[LAT];
+    return { sets: e.sets.map(x => [x.skipped, x.r]), flag: lgCard(a, LAT).includes('class="flag"') };
+  });
+  ok('LOG-05: a partial skip (one set at the top, the rest skipped) blocks Add weight next time',
+     !r.threw && JSON.stringify(r.sets) === '[[false,"20"],[true,""],[true,""]]' && r.flag === false, r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), LAT = lgLat(a);
+    const row = lgSess(a, 'bk', dayOff(-1), LAT, [[0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder' });
+    const valid = a.validateBackup(Object.assign(a.blank(), { sessions: [row] }));
+    const plain = JSON.parse(JSON.stringify(row));
+    delete plain.entries[LAT].skipped; delete plain.entries[LAT].reason;
+    const local = Object.assign(a.blank(), { sessions: [Object.assign(plain, { mtime: 1000 })], updatedAt: 1000 });
+    const remote = Object.assign(a.blank(), { sessions: [Object.assign(JSON.parse(JSON.stringify(row)), { mtime: 2000 })], updatedAt: 2000 });
+    const pick = db => { const s = db.sessions.find(z => z.id === 'bk'); return s ? [s.entries[LAT].skipped, s.entries[LAT].reason] : null; };
+    const merged = a.mergeDB(remote, JSON.parse(JSON.stringify(local)), false);
+    const replay = a.mergeDB(JSON.parse(JSON.stringify(merged)), JSON.parse(JSON.stringify(local)), false);
+    const reverse = a.mergeDB(JSON.parse(JSON.stringify(local)), JSON.parse(JSON.stringify(merged)), false);
+    return { valid, merged: pick(merged), replay: pick(replay), reverse: pick(reverse), schema: a.SCHEMA };
+  });
+  ok('D-09/D-23: validateBackup accepts the marker, the newer copy keeps it through the merge and a stale-device replay, and SCHEMA stays 19',
+     !r.threw && r.valid === null && JSON.stringify(r.merged) === '[true,"shoulder"]' && JSON.stringify(r.replay) === '[true,"shoulder"]'
+       && JSON.stringify(r.reverse) === '[true,"shoulder"]' && r.schema === 19, r);
+}
+{
+  const r = lgTry(() => {
+    const a = lgExportApp, LAT = lgLat(a);
+    const md = a.buildMarkdownExport();
+    const lat = md.split('\n').filter(l => l.includes(a.todayISO()) && l.includes('DB lateral raise'));
+    const dashed = lat.filter(l => /\|\s*—\s*\|\s*—\s*\|\s*$/.test(l));
+    return { skipped: lgToday(a).entries[LAT].sets.filter(x => x.skipped).length, lat: lat.length, dashed: dashed.length,
+             leak: ['_preSkip', '_cel', 'rest skipped', 'exSkip', 'skipClearedDeload'].filter(s => md.includes(s)), sample: lat.slice(0, 3) };
+  });
+  ok('D-18/D-23: the export lists each skipped set as a row of — cells and carries no draft-only field or skip copy',
+     !r.threw && r.skipped === 2 && r.lat === 3 && r.dashed === 2 && r.leak.length === 0, r);
+}
+
+/* After the workout (D-15, D-17, D-24, D-25). Workout history names the skip and its reason, and the next
+   card keeps the last real numbers on its Last time line and adds one muted note saying when and why it
+   was skipped. The Last time element is found by its class, never by the literal `<div class="lasttime">`,
+   because 10-03 turns it into a button on a card with real history. */
+const lgLastTime = card => { const m = /class="lasttime[^"]*"[^>]*>([\s\S]*?)<\/(div|button)>/.exec(card); return m ? m[1] : null; };
+const LG_NOTE = '<span class="muted" style="display:block;font-size:12px">';
+const lgNote = card => { const lt = lgLastTime(card), i = lt == null ? -1 : lt.indexOf(LG_NOTE); return i < 0 ? null : lt.slice(i); };
+const lgLastTop = (a, sets) => sets.map(([w, r]) => a.__sandbox.fmtSet(String(w), String(r))).join(',  ');
+/* Tracer (D-15, D-17, LOG-05): skip from the header icon, finish, open the row in Workout history, then
+   start the next PUSH 1. Each read is its own check so a red names the surface that broke. */
+{
+  const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+  spyPushes(a);
+  S.confettiBurst = () => {};   // the harness canvas has no 2D context
+  const r = lgTry(() => {
+    lgRun(a, [lgSess(a, 't0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])]);
+    S.startWorkout('PUSH 1');
+    S.prompt = () => 'shoulder';
+    const ctrl = f2Find(a, f2At('skipExercise', LAT));
+    if(ctrl) fireListener(a, 'click', fakeEl(ctrl.data));
+    S.finishWorkout();
+    const R = lgToday(a);
+    if(R) S.toggleHist(a.DB.sessions.indexOf(R));
+    return { ctrl: !!ctrl, row: !!R, hist: a.viewHistory(), card: lgCard(a, LAT) };
+  });
+  const card = r.card || '', note = lgNote(card);
+  ok('D-15 tracer (a): Workout history reads the exercise as skipped, with the reason',
+     !r.threw && r.ctrl && r.row && r.hist.includes('<strong>DB lateral raise</strong> — <span class="muted">skipped: <em>shoulder</em></span>'),
+     r.threw || (r.hist || '').match(/<strong>DB lateral raise<\/strong>[^<]*(<span[^>]*>[\s\S]{0,120})?/));
+  ok('D-17 tracer (b): the next card keeps the last real numbers on its Last time line',
+     !r.threw && card.includes('Last time (' + a.fmtDate(dayOff(-7)) + '): <strong>' + lgLastTop(a, [[25, 20], [25, 20], [25, 20]]) + '</strong>'),
+     r.threw || lgLastTime(card));
+  ok('D-17 tracer (c): the Last time element ends with the skip note, its icon and "Skipped {date}: reason"',
+     !r.threw && note != null && note.startsWith(LG_NOTE + '<svg class="ph lead"')
+       && note.endsWith('Skipped ' + a.fmtDate(a.todayISO()) + ': <em>shoulder</em></span>'),
+     r.threw || lgLastTime(card));
+  ok('LOG-05 tracer (d): the next card shows no Add weight flag beside the skip note',
+     !r.threw && card.length > 0 && !card.includes('class="flag"'), r.threw || null);
+  a.DB.draft = null;
+}
+
+/* Every after-workout variant (D-15, D-17, D-24). Each case is a fresh instance holding only the sessions
+   it lists. lgHistLine cuts one exercise's line out of the open Workout history row. */
+const lgHistLine = (html, name) => {
+  const l = String(html).split(/<br>|<div class="hist-detail">/).find(p => p.startsWith('<strong>' + name + '</strong>'));
+  return l == null ? null : l.split('<div')[0];
+};
+const lgOpen = (a, id) => { a.__sandbox.toggleHist(a.DB.sessions.findIndex(s => s.id === id)); return a.viewHistory(); };
+const lgCase = (list, fn) => lgTry(() => {
+  const a = loadApp(APP_PATH), LAT = lgLat(a);
+  spyPushes(a);
+  a.__sandbox.confettiBurst = () => {};   // the harness canvas has no 2D context
+  lgRun(a, list(a, LAT));
+  return fn(a, LAT);
+});
+const LG_TROPHY = String.fromCodePoint(0x1F3C6);
+const LG_EVIL_EM = '<em>&quot;&gt;&lt;img src=x onerror=alert(1)&gt;</em>';
+const lgReal = (a, LAT) => lgSess(a, 'h0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]], { endedAt: 1 });
+{
+  const r = lgCase((a, LAT) => [lgSess(a, 'p0', dayOff(-2), LAT, [[27.5, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder' })],
+    a => ({ line: lgHistLine(lgOpen(a, 'p0'), 'DB lateral raise'), want: '<strong>DB lateral raise</strong> — <span class="muted">' + a.__sandbox.fmtSet('27.5', '20') + ' ' + LG_TROPHY + ' · rest skipped: <em>shoulder</em></span>' }));
+  ok('D-15: a partial skip reads the done set with its PR trophy, then "rest skipped" and the reason',
+     !r.threw && r.line === r.want, r);
+}
+{
+  const r = lgCase((a, LAT) => [lgReal(a, LAT), lgSess(a, 'n0', dayOff(-2), LAT, [[0, 0, true], [0, 0, true], [0, 0, true]], { skipped: true, reason: '', endedAt: 2 })],
+    a => ({ line: lgHistLine(lgOpen(a, 'n0'), 'DB lateral raise') }));
+  ok('D-15: a skip with no reason reads "skipped", with no colon and no <em>',
+     !r.threw && r.line === '<strong>DB lateral raise</strong> — <span class="muted">skipped</span>', r);
+}
+{
+  const r = lgCase((a, LAT) => [lgReal(a, LAT), lgSess(a, 'd0', dayOff(-2), LAT, [[0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder', deload: true, note: 'tweaked', endedAt: 2 })],
+    a => ({ line: lgHistLine(lgOpen(a, 'd0'), 'DB lateral raise') }));
+  ok('D-15: a skipped entry keeps its deload and note parts after the skip text',
+     !r.threw && r.line === '<strong>DB lateral raise</strong> — <span class="muted">skipped: <em>shoulder</em></span> <em>(deload)</em> <span class="muted">· tweaked</span>', r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), LAT = lgLat(a);
+    a.DB = populatedDB(a);
+    const bench = lgHistLine(lgOpen(a, 's1'), 'Barbell bench press');
+    const b = loadApp(APP_PATH);
+    lgRun(b, [lgSess(b, 'o0', dayOff(-2), LAT, [[25, 20], [0, 0, true, 'elbow'], [25, 19]])]);
+    const one = lgHistLine(lgOpen(b, 'o0'), 'DB lateral raise');
+    return { bench, one, want: '<strong>Barbell bench press</strong> — ' + a.__sandbox.fmtSet('135', '8') };
+  });
+  ok('D-15: an entry without the marker keeps today\'s line, a single skipped set still reading <em>skip</em>',
+     !r.threw && r.bench && r.bench.startsWith(r.want) && !r.bench.includes('skipped')
+       && r.one && r.one.includes(', <em>skip</em>, ') && !r.one.includes('<span class="muted">skipped') && !r.one.includes('rest skipped'), r);
+}
+{
+  const d3 = list => lgCase((a, LAT) => [lgReal(a, LAT), list(a, LAT)], (a, LAT) => ({ note: lgNote(lgCard(a, LAT)), date: a.fmtDate(dayOff(-3)) }));
+  const rs = d3((a, LAT) => lgSess(a, 'r0', dayOff(-3), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder', endedAt: 2 }));
+  const rn = d3((a, LAT) => lgSess(a, 'r1', dayOff(-3), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: '', endedAt: 2 }));
+  const sn = d3((a, LAT) => lgSess(a, 'r2', dayOff(-3), LAT, [[0, 0, true], [0, 0, true], [0, 0, true]], { skipped: true, reason: '', endedAt: 2 }));
+  ok('D-17: a skip after a done set reads "Rest skipped {date}: reason"',
+     !rs.threw && rs.note != null && rs.note.endsWith('Rest skipped ' + rs.date + ': <em>shoulder</em></span>'), rs);
+  ok('D-17: "Rest skipped {date}" with no reason has no colon',
+     !rn.threw && rn.note != null && rn.note.endsWith('>Rest skipped ' + rn.date + '</span>'), rn);
+  ok('D-17: an all-skipped attempt with no reason reads "Skipped {date}"',
+     !sn.threw && sn.note != null && sn.note.endsWith('>Skipped ' + sn.date + '</span>') && !sn.note.includes('Rest'), sn);
+}
+{
+  const later = lgCase((a, LAT) => [lgSess(a, 'k0', dayOff(-7), LAT, [[0, 0, true], [0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder', endedAt: 1 }),
+                                    lgSess(a, 'k1', dayOff(-3), LAT, [[25, 18], [25, 18], [25, 18]], { endedAt: 2 })],
+    (a, LAT) => { const card = lgCard(a, LAT); return { note: lgNote(card), last: card.includes('Last time (' + a.fmtDate(dayOff(-3)) + ')') }; });
+  ok('D-17: a later real attempt in the slot removes the skip note',
+     !later.threw && later.note === null && later.last, later);
+  /* WR-02: a deload skipped part-way keeps its deload (D-22) and still counts as the slot's attempt, so the
+     note shows and Add weight stays off. A deload with no marker is still passed over. */
+  const dl = lgCase((a, LAT) => [lgReal(a, LAT),
+                                 lgSess(a, 'k2', dayOff(-3), LAT, [[22.5, 20], [0, 0, true], [0, 0, true]], { deload: true, skipped: true, reason: 'shoulder', endedAt: 2 })],
+    (a, LAT) => { const card = lgCard(a, LAT); return { note: lgNote(card), flag: card.includes('class="flag"'), date: a.fmtDate(dayOff(-3)) }; });
+  ok('WR-02/D-17: a deloaded attempt carrying the marker gives the "Rest skipped" note and no Add weight flag',
+     !dl.threw && dl.note != null && dl.note.endsWith('Rest skipped ' + dl.date + ': <em>shoulder</em></span>') && dl.flag === false, dl);
+  const dn = lgCase((a, LAT) => [lgReal(a, LAT),
+                                 lgSess(a, 'k3', dayOff(-3), LAT, [[22.5, 20], [22.5, 20], [22.5, 20]], { deload: true, endedAt: 2 })],
+    (a, LAT) => ({ note: lgNote(lgCard(a, LAT)) }));
+  ok('D-17: a deloaded attempt without the marker produces no skip note',
+     !dn.threw && dn.note === null, dn);
+}
+/* WR-02 through the real path: deload, one set done, the rest skipped for the shoulder, Finish, then the
+   next PUSH 1 card. The positive control is the Add weight flag the earlier 25×20 ×3 earns before it. */
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    const before = lgCard(a, LAT).includes('class="flag"');
+    S.deloadExercise(LAT);
+    a.setVal(LAT, 0, 'r', '20');
+    S.prompt = () => 'shoulder';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    const e = lgToday(a) && lgToday(a).entries[LAT];
+    const card = lgCard(a, LAT);
+    return { before, saved: e && [e.deload, e.skipped], flag: card.includes('class="flag"'), note: lgNote(card), today: a.fmtDate(a.todayISO()) };
+  });
+  ok('WR-02/D-22: deload, one set, skip the rest, finish: the deload stays, and the next card shows the skip note and no Add weight',
+     !r.threw && r.before === true && JSON.stringify(r.saved) === '[true,true]' && r.flag === false
+       && r.note != null && r.note.endsWith('Rest skipped ' + r.today + ': <em>shoulder</em></span>'), r);
+}
+{
+  const sk = lgCase((a, LAT) => [lgSess(a, 'z0', dayOff(-3), LAT, [[0, 0, true], [0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder' })],
+    (a, LAT) => { const card = lgCard(a, LAT); return { card, note: lgNote(card), date: a.fmtDate(dayOff(-3)) }; });
+  ok('D-24: with only a skipped attempt the plain Last time element says "No previous data", then the skip note',
+     !sk.threw && sk.card.includes('<div class="lasttime"><span class="muted">No previous data — set your baseline.</span>' + LG_NOTE)
+       && sk.note != null && sk.note.endsWith('>Skipped ' + sk.date + ': <em>shoulder</em></span>'), { threw: sk.threw, lt: lgLastTime(sk.card || '') });
+  const dl = lgCase((a, LAT) => [lgSess(a, 'z1', dayOff(-3), LAT, [[22.5, 20], [22.5, 20], [22.5, 20]], { deload: true })],
+    (a, LAT) => { const card = lgCard(a, LAT); return { lt: lgLastTime(card), note: lgNote(card) }; });
+  ok('D-24: with only a deloaded attempt the line says "No previous data" and there is no note',
+     !dl.threw && dl.lt === '<span class="muted">No previous data — set your baseline.</span>' && dl.note === null, dl);
+}
+{
+  const r = lgCase((a, LAT) => [lgReal(a, LAT), lgSess(a, 'e0', dayOff(-3), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: EVIL, endedAt: 2 })],
+    (a, LAT) => {
+      const hist = lgOpen(a, 'e0'), card = lgCard(a, LAT);
+      const attr = [hist, card].map(h => controlsIn(h).filter(c => /img/i.test(c.cls) || Object.values(c.data).some(v => /img/i.test(v))).length);
+      return { line: lgHistLine(hist, 'DB lateral raise'), note: lgNote(card), img: [/<img/i.test(hist), /<img/i.test(card)], attr };
+    });
+  ok('T-10-10: a hostile reason renders escaped inside <em> in Workout history and the Last time note, in no attribute, with no <img',
+     !r.threw && r.line && r.line.includes(LG_EVIL_EM) && r.note && r.note.includes(LG_EVIL_EM)
+       && JSON.stringify(r.img) === '[false,false]' && JSON.stringify(r.attr) === '[0,0]', r);
+}
+{
+  const r = lgCase((a, LAT) => [lgReal(a, LAT), lgSess(a, 'm0', dayOff(-3), LAT, [[0, 0, true], [0, 0, true], [0, 0, true]], { skipped: 'true', reason: 'shoulder', endedAt: 2 })],
+    (a, LAT) => {
+      const stored = a.DB.sessions.find(s => s.id === 'm0').entries[LAT].skipped;
+      const line = lgHistLine(lgOpen(a, 'm0'), 'DB lateral raise');
+      const card = lgCard(a, LAT);
+      return { stored, line, note: lgNote(card), skippedText: (lgLastTime(card) || '').includes('Skipped ') };
+    });
+  ok('T-10-11: a marker stored as the string "true" renders as an ordinary entry and gives no Last time note',
+     !r.threw && r.stored === 'true' && r.line && r.line.includes('<em>skip</em>') && !r.line.includes(' — <span class="muted">skipped')
+       && r.note === null && r.skippedText === false, r);
+}
+{
+  const LONG = ('the left shoulder pinched on the way up so I stopped ').repeat(6).slice(0, 300);
+  const r = lgCase((a, LAT) => [lgReal(a, LAT), lgSess(a, 'l0', dayOff(-3), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: LONG, endedAt: 2 })],
+    (a, LAT) => ({ line: lgHistLine(lgOpen(a, 'l0'), 'DB lateral raise'), note: lgNote(lgCard(a, LAT)) }));
+  const clipped = s => /nowrap|ellipsis|overflow/i.test(s || '');
+  ok('D-15/D-17: a 300-character reason appears whole in the history line and the note, with nothing that clips it',
+     !r.threw && LONG.length === 300 && r.line && r.line.includes('<em>' + LONG + '</em>') && r.note && r.note.includes('<em>' + LONG + '</em>')
+       && !clipped(r.line) && !clipped(r.note), r.threw || { line: (r.line || '').length, note: (r.note || '').length });
+}
+
+/* Re-editing a finished workout keeps the skip (D-25, LOG-04). editSession carries the marker and its
+   reason onto the draft entry, with no `_preSkip`, so Undo there takes the no-snapshot path. The skip is
+   reached through the real path: one set done at the prefilled weight, then the header skip. */
+{
+  const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+  spyPushes(a);
+  S.confettiBurst = () => {};   // 27.5×20 is a PR, and the harness canvas has no 2D context
+  const r = {};
+  const step = (k, fn) => { if(r.threw) return; try{ fn(); }catch(e){ r.threw = k + ': ' + (e && e.stack || e); } };
+  const latNow = () => a.viewActive().split('<div class="ex-card">')[LAT + 1] || '';
+  const sets = e => e.sets.map(x => ({ w: x.w, r: x.r, skipped: x.skipped, reason: x.reason }));
+  step('setup', () => {
+    lgRun(a, [lgSess(a, 'h0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])]);
+    S.startWorkout('PUSH 1');
+    r.pre = a.DB.draft.entries[LAT].sets[0].w;
+    a.setVal(LAT, 0, 'r', '20');
+    S.prompt = () => 'shoulder';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    r.rid = lgToday(a) && lgToday(a).id;
+  });
+  step('edit', () => {
+    S.editSession(a.DB.sessions.findIndex(s => s.id === r.rid));
+    const e = a.DB.draft.entries[LAT], card = latNow();
+    r.edit = { skipped: e.skipped, reason: e.reason, snap: '_preSkip' in e, sets: JSON.stringify(sets(e)),
+               note: card.includes('<strong>DB lateral raise</strong> · ' + S.fmtSet(r.pre, '20') + ' · rest skipped: <em>shoulder</em>'),
+               undo: controlsIn(card).filter(c => c.data.action === 'unskipExercise').length };
+    r.want = JSON.stringify([{ w: r.pre, r: '20', skipped: false, reason: '' }, { w: '', r: '', skipped: true, reason: '' }, { w: '', r: '', skipped: true, reason: '' }]);
+  });
+  ok('D-25: editSession carries the skip marker and reason onto the draft, with no _preSkip, and the card shows the skip note with Undo',
+     !r.threw && r.pre !== '' && r.rid && r.edit.skipped === true && r.edit.reason === 'shoulder' && r.edit.snap === false
+       && r.edit.sets === r.want && r.edit.note && r.edit.undo === 1, r);
+  step('resave', () => {
+    S.finishWorkout();
+    const same = a.DB.sessions.filter(s => s.id === r.rid && !s.deletedAt), e = same.length === 1 ? same[0].entries[LAT] : null;
+    r.resave = { rows: same.length, skipped: e && e.skipped, reason: e && e.reason, draft: a.DB.draft };
+  });
+  ok('D-25: re-saving without Undo keeps the marker on the same row id',
+     !r.threw && r.resave.rows === 1 && r.resave.skipped === true && r.resave.reason === 'shoulder' && r.resave.draft == null, r.resave || r);
+  step('undo', () => {
+    S.editSession(a.DB.sessions.findIndex(s => s.id === r.rid));
+    const ctrl = f2Find(a, f2At('unskipExercise', LAT));
+    r.ctrl = !!ctrl;
+    if(ctrl) fireListener(a, 'click', fakeEl(ctrl.data));
+    const e = a.DB.draft.entries[LAT];
+    r.undo = { keys: ['_preSkip', 'skipped', 'reason'].filter(k => k in e), sets: JSON.stringify(sets(e)) };
+    r.wantUndo = JSON.stringify([{ w: r.pre, r: '20', skipped: false, reason: '' }, { w: r.pre, r: '', skipped: false, reason: '' }, { w: r.pre, r: '', skipped: false, reason: '' }]);
+    S.finishWorkout();
+    const same = a.DB.sessions.filter(s => s.id === r.rid && !s.deletedAt), saved = same.length === 1 ? same[0].entries[LAT] : null;
+    r.saved = saved && { rows: same.length, marker: 'skipped' in saved, blankSets: saved.blankSets, sets: saved.sets.length };
+  });
+  ok('D-25/LOG-04: Undo on a re-edited skip takes the no-snapshot path, giving the sets back blank at the nearest weight',
+     !r.threw && r.ctrl && r.undo.keys.length === 0 && r.undo.sets === r.wantUndo, r.undo || r);
+  ok('D-25/LOG-04: re-saving after that Undo writes no marker, and the two empty sets count as blankSets 2',
+     !r.threw && r.saved && r.saved.rows === 1 && r.saved.marker === false && r.saved.blankSets === 2 && r.saved.sets === 1, r.saved || r);
+  a.DB.draft = null;
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    lgRun(a, [lgSess(a, 'o1', dayOff(-2), LAT, [[25, 20], [0, 0, true], [0, 0, true, 'elbow']], { skipped: true, reason: 'shoulder' })]);
+    S.editSession(a.DB.sessions.findIndex(s => s.id === 'o1'));
+    const before = a.DB.draft.entries[LAT].skipped;
+    S.unskipExercise(LAT);
+    const e = a.DB.draft.entries[LAT];
+    return { before, sets: e.sets.map(x => [x.w, x.r, x.skipped, x.reason]), marker: 'skipped' in e };
+  });
+  ok('D-25: Undo on a re-edited skip keeps a set skipped with its own reason, and brings the others back',
+     !r.threw && r.before === true && r.marker === false
+       && JSON.stringify(r.sets) === JSON.stringify([['25', '20', false, ''], ['25', '', false, ''], ['', '', true, 'elbow']]), r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox;
+    spyPushes(a);
+    a.DB = populatedDB(a);
+    S.editSession(a.DB.sessions.findIndex(s => s.id === 's1'));
+    return { carried: a.DB.draft.entries.map((e, i) => ['skipped', 'reason'].filter(k => k in e).map(k => i + '.' + k)).flat() };
+  });
+  ok('D-25: editing a session with no marker puts no skipped or reason key on any draft entry',
+     !r.threw && r.carried.length === 0, r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    lgRun(a, [lgSess(a, 'm1', dayOff(-2), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: 'true', reason: 'shoulder' })]);
+    const stored = a.DB.sessions[0].entries[LAT].skipped;
+    S.editSession(0);
+    const e = a.DB.draft.entries[LAT];
+    return { stored, keys: ['skipped', 'reason'].filter(k => k in e) };
+  });
+  ok('T-10-11/D-25: a marker stored as the string "true" is not carried onto the draft by editSession',
+     !r.threw && r.stored === 'true' && r.keys.length === 0, r);
+}
+/* WR-01 (D-05): editing the newest session, whose lateral raise was skipped, then tapping Undo. The skip
+   note must not report the skip being edited. The positive control is the same history on a fresh card. */
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    lgRun(a, [lgReal(a, LAT), lgSess(a, 'w1', dayOff(-3), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder', endedAt: 2 })]);
+    const fresh = lgNote(lgCard(a, LAT));
+    a.DB.draft = null;
+    S.editSession(a.DB.sessions.findIndex(s => s.id === 'w1'));
+    S.unskipExercise(LAT);
+    const card = a.viewActive().split('<div class="ex-card">')[LAT + 1] || '';
+    return { fresh, edited: lgNote(card), lt: lgLastTime(card), shoulder: card.includes('shoulder') };
+  });
+  ok('WR-01/D-05: editing the newest skipped session and tapping Undo shows no skip note for that same session',
+     !r.threw && r.fresh != null && r.fresh.includes('<em>shoulder</em>') && r.lt != null && r.edited === null && r.shoulder === false, r);
+}
+/* WR-03, cause 1: a deload skipped with nothing done is saved with deload false (D-22). Re-edited, Undo must
+   give the deload back, so the sets Ian then fills in at the deload weight are saved as a deload, never as
+   a lighter baseline. */
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    S.startWorkout('PUSH 1');
+    S.deloadExercise(LAT);
+    S.prompt = () => '';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    const id = lgToday(a).id, first = lgToday(a).entries[LAT].deload;
+    S.editSession(a.DB.sessions.findIndex(s => s.id === id));
+    S.unskipExercise(LAT);
+    const draftDeload = a.DB.draft.entries[LAT].deload;
+    [0, 1, 2].forEach(k => { a.setVal(LAT, k, 'w', '22.5'); a.setVal(LAT, k, 'r', '20'); });
+    S.finishWorkout();
+    const same = a.DB.sessions.filter(s => s.id === id && !s.deletedAt), e = same.length === 1 ? same[0].entries[LAT] : null;
+    return { first, draftDeload, saved: e && { deload: e.deload, marks: ['skipped', 'reason', 'skipClearedDeload'].filter(k => k in e),
+             exSkip: e.sets.filter(x => 'exSkip' in x).length, sets: e.sets.map(x => [x.w, x.r]) },
+             last: S.lastRealEntry('PUSH 1', LAT, 'DB lateral raise') };
+  });
+  ok('WR-03/D-22: Undo on a re-edited deload skip with nothing done gives the deload back, and the filled sets save as a deload that never becomes the baseline',
+     !r.threw && r.first === false && r.draftDeload === true && r.saved && r.saved.deload === true && r.saved.marks.length === 0
+       && r.saved.exSkip === 0 && JSON.stringify(r.saved.sets) === '[["22.5","20"],["22.5","20"],["22.5","20"]]'
+       && r.last && r.last.date === dayOff(-7), r.threw || r);
+}
+/* WR-03, cause 2: a set Ian skipped on its own with no reason, then the exercise skip for the rest. Re-edited,
+   Undo brings back only the set the exercise skip marked; the single skip stays skipped. */
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    S.startWorkout('PUSH 1');
+    a.setVal(LAT, 0, 'r', '20');
+    S.prompt = () => ''; S.skipSet(LAT, 1);
+    S.prompt = () => 'shoulder'; S.skipExercise(LAT);
+    S.finishWorkout();
+    const id = lgToday(a).id;
+    const stored = lgToday(a).entries[LAT].sets.map(x => x.exSkip === true);
+    S.editSession(a.DB.sessions.findIndex(s => s.id === id));
+    S.unskipExercise(LAT);
+    const e = a.DB.draft.entries[LAT];
+    const undone = e.sets.map(x => [x.r, x.skipped, 'exSkip' in x]);
+    S.finishWorkout();
+    const saved = a.DB.sessions.find(s => s.id === id && !s.deletedAt).entries[LAT];
+    return { stored, undone, saved: { sets: saved.sets.map(x => [x.r, x.skipped]), blankSets: saved.blankSets, marker: 'skipped' in saved } };
+  });
+  ok('WR-03: Undo on a re-edited skip un-skips only the sets the exercise skip marked, keeping a reasonless single-set skip',
+     !r.threw && JSON.stringify(r.stored) === '[false,false,true]'
+       && JSON.stringify(r.undone) === '[["20",false,false],["",true,false],["",false,false]]'
+       && JSON.stringify(r.saved.sets) === '[["20",false],["",true]]' && r.saved.blankSets === 1 && r.saved.marker === false, r);
+}
+
+/* LOG-01 and LOG-02 (plan 10-03): the Last time line opens the exercise's last sessions on the card, the
+   panel links to its chart in Progress → Strength, and Back to workout lands on the Log tab at the spot
+   Ian left, with nothing in the workout changed. The open panel and the return point are screen-only
+   lets, read through the harness getters. A scroll recorder replaces the sandbox's scrollTo, which
+   window.scrollTo resolves to at call time. */
+const lgScroll = a => { const sc = []; a.__sandbox.scrollTo = (x, y) => { sc.push([x, y]); }; return sc; };
+const lgLatCard = (a, LAT) => f2AppHtml(a).split('<div class="ex-card">')[LAT + 1] || '';
+/* Tracer (LOG-01, LOG-02, D-01, D-06, D-19, D-20, D-21): one round trip that leaves the workout untouched.
+   Each step is its own check, so a red names the step that broke. */
+{
+  const a = loadApp(APP_PATH), S = a.__sandbox, spy = spyPushes(a), LAT = lgLat(a);
+  const sc = lgScroll(a), r = {};
+  const step = (k, fn) => { if(r.threw) return; try{ fn(); }catch(e){ r.threw = k + ': ' + (e && e.stack || e); } };
+  const card = () => lgLatCard(a, LAT);
+  const same = () => canon(a.DB.draft) === r.before && JSON.stringify(a.__stored()) === r.blob
+    && a.DB.updatedAt === r.u && spy.n === r.n;
+  step('setup', () => {
+    lgRun(a, [
+      lgSess(a, 'h1', dayOff(-9), LAT, [[22.5, 20], [22.5, 19], [22.5, 18]]),
+      lgSess(a, 'h3', dayOff(-5), 0, [[20, 15], [20, 15]], { workout: 'PULL 1' }),
+      lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20], [25, 20], [25, 18]]),
+    ]);
+    S.startWorkout('PUSH 1');
+    r.before = canon(a.DB.draft); r.blob = JSON.stringify(a.__stored()); r.u = a.DB.updatedAt; r.n = spy.n;
+    S.scrollY = 640;
+  });
+  step('a', () => {
+    const ctl = f2Find(a, f2At('toggleExHist', LAT));
+    r.a = { tag: ctl && ctl.tag, closed: card().includes('aria-expanded="false"'), panel: card().includes('class="exh"') };
+    r.ctl = ctl;
+  });
+  ok('LOG-01 tracer (a): the Last time line is a closed toggleExHist button and no panel shows',
+     !r.threw && r.a && r.a.tag === 'button' && r.a.closed && !r.a.panel, r.threw || r.a);
+  step('b', () => {
+    if(r.ctl) fireListener(a, 'click', fakeEl(r.ctl.data));
+    const c = card(), rows = c.split('class="exh-row"').slice(1);
+    r.b = { open: c.includes('aria-expanded="true"'), panels: c.split('<div class="exh">').length - 1,
+            label: c.includes('Last 3 sessions · any workout'), rows: rows.length,
+            dates: rows.map(x => [dayOff(-2), dayOff(-5), dayOff(-9)].findIndex(d => x.includes('<span class="exh-date">' + a.fmtDate(d) + '</span>'))),
+            pull: rows.length === 3 && rows[1].includes('>PULL 1</span>'),
+            slot: a.openExHist === LAT, tab: a.TAB, sub: a.subState.train, same: same() };
+  });
+  ok('LOG-01/D-01/D-06 tracer (b): tapping the line opens the panel with 3 rows from any workout, newest first, and writes nothing',
+     !r.threw && r.b && r.b.open && r.b.panels === 1 && r.b.label && r.b.rows === 3
+       && JSON.stringify(r.b.dates) === '[0,1,2]' && r.b.pull && r.b.slot
+       && r.b.tab === 'train' && r.b.sub === 'log' && r.b.same, r.threw || r.b);
+  step('c', () => {
+    const link = f2Find(a, f2At('openExChart', LAT));
+    r.key = a.exKey(a.DB.draft.entries[LAT]);
+    if(link) fireListener(a, 'click', fakeEl(link.data));
+    const html = f2AppHtml(a), back = f2Find(a, f2At('backToWorkout'));
+    r.c = { tag: link && link.tag, tab: a.TAB, sub: a.subState.train,
+            selected: html.includes('<option value="' + a.esc(r.key) + '" selected>'),
+            back: !!back && back.tag === 'button', scroll: sc[sc.length - 1], ret: canon(a.logReturn) === canon({ y: 640 }) };
+    r.back = back;
+  });
+  ok('LOG-02/D-19/D-20 tracer (c): Full chart in Strength opens the exercise in Strength with Back to workout, and records the scroll',
+     !r.threw && r.c && r.c.tag === 'button' && r.c.tab === 'train' && r.c.sub === 'progress' && r.c.selected
+       && r.c.back && JSON.stringify(r.c.scroll) === '[0,0]' && r.c.ret, r.threw || r.c);
+  step('d', () => {
+    if(r.back) fireListener(a, 'click', fakeEl(r.back.data));
+    const c = card();
+    r.d = { tab: a.TAB, sub: a.subState.train, scroll: sc[sc.length - 1], ret: a.logReturn,
+            open: c.includes('aria-expanded="true"') && c.includes('class="exh"'), same: same() };
+  });
+  ok('LOG-02/D-21 tracer (d): Back to workout lands on Log at the recorded scroll, the panel still open, the workout untouched',
+     !r.threw && r.d && r.d.tab === 'train' && r.d.sub === 'log' && JSON.stringify(r.d.scroll) === '[0,640]'
+       && r.d.ret === null && r.d.open && r.d.same, r.threw || r.d);
+  a.DB.draft = null;
+}
+
+/* The history panel's rows and the toggle, rule by rule (LOG-01, D-01 to D-07, D-24). Each case is a fresh
+   instance holding only the sessions it lists, in stored order, with a PUSH 1 draft started over them.
+   lgRows cuts the open panel's rows out of a card; a row holds spans only, never a <div>. */
+const lgRows = card => [...String(card).matchAll(/<div class="exh-row"[^>]*>([\s\S]*?)<\/div>/g)].map(m => m[1]);
+const lgPanelCard = (a, i) => { a.__sandbox.toggleExHist(i); return a.viewActive().split('<div class="ex-card">')[i + 1] || ''; };
+const lgRowHead = (a, date, wk) => '<span class="exh-date">' + a.esc(a.fmtDate(date)) + '</span> · <span class="muted" style="font-size:12px">' + a.esc(wk) + '</span> — ';
+const lgPanelCase = (list, fn) => lgCase(list, (a, LAT) => { a.__sandbox.startWorkout('PUSH 1'); return fn(a, LAT); });
+const LG_DELOAD = '<span class="muted" style="font-size:12px"> ↓ deload</span>';
+const LG_MEMO = String.fromCodePoint(0x1F4DD);
+{
+  const D = [-14, -12, -10, -8, -6, -4, -2];
+  const r = lgPanelCase((a, LAT) => D.map((d, k) => lgSess(a, 'o' + (k + 1), dayOff(d), LAT, [[20 + k, 20]])), (a, LAT) => {
+    const card = lgPanelCard(a, LAT), rows = lgRows(card);
+    return { label: card.includes('<div class="exh-label">Last 5 sessions · any workout</div>'), n: rows.length,
+             order: rows.map(x => D.findIndex(d => x.startsWith(lgRowHead(a, dayOff(d), 'PUSH 1')))),
+             ids: a.__sandbox.exerciseRecent(a.exKey('DB lateral raise'), 5).map(x => x.s.id) };
+  });
+  ok('D-01: seven sessions give exactly 5 rows, newest first, under "Last 5 sessions · any workout"',
+     !r.threw && r.label && r.n === 5 && JSON.stringify(r.order) === '[6,5,4,3,2]', r);
+  ok('D-01: exerciseRecent returns the same five sessions in the same order',
+     !r.threw && JSON.stringify(r.ids) === JSON.stringify(['o7', 'o6', 'o5', 'o4', 'o3']), r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 't1', dayOff(-3), LAT, [[20, 20]], { endedAt: 1 }), lgSess(a, 't2', dayOff(-3), LAT, [[22.5, 20]], { endedAt: 2 })],
+    (a, LAT) => ({ ids: a.__sandbox.exerciseRecent(a.exKey('DB lateral raise'), 5).map(x => x.s.id),
+                   rows: lgRows(lgPanelCard(a, LAT)), w: a.__sandbox.fmtSet('22.5', '20') }));
+  ok('D-01: two sessions on one date list the later-ended one first',
+     !r.threw && JSON.stringify(r.ids) === '["t2","t1"]' && r.rows.length === 2 && r.rows[0].includes(r.w), r);
+}
+{
+  const ALIAS = '  db LATERAL   Raise ';
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'p1', dayOff(-6), 0, [[20, 15]], { workout: 'PULL 1' }),
+                                lgSess(a, 'al', dayOff(-4), LAT, [[22.5, 20]], { name: ALIAS }),
+                                lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const rows = lgRows(lgPanelCard(a, LAT));
+    return { same: a.exKey(ALIAS) === a.exKey(a.DB.draft.entries[LAT]), n: rows.length,
+             pull: rows.length === 3 && rows[2].startsWith(lgRowHead(a, dayOff(-6), 'PULL 1')),
+             alias: rows.length === 3 && rows[1].startsWith(lgRowHead(a, dayOff(-4), 'PUSH 1')) };
+  });
+  ok('D-01: a PULL 1 session holding the exercise gives a row labelled PULL 1, and an alias spelling of the same exKey counts',
+     !r.threw && r.same && r.n === 3 && r.pull && r.alias, r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'lw', dayOff(-5), LAT, [[20, 20]], { name: 'Lean-away lateral raise' }),
+                                lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const before = lgRows(lgPanelCard(a, LAT)).length;
+    const merged = a.exMerge(a.exEnsure('Lean-away lateral raise'), a.exEnsure('DB lateral raise'));
+    a.render();
+    const after = lgRows(a.viewActive().split('<div class="ex-card">')[LAT + 1] || '');
+    return { before, merged, after: after.length, lw: after.length === 2 && after[1].startsWith(lgRowHead(a, dayOff(-5), 'PUSH 1')) };
+  });
+  ok('D-01/PROG-04: an exercise folded in by exMerge gives rows only after the merge',
+     !r.threw && r.before === 1 && r.merged === true && r.after === 2 && r.lw, r);
+}
+{
+  /* D-02/D-03 markers. The oldest session is the heaviest, so no later set takes the trophy. */
+  const r = lgPanelCase((a, LAT) => [
+    lgSess(a, 'd', dayOff(-10), LAT, [[30, 20], [30, 20]], { deload: true }),
+    lgSess(a, 'k1', dayOff(-8), LAT, [[0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder' }),
+    lgSess(a, 'k2', dayOff(-6), LAT, [[25, 20], [0, 0, true]], { skipped: true, reason: 'shoulder' }),
+    lgSess(a, 's1', dayOff(-4), LAT, [[25, 20], [0, 0, true, 'elbow'], [0, 0, true]]),
+    lgSess(a, 'b', dayOff(-2), LAT, [], { blankSets: 3 }),
+  ], (a, LAT) => ({ rows: lgRows(lgPanelCard(a, LAT)), set: a.__sandbox.fmtSet('25', '20'),
+                    h: [-2, -4, -6, -8].map(d => lgRowHead(a, dayOff(d), 'PUSH 1')) }));
+  const R = r.rows || [], h = r.h || [];
+  ok('D-02/D-03: a deload entry\'s row ends its sets with the muted ↓ deload marker',
+     !r.threw && R.length === 5 && R[4].endsWith(LG_DELOAD), r);
+  ok('D-02: an all-skipped entry with a reason reads "— skipped: <em>shoulder</em>"',
+     !r.threw && R[3] === h[3] + 'skipped: <em>shoulder</em>', r);
+  ok('D-02: one done set then the marker reads the set, then "· rest skipped: <em>shoulder</em>"',
+     !r.threw && R[2] === h[2] + r.set + ' · rest skipped: <em>shoulder</em>', r);
+  ok('D-02: a single skipped set reads <em>skip: elbow</em> in its place, and one with no reason <em>skip</em>',
+     !r.threw && R[1] === h[1] + r.set + ', <em>skip: elbow</em>, <em>skip</em>', r);
+  ok('D-02: an entry with blank sets only reads "— no sets logged"',
+     !r.threw && R[0] === h[0] + 'no sets logged', r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'p1', dayOff(-4), LAT, [[20, 20]]),
+                                lgSess(a, 'p2', dayOff(-2), LAT, [[25, 20], [22.5, 20]], { note: 'felt heavy' })], (a, LAT) => {
+    const S = a.__sandbox, idx = a.prSetIndex(), byId = id => a.DB.sessions.find(s => s.id === id);
+    const p1 = byId('p1'), p2 = byId('p2');
+    const pr = [idx.isPR(p2, p2.entries[LAT], 0), idx.isPR(p2, p2.entries[LAT], 1), idx.isPR(p1, p1.entries[LAT], 0)];
+    const t = (w, rp, on) => S.fmtSet(w, rp) + (on ? ' ' + LG_TROPHY : '');
+    return { pr, rows: lgRows(lgPanelCard(a, LAT)),
+             want: [lgRowHead(a, dayOff(-2), 'PUSH 1') + t('25', '20', pr[0]) + ', ' + t('22.5', '20', pr[1])
+                      + '<span class="exh-note">' + LG_MEMO + ' felt heavy</span>',
+                    lgRowHead(a, dayOff(-4), 'PUSH 1') + t('20', '20', pr[2])] };
+  });
+  ok('D-02: a set prSetIndex marks carries the trophy, a set it does not mark has none, and the note sits on its own line',
+     !r.threw && JSON.stringify(r.pr) === '[true,false,true]' && JSON.stringify(r.rows) === JSON.stringify(r.want), r);
+}
+{
+  const r = lgPanelCase((a, LAT) => {
+    const del = lgSess(a, 'gone', dayOff(-5), LAT, [[40, 20]]); del.deletedAt = 1;
+    const day = lgSess(a, 'sday', dayOff(-3), LAT, [[45, 20]]); day.skipped = true; day.reason = 'sick';
+    return [lgSess(a, 'h1', dayOff(-9), LAT, [[20, 20]]), del, day, lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])];
+  }, (a, LAT) => {
+    const raw = a.DB.sessions.filter(s => (s.entries[LAT].sets || []).length).map(s => s.id);
+    const rows = lgRows(lgPanelCard(a, LAT));
+    return { raw, n: rows.length, dates: rows.map(x => [-2, -3, -5, -9].findIndex(d => x.startsWith(lgRowHead(a, dayOff(d), 'PUSH 1')))) };
+  });
+  ok('D-04: a soft-deleted session and a skipped day that carries the exercise give no row',
+     !r.threw && JSON.stringify(r.raw) === '["h1","gone","sday","h2"]' && r.n === 2 && JSON.stringify(r.dates) === '[0,3]', r);
+}
+{
+  const r = lgCase((a, LAT) => [lgSess(a, 'h1', dayOff(-9), LAT, [[20, 20]]), lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    a.__sandbox.editSession(a.DB.sessions.findIndex(s => s.id === 'h2'));
+    const card = lgPanelCard(a, LAT), rows = lgRows(card);
+    return { edit: a.DB.draft && a.DB.draft.editRef, label: card.includes('<div class="exh-label">Last session · any workout</div>'),
+             n: rows.length, h1: rows.length === 1 && rows[0].startsWith(lgRowHead(a, dayOff(-9), 'PUSH 1')) };
+  });
+  ok('D-05: the session being edited is left out, and one row reads "Last session · any workout"',
+     !r.threw && r.edit === 'h2' && r.label && r.n === 1 && r.h1, r);
+}
+{
+  const r = lgCase((a, LAT) => [lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    a.__sandbox.editSession(0);
+    const card = lgPanelCard(a, LAT);
+    return { label: card.includes('exh-label'),
+             empty: card.includes('<div class="exh-row" style="border-top:0">No other sessions of this exercise yet.</div>'),
+             link: controlsIn(card).filter(c => c.data.action === 'openExChart' && c.tag === 'button').length };
+  });
+  ok('D-05: editing the one session that holds the exercise shows no label, the empty copy, and the chart link',
+     !r.threw && !r.label && r.empty && r.link === 1, r);
+}
+{
+  /* D-06: one panel at a time, and no tap writes. Slot 0 and the lateral raise both have history. */
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 's0', dayOff(-3), 0, [[100, 8]], { name: a.PROGRAM['PUSH 1'].slots[0].examples[0] }),
+                                lgSess(a, 'l0', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const spy = spyPushes(a);
+    const base = { blob: JSON.stringify(a.__stored()), d: canon(a.DB.draft), u: a.DB.updatedAt, n: spy.n };
+    const same = () => JSON.stringify(a.__stored()) === base.blob && canon(a.DB.draft) === base.d
+      && a.DB.updatedAt === base.u && spy.n === base.n && a.TAB === 'train' && a.subState.train === 'log';
+    const tap = i => { const c = f2Find(a, f2At('toggleExHist', i)); if(c) fireListener(a, 'click', fakeEl(c.data)); return !!c; };
+    const out = { lat: LAT };
+    out.t1 = tap(0); out.s1 = same();
+    out.t2 = tap(LAT); out.s2 = same();
+    const v = a.viewActive(), c0 = v.split('<div class="ex-card">')[1] || '';
+    out.trues = v.split('aria-expanded="true"').length - 1;
+    out.a = { closed: c0.includes('aria-expanded="false"'), panel: c0.includes('class="exh"') };
+    out.t3 = tap(LAT); out.s3 = same();
+    out.zero = a.viewActive().split('aria-expanded="true"').length - 1;
+    return out;
+  });
+  ok('D-06: opening a second card\'s panel closes the first, so exactly one aria-expanded="true" renders',
+     !r.threw && r.lat !== 0 && r.t1 && r.t2 && r.trues === 1 && r.a.closed && !r.a.panel, r);
+  ok('D-06: tapping the open line again leaves no panel open',
+     !r.threw && r.t3 && r.zero === 0, r);
+  ok('D-06/LOG-01: no tap writes the stored blob, the draft or updatedAt, pushes, or leaves Train → Log',
+     !r.threw && r.s1 && r.s2 && r.s3, r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const path = nm => (new RegExp("'" + nm + "':'(<path d=\"[^\"]*\")").exec(a.__src) || [])[1] || null;
+    const cue = card => { const k = card.indexOf('<span class="muted" style="font-size:12px;margin-left:4px">'); return k < 0 ? '' : card.slice(k, card.indexOf('</span>', k)); };
+    const closed = cue(a.viewActive().split('<div class="ex-card">')[LAT + 1] || ''), open = cue(lgPanelCard(a, LAT));
+    const up = path('caret-up'), down = path('caret-down');
+    return { up: !!up, down: !!down, closed: [closed.includes(down), closed.includes(up)], open: [open.includes(up), open.includes(down)] };
+  });
+  ok('D-06: the closed line\'s cue is the caret-down icon and the open line\'s is caret-up',
+     !r.threw && r.up && r.down && JSON.stringify(r.closed) === '[true,false]' && JSON.stringify(r.open) === '[true,false]', r);
+}
+{
+  /* D-07/D-24: no real history means no control and no panel, even when openExHist names the slot. */
+  const plain = (a, i) => {
+    const card = lgLatCard(a, i), ctl = f2Find(a, f2At('toggleExHist', i));
+    a.__sandbox.toggleExHist(i);
+    return { div: card.includes('<div class="lasttime">'), copy: card.includes('No previous data — set your baseline.'),
+             ctl: !!ctl, panel: lgLatCard(a, i).includes('class="exh"') };
+  };
+  const isPlain = x => x && x.div && x.copy && !x.ctl && !x.panel;
+  const ex0 = (a, LAT) => a.PROGRAM['PUSH 1'].slots[LAT].examples[0];
+  const r0 = lgPanelCase((a, LAT) => [lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], a => plain(a, 0));
+  ok('D-07: a slot with no history keeps the plain "No previous data" line, has no toggleExHist control, and a direct toggle opens no panel',
+     !r0.threw && isPlain(r0), r0);
+  const rs = lgPanelCase((a, LAT) => [lgSess(a, 'k', dayOff(-3), LAT, [[0, 0, true], [0, 0, true]], { name: ex0(a, LAT), skipped: true, reason: 'x' })],
+    (a, LAT) => Object.assign(plain(a, LAT), { name: a.DB.draft.entries[LAT].name === ex0(a, LAT) }));
+  ok('D-24: a slot whose only history is one all-skipped attempt is not tappable and opens no panel',
+     !rs.threw && rs.name && isPlain(rs), rs);
+  const rd = lgPanelCase((a, LAT) => [lgSess(a, 'd', dayOff(-3), LAT, [[20, 20]], { name: ex0(a, LAT), deload: true })],
+    (a, LAT) => Object.assign(plain(a, LAT), { name: a.DB.draft.entries[LAT].name === ex0(a, LAT) }));
+  ok('D-24: a slot whose only history is one deloaded attempt is not tappable and opens no panel',
+     !rd.threw && rd.name && isPlain(rd), rd);
+  const rp = lgPanelCase((a, LAT) => [lgSess(a, 'x1', dayOff(-3), 0, [[15, 15]], { workout: 'PULL 1', name: ex0(a, LAT) })], (a, LAT) => {
+    const ctl = f2Find(a, f2At('toggleExHist', LAT));
+    if(ctl) fireListener(a, 'click', fakeEl(ctl.data));
+    const rows = lgRows(lgLatCard(a, LAT));
+    return { tag: ctl && ctl.tag, n: rows.length, pull: rows.length === 1 && rows[0].startsWith(lgRowHead(a, dayOff(-3), 'PULL 1')) };
+  });
+  ok('D-07: history found only in PULL 1 makes the PUSH 1 line a toggleExHist button, and its panel lists the PULL 1 row',
+     !rp.threw && rp.tag === 'button' && rp.n === 1 && rp.pull, rp);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'h2', dayOff(-4), LAT, [[25, 20]]),
+                                lgSess(a, 'o1', dayOff(-2), 0, [[60, 10]], { workout: 'PULL 1', name: a.PROGRAM['PULL 1'].slots[0].examples[0] })], (a, LAT) => {
+    a.__sandbox.toggleExHist(LAT);
+    a.DB.draft.entries[LAT].name = a.PROGRAM['PULL 1'].slots[0].examples[0]; a.render();
+    const c1 = lgLatCard(a, LAT), rows = lgRows(c1);
+    const other = { panel: c1.includes('class="exh"'), n: rows.length, pull: rows.length === 1 && rows[0].startsWith(lgRowHead(a, dayOff(-2), 'PULL 1')),
+                    ctl: !!f2Find(a, f2At('toggleExHist', LAT)) };
+    a.DB.draft.entries[LAT].name = 'Never logged zz lift'; a.render();
+    const c2 = lgLatCard(a, LAT);
+    return { other, none: { panel: c2.includes('class="exh"'), ctl: !!f2Find(a, f2At('toggleExHist', LAT)) } };
+  });
+  ok('LOG-01: the panel follows the slot, showing a swapped-in exercise\'s rows, and nothing for one never logged',
+     !r.threw && r.other.panel && r.other.n === 1 && r.other.pull && r.other.ctl && !r.none.panel && !r.none.ctl, r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const S = a.__sandbox, fire = (act, i) => { const c = f2Find(a, f2At(act, i)); if(c) fireListener(a, 'click', fakeEl(c.data)); return !!c; };
+    const view = () => { const c = lgLatCard(a, LAT); return { panel: c.includes('class="exh"'), open: c.includes('aria-expanded="true"'), slot: a.openExHist }; };
+    S.toggleExHist(LAT);
+    S.prompt = () => 'x';
+    const sk = fire('skipExercise', LAT), skipped = view();
+    const un = fire('unskipExercise', LAT), back = view();
+    S.toggleExCollapse(LAT);
+    const collapsed = view();
+    const ex = fire('toggleExCollapse', LAT), expanded = view();
+    return { sk, un, ex, skipped, back, collapsed, expanded };
+  });
+  ok('LOG-01: a skipped card shows no panel and keeps openExHist, and Undo brings the panel back open',
+     !r.threw && r.sk && r.un && !r.skipped.panel && r.skipped.slot === r.back.slot && r.back.panel && r.back.open, r);
+  ok('LOG-01: a collapsed card shows no panel and keeps openExHist, and expanding it brings the panel back open',
+     !r.threw && r.ex && !r.collapsed.panel && r.collapsed.slot !== -1 && r.expanded.panel && r.expanded.open, r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'h1', dayOff(-4), LAT, [[22.5, 20]], { workout: 'PULL 1' }), lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const closed = a.viewActive().split('<div class="ex-card">').length;
+    const card = lgPanelCard(a, LAT);
+    return { closed, open: a.viewActive().split('<div class="ex-card">').length, panel: card.includes('class="exh"'),
+             pin: /Last time \([^)]*\):/.test(card), text: card.includes('Last time (') };
+  });
+  ok('LOG-01: an open panel holds no card opener, so every card splits where it did, and the Last time pins still match',
+     !r.threw && r.panel && r.open === r.closed && r.pin && r.text, r);
+}
+{
+  const r = lgPanelCase((a, LAT) => {
+    const w = lgSess(a, 'e4', dayOff(-2), LAT, [[25, 20]]); w.workout = EVIL;
+    return [lgSess(a, 'e1', dayOff(-8), LAT, [[25, 20]], { note: EVIL }),
+            lgSess(a, 'e2', dayOff(-6), LAT, [[25, 20], [0, 0, true, EVIL]]),
+            lgSess(a, 'e3', dayOff(-4), LAT, [[25, 20], [0, 0, true]], { skipped: true, reason: EVIL }), w];
+  }, (a, LAT) => {
+    const card = lgPanelCard(a, LAT), rows = lgRows(card), E = a.esc(EVIL);
+    return { n: rows.length, esc: card.includes('&quot;&gt;&lt;img'), img: card.includes('<img'),
+             attr: JSON.stringify(controlsIn(card)).includes('img'),
+             fields: [rows.some(x => x.includes('<span class="muted" style="font-size:12px">' + E + '</span>')),
+                      rows.some(x => x.includes('<em>skip: ' + E + '</em>')),
+                      rows.some(x => x.includes('rest skipped: <em>' + E + '</em>')),
+                      rows.some(x => x.includes('<span class="exh-note">' + LG_MEMO + ' ' + E + '</span>'))] };
+  });
+  ok('T-10-20/LOG-01: a hostile workout label, note, set reason and skip reason render as escaped text in the panel, never as markup or in an attribute',
+     !r.threw && r.n === 4 && r.esc && !r.img && !r.attr && JSON.stringify(r.fields) === '[true,true,true,true]', r);
+}
+{
+  const LONG = 'Felt heavy & slow on the last set, shoulder fine. '.repeat(7).slice(0, 300);
+  const r = lgPanelCase((a, LAT) => {
+    const key = Object.keys(a.PROGRAM).find(k => k.includes('&'));
+    const s = lgSess(a, 'lg2', dayOff(-2), LAT, [[25, 20]]); s.workout = key;
+    return [lgSess(a, 'lg1', dayOff(-4), LAT, [[25, 20]], { note: LONG }), s];
+  }, (a, LAT) => {
+    const key = Object.keys(a.PROGRAM).find(k => k.includes('&')), card = lgPanelCard(a, LAT);
+    return { key, len: LONG.length, label: card.includes('<span class="muted" style="font-size:12px">' + a.esc(key) + '</span>'),
+             note: card.includes('<span class="exh-note">' + LG_MEMO + ' ' + a.esc(LONG) + '</span>') };
+  });
+  ok('LOG-01: a long workout label with & and a 300-character note render whole in the panel',
+     !r.threw && !!r.key && r.len === 300 && r.label && r.note, r);
+}
+
+/* The chart link and the way back, rule by rule (LOG-02, D-19, D-20, D-21). lgTrip starts from the tracer's
+   fixture on Train → Log with a PUSH 1 draft, the page scrolled to 640 and a scroll recorder in place. */
+const lgFire = (a, pred) => { const c = f2Find(a, pred); if(c) fireListener(a, 'click', fakeEl(c.data)); return c; };
+const lgLast = sc => JSON.stringify(sc[sc.length - 1] || null);
+const lgTrip = fn => lgTry(() => {
+  const a = loadApp(APP_PATH), S = a.__sandbox, spy = spyPushes(a), LAT = lgLat(a);
+  S.confettiBurst = () => {};   // the harness canvas has no 2D context
+  lgRun(a, [
+    lgSess(a, 'h1', dayOff(-9), LAT, [[22.5, 20], [22.5, 19], [22.5, 18]]),
+    lgSess(a, 'h3', dayOff(-5), 0, [[20, 15], [20, 15]], { workout: 'PULL 1' }),
+    lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20], [25, 20], [25, 18]]),
+  ]);
+  S.startWorkout('PUSH 1');
+  S.scrollY = 640;
+  const sc = lgScroll(a);
+  return fn(a, LAT, sc, spy);
+});
+{
+  const r = lgCase((a, LAT) => [lgSess(a, 'bw', dayOff(-3), LAT, [[0, 12], [0, 10]], { name: 'Hanging knee raise' })], (a, LAT) => {
+    a.__sandbox.startWorkout('PUSH 1');
+    a.__sandbox.toggleExHist(LAT);
+    const link = lgFire(a, f2At('openExChart', LAT));
+    const html = f2AppHtml(a), open = '<option value="' + a.esc(a.exKey('Hanging knee raise')) + '" selected>';
+    const k = html.indexOf(open), opt = k < 0 ? '' : html.slice(k, html.indexOf('</option>', k) + '</option>'.length);
+    return { link: !!link, name: a.DB.draft.entries[LAT].name, opt };
+  });
+  ok('D-19: a bodyweight-only exercise opens Strength with its "(reps)" option selected',
+     !r.threw && r.link && r.name === 'Hanging knee raise' && r.opt.endsWith(' (reps)</option>'), r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox;
+    spyPushes(a);
+    lgRun(a, []);
+    S.startWorkout('PUSH 1');
+    S.openExerciseChart(0);
+    const html = f2AppHtml(a);
+    return { sub: a.subState.train, empty: html.includes('Log a few workouts'), broke: html.includes('Something broke on this screen'),
+             back: !!f2Find(a, f2At('backToWorkout')) };
+  });
+  ok('D-19: with nothing to chart, the link opens Strength\'s "Log a few workouts" state with Back to workout, and nothing throws',
+     !r.threw && r.sub === 'progress' && r.empty && !r.broke && r.back, r);
+}
+{
+  const r = lgTrip((a, LAT) => {
+    a.go('today');
+    const before = { tab: a.TAB, ret: a.logReturn };
+    a.DB.draft = null;
+    let threw = null;
+    try{ a.__sandbox.openExerciseChart(LAT); }catch(e){ threw = String(e); }
+    return { threw2: threw, before, after: { tab: a.TAB, ret: a.logReturn } };
+  });
+  ok('D-19: with no workout open, the link does nothing: no throw, same screen, no return point',
+     !r.threw && r.threw2 === null && r.before.tab === 'today' && r.after.tab === 'today' && r.before.ret === null && r.after.ret === null, r);
+}
+{
+  const r = lgTrip((a, LAT) => {
+    const S = a.__sandbox, has = () => !!f2Find(a, f2At('backToWorkout'));
+    a.setSub('progress'); S.progSubTab('strength');
+    const direct = has();
+    S.toggleExHist(LAT);
+    a.setSub('log');
+    lgFire(a, f2At('openExChart', LAT));
+    const ctls = controlsIn(f2AppHtml(a)), firstAfterSeg = ctls.find(c => c.data.action !== 'setSub');
+    const first = firstAfterSeg ? { action: firstAfterSeg.data.action, tag: firstAfterSeg.tag } : null;
+    const others = ['body', 'volume', 'cardio', 'pet'].map(t => { S.progSubTab(t); return has(); });
+    S.progSubTab('strength');
+    const again = has();
+    a.DB.draft = null; a.render();
+    return { direct, first, others, again, noDraft: has() };
+  });
+  ok('D-20: Strength reached without the link shows no Back to workout',
+     !r.threw && r.direct === false, r);
+  ok('D-20: after the link, Back to workout is a button and the first control after the section switcher',
+     !r.threw && r.first && r.first.action === 'backToWorkout' && r.first.tag === 'button', r);
+  ok('D-20: Weight, Volume, Cardio and the pet tab show no Back to workout, Strength shows it again, and no draft means none',
+     !r.threw && JSON.stringify(r.others) === '[false,false,false,false]' && r.again === true && r.noDraft === false, r);
+}
+{
+  const r = lgTrip((a, LAT, sc, spy) => {
+    const S = a.__sandbox;
+    const base = { blob: JSON.stringify(a.__stored()), d: canon(a.DB.draft), u: a.DB.updatedAt, n: spy.n };
+    S.toggleExCollapse(0);
+    S.toggleExHist(LAT);
+    lgFire(a, f2At('openExChart', LAT));
+    const sw = lgFire(a, c => c.data.action === 'setSub' && c.data.sub === 'log');
+    const html = f2AppHtml(a), cards = html.split('<div class="ex-card">');
+    return { sw: !!sw, sub: a.subState.train, scroll: lgLast(sc), ret: a.logReturn,
+             open: (cards[LAT + 1] || '').includes('aria-expanded="true"'), collapsed: (cards[1] || '').includes('▾ expand'),
+             same: JSON.stringify(a.__stored()) === base.blob && canon(a.DB.draft) === base.d && a.DB.updatedAt === base.u && spy.n === base.n };
+  });
+  ok('D-21/LOG-02: Train → Log through the section switcher after the link lands at the recorded scroll, the panel open, collapsed cards collapsed, nothing written',
+     !r.threw && r.sw && r.sub === 'log' && r.scroll === '[0,640]' && r.ret === null && r.open && r.collapsed && r.same, r);
+}
+{
+  const r = lgTrip((a, LAT, sc) => {
+    a.__sandbox.toggleExHist(LAT);
+    lgFire(a, f2At('openExChart', LAT));
+    a.go('today');
+    const today = { scroll: lgLast(sc), kept: canon(a.logReturn) === canon({ y: 640 }) };
+    const resume = lgFire(a, c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'log');
+    return { today, resume: !!resume, sub: a.subState.train, scroll: lgLast(sc), ret: a.logReturn };
+  });
+  ok('D-21: Today keeps the return point and lands at the top, and its Resume button lands on Log at the recorded scroll',
+     !r.threw && r.today.scroll === '[0,0]' && r.today.kept && r.resume && r.sub === 'log' && r.scroll === '[0,640]' && r.ret === null, r);
+}
+{
+  const r = lgTrip((a, LAT, sc) => {
+    a.__sandbox.toggleExHist(LAT);
+    lgFire(a, f2At('openExChart', LAT));
+    a.go('train');
+    return { tab: a.TAB, sub: a.subState.train, scroll: lgLast(sc), kept: canon(a.logReturn) === canon({ y: 640 }) };
+  });
+  ok('D-21: the Train tab button after the link stays on Progress, lands at the top, and keeps the return point',
+     !r.threw && r.tab === 'train' && r.sub === 'progress' && r.scroll === '[0,0]' && r.kept, r);
+}
+{
+  const r = lgTrip((a, LAT, sc) => {
+    a.__sandbox.toggleExHist(LAT);
+    lgFire(a, f2At('openExChart', LAT));
+    lgFire(a, f2At('backToWorkout'));
+    const first = { scroll: lgLast(sc), ret: a.logReturn };
+    a.setSub('history'); a.setSub('log');
+    return { first, scroll: lgLast(sc), ret: a.logReturn };
+  });
+  ok('D-21: the return point is used once, and the next arrival at Log lands at the top',
+     !r.threw && r.first.scroll === '[0,640]' && r.first.ret === null && r.scroll === '[0,0]' && r.ret === null, r);
+}
+{
+  const r = lgTrip((a, LAT) => {
+    delete a.__sandbox.scrollY;
+    a.__sandbox.toggleExHist(LAT);
+    let threw = null;
+    try{ lgFire(a, f2At('openExChart', LAT)); }catch(e){ threw = String(e); }
+    return { threw2: threw, ret: canon(a.logReturn) === canon({ y: 0 }), sub: a.subState.train };
+  });
+  ok('D-21: with no scrollY on the page, the link records 0 and throws nothing',
+     !r.threw && r.threw2 === null && r.ret && r.sub === 'progress', r);
+}
+{
+  /* Each reset starts from: panel open on LAT, link followed, back on Log through the switcher, then the link
+     followed again so a return point is set when the reset runs. */
+  const resets = {
+    discardWorkout: (a, S) => { S.confirm = () => true; S.discardWorkout(); },
+    'startWorkout(PULL 1)': (a, S) => { S.confirm = () => true; S.startWorkout('PULL 1'); },
+    'startBackdate(PULL 1)': (a, S) => { S.confirm = () => true; S.startBackdate('PULL 1'); },
+    finishWorkout: (a, S, LAT) => { a.setVal(LAT, 0, 'r', '20'); S.finishWorkout(); },
+    editSession: (a, S) => { S.confirm = () => true; S.editSession(a.DB.sessions.findIndex(s => s.id === 'h1')); },
+  };
+  Object.keys(resets).forEach(name => {
+    const r = lgTrip((a, LAT) => {
+      const S = a.__sandbox;
+      S.toggleExHist(LAT);
+      S.openExerciseChart(LAT);
+      a.setSub('log');
+      S.openExerciseChart(LAT);
+      const set = { ret: canon(a.logReturn) === canon({ y: 640 }), slot: a.openExHist === LAT };
+      resets[name](a, S, LAT);
+      return { set, ret: a.logReturn, slot: a.openExHist };
+    });
+    ok('D-21: ' + name + ' clears the return point and the open panel',
+       !r.threw && r.set.ret && r.set.slot && r.ret === null && r.slot === -1, r);
+  });
+}
+{
+  const r = lgTrip((a, LAT) => {
+    const S = a.__sandbox, realOpen = S.openExerciseChart;
+    S.toggleExHist(LAT);
+    const line = f2Find(a, f2At('toggleExHist', LAT)), link = f2Find(a, f2At('openExChart', LAT));
+    const calls = { toggleExHist: spyOn(a, 'toggleExHist'), openExerciseChart: spyOn(a, 'openExerciseChart'), backToWorkout: spyOn(a, 'backToWorkout') };
+    if(line) fireListener(a, 'click', fakeEl(line.data));
+    if(link) fireListener(a, 'click', fakeEl(link.data));
+    realOpen(LAT);
+    const back = f2Find(a, f2At('backToWorkout'));
+    if(back) fireListener(a, 'click', fakeEl(back.data));
+    return { lat: LAT, tags: [line, link, back].map(c => c && c.tag), calls };
+  });
+  ok('LOG-02: the line, the link and Back to workout are buttons whose wrappers pass exactly [LAT], [LAT] and []',
+     !r.threw && JSON.stringify(r.tags) === '["button","button","button"]'
+       && JSON.stringify(r.calls.toggleExHist) === JSON.stringify([[r.lat]])
+       && JSON.stringify(r.calls.openExerciseChart) === JSON.stringify(r.calls.toggleExHist)
+       && JSON.stringify(r.calls.backToWorkout) === '[[]]', r);
+}
+{
+  const a = loadApp(APP_PATH);
+  const names = ['toggleExHist', 'openExerciseChart', 'backToWorkout', 'landingY', 'exerciseRecent', 'exhRowHTML', 'exhPanelHTML'];
+  const bad = names.filter(n => {
+    const f = a.__sandbox[n];
+    if(typeof f !== 'function') return true;
+    const src = f2StripJs(Function.prototype.toString.call(f));
+    return /\bsave(Local)?\(/.test(src) || /DB\.draft[\w.\[\]]*\s*=[^=]/.test(src);
+  });
+  ok('D-06/D-21: the seven history and return functions never save and never assign into the draft',
+     bad.length === 0, bad);
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

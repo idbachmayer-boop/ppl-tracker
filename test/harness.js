@@ -162,6 +162,10 @@ function loadApp(htmlPath, seed, opts){
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
     get DB(){ return DB; }, set DB(v){ DB = v; },
     get TAB(){ return TAB; },
+    /* The Log tab's screen-only state (Phase 10, D-06 and D-21). Read-only on purpose: a test reaches
+       them only through the app's own functions, the way a tap does. */
+    get openExHist(){ return typeof openExHist !== 'undefined' ? openExHist : undefined; },
+    get logReturn(){ return typeof logReturn !== 'undefined' ? logReturn : undefined; },
     get fbDb(){ return fbDb; }, set fbDb(v){ fbDb = v; },
     /* cloudVersionList is a let too, so it needs an accessor for the same reason as fbDb. */
     get cloudVersionList(){ return cloudVersionList; }, set cloudVersionList(v){ cloudVersionList = v; }

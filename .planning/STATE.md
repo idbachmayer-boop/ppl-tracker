@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
-current_phase: 09
-current_phase_name: equipment-and-weight-steps
+current_phase: 10
+current_phase_name: log-page-history-and-skip
 status: executing
-stopped_at: Completed 09-04-PLAN.md
-last_updated: "2026-10-12T17:51:52.355Z"
-last_activity: 2026-10-12
-last_activity_desc: Completed 09-04 (the first-time equipment picker, the card tag, the Settings copy)
+stopped_at: Completed 10-03-PLAN.md
+last_updated: "2026-10-20T12:40:34.325Z"
+last_activity: 2026-10-20
+last_activity_desc: Phase 10 execution started
 progress:
   total_phases: 6
-  completed_phases: 1
-  total_plans: 8
-  completed_plans: 7
-  percent: 17
+  completed_phases: 2
+  total_plans: 12
+  completed_plans: 11
+  percent: 33
 ---
 
 # Project State
@@ -24,22 +24,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 09 — equipment-and-weight-steps
+**Current focus:** Phase 10 — log-page-history-and-skip
 
 ## Current Position
 
-Phase: 09 (equipment-and-weight-steps) — EXECUTING
-Plan: 5 of 5
+Phase: 10 (log-page-history-and-skip) — EXECUTING
+Plan: 4 of 4
 Status: Ready to execute
-Last activity: 2026-10-12 — Completed 09-04 (the first-time equipment picker, the card tag, the Settings copy)
+Last activity: 2026-10-20 — Phase 10 execution started
 
-Progress: [█████████░] 88% of planned v1.1 plans (Phase 9: 4 of 5 plans done)
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 36
+- Total plans completed: 41
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -55,6 +55,7 @@ Progress: [█████████░] 88% of planned v1.1 plans (Phase 9: 4
 | 7 | 7 | - | - |
 | 6 | 2 | - | - |
 | 8 | 3 | - | - |
+| 9 | 5 | - | - |
 
 **Recent Trend:**
 
@@ -104,6 +105,10 @@ Progress: [█████████░] 88% of planned v1.1 plans (Phase 9: 4
 | Phase 09 P02 | 14 min | 3 tasks | 3 files |
 | Phase 09 P03 | 14 min | 3 tasks | 2 files |
 | Phase 09 P04 | 10 min | 3 tasks | 3 files |
+| Phase 09 P05 | ~25min (incl. the push, PR, CI, deploy) | 3 tasks | 0 files |
+| Phase 10 P01 | 10 min | 3 tasks | 3 files |
+| Phase 10 P02 | 8 min | 3 tasks | 2 files |
+| Phase 10 P03 | 14 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -130,6 +135,16 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [09-04]: the picker is keyed by registry id in equipAsk, so it follows the exercise, not the slot; it stays until answered, the slot switches exercise, or the app reloads
 - [09-04]: on a time-based accessory card exEnsureAsk still queues the id and extraCard declines to render it; the row keeps its guess
 - [09-04]: equipAsk.delete(id) sits after setExerciseEquip's validity checks, so a refused type leaves the picker in place
+- [09-05]: Phase 9 shipped as PR #14, merge commit 8a20832 on main; live stamp 2026-10-12T18:58:25Z 8a20832, csp --check OK, SCHEMA 19, helper grep 4. Phone workout and cross-device type change are the pending end-of-phase UAT
+- [09-UAT]: Phone UAT passed 2026-10-13 (tag, Preacher-curl plates, pre-set types, cross-device type change both ways, first-time picker, 380px layout, clean finish); 09-SECURITY.md verified, 37/37 closed
+- [09-05]: Revert is git revert -m 1 --no-edit 8a20832 on main. Once schema 19 has synced, a revert keeps all data but pauses sync on every device until a 19+ build ships; a blank app means nothing migrated and the revert is clean
+- [09-05]: Shipped with WR-09, WR-06 and the info items open (none blocking); WR-09 (order-dependent conflicting concurrent merges) is the post-ship fix candidate
+- [Phase 10]: 10-01: exercise skip is add-alongside — entry gets skipped:true + reason, per-set skipped flags stay the only judgement input (D-09); SCHEMA stays 19
+- [Phase 10]: 10-01: finishWorkout strips every own key starting with _ from entries and sets; draft-only fields must start with _
+- [Phase 10]: 10-02: the D-17 skip note comes from lastAttemptEntry and sits after lastLine, so the Last time numbers stay lastRealEntry's
+- [Phase 10]: 10-02: editSession carries only skipped and reason (boolean true only), never _preSkip, so Undo on a re-edited workout takes the no-snapshot path
+- [Phase 10]: 10-03: the history panel renders only when the Last time line is tappable (ref || alt); openExHist and logReturn are screen-only lets reset at the five collapsedEx.clear() sites
+- [Phase 10]: 10-03: landingY is the router's only scroll decision; the return point is used once on a Train → Log arrival and cleared
 
 ### Pending Todos
 
@@ -140,8 +155,7 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 
 No blockers. Open questions for discuss-phase, raised while drafting the v1.1 roadmap (details in the ROADMAP.md phase notes):
 
-- Phase 9: `DB.exercises` is not a `COLLECTIONS` entry, and `mergeDB()` appears to take the whole array from the side with the newer `updatedAt`, so an equipment edit could lose to the other device's next save. Check before planning; the stale-device replay test must cover that path.
-- Phase 9: kg decided in 09-CONTEXT D-10 (lb only; kg keeps a flat 2.5).
+- Phase 9: resolved. The registry merges per row with an equipAt clock (09-02, replays in the suite), and kg keeps a flat 2.5 (D-10). Open post-ship: WR-09 in 09-REVIEW.md.
 - Phase 11: rain rows come from the weather fetch, but derived data uses `saveLocal()`. Decide how a rain row persists and reaches the cloud without letting a stale device look newest. The weather cache keeps only 3 past days.
 - Phase 12: Ian chooses whether `wipe()` goes through `keepLocalDraft()` or becomes the documented exception (SLP-03).
 
@@ -171,10 +185,10 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-12T17:51:52.341Z
-Stopped at: Completed 09-04-PLAN.md
+Last session: 2026-10-20T12:40:34.308Z
+Stopped at: Completed 10-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Execute Phase 9: `/gsd-execute-phase 9`; run `/gsd-code-review 9` after 09-04, before the 09-05 ship plan.
+- Discuss Phase 10: `/gsd-discuss-phase 10` (Log page: last 5 sessions inline from "Last time", and skip a whole exercise).

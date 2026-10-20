@@ -58,7 +58,9 @@ device's draft through `keepLocalDraft()` and drops a foreign one with `stripDra
 `normalize()`. Draft edits persist with `saveLocal()`. The exceptions are `pickEx`, `exPick` and
 `finishWorkout`, which still `save()` because they write synced data (a new exercise-registry row, or
 the finished session). A test fails when a new statement replaces `DB` without the helper, or when a
-new draft function calls `save()`.
+new draft function calls `save()`. A draft-only field on an entry or a set starts with `_` (`_cel`, and
+since Phase 10 `_preSkip`, the snapshot an exercise skip keeps for Undo); `finishWorkout` strips every
+one, and a test fails when a finished entry or set still carries one.
 
 ## Conventions
 

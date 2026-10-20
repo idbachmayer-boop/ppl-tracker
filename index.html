@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-c21XVzCcRwMep642eFzbjNWAsgtThZ09OcXShNXTUM8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-YqyU1GkbjGfE6MvOw4GtpHimhDverzR/ZJysw4nOlO8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -81,6 +81,13 @@
     .flag { font-size: 11px; font-weight: 700; color: var(--flag-fg); background: var(--flag-bg); border: 1px solid var(--flag-bd); border-radius: 6px; padding: 2px 8px; }
 
     /* Exercise log card */
+    .ex-skip { min-width: 32px; min-height: 32px; margin-right: 4px; vertical-align: middle; }
+    .exh { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 4px 12px; margin: -4px 0 12px; }
+    .exh-label { font-size: 12px; line-height: 1.5; color: var(--muted); padding: 8px 0 4px; }
+    .exh-row { font-size: 12px; line-height: 1.5; color: var(--text-2); padding: 8px 0; border-top: 1px solid var(--border-3); }
+    .exh-date { font-weight: 600; color: var(--text); }
+    .exh-note { display: block; color: var(--muted); }
+    .exh-link { display: block; width: 100%; text-align: left; background: none; border: none; border-top: 1px solid var(--border-3); color: var(--link); font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 8px 0 4px; min-height: 32px; }
     .ex-card { background: var(--surface); border-radius: 12px; border: 1px solid var(--border); margin-bottom: 10px; overflow: hidden; }
     .ex-accent { height: 4px; }
     .ex-body { padding: 14px 14px 12px; }
@@ -1283,14 +1290,18 @@ function deloadPlan(name, lastW){
 }
 /* Unlike lastRealEntry, an entry with no worked set still counts here, as long as it was on the card
    (it holds sets, or blankSets says its sets were left blank). lastRealEntry keeps feeding Last time
-   and the prefilled weights. */
-function lastAttemptEntry(workout, slotIndex, exName){
+   and the prefilled weights. A deload is passed over, unless it carries the exercise-skip marker: a
+   deload skipped part-way keeps its deload (D-22), and it must still block Add weight and give the card
+   its skip note, or the attempt before the deload would offer ⬆ Add weight after a skip (WR-02). `skipId` leaves one session out: the card's skip note passes the session
+   being edited, so it never reports the skip Ian is editing (or just undid) back to him (D-05). */
+function lastAttemptEntry(workout, slotIndex, exName, skipId){
   const ls = liveSessions(), key = exKey(exName);
   for(let i=ls.length-1;i>=0;i--){
     const s=ls[i];
     if(s.workout!==workout || s.skipped || !Array.isArray(s.entries)) continue;
+    if(skipId && s.id === skipId) continue;
     const e=s.entries[slotIndex];
-    if(!e || exKey(e)!==key || e.deload) continue;
+    if(!e || exKey(e)!==key || (e.deload && e.skipped!==true)) continue;
     if((Array.isArray(e.sets) && e.sets.length) || +e.blankSets > 0) return {entry:e, date:s.date};
   }
   return null;
@@ -1718,11 +1729,20 @@ function syncTabBar(){
     if(t && ic) ic.innerHTML = ph(on ? t.icon+'-fill' : t.icon);
   });
 }
-function go(id){ if(!tabDef(id)) return; TAB=id; syncTabBar(); render(); window.scrollTo(0,0); }
+function go(id){ if(!tabDef(id)) return; TAB=id; syncTabBar(); render(); window.scrollTo(0, landingY()); }
 /* Jump straight to a sub-view of a grouped tab, e.g. goSub('train','history'). */
 function goSub(id, sub){ const t=tabDef(id); if(!t) return; if(t.sub && sub) subState[id]=sub; go(id); }
 /* Switch sub-view within the CURRENT tab (used by the segmented control). */
-function setSub(sub){ const t=tabDef(TAB); if(t && t.sub) subState[TAB]=sub; render(); window.scrollTo(0,0); }
+function setSub(sub){ const t=tabDef(TAB); if(t && t.sub) subState[TAB]=sub; render(); window.scrollTo(0, landingY()); }
+/* Where an arrival scrolls to (D-21). Arriving at the Log tab after the history panel's chart link lands
+   at the scroll recorded when the link was tapped, with a workout still open; every other arrival lands at
+   the top. The return point is used once, then cleared, and it is screen-only: never in DB, never saved. */
+function landingY(){
+  if(!logReturn || TAB !== 'train' || subState.train !== 'log') return 0;
+  const y = DB.draft ? (+logReturn.y || 0) : 0;
+  logReturn = null;
+  return y;
+}
 function segNav(items, active){
   return `<div class="seg" style="margin-bottom:16px">${items.map(([k,label])=>`<button class="${k===active?'active':''}" data-action="setSub" data-sub="${esc(k)}">${label}</button>`).join('')}</div>`;
 }
@@ -2037,7 +2057,7 @@ function startWorkout(name){
     if(!confirm(`You have an unfinished ${DB.draft.workout}. Discard it and start ${name}?`)) return;
   }
   if(!DB.draft || DB.draft.workout!==name){
-    collapsedEx.clear();
+    collapsedEx.clear(); openExHist = -1; logReturn = null;
     DB.draft = { workout:name, date:todayISO(), startedAt:Date.now(),
       entries: PROGRAM[name].slots.map((s,i)=>{
         const ref = lastRealEntry(name,i);
@@ -2071,7 +2091,7 @@ function skipDay(name){
 }
 function startBackdate(name){
   if(DB.draft && !confirm(`You have an unfinished ${DB.draft.workout}. Discard it?`)) return;
-  collapsedEx.clear();
+  collapsedEx.clear(); openExHist = -1; logReturn = null;
   DB.draft = { workout:name, date:todayISO(), historical:true, startedAt:null, durationMin:'',
     entries: PROGRAM[name].slots.map((s,i)=>{ const ref=lastRealEntry(name,i); return { name: ref?ref.entry.name:s.examples[0], note:'', sets: Array.from({length:s.sets},()=>({w:'',r:'',skipped:false,reason:''})) }; }),
     stairs:{ level:'', seconds:'', skipped:false, reason:'' }, extras: blankExtras(name), sessionNote:'' };
@@ -2086,6 +2106,9 @@ function viewActive(){
   const slots = PROGRAM[name].slots;
   const cards = slots.map((s,i)=>{
     const entry = DB.draft.entries[i];
+    /* A skipped exercise is one quiet line with Undo (D-11). It is checked before the collapsed branch
+       and ignores collapsedEx without clearing it, so Undo brings the card back as it was. */
+    if(entry && entry.skipped === true) return `<div class="ex-card"><div class="ex-accent ${barClass(g)}"></div><div class="ex-body"><div class="skip-note" style="margin:0"><span>${ph('skip-forward','lead')}<strong>${esc(entry.name)}</strong> · ${skipTailHTML(entry)}</span><button data-action="unskipExercise" data-i="${esc(i)}">Undo</button></div></div></div>`;
     if(collapsedEx.has(i)){ // collapsed to a one-line summary to cut scrolling
       const done = entry.sets.filter(x=>!x.skipped && x.r!=='');
       const summary = done.length ? done.map(x=>fmtSet(x.w,x.r)).join(', ') : 'no sets yet';
@@ -2121,6 +2144,16 @@ function viewActive(){
       if(sug) lastLine += ` <span class="muted">→ suggest <strong>${esc(sug)} ${esc(DB.unit)}</strong> for ${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>`;
       if(alt.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(alt.entry.note)}</div>`;
     }
+    /* Appended after lastLine, never in place of it: the numbers to beat stay the last real ones (D-17).
+       Editing a past workout leaves that session out, as the history panel does (D-05). */
+    const skipNote = skipNoteHTML(lastAttemptEntry(name, i, entry.name, DB.draft.editRef));
+    /* With real history the line is the toggle for this slot's history panel (D-06); with none it stays
+       plain text, and no panel renders even when openExHist names this slot (D-07, D-24). The button holds
+       only inline markup, never a <div>, and the panel sits outside it. */
+    const open = openExHist === i && !!(ref || alt);
+    const lastEl = (ref || alt)
+      ? `<button class="lasttime tap" data-action="toggleExHist" data-i="${esc(i)}" aria-expanded="${open ? 'true' : 'false'}">${lastLine}<span class="muted" style="font-size:12px;margin-left:4px">${ph(open ? 'caret-up' : 'caret-down')}</span>${skipNote}</button>`
+      : `<div class="lasttime">${lastLine}${skipNote}</div>`;
     let coachHint='';
     if(entry.deload){
       /* The empty-bar case is derived here from history, never stored: finishWorkout copies every draft
@@ -2154,6 +2187,7 @@ function viewActive(){
         <div class="ex-head">
           <div><div class="ex-meta">${s.muscle} · ${s.movement}${s.note?' · '+s.note:''} · <a href="${gsearch(entry.name)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">how-to ${ph('arrow-square-out')}</a></div></div>
           <div style="text-align:right;white-space:nowrap">
+            ${exUnfinished(entry).length ? `<button class="skip-set ex-skip" data-action="skipExercise" data-i="${esc(i)}" title="skip this exercise" aria-label="Skip this exercise">${ph('skip-forward')}</button>` : ''}
             <button class="skip-set" data-action="toggleExCollapse" data-i="${esc(i)}" title="collapse" style="font-size:16px;vertical-align:middle">${ph('caret-up')}</button>
             <span class="range-badge">${rangeText(rng)} reps</span>${flag?'<br>'+flag:''}
           </div>
@@ -2162,7 +2196,8 @@ function viewActive(){
         ${equipAsk.has(exKey(entry))
           ? equipPickerHTML(exKey(entry), entry.name)
           : `<div class="ex-meta" id="equip-tag-${i}" style="margin-top:4px">${esc(equipTagText(entry, cardTopWeight(entry.sets)))}</div>`}
-        <div class="lasttime">${lastLine}</div>
+        ${lastEl}
+        ${open ? exhPanelHTML(i, entry) : ''}
         ${noteHint}
         ${coachHint}
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
@@ -2299,6 +2334,117 @@ function skipSet(i,k){
   saveLocal(); render();
 }
 function unskipSet(i,k){ const ss=DB.draft.entries[i].sets, st=ss[k]; st.skipped=false; st.reason=''; if(st.w==='') st.w=nearWeight(ss, k); saveLocal(); render(); }
+/* The sets of an entry still waiting for reps: a set object, not skipped, reps blank. The exercise skip
+   button shows only while this is non-empty (D-12), and skipExercise checks it again on the tap. */
+function exUnfinished(e){
+  if(!e || !Array.isArray(e.sets)) return [];
+  return e.sets.filter(st=> st && typeof st==='object' && !st.skipped && st.r==='');
+}
+/* Skip a whole exercise mid-workout. Only the unfinished sets are skipped: a set with reps stays exactly
+   as it was (D-08), and a set skipped earlier keeps its own reason. The one optional reason lives on the
+   entry, and Cancel aborts with no write (D-10). `_preSkip` is the snapshot Undo restores exactly (D-13).
+   It is draft-only, like every field whose name starts with `_`: finishWorkout strips it, so it never
+   reaches a session, a backup or the export. A skip that leaves no done set clears deload (D-22); one
+   that leaves a done set keeps it, and lastAttemptEntry still counts that entry because it carries the
+   skip marker (WR-02). Two additive markers reach the session, so Undo on a re-edited workout (no
+   snapshot, D-25) can tell what the skip did (WR-03): `exSkip: true` on each set this skip marked, and
+   `skipClearedDeload: true` on the entry when D-22 cleared a deload. Only the boolean true counts. A
+   draft edit, so saveLocal() only (D-14). */
+function skipExercise(i){
+  const e = DB.draft && DB.draft.entries[i];
+  if(!e || e.skipped===true || exUnfinished(e).length===0) return;
+  const reason = prompt(`Why skipping ${e.name}? (optional)`, '');
+  if(reason===null) return;
+  e._preSkip = { sets: JSON.parse(JSON.stringify(e.sets)), deload: !!e.deload };
+  exUnfinished(e).forEach(st=>{ st.skipped=true; st.reason=''; st.w=''; st.r=''; st.exSkip=true; });
+  if(!e.sets.some(x=> x && !x.skipped && x.r!=='')){
+    if(e.deload) e.skipClearedDeload = true;
+    e.deload = false;
+  }
+  e.skipped = true;
+  e.reason = String(reason).trim();
+  saveLocal(); render();
+}
+/* Undo an exercise skip. With the snapshot, the card comes back exactly as it was: weights, typed values,
+   single sets skipped earlier with their reasons, and the deload (D-13). Without one (a finished session
+   reopened for editing, D-25), each set the exercise skip marked (`exSkip`) comes back blank with the
+   nearest weight, every set Ian skipped on its own stays skipped, with or without a reason, and a deload
+   the skip cleared (`skipClearedDeload`) comes back (WR-03). An entry whose sets carry no `exSkip` at all
+   (a hand-edited backup) falls back to the reason: a set skipped with no reason of its own comes back.
+   saveLocal() only (D-14). */
+function unskipExercise(i){
+  const e = DB.draft && DB.draft.entries[i];
+  if(!e || e.skipped!==true) return;
+  const snap = e._preSkip;
+  if(snap && typeof snap==='object' && Array.isArray(snap.sets) && snap.sets.every(st=> st && typeof st==='object')){
+    e.sets = snap.sets;
+    e.deload = !!snap.deload;
+  } else if(Array.isArray(e.sets)){
+    const marked = e.sets.some(st=> st && st.exSkip===true);
+    e.sets.forEach((st,k)=>{
+      if(!(st && st.skipped && (marked ? st.exSkip===true : !st.reason))) return;
+      st.skipped = false; st.reason = ''; st.r = '';
+      if(st.w==='' || st.w==null) st.w = nearWeight(e.sets, k);
+    });
+    if(e.skipClearedDeload===true) e.deload = true;
+  }
+  if(Array.isArray(e.sets)) e.sets.forEach(st=>{ if(st && typeof st==='object') delete st.exSkip; });
+  delete e._preSkip; delete e.skipped; delete e.reason; delete e.skipClearedDeload;
+  saveLocal(); render();
+}
+/* The text after the exercise name for a skipped exercise: `skipped[: reason]`, or the done sets then
+   `· rest skipped[: reason]`. One source for the skipped card, the history line and the history panel,
+   so the three cannot drift. Every value goes through esc() into a text node. `prAt(k)`, when given,
+   marks the set at original index k with the trophy, the viewHistory rule. */
+function skipTailHTML(e, prAt){
+  const all = e && Array.isArray(e.sets) ? e.sets : [];
+  const done = all.map((x,k)=>({x,k})).filter(({x})=> x && !x.skipped && x.r!=='');
+  const sets = done.map(({x,k})=> esc(fmtSet(x.w,x.r)) + (prAt && prAt(k) ? ' 🏆' : '')).join(', ');
+  const why = e && e.reason ? ': <em>'+esc(e.reason)+'</em>' : '';
+  return done.length ? `${sets} · rest skipped${why}` : `skipped${why}`;
+}
+/* The muted line under Last time when this slot's most recent attempt (lastAttemptEntry) was a skipped
+   exercise: it says when and why, so the missing Add weight has a reason on screen (D-17). It never
+   touches the numbers above it, which stay lastRealEntry's. Only the boolean `true` counts as the marker,
+   and the reason is only ever escaped text inside <em>. */
+function skipNoteHTML(att){
+  if(!(att && att.entry && att.entry.skipped === true)) return '';
+  const e = att.entry;
+  const done = Array.isArray(e.sets) && e.sets.some(x=> x && !x.skipped && x.r!=='');
+  return `<span class="muted" style="display:block;font-size:12px">${ph('skip-forward','lead')}${done ? 'Rest skipped' : 'Skipped'} ${fmtDate(att.date)}${e.reason ? ': <em>' + esc(e.reason) + '</em>' : ''}</span>`;
+}
+/* One row of the history panel: date, the stored workout label, then what happened (D-02, D-03). A whole
+   exercise skip reads skipTailHTML's text; otherwise the sets in order, a single skipped set as `skip` in
+   its place, the trophy after a set prSetIndex marks, and `no sets logged` when nothing was. A deload and
+   the entry's note are marked, never hidden. Every stored value is escaped text, never an attribute. */
+function exhRowHTML(s, e, prIdx){
+  const prAt = k => prIdx.isPR(s, e, k);
+  let body;
+  if(e.skipped === true) body = skipTailHTML(e, prAt);
+  else {
+    const parts = [];
+    (Array.isArray(e.sets) ? e.sets : []).forEach((x,k)=>{
+      if(!x || typeof x !== 'object') return;
+      if(x.skipped) parts.push(x.reason ? '<em>skip: ' + esc(x.reason) + '</em>' : '<em>skip</em>');
+      else if(x.r !== '' && x.r != null) parts.push(esc(fmtSet(x.w, x.r)) + (prAt(k) ? ' 🏆' : ''));
+    });
+    body = parts.length ? parts.join(', ') : 'no sets logged';
+  }
+  const deload = e.deload ? '<span class="muted" style="font-size:12px"> ↓ deload</span>' : '';
+  const note = e.note ? '<span class="exh-note">📝 ' + esc(e.note) + '</span>' : '';
+  return `<div class="exh-row"><span class="exh-date">${esc(fmtDate(s.date))}</span> · <span class="muted" style="font-size:12px">${esc(s.workout)}</span> — ${body}${deload}${note}</div>`;
+}
+/* The history panel under a card's Last time line (D-01, D-05): up to 5 rows from exerciseRecent, never
+   the session being edited, then the link to the exercise's chart. With no row it says so, and the link
+   still renders. It holds no card opener, so the cards still split where they did. */
+function exhPanelHTML(i, entry){
+  const rows = exerciseRecent(exKey(entry), 5, DB.draft.editRef);
+  const link = `<button class="exh-link" data-action="openExChart" data-i="${esc(i)}">Full chart in Strength ${ph('caret-right')}</button>`;
+  if(!rows.length) return `<div class="exh"><div class="exh-row" style="border-top:0">No other sessions of this exercise yet.</div>${link}</div>`;
+  const prIdx = prSetIndex();
+  const label = rows.length === 1 ? 'Last session · any workout' : `Last ${rows.length} sessions · any workout`;
+  return `<div class="exh"><div class="exh-label">${label}</div>${rows.map(r => exhRowHTML(r.s, r.e, prIdx)).join('')}${link}</div>`;
+}
 function stairVal(f,v){ DB.draft.stairs[f]=v; saveLocal(); }
 function stairTimeSet(part,v){
   const cur=+(DB.draft.stairs.seconds||0); let m=Math.floor(cur/60), s=cur%60;
@@ -2385,9 +2531,19 @@ function finishWorkout(){
   // the new row built here, never on an existing one, and a re-save that filled the blanks clears it.
   // The row is built from copies, so d.entries is untouched until the save commits: if anything below
   // throws, the draft keeps its blank rows and a retry counts them again.
+  // A draft-only field on an entry or a set starts with `_` (`_cel`, the exercise skip's `_preSkip`
+  // snapshot), and none of them reaches the session. An exercise skip keeps `skipped: true` and its
+  // `reason`; a marker that is anything but the boolean true is dropped with its reason (D-09, D-13).
+  const stripDraftOnly = o=>{ Object.keys(o).forEach(k=>{ if(k.charAt(0) === '_') delete o[k]; }); return o; };
   const entries = d.entries.map(e=>{
     const blank = e.sets.filter(s=> !s.skipped && s.r==='').length;
-    const out = Object.assign({}, e, { sets: e.sets.filter(s=> s.skipped || s.r!=='').map(s=>{ const c=Object.assign({}, s); delete c._cel; return c; }) });
+    const out = Object.assign({}, e, { sets: e.sets.filter(s=> s.skipped || s.r!=='').map(s=> stripDraftOnly(Object.assign({}, s))) });
+    stripDraftOnly(out);
+    /* The skip's two markers (WR-03) are kept only as the boolean true, and only with the skip itself. */
+    if(out.skipClearedDeload!==true || out.skipped!==true) delete out.skipClearedDeload;
+    out.sets.forEach(s=>{ if(s.exSkip!==true || !s.skipped || out.skipped!==true) delete s.exSkip; });
+    if(out.skipped!==true){ delete out.skipped; delete out.reason; }
+    else if(typeof out.reason!=='string') out.reason = '';
     if(blank>0) out.blankSets = blank; else delete out.blankSets;
     return out;
   });
@@ -2420,22 +2576,30 @@ function finishWorkout(){
   }
   DB.sessions.push(touch(sess));
   sortSessions();
-  DB.draft = null; collapsedEx.clear(); save(); snapshotNow('after-workout'); cloudVersion('workout');
+  DB.draft = null; collapsedEx.clear(); openExHist = -1; logReturn = null; save(); snapshotNow('after-workout'); cloudVersion('workout');
   if(prs.length){ confettiBurst(); toast(prs.length===1 ? `🏆 PR! ${prs[0].name} ${prs[0].prev||'—'}→${prs[0].v} ${DB.unit}` : `🏆 ${prs.length} PRs this session!`); }
   else toast(hist?'Past workout added':'Workout saved 💪');
   goSub('train','history');
 }
 function sortSessions(){ DB.sessions.sort((a,b)=> a.date===b.date ? ((a.endedAt||0)-(b.endedAt||0)) : a.date.localeCompare(b.date)); }
-function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; collapsedEx.clear(); saveLocal(); goSub('train','log'); } }
+function discardWorkout(){ if(confirm('Discard this workout? Logged sets will be lost.')){ DB.draft=null; collapsedEx.clear(); openExHist = -1; logReturn = null; saveLocal(); goSub('train','log'); } }
 
 /* ───────────────────────── HISTORY ───────────────────────── */
 let openHist = -1, showBackdate = false, reviewWeekOffset = 0;
 let collapsedEx = new Set(); // slot indices collapsed to a summary in the active workout (ephemeral UI)
+let openExHist = -1, logReturn = null; // the slot whose history panel is open (D-06) and the Log scroll to return to (D-21): screen-only, never in DB, reset wherever collapsedEx is cleared
 /* Registry ids still waiting for the first-time equipment picker (D-16). In-memory UI state only:
    never stored, synced, exported or written to the workout, so the picker lasts until it is tapped,
    the slot switches exercise, or the app reloads. Ignoring it keeps the guess (equipAt 0). */
 let equipAsk = new Set();
 function toggleExCollapse(i){ if(collapsedEx.has(i)) collapsedEx.delete(i); else collapsedEx.add(i); render(); }
+/* Tap the Last time line to open that slot's history panel, and again to close it. Opening another slot's
+   panel closes the first, so at most one is open (D-06). Screen-only, like collapsedEx: nothing here
+   touches the workout, saves or pushes. */
+function toggleExHist(i){
+  openExHist = openExHist === i ? -1 : i;
+  render();
+}
 function weekShift(d){ reviewWeekOffset = Math.min(0, reviewWeekOffset + d); render(); }
 /* Backfill a hobby/productivity item onto a past day from Week in Review (in case you forgot to log it). */
 let addActivityDate=null, actAddCat='hobby';
@@ -2563,6 +2727,10 @@ function viewHistory(){
         /* 🏆 sits on the set that actually set the record, so you can see which one it was. */
         const setsOf = e => e.sets.map((x,k)=> x.skipped ? '<em>skip</em>' : esc(fmtSet(x.w,x.r)) + (prIdx.isPR(s, e, k) ? ' 🏆' : '')).join(', ');
         const lines = (s.entries||[]).map(e=>{
+          /* A skipped exercise reads as skipped, with its reason, through the same text as the card (D-15).
+             Only the boolean `true` counts; anything else keeps the ordinary line below. */
+          if(e && e.skipped === true)
+            return `<strong>${esc(e.name)}</strong> — <span class="muted">${skipTailHTML(e, k => prIdx.isPR(s, e, k))}</span>${e.deload?' <em>(deload)</em>':''}${e.note?` <span class="muted">· ${esc(e.note)}</span>`:''}`;
           const setStr = setsOf(e);
           return `<strong>${esc(e.name)}</strong> — ${setStr||'—'}${e.deload?' <em>(deload)</em>':''}${e.note?` <span class="muted">· ${esc(e.note)}</span>`:''}`;
         });
@@ -2606,7 +2774,7 @@ function editSession(idx){
   if(!PROGRAM[s.workout]){ toast('Can’t edit — unknown workout type'); return; }
   if(DB.draft && !confirm('You have an unfinished workout. Discard it to edit this one?')) return;
   if(!s.id) s.id='w'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
-  collapsedEx.clear();
+  collapsedEx.clear(); openExHist = -1; logReturn = null;
   DB.draft = {
     workout:s.workout, date:s.date, historical:true, startedAt:null, durationMin:(s.durationMin||''),
     editRef: s.id,
@@ -2616,10 +2784,18 @@ function editSession(idx){
     entries: PROGRAM[s.workout].slots.map((sl,i)=>{ const e=(s.entries||[])[i];
       if(!e) return { name:sl.examples[0], note:'', sets:[] };
       const nb = +e.blankSets, k = isFinite(nb) ? Math.min(20, Math.max(0, Math.floor(nb))) : 0;
-      const kept = (Array.isArray(e.sets)?e.sets:[]).map(x=>({w:x.w,r:x.r,skipped:!!x.skipped,reason:x.reason||''}));
+      /* A skipped exercise stays skipped (D-25): the marker and its reason come across, and no `_preSkip`
+         does, so Undo here takes unskipExercise's no-snapshot path. Only the boolean `true` counts. The
+         skip's `exSkip` set marks and `skipClearedDeload` come across with it, so that Undo un-skips only
+         what the skip marked and gives back the deload it cleared (WR-03). */
+      const isSkip = e.skipped === true;
+      const kept = (Array.isArray(e.sets)?e.sets:[]).map(x=> Object.assign({w:x.w,r:x.r,skipped:!!x.skipped,reason:x.reason||''},
+                     isSkip && x.skipped && x.exSkip === true ? { exSkip:true } : {}));
       const bw = nearWeight(kept, kept.length);
-      return { name:e.name, note:e.note||'', deload:!!e.deload,
-               sets:kept.concat(Array.from({length:k}, ()=>({w:bw,r:'',skipped:false,reason:''}))) }; }),
+      const skip = isSkip ? Object.assign({ skipped:true, reason: typeof e.reason==='string' ? e.reason : '' },
+                     e.skipClearedDeload === true ? { skipClearedDeload:true } : {}) : {};
+      return Object.assign({ name:e.name, note:e.note||'', deload:!!e.deload,
+               sets:kept.concat(Array.from({length:k}, ()=>({w:bw,r:'',skipped:false,reason:''}))) }, skip); }),
     stairs: s.stairs ? { level:s.stairs.level, seconds:s.stairs.seconds, skipped:!!s.stairs.skipped, reason:s.stairs.reason||'' } : { level:'', seconds:'', skipped:false, reason:'' },
     extras: s.extras ? JSON.parse(JSON.stringify(s.extras)) : blankExtras(s.workout),
     sessionNote: s.note || ''
@@ -2631,6 +2807,19 @@ function editSession(idx){
 let chartRange = 30, progSub='body', selectedExercise=null;
 function progSubTab(t){ progSub=t; render(); }
 function selectExercise(m){ selectedExercise=m; render(); }
+/* The history panel's "Full chart in Strength" link (D-19). It records the Log tab's scroll, selects the
+   card's exercise and opens Train → Progress → Strength. The workout stays the draft it was: nothing is
+   ended, saved or pushed, and the return point is screen-only. */
+function openExerciseChart(i){
+  const e = DB.draft && DB.draft.entries[i];
+  if(!e) return;
+  logReturn = { y: +window.scrollY || 0 };
+  selectedExercise = exKey(e); progSub = 'strength'; goSub('train', 'progress');
+}
+/* Strength's "Back to workout" control (D-20): the Log tab, where landingY restores the recorded scroll. */
+function backToWorkout(){
+  goSub('train', 'log');
+}
 function selectPR(i){ const p=exercisePRs()[i]; if(p) selectExercise(p.id); }
 function rangeSeg(){ return `<div class="seg" style="margin:14px 0 0">
     <button class="${chartRange===30?'active':''}" data-action="setRange" data-range="30">30d</button>
@@ -2722,9 +2911,31 @@ function exerciseHistory(key){
   }
   return out;
 }
+/* The rows behind the Log card's history panel: this exercise's last `n` entries, matched by exKey so an
+   alias spelling or an exercise folded in by exMerge counts, from any workout or slot, newest first
+   (stored order, so same-date ties go by endedAt) (D-01). LIVE sessions only, and never a skipped day
+   (D-04), never the session being edited (`skipId`, D-05). Deloads and skipped attempts are kept, so the
+   panel shows what happened (D-02, D-03): an entry counts when it holds sets or recorded blank sets. */
+function exerciseRecent(key, n, skipId){
+  const out = [];
+  const ls = liveSessions();
+  for(let i = ls.length - 1; i >= 0 && out.length < n; i--){
+    const s = ls[i];
+    if(s.skipped || (skipId && s.id === skipId)) continue;
+    sessionExercises(s).forEach(e=>{
+      if(out.length >= n || !e || exKey(e) !== key) return;
+      if(!((Array.isArray(e.sets) && e.sets.length) || +e.blankSets > 0)) return;
+      out.push({ s, e });
+    });
+  }
+  return out;
+}
 function viewStrength(sub){
   const loadEx = exercisesWithData(), bwEx = bwExercisesWithData(), all = loadEx.concat(bwEx);
-  if(!all.length) return `<h1>Progress</h1><p class="subtitle">Strength over time</p>${sub}<div class="empty">Log a few workouts and your per-exercise trend shows up here.</div>`;
+  /* Back to workout shows only after the history panel's chart link, while the workout is still open
+     (D-20), in both branches below. */
+  const back = (logReturn && DB.draft) ? `<button class="btn btn-ghost btn-sm" data-action="backToWorkout" style="margin-bottom:16px">${ph('caret-left')}Back to workout</button>` : '';
+  if(!all.length) return `${back}<h1>Progress</h1><p class="subtitle">Strength over time</p>${sub}<div class="empty">Log a few workouts and your per-exercise trend shows up here.</div>`;
   if(!selectedExercise || !all.includes(selectedExercise)) selectedExercise=all[0];
   const isReps = bwEx.includes(selectedExercise);
   const series = isReps ? bwSeries(selectedExercise) : exerciseSeries(selectedExercise);
@@ -2743,7 +2954,7 @@ function viewStrength(sub){
         <div class="muted" style="font-size:12px">${esc(h.setsStr)}${h.note?` · ${esc(h.note)}`:''}</div></div>
       <span style="white-space:nowrap;font-weight:700;color:var(--accent-300)">${isReps? h.reps+' reps' : h.best+' '+DB.unit}</span>
     </div>`).join('');
-  return `<h1>Progress</h1><p class="subtitle">${isReps?'Total reps per session':'Estimated 1-rep max per exercise'}</p>${sub}
+  return `${back}<h1>Progress</h1><p class="subtitle">${isReps?'Total reps per session':'Estimated 1-rep max per exercise'}</p>${sub}
     <div class="card">
       <select data-action="selectExercise">${opts}</select>
       ${rangeSeg()}
@@ -5427,6 +5638,13 @@ const ACTIONS = {
   toggleWarm:       { click: el => toggleWarm(+el.dataset.i) },
   unskipSet:        { click: el => unskipSet(+el.dataset.i, +el.dataset.k) },
   skipSet:          { click: el => skipSet(+el.dataset.i, +el.dataset.k) },
+  skipExercise:     { click: el => skipExercise(+el.dataset.i) },
+  unskipExercise:   { click: el => unskipExercise(+el.dataset.i) },
+  /* The history panel (D-06, D-19) and Strength's way back (D-20). Screen-only: each function reads the
+     draft itself and none of them saves. */
+  toggleExHist:     { click: el => toggleExHist(+el.dataset.i) },
+  openExChart:      { click: el => openExerciseChart(+el.dataset.i) },
+  backToWorkout:    { click: () => backToWorkout() },
   rmSet:            { click: el => rmSet(+el.dataset.i, +el.dataset.k) },
   setWeight: { input: el => { const i = +el.dataset.i, k = +el.dataset.k; setVal(i, k, 'w', el.value); updTargetBadge(i, k); updPlates(i); },
                change: el => rollWeight(+el.dataset.i, +el.dataset.k, el.value) },
