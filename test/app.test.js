@@ -10467,6 +10467,77 @@ const lgReal = (a, LAT) => lgSess(a, 'h0', dayOff(-7), LAT, [[25, 20], [25, 20],
      !r.threw && r.stored === 'true' && r.keys.length === 0, r);
 }
 
+/* LOG-01 and LOG-02 (plan 10-03): the Last time line opens the exercise's last sessions on the card, the
+   panel links to its chart in Progress → Strength, and Back to workout lands on the Log tab at the spot
+   Ian left, with nothing in the workout changed. The open panel and the return point are screen-only
+   lets, read through the harness getters. A scroll recorder replaces the sandbox's scrollTo, which
+   window.scrollTo resolves to at call time. */
+const lgScroll = a => { const sc = []; a.__sandbox.scrollTo = (x, y) => { sc.push([x, y]); }; return sc; };
+const lgLatCard = (a, LAT) => f2AppHtml(a).split('<div class="ex-card">')[LAT + 1] || '';
+/* Tracer (LOG-01, LOG-02, D-01, D-06, D-19, D-20, D-21): one round trip that leaves the workout untouched.
+   Each step is its own check, so a red names the step that broke. */
+{
+  const a = loadApp(APP_PATH), S = a.__sandbox, spy = spyPushes(a), LAT = lgLat(a);
+  const sc = lgScroll(a), r = {};
+  const step = (k, fn) => { if(r.threw) return; try{ fn(); }catch(e){ r.threw = k + ': ' + (e && e.stack || e); } };
+  const card = () => lgLatCard(a, LAT);
+  const same = () => canon(a.DB.draft) === r.before && JSON.stringify(a.__stored()) === r.blob
+    && a.DB.updatedAt === r.u && spy.n === r.n;
+  step('setup', () => {
+    lgRun(a, [
+      lgSess(a, 'h1', dayOff(-9), LAT, [[22.5, 20], [22.5, 19], [22.5, 18]]),
+      lgSess(a, 'h3', dayOff(-5), 0, [[20, 15], [20, 15]], { workout: 'PULL 1' }),
+      lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20], [25, 20], [25, 18]]),
+    ]);
+    S.startWorkout('PUSH 1');
+    r.before = canon(a.DB.draft); r.blob = JSON.stringify(a.__stored()); r.u = a.DB.updatedAt; r.n = spy.n;
+    S.scrollY = 640;
+  });
+  step('a', () => {
+    const ctl = f2Find(a, f2At('toggleExHist', LAT));
+    r.a = { tag: ctl && ctl.tag, closed: card().includes('aria-expanded="false"'), panel: card().includes('class="exh"') };
+    r.ctl = ctl;
+  });
+  ok('LOG-01 tracer (a): the Last time line is a closed toggleExHist button and no panel shows',
+     !r.threw && r.a && r.a.tag === 'button' && r.a.closed && !r.a.panel, r.threw || r.a);
+  step('b', () => {
+    if(r.ctl) fireListener(a, 'click', fakeEl(r.ctl.data));
+    const c = card(), rows = c.split('class="exh-row"').slice(1);
+    r.b = { open: c.includes('aria-expanded="true"'), panels: c.split('<div class="exh">').length - 1,
+            label: c.includes('Last 3 sessions · any workout'), rows: rows.length,
+            dates: rows.map(x => [dayOff(-2), dayOff(-5), dayOff(-9)].findIndex(d => x.includes('<span class="exh-date">' + a.fmtDate(d) + '</span>'))),
+            pull: rows.length === 3 && rows[1].includes('>PULL 1</span>'),
+            slot: a.openExHist === LAT, tab: a.TAB, sub: a.subState.train, same: same() };
+  });
+  ok('LOG-01/D-01/D-06 tracer (b): tapping the line opens the panel with 3 rows from any workout, newest first, and writes nothing',
+     !r.threw && r.b && r.b.open && r.b.panels === 1 && r.b.label && r.b.rows === 3
+       && JSON.stringify(r.b.dates) === '[0,1,2]' && r.b.pull && r.b.slot
+       && r.b.tab === 'train' && r.b.sub === 'log' && r.b.same, r.threw || r.b);
+  step('c', () => {
+    const link = f2Find(a, f2At('openExChart', LAT));
+    r.key = a.exKey(a.DB.draft.entries[LAT]);
+    if(link) fireListener(a, 'click', fakeEl(link.data));
+    const html = f2AppHtml(a), back = f2Find(a, f2At('backToWorkout'));
+    r.c = { tag: link && link.tag, tab: a.TAB, sub: a.subState.train,
+            selected: html.includes('<option value="' + a.esc(r.key) + '" selected>'),
+            back: !!back && back.tag === 'button', scroll: sc[sc.length - 1], ret: canon(a.logReturn) === canon({ y: 640 }) };
+    r.back = back;
+  });
+  ok('LOG-02/D-19/D-20 tracer (c): Full chart in Strength opens the exercise in Strength with Back to workout, and records the scroll',
+     !r.threw && r.c && r.c.tag === 'button' && r.c.tab === 'train' && r.c.sub === 'progress' && r.c.selected
+       && r.c.back && JSON.stringify(r.c.scroll) === '[0,0]' && r.c.ret, r.threw || r.c);
+  step('d', () => {
+    if(r.back) fireListener(a, 'click', fakeEl(r.back.data));
+    const c = card();
+    r.d = { tab: a.TAB, sub: a.subState.train, scroll: sc[sc.length - 1], ret: a.logReturn,
+            open: c.includes('aria-expanded="true"') && c.includes('class="exh"'), same: same() };
+  });
+  ok('LOG-02/D-21 tracer (d): Back to workout lands on Log at the recorded scroll, the panel still open, the workout untouched',
+     !r.threw && r.d && r.d.tab === 'train' && r.d.sub === 'log' && JSON.stringify(r.d.scroll) === '[0,640]'
+       && r.d.ret === null && r.d.open && r.d.same, r.threw || r.d);
+  a.DB.draft = null;
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
