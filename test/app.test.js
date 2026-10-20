@@ -10806,6 +10806,202 @@ const LG_MEMO = String.fromCodePoint(0x1F4DD);
      !r.threw && !!r.key && r.len === 300 && r.label && r.note, r);
 }
 
+/* The chart link and the way back, rule by rule (LOG-02, D-19, D-20, D-21). lgTrip starts from the tracer's
+   fixture on Train → Log with a PUSH 1 draft, the page scrolled to 640 and a scroll recorder in place. */
+const lgFire = (a, pred) => { const c = f2Find(a, pred); if(c) fireListener(a, 'click', fakeEl(c.data)); return c; };
+const lgLast = sc => JSON.stringify(sc[sc.length - 1] || null);
+const lgTrip = fn => lgTry(() => {
+  const a = loadApp(APP_PATH), S = a.__sandbox, spy = spyPushes(a), LAT = lgLat(a);
+  S.confettiBurst = () => {};   // the harness canvas has no 2D context
+  lgRun(a, [
+    lgSess(a, 'h1', dayOff(-9), LAT, [[22.5, 20], [22.5, 19], [22.5, 18]]),
+    lgSess(a, 'h3', dayOff(-5), 0, [[20, 15], [20, 15]], { workout: 'PULL 1' }),
+    lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20], [25, 20], [25, 18]]),
+  ]);
+  S.startWorkout('PUSH 1');
+  S.scrollY = 640;
+  const sc = lgScroll(a);
+  return fn(a, LAT, sc, spy);
+});
+{
+  const r = lgCase((a, LAT) => [lgSess(a, 'bw', dayOff(-3), LAT, [[0, 12], [0, 10]], { name: 'Hanging knee raise' })], (a, LAT) => {
+    a.__sandbox.startWorkout('PUSH 1');
+    a.__sandbox.toggleExHist(LAT);
+    const link = lgFire(a, f2At('openExChart', LAT));
+    const html = f2AppHtml(a), open = '<option value="' + a.esc(a.exKey('Hanging knee raise')) + '" selected>';
+    const k = html.indexOf(open), opt = k < 0 ? '' : html.slice(k, html.indexOf('</option>', k) + '</option>'.length);
+    return { link: !!link, name: a.DB.draft.entries[LAT].name, opt };
+  });
+  ok('D-19: a bodyweight-only exercise opens Strength with its "(reps)" option selected',
+     !r.threw && r.link && r.name === 'Hanging knee raise' && r.opt.endsWith(' (reps)</option>'), r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox;
+    spyPushes(a);
+    lgRun(a, []);
+    S.startWorkout('PUSH 1');
+    S.openExerciseChart(0);
+    const html = f2AppHtml(a);
+    return { sub: a.subState.train, empty: html.includes('Log a few workouts'), broke: html.includes('Something broke on this screen'),
+             back: !!f2Find(a, f2At('backToWorkout')) };
+  });
+  ok('D-19: with nothing to chart, the link opens Strength\'s "Log a few workouts" state with Back to workout, and nothing throws',
+     !r.threw && r.sub === 'progress' && r.empty && !r.broke && r.back, r);
+}
+{
+  const r = lgTrip((a, LAT) => {
+    a.go('today');
+    const before = { tab: a.TAB, ret: a.logReturn };
+    a.DB.draft = null;
+    let threw = null;
+    try{ a.__sandbox.openExerciseChart(LAT); }catch(e){ threw = String(e); }
+    return { threw2: threw, before, after: { tab: a.TAB, ret: a.logReturn } };
+  });
+  ok('D-19: with no workout open, the link does nothing: no throw, same screen, no return point',
+     !r.threw && r.threw2 === null && r.before.tab === 'today' && r.after.tab === 'today' && r.before.ret === null && r.after.ret === null, r);
+}
+{
+  const r = lgTrip((a, LAT) => {
+    const S = a.__sandbox, has = () => !!f2Find(a, f2At('backToWorkout'));
+    a.setSub('progress'); S.progSubTab('strength');
+    const direct = has();
+    S.toggleExHist(LAT);
+    a.setSub('log');
+    lgFire(a, f2At('openExChart', LAT));
+    const ctls = controlsIn(f2AppHtml(a)), firstAfterSeg = ctls.find(c => c.data.action !== 'setSub');
+    const first = firstAfterSeg ? { action: firstAfterSeg.data.action, tag: firstAfterSeg.tag } : null;
+    const others = ['body', 'volume', 'cardio', 'pet'].map(t => { S.progSubTab(t); return has(); });
+    S.progSubTab('strength');
+    const again = has();
+    a.DB.draft = null; a.render();
+    return { direct, first, others, again, noDraft: has() };
+  });
+  ok('D-20: Strength reached without the link shows no Back to workout',
+     !r.threw && r.direct === false, r);
+  ok('D-20: after the link, Back to workout is a button and the first control after the section switcher',
+     !r.threw && r.first && r.first.action === 'backToWorkout' && r.first.tag === 'button', r);
+  ok('D-20: Weight, Volume, Cardio and the pet tab show no Back to workout, Strength shows it again, and no draft means none',
+     !r.threw && JSON.stringify(r.others) === '[false,false,false,false]' && r.again === true && r.noDraft === false, r);
+}
+{
+  const r = lgTrip((a, LAT, sc, spy) => {
+    const S = a.__sandbox;
+    const base = { blob: JSON.stringify(a.__stored()), d: canon(a.DB.draft), u: a.DB.updatedAt, n: spy.n };
+    S.toggleExCollapse(0);
+    S.toggleExHist(LAT);
+    lgFire(a, f2At('openExChart', LAT));
+    const sw = lgFire(a, c => c.data.action === 'setSub' && c.data.sub === 'log');
+    const html = f2AppHtml(a), cards = html.split('<div class="ex-card">');
+    return { sw: !!sw, sub: a.subState.train, scroll: lgLast(sc), ret: a.logReturn,
+             open: (cards[LAT + 1] || '').includes('aria-expanded="true"'), collapsed: (cards[1] || '').includes('▾ expand'),
+             same: JSON.stringify(a.__stored()) === base.blob && canon(a.DB.draft) === base.d && a.DB.updatedAt === base.u && spy.n === base.n };
+  });
+  ok('D-21/LOG-02: Train → Log through the section switcher after the link lands at the recorded scroll, the panel open, collapsed cards collapsed, nothing written',
+     !r.threw && r.sw && r.sub === 'log' && r.scroll === '[0,640]' && r.ret === null && r.open && r.collapsed && r.same, r);
+}
+{
+  const r = lgTrip((a, LAT, sc) => {
+    a.__sandbox.toggleExHist(LAT);
+    lgFire(a, f2At('openExChart', LAT));
+    a.go('today');
+    const today = { scroll: lgLast(sc), kept: canon(a.logReturn) === canon({ y: 640 }) };
+    const resume = lgFire(a, c => c.data.action === 'goSub' && c.data.tab === 'train' && c.data.sub === 'log');
+    return { today, resume: !!resume, sub: a.subState.train, scroll: lgLast(sc), ret: a.logReturn };
+  });
+  ok('D-21: Today keeps the return point and lands at the top, and its Resume button lands on Log at the recorded scroll',
+     !r.threw && r.today.scroll === '[0,0]' && r.today.kept && r.resume && r.sub === 'log' && r.scroll === '[0,640]' && r.ret === null, r);
+}
+{
+  const r = lgTrip((a, LAT, sc) => {
+    a.__sandbox.toggleExHist(LAT);
+    lgFire(a, f2At('openExChart', LAT));
+    a.go('train');
+    return { tab: a.TAB, sub: a.subState.train, scroll: lgLast(sc), kept: canon(a.logReturn) === canon({ y: 640 }) };
+  });
+  ok('D-21: the Train tab button after the link stays on Progress, lands at the top, and keeps the return point',
+     !r.threw && r.tab === 'train' && r.sub === 'progress' && r.scroll === '[0,0]' && r.kept, r);
+}
+{
+  const r = lgTrip((a, LAT, sc) => {
+    a.__sandbox.toggleExHist(LAT);
+    lgFire(a, f2At('openExChart', LAT));
+    lgFire(a, f2At('backToWorkout'));
+    const first = { scroll: lgLast(sc), ret: a.logReturn };
+    a.setSub('history'); a.setSub('log');
+    return { first, scroll: lgLast(sc), ret: a.logReturn };
+  });
+  ok('D-21: the return point is used once, and the next arrival at Log lands at the top',
+     !r.threw && r.first.scroll === '[0,640]' && r.first.ret === null && r.scroll === '[0,0]' && r.ret === null, r);
+}
+{
+  const r = lgTrip((a, LAT) => {
+    delete a.__sandbox.scrollY;
+    a.__sandbox.toggleExHist(LAT);
+    let threw = null;
+    try{ lgFire(a, f2At('openExChart', LAT)); }catch(e){ threw = String(e); }
+    return { threw2: threw, ret: canon(a.logReturn) === canon({ y: 0 }), sub: a.subState.train };
+  });
+  ok('D-21: with no scrollY on the page, the link records 0 and throws nothing',
+     !r.threw && r.threw2 === null && r.ret && r.sub === 'progress', r);
+}
+{
+  /* Each reset starts from: panel open on LAT, link followed, back on Log through the switcher, then the link
+     followed again so a return point is set when the reset runs. */
+  const resets = {
+    discardWorkout: (a, S) => { S.confirm = () => true; S.discardWorkout(); },
+    'startWorkout(PULL 1)': (a, S) => { S.confirm = () => true; S.startWorkout('PULL 1'); },
+    'startBackdate(PULL 1)': (a, S) => { S.confirm = () => true; S.startBackdate('PULL 1'); },
+    finishWorkout: (a, S, LAT) => { a.setVal(LAT, 0, 'r', '20'); S.finishWorkout(); },
+    editSession: (a, S) => { S.confirm = () => true; S.editSession(a.DB.sessions.findIndex(s => s.id === 'h1')); },
+  };
+  Object.keys(resets).forEach(name => {
+    const r = lgTrip((a, LAT) => {
+      const S = a.__sandbox;
+      S.toggleExHist(LAT);
+      S.openExerciseChart(LAT);
+      a.setSub('log');
+      S.openExerciseChart(LAT);
+      const set = { ret: canon(a.logReturn) === canon({ y: 640 }), slot: a.openExHist === LAT };
+      resets[name](a, S, LAT);
+      return { set, ret: a.logReturn, slot: a.openExHist };
+    });
+    ok('D-21: ' + name + ' clears the return point and the open panel',
+       !r.threw && r.set.ret && r.set.slot && r.ret === null && r.slot === -1, r);
+  });
+}
+{
+  const r = lgTrip((a, LAT) => {
+    const S = a.__sandbox, realOpen = S.openExerciseChart;
+    S.toggleExHist(LAT);
+    const line = f2Find(a, f2At('toggleExHist', LAT)), link = f2Find(a, f2At('openExChart', LAT));
+    const calls = { toggleExHist: spyOn(a, 'toggleExHist'), openExerciseChart: spyOn(a, 'openExerciseChart'), backToWorkout: spyOn(a, 'backToWorkout') };
+    if(line) fireListener(a, 'click', fakeEl(line.data));
+    if(link) fireListener(a, 'click', fakeEl(link.data));
+    realOpen(LAT);
+    const back = f2Find(a, f2At('backToWorkout'));
+    if(back) fireListener(a, 'click', fakeEl(back.data));
+    return { lat: LAT, tags: [line, link, back].map(c => c && c.tag), calls };
+  });
+  ok('LOG-02: the line, the link and Back to workout are buttons whose wrappers pass exactly [LAT], [LAT] and []',
+     !r.threw && JSON.stringify(r.tags) === '["button","button","button"]'
+       && JSON.stringify(r.calls.toggleExHist) === JSON.stringify([[r.lat]])
+       && JSON.stringify(r.calls.openExerciseChart) === JSON.stringify(r.calls.toggleExHist)
+       && JSON.stringify(r.calls.backToWorkout) === '[[]]', r);
+}
+{
+  const a = loadApp(APP_PATH);
+  const names = ['toggleExHist', 'openExerciseChart', 'backToWorkout', 'landingY', 'exerciseRecent', 'exhRowHTML', 'exhPanelHTML'];
+  const bad = names.filter(n => {
+    const f = a.__sandbox[n];
+    if(typeof f !== 'function') return true;
+    const src = f2StripJs(Function.prototype.toString.call(f));
+    return /\bsave(Local)?\(/.test(src) || /DB\.draft[\w.\[\]]*\s*=[^=]/.test(src);
+  });
+  ok('D-06/D-21: the seven history and return functions never save and never assign into the draft',
+     bad.length === 0, bad);
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
