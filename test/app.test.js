@@ -10370,6 +10370,103 @@ const lgReal = (a, LAT) => lgSess(a, 'h0', dayOff(-7), LAT, [[25, 20], [25, 20],
        && !clipped(r.line) && !clipped(r.note), r.threw || { line: (r.line || '').length, note: (r.note || '').length });
 }
 
+/* Re-editing a finished workout keeps the skip (D-25, LOG-04). editSession carries the marker and its
+   reason onto the draft entry, with no `_preSkip`, so Undo there takes the no-snapshot path. The skip is
+   reached through the real path: one set done at the prefilled weight, then the header skip. */
+{
+  const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+  spyPushes(a);
+  S.confettiBurst = () => {};   // 27.5×20 is a PR, and the harness canvas has no 2D context
+  const r = {};
+  const step = (k, fn) => { if(r.threw) return; try{ fn(); }catch(e){ r.threw = k + ': ' + (e && e.stack || e); } };
+  const latNow = () => a.viewActive().split('<div class="ex-card">')[LAT + 1] || '';
+  const sets = e => e.sets.map(x => ({ w: x.w, r: x.r, skipped: x.skipped, reason: x.reason }));
+  step('setup', () => {
+    lgRun(a, [lgSess(a, 'h0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])]);
+    S.startWorkout('PUSH 1');
+    r.pre = a.DB.draft.entries[LAT].sets[0].w;
+    a.setVal(LAT, 0, 'r', '20');
+    S.prompt = () => 'shoulder';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    r.rid = lgToday(a) && lgToday(a).id;
+  });
+  step('edit', () => {
+    S.editSession(a.DB.sessions.findIndex(s => s.id === r.rid));
+    const e = a.DB.draft.entries[LAT], card = latNow();
+    r.edit = { skipped: e.skipped, reason: e.reason, snap: '_preSkip' in e, sets: JSON.stringify(sets(e)),
+               note: card.includes('<strong>DB lateral raise</strong> · ' + S.fmtSet(r.pre, '20') + ' · rest skipped: <em>shoulder</em>'),
+               undo: controlsIn(card).filter(c => c.data.action === 'unskipExercise').length };
+    r.want = JSON.stringify([{ w: r.pre, r: '20', skipped: false, reason: '' }, { w: '', r: '', skipped: true, reason: '' }, { w: '', r: '', skipped: true, reason: '' }]);
+  });
+  ok('D-25: editSession carries the skip marker and reason onto the draft, with no _preSkip, and the card shows the skip note with Undo',
+     !r.threw && r.pre !== '' && r.rid && r.edit.skipped === true && r.edit.reason === 'shoulder' && r.edit.snap === false
+       && r.edit.sets === r.want && r.edit.note && r.edit.undo === 1, r);
+  step('resave', () => {
+    S.finishWorkout();
+    const same = a.DB.sessions.filter(s => s.id === r.rid && !s.deletedAt), e = same.length === 1 ? same[0].entries[LAT] : null;
+    r.resave = { rows: same.length, skipped: e && e.skipped, reason: e && e.reason, draft: a.DB.draft };
+  });
+  ok('D-25: re-saving without Undo keeps the marker on the same row id',
+     !r.threw && r.resave.rows === 1 && r.resave.skipped === true && r.resave.reason === 'shoulder' && r.resave.draft == null, r.resave || r);
+  step('undo', () => {
+    S.editSession(a.DB.sessions.findIndex(s => s.id === r.rid));
+    const ctrl = f2Find(a, f2At('unskipExercise', LAT));
+    r.ctrl = !!ctrl;
+    if(ctrl) fireListener(a, 'click', fakeEl(ctrl.data));
+    const e = a.DB.draft.entries[LAT];
+    r.undo = { keys: ['_preSkip', 'skipped', 'reason'].filter(k => k in e), sets: JSON.stringify(sets(e)) };
+    r.wantUndo = JSON.stringify([{ w: r.pre, r: '20', skipped: false, reason: '' }, { w: r.pre, r: '', skipped: false, reason: '' }, { w: r.pre, r: '', skipped: false, reason: '' }]);
+    S.finishWorkout();
+    const same = a.DB.sessions.filter(s => s.id === r.rid && !s.deletedAt), saved = same.length === 1 ? same[0].entries[LAT] : null;
+    r.saved = saved && { rows: same.length, marker: 'skipped' in saved, blankSets: saved.blankSets, sets: saved.sets.length };
+  });
+  ok('D-25/LOG-04: Undo on a re-edited skip takes the no-snapshot path, giving the sets back blank at the nearest weight',
+     !r.threw && r.ctrl && r.undo.keys.length === 0 && r.undo.sets === r.wantUndo, r.undo || r);
+  ok('D-25/LOG-04: re-saving after that Undo writes no marker, and the two empty sets count as blankSets 2',
+     !r.threw && r.saved && r.saved.rows === 1 && r.saved.marker === false && r.saved.blankSets === 2 && r.saved.sets === 1, r.saved || r);
+  a.DB.draft = null;
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    lgRun(a, [lgSess(a, 'o1', dayOff(-2), LAT, [[25, 20], [0, 0, true], [0, 0, true, 'elbow']], { skipped: true, reason: 'shoulder' })]);
+    S.editSession(a.DB.sessions.findIndex(s => s.id === 'o1'));
+    const before = a.DB.draft.entries[LAT].skipped;
+    S.unskipExercise(LAT);
+    const e = a.DB.draft.entries[LAT];
+    return { before, sets: e.sets.map(x => [x.w, x.r, x.skipped, x.reason]), marker: 'skipped' in e };
+  });
+  ok('D-25: Undo on a re-edited skip keeps a set skipped with its own reason, and brings the others back',
+     !r.threw && r.before === true && r.marker === false
+       && JSON.stringify(r.sets) === JSON.stringify([['25', '20', false, ''], ['25', '', false, ''], ['', '', true, 'elbow']]), r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox;
+    spyPushes(a);
+    a.DB = populatedDB(a);
+    S.editSession(a.DB.sessions.findIndex(s => s.id === 's1'));
+    return { carried: a.DB.draft.entries.map((e, i) => ['skipped', 'reason'].filter(k => k in e).map(k => i + '.' + k)).flat() };
+  });
+  ok('D-25: editing a session with no marker puts no skipped or reason key on any draft entry',
+     !r.threw && r.carried.length === 0, r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    lgRun(a, [lgSess(a, 'm1', dayOff(-2), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: 'true', reason: 'shoulder' })]);
+    const stored = a.DB.sessions[0].entries[LAT].skipped;
+    S.editSession(0);
+    const e = a.DB.draft.entries[LAT];
+    return { stored, keys: ['skipped', 'reason'].filter(k => k in e) };
+  });
+  ok('T-10-11/D-25: a marker stored as the string "true" is not carried onto the draft by editSession',
+     !r.threw && r.stored === 'true' && r.keys.length === 0, r);
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
