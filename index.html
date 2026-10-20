@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-g705O0Q9YCejptVljoxxM9nql6ggpOIH/RG7XpJNUU0=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-fEwNunTqkwmdxNRemRhDusOphKHK0PI/wIarpXuotuk=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1290,7 +1290,9 @@ function deloadPlan(name, lastW){
 }
 /* Unlike lastRealEntry, an entry with no worked set still counts here, as long as it was on the card
    (it holds sets, or blankSets says its sets were left blank). lastRealEntry keeps feeding Last time
-   and the prefilled weights. `skipId` leaves one session out: the card's skip note passes the session
+   and the prefilled weights. A deload is passed over, unless it carries the exercise-skip marker: a
+   deload skipped part-way keeps its deload (D-22), and it must still block Add weight and give the card
+   its skip note, or the attempt before the deload would offer ⬆ Add weight after a skip (WR-02). `skipId` leaves one session out: the card's skip note passes the session
    being edited, so it never reports the skip Ian is editing (or just undid) back to him (D-05). */
 function lastAttemptEntry(workout, slotIndex, exName, skipId){
   const ls = liveSessions(), key = exKey(exName);
@@ -1299,7 +1301,7 @@ function lastAttemptEntry(workout, slotIndex, exName, skipId){
     if(s.workout!==workout || s.skipped || !Array.isArray(s.entries)) continue;
     if(skipId && s.id === skipId) continue;
     const e=s.entries[slotIndex];
-    if(!e || exKey(e)!==key || e.deload) continue;
+    if(!e || exKey(e)!==key || (e.deload && e.skipped!==true)) continue;
     if((Array.isArray(e.sets) && e.sets.length) || +e.blankSets > 0) return {entry:e, date:s.date};
   }
   return null;
@@ -2342,9 +2344,9 @@ function exUnfinished(e){
    as it was (D-08), and a set skipped earlier keeps its own reason. The one optional reason lives on the
    entry, and Cancel aborts with no write (D-10). `_preSkip` is the snapshot Undo restores exactly (D-13).
    It is draft-only, like every field whose name starts with `_`: finishWorkout strips it, so it never
-   reaches a session, a backup or the export. A skip that leaves no done set clears deload, because
-   lastAttemptEntry passes over a deloaded entry and would offer Add weight from the attempt before
-   (D-22). A draft edit, so saveLocal() only (D-14). */
+   reaches a session, a backup or the export. A skip that leaves no done set clears deload (D-22); one
+   that leaves a done set keeps it, and lastAttemptEntry still counts that entry because it carries the
+   skip marker (WR-02). A draft edit, so saveLocal() only (D-14). */
 function skipExercise(i){
   const e = DB.draft && DB.draft.entries[i];
   if(!e || e.skipped===true || exUnfinished(e).length===0) return;

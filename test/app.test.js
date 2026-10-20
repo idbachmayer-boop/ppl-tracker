@@ -10320,11 +10320,40 @@ const lgReal = (a, LAT) => lgSess(a, 'h0', dayOff(-7), LAT, [[25, 20], [25, 20],
     (a, LAT) => { const card = lgCard(a, LAT); return { note: lgNote(card), last: card.includes('Last time (' + a.fmtDate(dayOff(-3)) + ')') }; });
   ok('D-17: a later real attempt in the slot removes the skip note',
      !later.threw && later.note === null && later.last, later);
+  /* WR-02: a deload skipped part-way keeps its deload (D-22) and still counts as the slot's attempt, so the
+     note shows and Add weight stays off. A deload with no marker is still passed over. */
   const dl = lgCase((a, LAT) => [lgReal(a, LAT),
                                  lgSess(a, 'k2', dayOff(-3), LAT, [[22.5, 20], [0, 0, true], [0, 0, true]], { deload: true, skipped: true, reason: 'shoulder', endedAt: 2 })],
+    (a, LAT) => { const card = lgCard(a, LAT); return { note: lgNote(card), flag: card.includes('class="flag"'), date: a.fmtDate(dayOff(-3)) }; });
+  ok('WR-02/D-17: a deloaded attempt carrying the marker gives the "Rest skipped" note and no Add weight flag',
+     !dl.threw && dl.note != null && dl.note.endsWith('Rest skipped ' + dl.date + ': <em>shoulder</em></span>') && dl.flag === false, dl);
+  const dn = lgCase((a, LAT) => [lgReal(a, LAT),
+                                 lgSess(a, 'k3', dayOff(-3), LAT, [[22.5, 20], [22.5, 20], [22.5, 20]], { deload: true, endedAt: 2 })],
     (a, LAT) => ({ note: lgNote(lgCard(a, LAT)) }));
-  ok('D-17: a deloaded attempt never produces a skip note, even one carrying the marker',
-     !dl.threw && dl.note === null, dl);
+  ok('D-17: a deloaded attempt without the marker produces no skip note',
+     !dn.threw && dn.note === null, dn);
+}
+/* WR-02 through the real path: deload, one set done, the rest skipped for the shoulder, Finish, then the
+   next PUSH 1 card. The positive control is the Add weight flag the earlier 25×20 ×3 earns before it. */
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    const before = lgCard(a, LAT).includes('class="flag"');
+    S.deloadExercise(LAT);
+    a.setVal(LAT, 0, 'r', '20');
+    S.prompt = () => 'shoulder';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    const e = lgToday(a) && lgToday(a).entries[LAT];
+    const card = lgCard(a, LAT);
+    return { before, saved: e && [e.deload, e.skipped], flag: card.includes('class="flag"'), note: lgNote(card), today: a.fmtDate(a.todayISO()) };
+  });
+  ok('WR-02/D-22: deload, one set, skip the rest, finish: the deload stays, and the next card shows the skip note and no Add weight',
+     !r.threw && r.before === true && JSON.stringify(r.saved) === '[true,true]' && r.flag === false
+       && r.note != null && r.note.endsWith('Rest skipped ' + r.today + ': <em>shoulder</em></span>'), r);
 }
 {
   const sk = lgCase((a, LAT) => [lgSess(a, 'z0', dayOff(-3), LAT, [[0, 0, true], [0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder' })],
