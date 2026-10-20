@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-7c8BOzrYRMrnMDjU3HgbrCnMAbQ92+Hf5twsf8LsHNY=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-g705O0Q9YCejptVljoxxM9nql6ggpOIH/RG7XpJNUU0=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1290,12 +1290,14 @@ function deloadPlan(name, lastW){
 }
 /* Unlike lastRealEntry, an entry with no worked set still counts here, as long as it was on the card
    (it holds sets, or blankSets says its sets were left blank). lastRealEntry keeps feeding Last time
-   and the prefilled weights. */
-function lastAttemptEntry(workout, slotIndex, exName){
+   and the prefilled weights. `skipId` leaves one session out: the card's skip note passes the session
+   being edited, so it never reports the skip Ian is editing (or just undid) back to him (D-05). */
+function lastAttemptEntry(workout, slotIndex, exName, skipId){
   const ls = liveSessions(), key = exKey(exName);
   for(let i=ls.length-1;i>=0;i--){
     const s=ls[i];
     if(s.workout!==workout || s.skipped || !Array.isArray(s.entries)) continue;
+    if(skipId && s.id === skipId) continue;
     const e=s.entries[slotIndex];
     if(!e || exKey(e)!==key || e.deload) continue;
     if((Array.isArray(e.sets) && e.sets.length) || +e.blankSets > 0) return {entry:e, date:s.date};
@@ -2140,8 +2142,9 @@ function viewActive(){
       if(sug) lastLine += ` <span class="muted">→ suggest <strong>${esc(sug)} ${esc(DB.unit)}</strong> for ${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>`;
       if(alt.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(alt.entry.note)}</div>`;
     }
-    /* Appended after lastLine, never in place of it: the numbers to beat stay the last real ones (D-17). */
-    const skipNote = skipNoteHTML(lastAttemptEntry(name, i, entry.name));
+    /* Appended after lastLine, never in place of it: the numbers to beat stay the last real ones (D-17).
+       Editing a past workout leaves that session out, as the history panel does (D-05). */
+    const skipNote = skipNoteHTML(lastAttemptEntry(name, i, entry.name, DB.draft.editRef));
     /* With real history the line is the toggle for this slot's history panel (D-06); with none it stays
        plain text, and no panel renders even when openExHist names this slot (D-07, D-24). The button holds
        only inline markup, never a <div>, and the panel sits outside it. */

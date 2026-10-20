@@ -10466,6 +10466,23 @@ const lgReal = (a, LAT) => lgSess(a, 'h0', dayOff(-7), LAT, [[25, 20], [25, 20],
   ok('T-10-11/D-25: a marker stored as the string "true" is not carried onto the draft by editSession',
      !r.threw && r.stored === 'true' && r.keys.length === 0, r);
 }
+/* WR-01 (D-05): editing the newest session, whose lateral raise was skipped, then tapping Undo. The skip
+   note must not report the skip being edited. The positive control is the same history on a fresh card. */
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    lgRun(a, [lgReal(a, LAT), lgSess(a, 'w1', dayOff(-3), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder', endedAt: 2 })]);
+    const fresh = lgNote(lgCard(a, LAT));
+    a.DB.draft = null;
+    S.editSession(a.DB.sessions.findIndex(s => s.id === 'w1'));
+    S.unskipExercise(LAT);
+    const card = a.viewActive().split('<div class="ex-card">')[LAT + 1] || '';
+    return { fresh, edited: lgNote(card), lt: lgLastTime(card), shoulder: card.includes('shoulder') };
+  });
+  ok('WR-01/D-05: editing the newest skipped session and tapping Undo shows no skip note for that same session',
+     !r.threw && r.fresh != null && r.fresh.includes('<em>shoulder</em>') && r.lt != null && r.edited === null && r.shoulder === false, r);
+}
 
 /* LOG-01 and LOG-02 (plan 10-03): the Last time line opens the exercise's last sessions on the card, the
    panel links to its chart in Progress → Strength, and Back to workout lands on the Log tab at the spot
