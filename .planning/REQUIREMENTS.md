@@ -62,10 +62,10 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
 
 ### Log page (LOG)
 
-- [ ] **LOG-01**: Tapping the "Last time" line on an exercise card opens that exercise's last 5
+- [x] **LOG-01**: Tapping the "Last time" line on an exercise card opens that exercise's last 5
   sessions inline on the card. The workout is never left, and the in-progress draft is unchanged.
 
-- [ ] **LOG-02**: The inline history links to that exercise's full chart in Progress → Strength.
+- [x] **LOG-02**: The inline history links to that exercise's full chart in Progress → Strength.
 - [x] **LOG-03**: Each exercise card has a skip button that skips all of that exercise's sets, with one
   optional reason. The skip is a draft edit and persists with `saveLocal()`.
 
@@ -205,8 +205,8 @@ proposed and awaiting Ian's approval.
 | EQUIP-04 | Phase 9 | Complete |
 | EQUIP-05 | Phase 9 | Complete |
 | EQUIP-06 | Phase 9 | Complete |
-| LOG-01 | Phase 10 | Pending |
-| LOG-02 | Phase 10 | Pending |
+| LOG-01 | Phase 10 | Complete |
+| LOG-02 | Phase 10 | Complete |
 | LOG-03 | Phase 10 | Complete |
 | LOG-04 | Phase 10 | Complete |
 | LOG-05 | Phase 10 | Complete |

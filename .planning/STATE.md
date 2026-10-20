@@ -5,15 +5,15 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 10
 current_phase_name: log-page-history-and-skip
 status: executing
-stopped_at: Completed 10-02-PLAN.md
-last_updated: "2026-10-20T12:26:34.654Z"
+stopped_at: Completed 10-03-PLAN.md
+last_updated: "2026-10-20T12:40:34.325Z"
 last_activity: 2026-10-20
 last_activity_desc: Phase 10 execution started
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 12
-  completed_plans: 10
+  completed_plans: 11
   percent: 33
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 ## Current Position
 
 Phase: 10 (log-page-history-and-skip) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-10-20 — Phase 10 execution started
 
-Progress: [████████░░] 83%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -108,6 +108,7 @@ Progress: [████████░░] 83%
 | Phase 09 P05 | ~25min (incl. the push, PR, CI, deploy) | 3 tasks | 0 files |
 | Phase 10 P01 | 10 min | 3 tasks | 3 files |
 | Phase 10 P02 | 8 min | 3 tasks | 2 files |
+| Phase 10 P03 | 14 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,8 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [Phase 10]: 10-01: finishWorkout strips every own key starting with _ from entries and sets; draft-only fields must start with _
 - [Phase 10]: 10-02: the D-17 skip note comes from lastAttemptEntry and sits after lastLine, so the Last time numbers stay lastRealEntry's
 - [Phase 10]: 10-02: editSession carries only skipped and reason (boolean true only), never _preSkip, so Undo on a re-edited workout takes the no-snapshot path
+- [Phase 10]: 10-03: the history panel renders only when the Last time line is tappable (ref || alt); openExHist and logReturn are screen-only lets reset at the five collapsedEx.clear() sites
+- [Phase 10]: 10-03: landingY is the router's only scroll decision; the return point is used once on a Train → Log arrival and cleared
 
 ### Pending Todos
 
@@ -182,8 +185,8 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-20T12:26:34.637Z
-Stopped at: Completed 10-02-PLAN.md
+Last session: 2026-10-20T12:40:34.308Z
+Stopped at: Completed 10-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
