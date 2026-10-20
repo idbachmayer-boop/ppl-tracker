@@ -10212,6 +10212,47 @@ let lgExportApp = null;
      !r.threw && r.skipped === 2 && r.lat === 3 && r.dashed === 2 && r.leak.length === 0, r);
 }
 
+/* After the workout (D-15, D-17, D-24, D-25). Workout history names the skip and its reason, and the next
+   card keeps the last real numbers on its Last time line and adds one muted note saying when and why it
+   was skipped. The Last time element is found by its class, never by the literal `<div class="lasttime">`,
+   because 10-03 turns it into a button on a card with real history. */
+const lgLastTime = card => { const m = /class="lasttime[^"]*"[^>]*>([\s\S]*?)<\/(div|button)>/.exec(card); return m ? m[1] : null; };
+const LG_NOTE = '<span class="muted" style="display:block;font-size:12px">';
+const lgNote = card => { const lt = lgLastTime(card), i = lt == null ? -1 : lt.indexOf(LG_NOTE); return i < 0 ? null : lt.slice(i); };
+const lgLastTop = (a, sets) => sets.map(([w, r]) => a.__sandbox.fmtSet(String(w), String(r))).join(',  ');
+/* Tracer (D-15, D-17, LOG-05): skip from the header icon, finish, open the row in Workout history, then
+   start the next PUSH 1. Each read is its own check so a red names the surface that broke. */
+{
+  const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+  spyPushes(a);
+  S.confettiBurst = () => {};   // the harness canvas has no 2D context
+  const r = lgTry(() => {
+    lgRun(a, [lgSess(a, 't0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])]);
+    S.startWorkout('PUSH 1');
+    S.prompt = () => 'shoulder';
+    const ctrl = f2Find(a, f2At('skipExercise', LAT));
+    if(ctrl) fireListener(a, 'click', fakeEl(ctrl.data));
+    S.finishWorkout();
+    const R = lgToday(a);
+    if(R) S.toggleHist(a.DB.sessions.indexOf(R));
+    return { ctrl: !!ctrl, row: !!R, hist: a.viewHistory(), card: lgCard(a, LAT) };
+  });
+  const card = r.card || '', note = lgNote(card);
+  ok('D-15 tracer (a): Workout history reads the exercise as skipped, with the reason',
+     !r.threw && r.ctrl && r.row && r.hist.includes('<strong>DB lateral raise</strong> — <span class="muted">skipped: <em>shoulder</em></span>'),
+     r.threw || (r.hist || '').match(/<strong>DB lateral raise<\/strong>[^<]*(<span[^>]*>[\s\S]{0,120})?/));
+  ok('D-17 tracer (b): the next card keeps the last real numbers on its Last time line',
+     !r.threw && card.includes('Last time (' + a.fmtDate(dayOff(-7)) + '): <strong>' + lgLastTop(a, [[25, 20], [25, 20], [25, 20]]) + '</strong>'),
+     r.threw || lgLastTime(card));
+  ok('D-17 tracer (c): the Last time element ends with the skip note, its icon and "Skipped {date}: reason"',
+     !r.threw && note != null && note.startsWith(LG_NOTE + '<svg class="ph lead"')
+       && note.endsWith('Skipped ' + a.fmtDate(a.todayISO()) + ': <em>shoulder</em></span>'),
+     r.threw || lgLastTime(card));
+  ok('LOG-05 tracer (d): the next card shows no Add weight flag beside the skip note',
+     !r.threw && card.length > 0 && !card.includes('class="flag"'), r.threw || null);
+  a.DB.draft = null;
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */

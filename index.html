@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-F45WeMURwX/mnNAJyj5+JiHqCs2tcRayiWtbf6EIJH8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-EXzE1+865LE8hK+QAfJKhhUFxXRANPlPEEUgKYxdOKM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -2125,6 +2125,8 @@ function viewActive(){
       if(sug) lastLine += ` <span class="muted">→ suggest <strong>${esc(sug)} ${esc(DB.unit)}</strong> for ${rng.lo}${rng.hi!==rng.lo?'–'+rng.hi:''}</span>`;
       if(alt.entry.note) noteHint = `<div class="last-note">📝 Last note: ${esc(alt.entry.note)}</div>`;
     }
+    /* Appended after lastLine, never in place of it: the numbers to beat stay the last real ones (D-17). */
+    const skipNote = skipNoteHTML(lastAttemptEntry(name, i, entry.name));
     let coachHint='';
     if(entry.deload){
       /* The empty-bar case is derived here from history, never stored: finishWorkout copies every draft
@@ -2167,7 +2169,7 @@ function viewActive(){
         ${equipAsk.has(exKey(entry))
           ? equipPickerHTML(exKey(entry), entry.name)
           : `<div class="ex-meta" id="equip-tag-${i}" style="margin-top:4px">${esc(equipTagText(entry, cardTopWeight(entry.sets)))}</div>`}
-        <div class="lasttime">${lastLine}</div>
+        <div class="lasttime">${lastLine}${skipNote}</div>
         ${noteHint}
         ${coachHint}
         <div class="set-grid" style="margin-bottom:4px"><span></span><span class="colhead">Weight</span><span class="colhead">Reps</span><span></span><span></span><span></span></div>
@@ -2360,6 +2362,16 @@ function skipTailHTML(e, prAt){
   const sets = done.map(({x,k})=> esc(fmtSet(x.w,x.r)) + (prAt && prAt(k) ? ' 🏆' : '')).join(', ');
   const why = e && e.reason ? ': <em>'+esc(e.reason)+'</em>' : '';
   return done.length ? `${sets} · rest skipped${why}` : `skipped${why}`;
+}
+/* The muted line under Last time when this slot's most recent attempt (lastAttemptEntry) was a skipped
+   exercise: it says when and why, so the missing Add weight has a reason on screen (D-17). It never
+   touches the numbers above it, which stay lastRealEntry's. Only the boolean `true` counts as the marker,
+   and the reason is only ever escaped text inside <em>. */
+function skipNoteHTML(att){
+  if(!(att && att.entry && att.entry.skipped === true)) return '';
+  const e = att.entry;
+  const done = Array.isArray(e.sets) && e.sets.some(x=> x && !x.skipped && x.r!=='');
+  return `<span class="muted" style="display:block;font-size:12px">${ph('skip-forward','lead')}${done ? 'Rest skipped' : 'Skipped'} ${fmtDate(att.date)}${e.reason ? ': <em>' + esc(e.reason) + '</em>' : ''}</span>`;
 }
 function stairVal(f,v){ DB.draft.stairs[f]=v; saveLocal(); }
 function stairTimeSet(part,v){
@@ -2632,6 +2644,10 @@ function viewHistory(){
         /* 🏆 sits on the set that actually set the record, so you can see which one it was. */
         const setsOf = e => e.sets.map((x,k)=> x.skipped ? '<em>skip</em>' : esc(fmtSet(x.w,x.r)) + (prIdx.isPR(s, e, k) ? ' 🏆' : '')).join(', ');
         const lines = (s.entries||[]).map(e=>{
+          /* A skipped exercise reads as skipped, with its reason, through the same text as the card (D-15).
+             Only the boolean `true` counts; anything else keeps the ordinary line below. */
+          if(e && e.skipped === true)
+            return `<strong>${esc(e.name)}</strong> — <span class="muted">${skipTailHTML(e, k => prIdx.isPR(s, e, k))}</span>${e.deload?' <em>(deload)</em>':''}${e.note?` <span class="muted">· ${esc(e.note)}</span>`:''}`;
           const setStr = setsOf(e);
           return `<strong>${esc(e.name)}</strong> — ${setStr||'—'}${e.deload?' <em>(deload)</em>':''}${e.note?` <span class="muted">· ${esc(e.note)}</span>`:''}`;
         });
