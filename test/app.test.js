@@ -9879,7 +9879,7 @@ const lgTry = fn => { try{ return fn(); }catch(e){ return { threw: String(e && e
     S.skipExercise(0);
     const card = lgCardOf(a, 0);
     return { kept: canon(e.sets[0]) === s0 && canon(e.sets[1]) === s1,
-             third: canon(e.sets[2]) === canon({ w: '', r: '', skipped: true, reason: '' }),
+             third: canon(e.sets[2]) === canon({ w: '', r: '', skipped: true, reason: '', exSkip: true }),   // exSkip: the skip's own mark (WR-03)
              text: card.includes(`<strong>${a.esc(e.name)}</strong> · ${a.esc(S.fmtSet('120', '10'))}, ${a.esc(S.fmtSet('120', '9'))} · rest skipped: <em>shoulder</em>`) };
   });
   ok('D-08/D-11: a skip after two done sets keeps them exactly and the card reads "{name} · 120×10, 120×9 · rest skipped: shoulder"',
@@ -10206,7 +10206,7 @@ let lgExportApp = null;
     const lat = md.split('\n').filter(l => l.includes(a.todayISO()) && l.includes('DB lateral raise'));
     const dashed = lat.filter(l => /\|\s*—\s*\|\s*—\s*\|\s*$/.test(l));
     return { skipped: lgToday(a).entries[LAT].sets.filter(x => x.skipped).length, lat: lat.length, dashed: dashed.length,
-             leak: ['_preSkip', '_cel', 'rest skipped'].filter(s => md.includes(s)), sample: lat.slice(0, 3) };
+             leak: ['_preSkip', '_cel', 'rest skipped', 'exSkip', 'skipClearedDeload'].filter(s => md.includes(s)), sample: lat.slice(0, 3) };
   });
   ok('D-18/D-23: the export lists each skipped set as a row of — cells and carries no draft-only field or skip copy',
      !r.threw && r.skipped === 2 && r.lat === 3 && r.dashed === 2 && r.leak.length === 0, r);
@@ -10511,6 +10511,64 @@ const lgReal = (a, LAT) => lgSess(a, 'h0', dayOff(-7), LAT, [[25, 20], [25, 20],
   });
   ok('WR-01/D-05: editing the newest skipped session and tapping Undo shows no skip note for that same session',
      !r.threw && r.fresh != null && r.fresh.includes('<em>shoulder</em>') && r.lt != null && r.edited === null && r.shoulder === false, r);
+}
+/* WR-03, cause 1: a deload skipped with nothing done is saved with deload false (D-22). Re-edited, Undo must
+   give the deload back, so the sets Ian then fills in at the deload weight are saved as a deload, never as
+   a lighter baseline. */
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    S.startWorkout('PUSH 1');
+    S.deloadExercise(LAT);
+    S.prompt = () => '';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    const id = lgToday(a).id, first = lgToday(a).entries[LAT].deload;
+    S.editSession(a.DB.sessions.findIndex(s => s.id === id));
+    S.unskipExercise(LAT);
+    const draftDeload = a.DB.draft.entries[LAT].deload;
+    [0, 1, 2].forEach(k => { a.setVal(LAT, k, 'w', '22.5'); a.setVal(LAT, k, 'r', '20'); });
+    S.finishWorkout();
+    const same = a.DB.sessions.filter(s => s.id === id && !s.deletedAt), e = same.length === 1 ? same[0].entries[LAT] : null;
+    return { first, draftDeload, saved: e && { deload: e.deload, marks: ['skipped', 'reason', 'skipClearedDeload'].filter(k => k in e),
+             exSkip: e.sets.filter(x => 'exSkip' in x).length, sets: e.sets.map(x => [x.w, x.r]) },
+             last: S.lastRealEntry('PUSH 1', LAT, 'DB lateral raise') };
+  });
+  ok('WR-03/D-22: Undo on a re-edited deload skip with nothing done gives the deload back, and the filled sets save as a deload that never becomes the baseline',
+     !r.threw && r.first === false && r.draftDeload === true && r.saved && r.saved.deload === true && r.saved.marks.length === 0
+       && r.saved.exSkip === 0 && JSON.stringify(r.saved.sets) === '[["22.5","20"],["22.5","20"],["22.5","20"]]'
+       && r.last && r.last.date === dayOff(-7), r.threw || r);
+}
+/* WR-03, cause 2: a set Ian skipped on its own with no reason, then the exercise skip for the rest. Re-edited,
+   Undo brings back only the set the exercise skip marked; the single skip stays skipped. */
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    S.startWorkout('PUSH 1');
+    a.setVal(LAT, 0, 'r', '20');
+    S.prompt = () => ''; S.skipSet(LAT, 1);
+    S.prompt = () => 'shoulder'; S.skipExercise(LAT);
+    S.finishWorkout();
+    const id = lgToday(a).id;
+    const stored = lgToday(a).entries[LAT].sets.map(x => x.exSkip === true);
+    S.editSession(a.DB.sessions.findIndex(s => s.id === id));
+    S.unskipExercise(LAT);
+    const e = a.DB.draft.entries[LAT];
+    const undone = e.sets.map(x => [x.r, x.skipped, 'exSkip' in x]);
+    S.finishWorkout();
+    const saved = a.DB.sessions.find(s => s.id === id && !s.deletedAt).entries[LAT];
+    return { stored, undone, saved: { sets: saved.sets.map(x => [x.r, x.skipped]), blankSets: saved.blankSets, marker: 'skipped' in saved } };
+  });
+  ok('WR-03: Undo on a re-edited skip un-skips only the sets the exercise skip marked, keeping a reasonless single-set skip',
+     !r.threw && JSON.stringify(r.stored) === '[false,false,true]'
+       && JSON.stringify(r.undone) === '[["20",false,false],["",true,false],["",false,false]]'
+       && JSON.stringify(r.saved.sets) === '[["20",false],["",true]]' && r.saved.blankSets === 1 && r.saved.marker === false, r);
 }
 
 /* LOG-01 and LOG-02 (plan 10-03): the Last time line opens the exercise's last sessions on the card, the

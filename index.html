@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-fEwNunTqkwmdxNRemRhDusOphKHK0PI/wIarpXuotuk=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-YqyU1GkbjGfE6MvOw4GtpHimhDverzR/ZJysw4nOlO8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -2346,23 +2346,32 @@ function exUnfinished(e){
    It is draft-only, like every field whose name starts with `_`: finishWorkout strips it, so it never
    reaches a session, a backup or the export. A skip that leaves no done set clears deload (D-22); one
    that leaves a done set keeps it, and lastAttemptEntry still counts that entry because it carries the
-   skip marker (WR-02). A draft edit, so saveLocal() only (D-14). */
+   skip marker (WR-02). Two additive markers reach the session, so Undo on a re-edited workout (no
+   snapshot, D-25) can tell what the skip did (WR-03): `exSkip: true` on each set this skip marked, and
+   `skipClearedDeload: true` on the entry when D-22 cleared a deload. Only the boolean true counts. A
+   draft edit, so saveLocal() only (D-14). */
 function skipExercise(i){
   const e = DB.draft && DB.draft.entries[i];
   if(!e || e.skipped===true || exUnfinished(e).length===0) return;
   const reason = prompt(`Why skipping ${e.name}? (optional)`, '');
   if(reason===null) return;
   e._preSkip = { sets: JSON.parse(JSON.stringify(e.sets)), deload: !!e.deload };
-  exUnfinished(e).forEach(st=>{ st.skipped=true; st.reason=''; st.w=''; st.r=''; });
-  if(!e.sets.some(x=> x && !x.skipped && x.r!=='')) e.deload = false;
+  exUnfinished(e).forEach(st=>{ st.skipped=true; st.reason=''; st.w=''; st.r=''; st.exSkip=true; });
+  if(!e.sets.some(x=> x && !x.skipped && x.r!=='')){
+    if(e.deload) e.skipClearedDeload = true;
+    e.deload = false;
+  }
   e.skipped = true;
   e.reason = String(reason).trim();
   saveLocal(); render();
 }
 /* Undo an exercise skip. With the snapshot, the card comes back exactly as it was: weights, typed values,
    single sets skipped earlier with their reasons, and the deload (D-13). Without one (a finished session
-   reopened for editing, D-25), each set skipped with no reason of its own comes back blank with the
-   nearest weight, and a set skipped with its own reason stays skipped. saveLocal() only (D-14). */
+   reopened for editing, D-25), each set the exercise skip marked (`exSkip`) comes back blank with the
+   nearest weight, every set Ian skipped on its own stays skipped, with or without a reason, and a deload
+   the skip cleared (`skipClearedDeload`) comes back (WR-03). An entry whose sets carry no `exSkip` at all
+   (a hand-edited backup) falls back to the reason: a set skipped with no reason of its own comes back.
+   saveLocal() only (D-14). */
 function unskipExercise(i){
   const e = DB.draft && DB.draft.entries[i];
   if(!e || e.skipped!==true) return;
@@ -2371,13 +2380,16 @@ function unskipExercise(i){
     e.sets = snap.sets;
     e.deload = !!snap.deload;
   } else if(Array.isArray(e.sets)){
+    const marked = e.sets.some(st=> st && st.exSkip===true);
     e.sets.forEach((st,k)=>{
-      if(!(st && st.skipped && !st.reason)) return;
+      if(!(st && st.skipped && (marked ? st.exSkip===true : !st.reason))) return;
       st.skipped = false; st.reason = ''; st.r = '';
       if(st.w==='' || st.w==null) st.w = nearWeight(e.sets, k);
     });
+    if(e.skipClearedDeload===true) e.deload = true;
   }
-  delete e._preSkip; delete e.skipped; delete e.reason;
+  if(Array.isArray(e.sets)) e.sets.forEach(st=>{ if(st && typeof st==='object') delete st.exSkip; });
+  delete e._preSkip; delete e.skipped; delete e.reason; delete e.skipClearedDeload;
   saveLocal(); render();
 }
 /* The text after the exercise name for a skipped exercise: `skipped[: reason]`, or the done sets then
@@ -2527,6 +2539,9 @@ function finishWorkout(){
     const blank = e.sets.filter(s=> !s.skipped && s.r==='').length;
     const out = Object.assign({}, e, { sets: e.sets.filter(s=> s.skipped || s.r!=='').map(s=> stripDraftOnly(Object.assign({}, s))) });
     stripDraftOnly(out);
+    /* The skip's two markers (WR-03) are kept only as the boolean true, and only with the skip itself. */
+    if(out.skipClearedDeload!==true || out.skipped!==true) delete out.skipClearedDeload;
+    out.sets.forEach(s=>{ if(s.exSkip!==true || !s.skipped || out.skipped!==true) delete s.exSkip; });
     if(out.skipped!==true){ delete out.skipped; delete out.reason; }
     else if(typeof out.reason!=='string') out.reason = '';
     if(blank>0) out.blankSets = blank; else delete out.blankSets;
@@ -2769,11 +2784,16 @@ function editSession(idx){
     entries: PROGRAM[s.workout].slots.map((sl,i)=>{ const e=(s.entries||[])[i];
       if(!e) return { name:sl.examples[0], note:'', sets:[] };
       const nb = +e.blankSets, k = isFinite(nb) ? Math.min(20, Math.max(0, Math.floor(nb))) : 0;
-      const kept = (Array.isArray(e.sets)?e.sets:[]).map(x=>({w:x.w,r:x.r,skipped:!!x.skipped,reason:x.reason||''}));
-      const bw = nearWeight(kept, kept.length);
       /* A skipped exercise stays skipped (D-25): the marker and its reason come across, and no `_preSkip`
-         does, so Undo here takes unskipExercise's no-snapshot path. Only the boolean `true` counts. */
-      const skip = e.skipped === true ? { skipped:true, reason: typeof e.reason==='string' ? e.reason : '' } : {};
+         does, so Undo here takes unskipExercise's no-snapshot path. Only the boolean `true` counts. The
+         skip's `exSkip` set marks and `skipClearedDeload` come across with it, so that Undo un-skips only
+         what the skip marked and gives back the deload it cleared (WR-03). */
+      const isSkip = e.skipped === true;
+      const kept = (Array.isArray(e.sets)?e.sets:[]).map(x=> Object.assign({w:x.w,r:x.r,skipped:!!x.skipped,reason:x.reason||''},
+                     isSkip && x.skipped && x.exSkip === true ? { exSkip:true } : {}));
+      const bw = nearWeight(kept, kept.length);
+      const skip = isSkip ? Object.assign({ skipped:true, reason: typeof e.reason==='string' ? e.reason : '' },
+                     e.skipClearedDeload === true ? { skipClearedDeload:true } : {}) : {};
       return Object.assign({ name:e.name, note:e.note||'', deload:!!e.deload,
                sets:kept.concat(Array.from({length:k}, ()=>({w:bw,r:'',skipped:false,reason:''}))) }, skip); }),
     stairs: s.stairs ? { level:s.stairs.level, seconds:s.stairs.seconds, skipped:!!s.stairs.skipped, reason:s.stairs.reason||'' } : { level:'', seconds:'', skipped:false, reason:'' },
