@@ -137,8 +137,8 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [09-UAT]: Phone UAT passed 2026-10-13 (tag, Preacher-curl plates, pre-set types, cross-device type change both ways, first-time picker, 380px layout, clean finish); 09-SECURITY.md verified, 37/37 closed
 - [09-05]: Revert is git revert -m 1 --no-edit 8a20832 on main. Once schema 19 has synced, a revert keeps all data but pauses sync on every device until a 19+ build ships; a blank app means nothing migrated and the revert is clean
 - [09-05]: Shipped with WR-09, WR-06 and the info items open (none blocking); WR-09 (order-dependent conflicting concurrent merges) is the post-ship fix candidate
-- [Phase ?]: 10-01: exercise skip is add-alongside — entry gets skipped:true + reason, per-set skipped flags stay the only judgement input (D-09); SCHEMA stays 19
-- [Phase ?]: 10-01: finishWorkout strips every own key starting with _ from entries and sets; draft-only fields must start with _
+- [Phase 10]: 10-01: exercise skip is add-alongside — entry gets skipped:true + reason, per-set skipped flags stay the only judgement input (D-09); SCHEMA stays 19
+- [Phase 10]: 10-01: finishWorkout strips every own key starting with _ from entries and sets; draft-only fields must start with _
 
 ### Pending Todos
 
