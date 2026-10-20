@@ -10253,6 +10253,123 @@ const lgLastTop = (a, sets) => sets.map(([w, r]) => a.__sandbox.fmtSet(String(w)
   a.DB.draft = null;
 }
 
+/* Every after-workout variant (D-15, D-17, D-24). Each case is a fresh instance holding only the sessions
+   it lists. lgHistLine cuts one exercise's line out of the open Workout history row. */
+const lgHistLine = (html, name) => {
+  const l = String(html).split(/<br>|<div class="hist-detail">/).find(p => p.startsWith('<strong>' + name + '</strong>'));
+  return l == null ? null : l.split('<div')[0];
+};
+const lgOpen = (a, id) => { a.__sandbox.toggleHist(a.DB.sessions.findIndex(s => s.id === id)); return a.viewHistory(); };
+const lgCase = (list, fn) => lgTry(() => {
+  const a = loadApp(APP_PATH), LAT = lgLat(a);
+  spyPushes(a);
+  a.__sandbox.confettiBurst = () => {};   // the harness canvas has no 2D context
+  lgRun(a, list(a, LAT));
+  return fn(a, LAT);
+});
+const LG_TROPHY = String.fromCodePoint(0x1F3C6);
+const LG_EVIL_EM = '<em>&quot;&gt;&lt;img src=x onerror=alert(1)&gt;</em>';
+const lgReal = (a, LAT) => lgSess(a, 'h0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]], { endedAt: 1 });
+{
+  const r = lgCase((a, LAT) => [lgSess(a, 'p0', dayOff(-2), LAT, [[27.5, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder' })],
+    a => ({ line: lgHistLine(lgOpen(a, 'p0'), 'DB lateral raise'), want: '<strong>DB lateral raise</strong> — <span class="muted">' + a.__sandbox.fmtSet('27.5', '20') + ' ' + LG_TROPHY + ' · rest skipped: <em>shoulder</em></span>' }));
+  ok('D-15: a partial skip reads the done set with its PR trophy, then "rest skipped" and the reason',
+     !r.threw && r.line === r.want, r);
+}
+{
+  const r = lgCase((a, LAT) => [lgReal(a, LAT), lgSess(a, 'n0', dayOff(-2), LAT, [[0, 0, true], [0, 0, true], [0, 0, true]], { skipped: true, reason: '', endedAt: 2 })],
+    a => ({ line: lgHistLine(lgOpen(a, 'n0'), 'DB lateral raise') }));
+  ok('D-15: a skip with no reason reads "skipped", with no colon and no <em>',
+     !r.threw && r.line === '<strong>DB lateral raise</strong> — <span class="muted">skipped</span>', r);
+}
+{
+  const r = lgCase((a, LAT) => [lgReal(a, LAT), lgSess(a, 'd0', dayOff(-2), LAT, [[0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder', deload: true, note: 'tweaked', endedAt: 2 })],
+    a => ({ line: lgHistLine(lgOpen(a, 'd0'), 'DB lateral raise') }));
+  ok('D-15: a skipped entry keeps its deload and note parts after the skip text',
+     !r.threw && r.line === '<strong>DB lateral raise</strong> — <span class="muted">skipped: <em>shoulder</em></span> <em>(deload)</em> <span class="muted">· tweaked</span>', r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), LAT = lgLat(a);
+    a.DB = populatedDB(a);
+    const bench = lgHistLine(lgOpen(a, 's1'), 'Barbell bench press');
+    const b = loadApp(APP_PATH);
+    lgRun(b, [lgSess(b, 'o0', dayOff(-2), LAT, [[25, 20], [0, 0, true, 'elbow'], [25, 19]])]);
+    const one = lgHistLine(lgOpen(b, 'o0'), 'DB lateral raise');
+    return { bench, one, want: '<strong>Barbell bench press</strong> — ' + a.__sandbox.fmtSet('135', '8') };
+  });
+  ok('D-15: an entry without the marker keeps today\'s line, a single skipped set still reading <em>skip</em>',
+     !r.threw && r.bench && r.bench.startsWith(r.want) && !r.bench.includes('skipped')
+       && r.one && r.one.includes(', <em>skip</em>, ') && !r.one.includes('<span class="muted">skipped') && !r.one.includes('rest skipped'), r);
+}
+{
+  const d3 = list => lgCase((a, LAT) => [lgReal(a, LAT), list(a, LAT)], (a, LAT) => ({ note: lgNote(lgCard(a, LAT)), date: a.fmtDate(dayOff(-3)) }));
+  const rs = d3((a, LAT) => lgSess(a, 'r0', dayOff(-3), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder', endedAt: 2 }));
+  const rn = d3((a, LAT) => lgSess(a, 'r1', dayOff(-3), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: '', endedAt: 2 }));
+  const sn = d3((a, LAT) => lgSess(a, 'r2', dayOff(-3), LAT, [[0, 0, true], [0, 0, true], [0, 0, true]], { skipped: true, reason: '', endedAt: 2 }));
+  ok('D-17: a skip after a done set reads "Rest skipped {date}: reason"',
+     !rs.threw && rs.note != null && rs.note.endsWith('Rest skipped ' + rs.date + ': <em>shoulder</em></span>'), rs);
+  ok('D-17: "Rest skipped {date}" with no reason has no colon',
+     !rn.threw && rn.note != null && rn.note.endsWith('>Rest skipped ' + rn.date + '</span>'), rn);
+  ok('D-17: an all-skipped attempt with no reason reads "Skipped {date}"',
+     !sn.threw && sn.note != null && sn.note.endsWith('>Skipped ' + sn.date + '</span>') && !sn.note.includes('Rest'), sn);
+}
+{
+  const later = lgCase((a, LAT) => [lgSess(a, 'k0', dayOff(-7), LAT, [[0, 0, true], [0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder', endedAt: 1 }),
+                                    lgSess(a, 'k1', dayOff(-3), LAT, [[25, 18], [25, 18], [25, 18]], { endedAt: 2 })],
+    (a, LAT) => { const card = lgCard(a, LAT); return { note: lgNote(card), last: card.includes('Last time (' + a.fmtDate(dayOff(-3)) + ')') }; });
+  ok('D-17: a later real attempt in the slot removes the skip note',
+     !later.threw && later.note === null && later.last, later);
+  const dl = lgCase((a, LAT) => [lgReal(a, LAT),
+                                 lgSess(a, 'k2', dayOff(-3), LAT, [[22.5, 20], [0, 0, true], [0, 0, true]], { deload: true, skipped: true, reason: 'shoulder', endedAt: 2 })],
+    (a, LAT) => ({ note: lgNote(lgCard(a, LAT)) }));
+  ok('D-17: a deloaded attempt never produces a skip note, even one carrying the marker',
+     !dl.threw && dl.note === null, dl);
+}
+{
+  const sk = lgCase((a, LAT) => [lgSess(a, 'z0', dayOff(-3), LAT, [[0, 0, true], [0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder' })],
+    (a, LAT) => { const card = lgCard(a, LAT); return { card, note: lgNote(card), date: a.fmtDate(dayOff(-3)) }; });
+  ok('D-24: with only a skipped attempt the plain Last time element says "No previous data", then the skip note',
+     !sk.threw && sk.card.includes('<div class="lasttime"><span class="muted">No previous data — set your baseline.</span>' + LG_NOTE)
+       && sk.note != null && sk.note.endsWith('>Skipped ' + sk.date + ': <em>shoulder</em></span>'), { threw: sk.threw, lt: lgLastTime(sk.card || '') });
+  const dl = lgCase((a, LAT) => [lgSess(a, 'z1', dayOff(-3), LAT, [[22.5, 20], [22.5, 20], [22.5, 20]], { deload: true })],
+    (a, LAT) => { const card = lgCard(a, LAT); return { lt: lgLastTime(card), note: lgNote(card) }; });
+  ok('D-24: with only a deloaded attempt the line says "No previous data" and there is no note',
+     !dl.threw && dl.lt === '<span class="muted">No previous data — set your baseline.</span>' && dl.note === null, dl);
+}
+{
+  const r = lgCase((a, LAT) => [lgReal(a, LAT), lgSess(a, 'e0', dayOff(-3), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: EVIL, endedAt: 2 })],
+    (a, LAT) => {
+      const hist = lgOpen(a, 'e0'), card = lgCard(a, LAT);
+      const attr = [hist, card].map(h => controlsIn(h).filter(c => /img/i.test(c.cls) || Object.values(c.data).some(v => /img/i.test(v))).length);
+      return { line: lgHistLine(hist, 'DB lateral raise'), note: lgNote(card), img: [/<img/i.test(hist), /<img/i.test(card)], attr };
+    });
+  ok('T-10-10: a hostile reason renders escaped inside <em> in Workout history and the Last time note, in no attribute, with no <img',
+     !r.threw && r.line && r.line.includes(LG_EVIL_EM) && r.note && r.note.includes(LG_EVIL_EM)
+       && JSON.stringify(r.img) === '[false,false]' && JSON.stringify(r.attr) === '[0,0]', r);
+}
+{
+  const r = lgCase((a, LAT) => [lgReal(a, LAT), lgSess(a, 'm0', dayOff(-3), LAT, [[0, 0, true], [0, 0, true], [0, 0, true]], { skipped: 'true', reason: 'shoulder', endedAt: 2 })],
+    (a, LAT) => {
+      const stored = a.DB.sessions.find(s => s.id === 'm0').entries[LAT].skipped;
+      const line = lgHistLine(lgOpen(a, 'm0'), 'DB lateral raise');
+      const card = lgCard(a, LAT);
+      return { stored, line, note: lgNote(card), skippedText: (lgLastTime(card) || '').includes('Skipped ') };
+    });
+  ok('T-10-11: a marker stored as the string "true" renders as an ordinary entry and gives no Last time note',
+     !r.threw && r.stored === 'true' && r.line && r.line.includes('<em>skip</em>') && !r.line.includes(' — <span class="muted">skipped')
+       && r.note === null && r.skippedText === false, r);
+}
+{
+  const LONG = ('the left shoulder pinched on the way up so I stopped ').repeat(6).slice(0, 300);
+  const r = lgCase((a, LAT) => [lgReal(a, LAT), lgSess(a, 'l0', dayOff(-3), LAT, [[25, 20], [0, 0, true], [0, 0, true]], { skipped: true, reason: LONG, endedAt: 2 })],
+    (a, LAT) => ({ line: lgHistLine(lgOpen(a, 'l0'), 'DB lateral raise'), note: lgNote(lgCard(a, LAT)) }));
+  const clipped = s => /nowrap|ellipsis|overflow/i.test(s || '');
+  ok('D-15/D-17: a 300-character reason appears whole in the history line and the note, with nothing that clips it',
+     !r.threw && LONG.length === 300 && r.line && r.line.includes('<em>' + LONG + '</em>') && r.note && r.note.includes('<em>' + LONG + '</em>')
+       && !clipped(r.line) && !clipped(r.note), r.threw || { line: (r.line || '').length, note: (r.note || '').length });
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
