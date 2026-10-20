@@ -143,7 +143,7 @@ Plans:
 - The skip reason is user text: through `esc()` when rendered, in double-quoted attributes only.
 - The inline history reads through `liveSessions()`, so a deleted session never ghosts back into it.
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 **Wave 1**
@@ -160,7 +160,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 10-04-PLAN.md — Ship after the code review: pre-flight, Ian pushes and merges with a merge commit (the D-09 door, SCHEMA unchanged, with an honest rollback), live bytes checked, then the real workout on the phone (end-of-phase UAT)
+- [x] 10-04-PLAN.md — Ship after the code review: pre-flight, Ian pushes and merges with a merge commit (the D-09 door, SCHEMA unchanged, with an honest rollback), live bytes checked, then the real workout on the phone (end-of-phase UAT)
 
 **UI hint**: yes
 
@@ -250,7 +250,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 7. Content Security Policy | v1.0 | 7/7 | Complete | 2026-10-09 |
 | 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
 | 9. Equipment and Weight Steps | v1.1 | 5/5 | Complete    | 2026-10-13 |
-| 10. Log Page — History and Skip | v1.1 | 3/4 | In Progress|  |
+| 10. Log Page — History and Skip | v1.1 | 4/4 | In Progress|  |
 | 11. Lawn, Journal and Weather Loop | v1.1 | 0/TBD | Not started | - |
 | 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |
 | 13. Strength Index and Poor-Sleep Intensity | v1.1 | 0/TBD | Not started | - |

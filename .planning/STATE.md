@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
 current_phase: 10
 current_phase_name: log-page-history-and-skip
-status: executing
-stopped_at: Completed 10-03-PLAN.md
-last_updated: "2026-10-20T12:40:34.325Z"
+status: verifying
+stopped_at: Completed 10-04-PLAN.md (phone workout UAT pending)
+last_updated: "2026-10-20T13:58:05.171Z"
 last_activity: 2026-10-20
 last_activity_desc: Phase 10 execution started
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 12
-  completed_plans: 11
-  percent: 33
+  completed_plans: 12
+  percent: 50
 ---
 
 # Project State
@@ -30,10 +30,10 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 
 Phase: 10 (log-page-history-and-skip) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-20 — Phase 10 execution started
 
-Progress: [█████████░] 92%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -109,6 +109,7 @@ Progress: [█████████░] 92%
 | Phase 10 P01 | 10 min | 3 tasks | 3 files |
 | Phase 10 P02 | 8 min | 3 tasks | 2 files |
 | Phase 10 P03 | 14 min | 3 tasks | 3 files |
+| Phase 10 P04 | ~17 min (incl. push, PR, CI, deploy) | 3 tasks | 0 files |
 
 ## Accumulated Context
 
@@ -145,6 +146,7 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [Phase 10]: 10-02: editSession carries only skipped and reason (boolean true only), never _preSkip, so Undo on a re-edited workout takes the no-snapshot path
 - [Phase 10]: 10-03: the history panel renders only when the Last time line is tappable (ref || alt); openExHist and logReturn are screen-only lets reset at the five collapsedEx.clear() sites
 - [Phase 10]: 10-03: landingY is the router's only scroll decision; the return point is used once on a Train → Log arrival and cleared
+- [Phase 10]: Phase 10 shipped as PR #15, merge commit 9a4e647 on main; live page verified (stamp 9a4e647, CSP OK, SCHEMA 19). Revert: git revert -m 1 --no-edit 9a4e647 — no sync pause, but Undo or finish any open skipped exercise first.
 
 ### Pending Todos
 
@@ -185,8 +187,8 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-20T12:40:34.308Z
-Stopped at: Completed 10-03-PLAN.md
+Last session: 2026-10-20T13:58:05.154Z
+Stopped at: Completed 10-04-PLAN.md (phone workout UAT pending)
 Resume file: None
 
 ## Operator Next Steps
