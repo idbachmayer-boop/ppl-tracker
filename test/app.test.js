@@ -3774,13 +3774,22 @@ const DRAFT_ONLY_MUTATORS = [
                              db => [db.sessions.findIndex(s => s.id === 's1')],
                                                       db => !!db.draft && db.draft.editRef === 's1'],
   ['discardWorkout',   null, () => [],                  db => db.draft === null],
+  /* Phase 10 (LOG-03, D-14): the exercise skip and its Undo. The setup reaches the skipped state through
+     the real function, so the Undo row restores a real `_preSkip` snapshot. */
+  ['skipExercise',     null, () => [0],                 db => db.draft.entries[0].skipped === true && db.draft.entries[0].sets[0].skipped === true],
+  ['unskipExercise',   (db, a) => { a.DB = db; a.__sandbox.skipExercise(0); },
+                             () => [0],               db => db.draft.entries[0].skipped === undefined && db.draft.entries[0].sets[0].skipped === false],
 ];
 {
   const a = loadApp(APP_PATH);
   const failing = [];
   DRAFT_ONLY_MUTATORS.forEach(([name, setup, args, changed]) => {
     const db = populatedDB(a); db.draft = fullDraft(a, 'PUSH 1'); db.updatedAt = 1000;
-    if(setup) setup(db, a);
+    /* A setup that throws (a function it calls is missing) names its row instead of ending the run. */
+    if(setup){
+      try{ setup(db, a); }
+      catch(e){ failing.push({ name, reason: 'setup threw: ' + (e && e.message) }); return; }
+    }
     a.DB = db;
     const spy = spyPushes(a);
     a.__sandbox.localStorage.removeItem('ppl_tracker_v1');   // a row that stores nothing reads as a mismatch
@@ -3797,7 +3806,7 @@ const DRAFT_ONLY_MUTATORS = [
     if(why.length) failing.push({ name, reason: why.join(', ') });
   });
   ok('DRAFT-05: every draft-only edit is stored on this device with no updatedAt bump and no push',
-     failing.length === 0 && DRAFT_ONLY_MUTATORS.length === 25, failing);
+     failing.length === 0 && DRAFT_ONLY_MUTATORS.length === 27, failing);
 
   /* Every function the script declares, whose comment-stripped source reads DB.draft and calls bare
      save() (saveLocal() does not match). A new one fails here by name. */
@@ -9676,6 +9685,118 @@ function eqTagOf(card, i){
      { hostId, hostPickId, sel: hsSel && hsSel.tag, ask });
   S.equipAsk.clear();
   S.DB.draft = null;
+}
+
+/* ── LOG: history and skip on the workout card (Phase 10, LOG-01..05) ──
+   The helpers are top-level function declarations, so 10-02 and 10-03 reuse them. They read only their
+   arguments. Fixtures are built at the current schema through blank(), so no migration rewrites them.
+     lgLat(a)                          the PUSH 1 slot whose examples include 'DB lateral raise' (range 15-20).
+     lgSess(a, id, date, slot, sets, o) one finished session: slot `slot` gets the [w, r, skipped, reason]
+                                       sets (a skipped set stores w '' and r ''), every other slot `sets: []`.
+                                       Options: workout (default PUSH 1), endedAt (default 1), name, deload,
+                                       note, blankSets, and the exercise marker skipped/reason.
+     lgRun(a, list)                    replaces a.DB with those sessions and no draft.
+     lgCard(a, i, workout)             rebuilds the draft from history and returns the i-th exercise card. */
+console.log('\n── LOG: history and skip on the workout card (LOG-01..05) ──');
+function lgLat(a){
+  return a.PROGRAM['PUSH 1'].slots.findIndex(s => s.examples.includes('DB lateral raise'));
+}
+function lgSess(a, id, date, slot, sets, o){
+  o = o || {};
+  const wk = o.workout || 'PUSH 1';
+  return { id, workout: wk, date, endedAt: o.endedAt != null ? o.endedAt : 1, extras: {},
+    entries: a.PROGRAM[wk].slots.map((s, i) => i !== slot ? { name: s.examples[0], sets: [] }
+      : Object.assign({ name: o.name || 'DB lateral raise',
+          sets: sets.map(([w, r, sk, why]) => ({ w: sk ? '' : String(w), r: sk ? '' : String(r), skipped: !!sk, reason: sk && why ? String(why) : '' })) },
+        o.deload ? { deload: true } : {},
+        o.note != null ? { note: o.note } : {},
+        o.blankSets != null ? { blankSets: o.blankSets } : {},
+        o.skipped ? { skipped: o.skipped, reason: o.reason != null ? o.reason : '' } : {})) };
+}
+function lgRun(a, list){
+  a.DB = a.normalize(Object.assign(a.blank(), { sessions: list, draft: null, unit: 'lb' }));
+}
+function lgCard(a, i, workout){
+  a.DB.draft = null;
+  a.__sandbox.startWorkout(workout || 'PUSH 1');
+  return a.viewActive().split('<div class="ex-card">')[i + 1] || '';
+}
+/* Tracer (LOG-03, LOG-04, LOG-05): skip the lateral raise from its header icon, see the one-line card,
+   Undo it, skip it again, finish, and the next PUSH 1 card offers no Add weight. Each step is its own
+   check so a red names the step that broke. */
+{
+  const a = loadApp(APP_PATH), S = a.__sandbox, spy = spyPushes(a), LAT = lgLat(a);
+  const r = {};
+  const step = (k, fn) => { if(r.threw) return; try{ fn(); }catch(e){ r.threw = k + ': ' + (e && e.stack || e); } };
+  const latCardNow = () => a.viewActive().split('<div class="ex-card">')[LAT + 1] || '';
+  step('a', () => {
+    lgRun(a, [lgSess(a, 't0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])]);
+    S.startWorkout('PUSH 1');
+    r.flagBefore = latCardNow().includes('class="flag"');
+  });
+  ok('LOG-05 tracer (a): the positive control, three sets at the top earn the Add weight flag before any skip',
+     !r.threw && r.flagBefore === true, r);
+  step('b', () => {
+    r.u = a.DB.updatedAt; r.n = spy.n;
+    r.cardsBefore = a.viewActive().split('<div class="ex-card">').length;
+    r.before = canon(a.DB.draft.entries[LAT].sets);
+    const ctrl = f2Find(a, f2At('skipExercise', LAT));
+    r.tag = ctrl && ctrl.tag;
+    S.prompt = () => 'shoulder';
+    if(ctrl) fireListener(a, 'click', fakeEl(ctrl.data));
+    const e = a.DB.draft.entries[LAT];
+    r.b = { skipped: e.skipped, reason: e.reason, sets: e.sets.map(x => [x.skipped, x.w, x.r]),
+            snap: e._preSkip && Array.isArray(e._preSkip.sets) ? e._preSkip.sets.length : null,
+            u: a.DB.updatedAt, n: spy.n, stored: canon((a.__stored() || {}).draft) === canon(a.DB.draft) };
+  });
+  ok('LOG-03 tracer (b): the header skip button skips every unfinished set with the reason, on this device only',
+     !r.threw && r.tag === 'button' && r.b && r.b.skipped === true && r.b.reason === 'shoulder'
+       && r.b.sets.length === 3 && r.b.sets.every(([sk, w, rp]) => sk === true && w === '' && rp === '')
+       && r.b.snap === 3 && r.b.u === r.u && r.b.n === r.n && r.b.stored === true,
+     r);
+  step('c', () => {
+    const card = latCardNow();
+    r.c = { notes: (card.match(/class="skip-note"/g) || []).length,
+            text: card.includes('<strong>DB lateral raise</strong> · skipped: <em>shoulder</em>'),
+            undo: controlsIn(card).filter(c => c.data.action === 'unskipExercise').map(c => [c.tag, c.data.i]),
+            cards: a.viewActive().split('<div class="ex-card">').length };
+  });
+  ok('LOG-03 tracer (c): the skipped card is one note with the name, the reason and an Undo button, and no card shifts',
+     !r.threw && r.c && r.c.notes === 1 && r.c.text && JSON.stringify(r.c.undo) === JSON.stringify([['button', String(LAT)]])
+       && r.c.cards === r.cardsBefore,
+     r.c || r);
+  step('d', () => {
+    const ctrl = f2Find(a, f2At('unskipExercise', LAT));
+    if(ctrl) fireListener(a, 'click', fakeEl(ctrl.data));
+    const e = a.DB.draft.entries[LAT];
+    r.d = { same: canon(e.sets) === r.before, keys: ['_preSkip', 'skipped', 'reason'].filter(k => k in e) };
+  });
+  ok('LOG-04 tracer (d): Undo restores the sets exactly and leaves no snapshot or marker on the entry',
+     !r.threw && r.d && r.d.same && r.d.keys.length === 0, r.d || r);
+  step('e', () => {
+    const ctrl = f2Find(a, f2At('skipExercise', LAT));
+    S.prompt = () => 'shoulder';
+    if(ctrl) fireListener(a, 'click', fakeEl(ctrl.data));
+    const n = spy.n;
+    S.finishWorkout();
+    const row = a.DB.sessions.find(s => s.workout === 'PUSH 1' && s.date === a.todayISO() && !s.deletedAt);
+    const e = row && row.entries[LAT];
+    r.e = { row: !!row, skipped: e && e.skipped, reason: e && e.reason,
+            allSkipped: !!e && e.sets.length > 0 && e.sets.every(x => x.skipped === true),
+            under: e ? Object.keys(e).filter(k => k.charAt(0) === '_').concat(...e.sets.map(x => Object.keys(x).filter(k => k.charAt(0) === '_'))) : null,
+            pushed: spy.n - n };
+  });
+  ok('LOG-05 tracer (e): the finished session keeps the skip marker and per-set flags, with no draft-only field',
+     !r.threw && r.e && r.e.row && r.e.skipped === true && r.e.reason === 'shoulder' && r.e.allSkipped
+       && Array.isArray(r.e.under) && r.e.under.length === 0 && r.e.pushed >= 1,
+     r.e || r);
+  step('f', () => {
+    const card = lgCard(a, LAT);
+    r.f = { flag: card.includes('class="flag"'), last: card.includes('Last time (') };
+  });
+  ok('LOG-05 tracer (f): the next PUSH 1 card offers no Add weight for the skipped exercise and still shows Last time',
+     !r.threw && r.f && r.f.flag === false && r.f.last === true, r.f || r);
+  a.DB.draft = null;
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

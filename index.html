@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-c21XVzCcRwMep642eFzbjNWAsgtThZ09OcXShNXTUM8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-F45WeMURwX/mnNAJyj5+JiHqCs2tcRayiWtbf6EIJH8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -81,6 +81,7 @@
     .flag { font-size: 11px; font-weight: 700; color: var(--flag-fg); background: var(--flag-bg); border: 1px solid var(--flag-bd); border-radius: 6px; padding: 2px 8px; }
 
     /* Exercise log card */
+    .ex-skip { min-width: 32px; min-height: 32px; margin-right: 4px; vertical-align: middle; }
     .ex-card { background: var(--surface); border-radius: 12px; border: 1px solid var(--border); margin-bottom: 10px; overflow: hidden; }
     .ex-accent { height: 4px; }
     .ex-body { padding: 14px 14px 12px; }
@@ -2086,6 +2087,9 @@ function viewActive(){
   const slots = PROGRAM[name].slots;
   const cards = slots.map((s,i)=>{
     const entry = DB.draft.entries[i];
+    /* A skipped exercise is one quiet line with Undo (D-11). It is checked before the collapsed branch
+       and ignores collapsedEx without clearing it, so Undo brings the card back as it was. */
+    if(entry && entry.skipped === true) return `<div class="ex-card"><div class="ex-accent ${barClass(g)}"></div><div class="ex-body"><div class="skip-note" style="margin:0"><span>${ph('skip-forward','lead')}<strong>${esc(entry.name)}</strong> · ${skipTailHTML(entry)}</span><button data-action="unskipExercise" data-i="${esc(i)}">Undo</button></div></div></div>`;
     if(collapsedEx.has(i)){ // collapsed to a one-line summary to cut scrolling
       const done = entry.sets.filter(x=>!x.skipped && x.r!=='');
       const summary = done.length ? done.map(x=>fmtSet(x.w,x.r)).join(', ') : 'no sets yet';
@@ -2154,6 +2158,7 @@ function viewActive(){
         <div class="ex-head">
           <div><div class="ex-meta">${s.muscle} · ${s.movement}${s.note?' · '+s.note:''} · <a href="${gsearch(entry.name)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">how-to ${ph('arrow-square-out')}</a></div></div>
           <div style="text-align:right;white-space:nowrap">
+            ${exUnfinished(entry).length ? `<button class="skip-set ex-skip" data-action="skipExercise" data-i="${esc(i)}" title="skip this exercise" aria-label="Skip this exercise">${ph('skip-forward')}</button>` : ''}
             <button class="skip-set" data-action="toggleExCollapse" data-i="${esc(i)}" title="collapse" style="font-size:16px;vertical-align:middle">${ph('caret-up')}</button>
             <span class="range-badge">${rangeText(rng)} reps</span>${flag?'<br>'+flag:''}
           </div>
@@ -2299,6 +2304,63 @@ function skipSet(i,k){
   saveLocal(); render();
 }
 function unskipSet(i,k){ const ss=DB.draft.entries[i].sets, st=ss[k]; st.skipped=false; st.reason=''; if(st.w==='') st.w=nearWeight(ss, k); saveLocal(); render(); }
+/* The sets of an entry still waiting for reps: a set object, not skipped, reps blank. The exercise skip
+   button shows only while this is non-empty (D-12), and skipExercise checks it again on the tap. */
+function exUnfinished(e){
+  if(!e || !Array.isArray(e.sets)) return [];
+  return e.sets.filter(st=> st && typeof st==='object' && !st.skipped && st.r==='');
+}
+/* Skip a whole exercise mid-workout. Only the unfinished sets are skipped: a set with reps stays exactly
+   as it was (D-08), and a set skipped earlier keeps its own reason. The one optional reason lives on the
+   entry, and Cancel aborts with no write (D-10). `_preSkip` is the snapshot Undo restores exactly (D-13).
+   It is draft-only, like every field whose name starts with `_`: finishWorkout strips it, so it never
+   reaches a session, a backup or the export. A skip that leaves no done set clears deload, because
+   lastAttemptEntry passes over a deloaded entry and would offer Add weight from the attempt before
+   (D-22). A draft edit, so saveLocal() only (D-14). */
+function skipExercise(i){
+  const e = DB.draft && DB.draft.entries[i];
+  if(!e || e.skipped===true || exUnfinished(e).length===0) return;
+  const reason = prompt(`Why skipping ${e.name}? (optional)`, '');
+  if(reason===null) return;
+  e._preSkip = { sets: JSON.parse(JSON.stringify(e.sets)), deload: !!e.deload };
+  exUnfinished(e).forEach(st=>{ st.skipped=true; st.reason=''; st.w=''; st.r=''; });
+  if(!e.sets.some(x=> x && !x.skipped && x.r!=='')) e.deload = false;
+  e.skipped = true;
+  e.reason = String(reason).trim();
+  saveLocal(); render();
+}
+/* Undo an exercise skip. With the snapshot, the card comes back exactly as it was: weights, typed values,
+   single sets skipped earlier with their reasons, and the deload (D-13). Without one (a finished session
+   reopened for editing, D-25), each set skipped with no reason of its own comes back blank with the
+   nearest weight, and a set skipped with its own reason stays skipped. saveLocal() only (D-14). */
+function unskipExercise(i){
+  const e = DB.draft && DB.draft.entries[i];
+  if(!e || e.skipped!==true) return;
+  const snap = e._preSkip;
+  if(snap && typeof snap==='object' && Array.isArray(snap.sets) && snap.sets.every(st=> st && typeof st==='object')){
+    e.sets = snap.sets;
+    e.deload = !!snap.deload;
+  } else if(Array.isArray(e.sets)){
+    e.sets.forEach((st,k)=>{
+      if(!(st && st.skipped && !st.reason)) return;
+      st.skipped = false; st.reason = ''; st.r = '';
+      if(st.w==='' || st.w==null) st.w = nearWeight(e.sets, k);
+    });
+  }
+  delete e._preSkip; delete e.skipped; delete e.reason;
+  saveLocal(); render();
+}
+/* The text after the exercise name for a skipped exercise: `skipped[: reason]`, or the done sets then
+   `· rest skipped[: reason]`. One source for the skipped card, the history line and the history panel,
+   so the three cannot drift. Every value goes through esc() into a text node. `prAt(k)`, when given,
+   marks the set at original index k with the trophy, the viewHistory rule. */
+function skipTailHTML(e, prAt){
+  const all = e && Array.isArray(e.sets) ? e.sets : [];
+  const done = all.map((x,k)=>({x,k})).filter(({x})=> x && !x.skipped && x.r!=='');
+  const sets = done.map(({x,k})=> esc(fmtSet(x.w,x.r)) + (prAt && prAt(k) ? ' 🏆' : '')).join(', ');
+  const why = e && e.reason ? ': <em>'+esc(e.reason)+'</em>' : '';
+  return done.length ? `${sets} · rest skipped${why}` : `skipped${why}`;
+}
 function stairVal(f,v){ DB.draft.stairs[f]=v; saveLocal(); }
 function stairTimeSet(part,v){
   const cur=+(DB.draft.stairs.seconds||0); let m=Math.floor(cur/60), s=cur%60;
@@ -2385,9 +2447,16 @@ function finishWorkout(){
   // the new row built here, never on an existing one, and a re-save that filled the blanks clears it.
   // The row is built from copies, so d.entries is untouched until the save commits: if anything below
   // throws, the draft keeps its blank rows and a retry counts them again.
+  // A draft-only field on an entry or a set starts with `_` (`_cel`, the exercise skip's `_preSkip`
+  // snapshot), and none of them reaches the session. An exercise skip keeps `skipped: true` and its
+  // `reason`; a marker that is anything but the boolean true is dropped with its reason (D-09, D-13).
+  const stripDraftOnly = o=>{ Object.keys(o).forEach(k=>{ if(k.charAt(0) === '_') delete o[k]; }); return o; };
   const entries = d.entries.map(e=>{
     const blank = e.sets.filter(s=> !s.skipped && s.r==='').length;
-    const out = Object.assign({}, e, { sets: e.sets.filter(s=> s.skipped || s.r!=='').map(s=>{ const c=Object.assign({}, s); delete c._cel; return c; }) });
+    const out = Object.assign({}, e, { sets: e.sets.filter(s=> s.skipped || s.r!=='').map(s=> stripDraftOnly(Object.assign({}, s))) });
+    stripDraftOnly(out);
+    if(out.skipped!==true){ delete out.skipped; delete out.reason; }
+    else if(typeof out.reason!=='string') out.reason = '';
     if(blank>0) out.blankSets = blank; else delete out.blankSets;
     return out;
   });
@@ -5427,6 +5496,8 @@ const ACTIONS = {
   toggleWarm:       { click: el => toggleWarm(+el.dataset.i) },
   unskipSet:        { click: el => unskipSet(+el.dataset.i, +el.dataset.k) },
   skipSet:          { click: el => skipSet(+el.dataset.i, +el.dataset.k) },
+  skipExercise:     { click: el => skipExercise(+el.dataset.i) },
+  unskipExercise:   { click: el => unskipExercise(+el.dataset.i) },
   rmSet:            { click: el => rmSet(+el.dataset.i, +el.dataset.k) },
   setWeight: { input: el => { const i = +el.dataset.i, k = +el.dataset.k; setVal(i, k, 'w', el.value); updTargetBadge(i, k); updPlates(i); },
                change: el => rollWeight(+el.dataset.i, +el.dataset.k, el.value) },
