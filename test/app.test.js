@@ -9799,6 +9799,263 @@ function lgCard(a, i, workout){
   a.DB.draft = null;
 }
 
+/* The skip rules mid-workout (D-08, D-10, D-11, D-12, D-13, D-22, D-25). Most checks start from f2Mid():
+   populatedDB with a full PUSH 1 draft, every slot holding one blank set, on Train → Log. */
+const lgRaw = a => a.__sandbox.localStorage.getItem('ppl_tracker_v1');
+const lgCardOf = (a, i) => a.viewActive().split('<div class="ex-card">')[i + 1] || '';
+const lgTry = fn => { try{ return fn(); }catch(e){ return { threw: String(e && e.stack || e) }; } };
+{
+  const r = lgTry(() => {
+    const a = f2Mid(d => {
+      d.draft.entries[0].sets = [{ w: '135', r: '8', skipped: false, reason: '' }];
+      d.draft.entries[1].sets = [{ w: '100', r: '8', skipped: false, reason: '' }, { w: '100', r: '', skipped: false, reason: '' }];
+    });
+    a.__sandbox.prompt = () => '';
+    a.__sandbox.skipSet(1, 1);
+    const cs = controlsIn(f2AppHtml(a));
+    const card = lgCardOf(a, 2);
+    const col = card.indexOf('<div style="text-align:right;white-space:nowrap">');
+    const sk = card.indexOf('data-action="skipExercise"'), ca = card.indexOf('data-action="toggleExCollapse"');
+    const rb = card.indexOf('class="range-badge"');
+    return { s0: cs.some(f2At('skipExercise', 0)), s1: cs.some(f2At('skipExercise', 1)), s2: cs.some(f2At('skipExercise', 2)),
+             order: col >= 0 && col < sk && sk < ca && ca < rb && !card.slice(col, ca).includes('</div>') };
+  });
+  ok('D-12: the skip button shows only on a card with an unfinished set, first in the header column, ahead of the caret and the range badge',
+     !r.threw && r.s0 === false && r.s1 === false && r.s2 === true && r.order === true, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(d => {
+      d.draft.entries[0].sets = [{ w: '135', r: '8', skipped: false, reason: '' }];
+      Object.assign(d.draft.entries[3], { skipped: true, reason: 'x', sets: [{ w: '', r: '', skipped: false, reason: '' }] });
+    });
+    let calls = 0;
+    a.__sandbox.prompt = () => { calls++; return 'x'; };
+    a.saveLocal();
+    const blob = lgRaw(a);
+    a.__sandbox.skipExercise(0);
+    const allDone = { calls, same: lgRaw(a) === blob };
+    a.__sandbox.skipExercise(3);
+    return { allDone, already: { calls, same: lgRaw(a) === blob } };
+  });
+  ok('D-12: a stale tap on a card with nothing left to skip, or on a skipped card, asks nothing and writes nothing',
+     !r.threw && r.allDone.calls === 0 && r.allDone.same && r.already.calls === 0 && r.already.same, r);
+}
+{
+  const r = lgTry(() => {
+    const out = {};
+    const a = f2Mid();
+    a.saveLocal();
+    const blob = lgRaw(a);
+    let asked = null;
+    a.__sandbox.prompt = (q, def) => { asked = [q, def]; return null; };
+    a.__sandbox.skipExercise(0);
+    const e0 = a.DB.draft.entries[0];
+    out.cancel = { same: lgRaw(a) === blob, keys: ['skipped', 'reason', '_preSkip'].filter(k => k in e0),
+                   asked: asked && asked[0] === `Why skipping ${e0.name}? (optional)` && asked[1] === '' };
+    a.__sandbox.prompt = () => '   ';
+    a.__sandbox.skipExercise(0);
+    const card = lgCardOf(a, 0);
+    out.blank = { reason: a.DB.draft.entries[0].reason,
+                  text: card.includes(`<strong>${a.esc(e0.name)}</strong> · skipped</span>`), em: card.includes('<em>') };
+    a.__sandbox.prompt = () => '  knee  ';
+    a.__sandbox.skipExercise(1);
+    out.trim = a.DB.draft.entries[1].reason;
+    return out;
+  });
+  ok('D-10: the reason prompt asks by name; Cancel writes nothing, a blank answer skips with no reason, and a reason is stored trimmed',
+     !r.threw && r.cancel.same && r.cancel.keys.length === 0 && r.cancel.asked
+       && r.blank.reason === '' && r.blank.text && r.blank.em === false && r.trim === 'knee', r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(d => {
+      d.draft.entries[0].sets = [{ w: '120', r: '10', skipped: false, reason: '' }, { w: '120', r: '9', skipped: false, reason: '' },
+                                 { w: '120', r: '', skipped: false, reason: '' }];
+    });
+    const S = a.__sandbox, e = a.DB.draft.entries[0];
+    const s0 = canon(e.sets[0]), s1 = canon(e.sets[1]);
+    S.prompt = () => 'shoulder';
+    S.skipExercise(0);
+    const card = lgCardOf(a, 0);
+    return { kept: canon(e.sets[0]) === s0 && canon(e.sets[1]) === s1,
+             third: canon(e.sets[2]) === canon({ w: '', r: '', skipped: true, reason: '' }),
+             text: card.includes(`<strong>${a.esc(e.name)}</strong> · ${a.esc(S.fmtSet('120', '10'))}, ${a.esc(S.fmtSet('120', '9'))} · rest skipped: <em>shoulder</em>`) };
+  });
+  ok('D-08/D-11: a skip after two done sets keeps them exactly and the card reads "{name} · 120×10, 120×9 · rest skipped: shoulder"',
+     !r.threw && r.kept && r.third && r.text, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(d => { d.draft.entries[0].sets = [0, 1].map(() => ({ w: '', r: '', skipped: false, reason: '' })); });
+    const S = a.__sandbox;
+    S.prompt = () => 'elbow'; S.skipSet(0, 0);
+    S.prompt = () => 'shoulder'; S.skipExercise(0);
+    const e = a.DB.draft.entries[0];
+    return { reasons: e.sets.map(x => x.reason), entry: e.reason };
+  });
+  ok('D-08: a set skipped earlier keeps its own reason, and the exercise reason lives on the entry only',
+     !r.threw && JSON.stringify(r.reasons) === '["elbow",""]' && r.entry === 'shoulder', r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    lgRun(a, [lgSess(a, 't0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])]);
+    S.startWorkout('PUSH 1');
+    S.deloadExercise(LAT);
+    S.prompt = () => '';
+    S.skipExercise(LAT);
+    const e = a.DB.draft.entries[LAT];
+    const none = { deload: e.deload, snap: e._preSkip && e._preSkip.deload };
+    S.unskipExercise(LAT);
+    none.undone = a.DB.draft.entries[LAT].deload;
+    a.setVal(LAT, 0, 'r', '18');
+    S.skipExercise(LAT);
+    return { none, oneDone: a.DB.draft.entries[LAT].deload };
+  });
+  ok('D-22: a skip that leaves no done set clears deload (the snapshot keeps it, Undo brings it back); with a done set deload stays',
+     !r.threw && r.none.deload === false && r.none.snap === true && r.none.undone === true && r.oneDone === true, r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    lgRun(a, [lgSess(a, 't0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])]);
+    S.startWorkout('PUSH 1');
+    a.setVal(LAT, 0, 'w', '30');
+    a.setVal(LAT, 0, 'r', '18');
+    S.prompt = () => 'elbow'; S.skipSet(LAT, 2);
+    const before = canon(a.DB.draft.entries[LAT].sets), deload = !!a.DB.draft.entries[LAT].deload;
+    S.prompt = () => 'shoulder'; S.skipExercise(LAT);
+    const b = loadApp(APP_PATH, a.__stored());
+    const eb = b.DB.draft && b.DB.draft.entries[LAT];
+    const out = { reloaded: !!eb && canon(eb) === canon(a.DB.draft.entries[LAT]) && !!eb._preSkip,
+                  s2: (b.viewActive().split('<div class="ex-card">')[LAT + 1] || '').includes('data-action="unskipExercise"') };
+    b.__sandbox.unskipExercise(LAT);
+    const e = b.DB.draft.entries[LAT];
+    out.exact = canon(e.sets) === before && !!e.deload === deload;
+    out.prefill = e.sets[1] && e.sets[1].w === '27.5';
+    out.elbow = e.sets[2] && e.sets[2].skipped === true && e.sets[2].reason === 'elbow';
+    out.keys = ['_preSkip', 'skipped', 'reason'].filter(k => k in e);
+    return out;
+  });
+  ok('D-13/LOG-04: the skip survives a reload, and Undo after the reload restores typed and prefilled weights, an earlier single skip and the deload exactly',
+     !r.threw && r.reloaded && r.s2 && r.exact && r.prefill && r.elbow && r.keys.length === 0, r);
+}
+{
+  const r = lgTry(() => {
+    const seed = d => { d.draft.entries[0].sets = [{ w: '100', r: '8', skipped: false, reason: '' }, { w: '100', r: '', skipped: false, reason: '' }]; };
+    const a1 = f2Mid(seed), a2 = f2Mid(seed);
+    a1.__sandbox.prompt = a2.__sandbox.prompt = () => 'x';
+    a1.__sandbox.skipExercise(0); a1.__sandbox.unskipExercise(0); a1.__sandbox.skipExercise(0);
+    a2.__sandbox.skipExercise(0);
+    return { same: canon(a1.DB.draft.entries[0]) === canon(a2.DB.draft.entries[0]),
+             order: a1.DB.draft.entries[0].sets.map(x => x.r) };
+  });
+  ok('LOG-03/LOG-04: skip, Undo, skip ends in the same entry as a single skip, set order unchanged',
+     !r.threw && r.same && JSON.stringify(r.order) === '["8",""]', r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(d => {
+      d.draft.entries[0] = { name: d.draft.entries[0].name, note: '', deload: false, skipped: true, reason: 'x',
+        sets: [{ w: '100', r: '8', skipped: false, reason: '' }, { w: '', r: '', skipped: true, reason: '' }, { w: '', r: '', skipped: true, reason: 'elbow' }] };
+    });
+    a.__sandbox.unskipExercise(0);
+    const e = a.DB.draft.entries[0];
+    return { s1: canon(e.sets[1]) === canon({ w: '100', r: '', skipped: false, reason: '' }),
+             s2: canon(e.sets[2]) === canon({ w: '', r: '', skipped: true, reason: 'elbow' }),
+             keys: ['_preSkip', 'skipped', 'reason'].filter(k => k in e) };
+  });
+  ok('D-25: Undo with no snapshot un-skips each set with no reason of its own at the nearest weight, and leaves a set skipped with its own reason',
+     !r.threw && r.s1 && r.s2 && r.keys.length === 0, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid();
+    a.saveLocal();
+    const blob = lgRaw(a), entry = canon(a.DB.draft.entries[0]);
+    a.__sandbox.unskipExercise(0);
+    return { same: lgRaw(a) === blob && canon(a.DB.draft.entries[0]) === entry };
+  });
+  ok('LOG-04: Undo on an exercise that is not skipped does nothing', !r.threw && r.same, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(), S = a.__sandbox;
+    S.prompt = () => '';
+    S.toggleExCollapse(0);
+    const collapsed = lgCardOf(a, 0).includes('▾ expand');
+    S.skipExercise(0);
+    const sk = lgCardOf(a, 0);
+    const skipped = sk.includes('class="skip-note"') && !sk.includes('▾ expand');
+    S.unskipExercise(0);
+    return { collapsed, skipped, back: lgCardOf(a, 0).includes('▾ expand') };
+  });
+  ok('S2 over collapse: a skipped card ignores its collapsed state without clearing it, so Undo brings back the collapsed card',
+     !r.threw && r.collapsed && r.skipped && r.back, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(), S = a.__sandbox;
+    S.prompt = () => '';
+    S.skipExercise(0); S.skipExercise(1); S.unskipExercise(0);
+    const c0 = lgCardOf(a, 0), c1 = lgCardOf(a, 1);
+    const b = f2Mid();
+    b.__sandbox.prompt = () => '';
+    b.__sandbox.skipExercise(1);
+    const c2 = b.viewActive().split('<div class="ex-card">')[3] || '';
+    return { full0: c0.includes('class="ex-head"') && !c0.includes('data-action="unskipExercise"'),
+             still1: c1.includes('data-action="unskipExercise"') && a.DB.draft.entries[1].skipped === true,
+             index: c2.includes('data-i="2"') && !c2.includes('data-i="1"') };
+  });
+  ok('S2 across cards: several skips each keep their own Undo by slot, undoing one leaves the others, and later cards keep their index',
+     !r.threw && r.full0 && r.still1 && r.index, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid();
+    a.__sandbox.prompt = () => '';
+    a.__sandbox.skipExercise(1);
+    const skipCalls = spyOn(a, 'skipExercise'), undoCalls = spyOn(a, 'unskipExercise');
+    const s1 = f2Find(a, f2At('skipExercise', 2)), u1 = f2Find(a, f2At('unskipExercise', 1));
+    if(s1) fireListener(a, 'click', fakeEl(s1.data));
+    if(u1) fireListener(a, 'click', fakeEl(u1.data));
+    return { tags: [s1 && s1.tag, u1 && u1.tag], skip: skipCalls, undo: undoCalls };
+  });
+  ok('LOG-03/LOG-04: the skip and Undo controls are buttons that call skipExercise(2) and unskipExercise(1) with exactly the slot',
+     !r.threw && JSON.stringify(r.tags) === '["button","button"]' && JSON.stringify(r.skip) === '[[2]]' && JSON.stringify(r.undo) === '[[1]]', r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid();
+    a.__sandbox.prompt = () => EVIL;
+    a.__sandbox.skipExercise(0);
+    const card = lgCardOf(a, 0);
+    const b = f2Mid(d => { d.draft.entries[0].name = EVIL; });
+    b.__sandbox.prompt = () => '';
+    b.__sandbox.skipExercise(0);
+    const nameCard = lgCardOf(b, 0);
+    return { em: card.includes('<em>' + a.esc(EVIL) + '</em>') && card.includes('&quot;&gt;&lt;img'), img: card.includes('<img'),
+             attrs: JSON.stringify(controlsIn(card)).includes('img'),
+             name: nameCard.includes('<strong>' + b.esc(EVIL) + '</strong>') && !nameCard.includes('<img') };
+  });
+  ok('T-10-01: a hostile reason or name renders escaped as text in the skipped card and in no attribute',
+     !r.threw && r.em && r.img === false && r.attrs === false && r.name, r);
+}
+{
+  const r = lgTry(() => {
+    const a = f2Mid(), long = 'abcdefghij'.repeat(30);
+    a.__sandbox.prompt = () => long;
+    a.__sandbox.skipExercise(0);
+    const m = /<div class="skip-note"[^>]*><span>([\s\S]*?)<\/span>(<button[^>]*>Undo<\/button>)<\/div>/.exec(lgCardOf(a, 0));
+    return { whole: !!m && m[1].includes('<em>' + long + '</em>'), undo: !!m && m[2].includes('data-action="unskipExercise"') };
+  });
+  ok('long text: a 300-character reason sits whole inside the note\'s first span, and Undo stays a separate button',
+     !r.threw && r.whole && r.undo, r);
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
