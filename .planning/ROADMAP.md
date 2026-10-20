@@ -143,12 +143,12 @@ Plans:
 - The skip reason is user text: through `esc()` when rendered, in double-quoted attributes only.
 - The inline history reads through `liveSessions()`, so a deleted session never ghosts back into it.
 
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 10-01-PLAN.md — Skip a whole exercise: the header skip icon, one optional reason, an exact Undo that survives a reload (a draft-only `_preSkip` snapshot, `saveLocal()` only), and finishWorkout writing `skipped`/`reason` beside the per-set flags with every `_` field stripped, so the next card offers no ⬆ Add weight (LOG-03, LOG-04, LOG-05)
+- [x] 10-01-PLAN.md — Skip a whole exercise: the header skip icon, one optional reason, an exact Undo that survives a reload (a draft-only `_preSkip` snapshot, `saveLocal()` only), and finishWorkout writing `skipped`/`reason` beside the per-set flags with every `_` field stripped, so the next card offers no ⬆ Add weight (LOG-03, LOG-04, LOG-05)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -250,7 +250,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 7. Content Security Policy | v1.0 | 7/7 | Complete | 2026-10-09 |
 | 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
 | 9. Equipment and Weight Steps | v1.1 | 5/5 | Complete    | 2026-10-13 |
-| 10. Log Page — History and Skip | v1.1 | 0/TBD | Not started | - |
+| 10. Log Page — History and Skip | v1.1 | 1/4 | In Progress|  |
 | 11. Lawn, Journal and Weather Loop | v1.1 | 0/TBD | Not started | - |
 | 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |
 | 13. Strength Index and Poor-Sleep Intensity | v1.1 | 0/TBD | Not started | - |

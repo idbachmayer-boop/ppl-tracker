@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
 current_phase: 10
-current_phase_name: Log Page — History and Skip
+current_phase_name: log-page-history-and-skip
 status: executing
-stopped_at: Phase 10 UI-SPEC approved
-last_updated: "2026-10-19T12:23:18.731Z"
-last_activity: 2026-10-13
-last_activity_desc: Phase 9 complete, transitioned to Phase 10
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-10-20T12:17:27.972Z"
+last_activity: 2026-10-20
+last_activity_desc: Phase 10 execution started
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
   percent: 33
 ---
 
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-09)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 10 — Log Page — History and Skip
+**Current focus:** Phase 10 — log-page-history-and-skip
 
 ## Current Position
 
-Phase: 10 — Log Page — History and Skip
-Plan: Not started
+Phase: 10 (log-page-history-and-skip) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-10-13 — Phase 9 complete, transitioned to Phase 10
+Last activity: 2026-10-20 — Phase 10 execution started
 
-Progress: [██████████] Phase 9 complete (v1.1: 2 of 6 phases verified)
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
@@ -106,6 +106,7 @@ Progress: [██████████] Phase 9 complete (v1.1: 2 of 6 phases
 | Phase 09 P03 | 14 min | 3 tasks | 2 files |
 | Phase 09 P04 | 10 min | 3 tasks | 3 files |
 | Phase 09 P05 | ~25min (incl. the push, PR, CI, deploy) | 3 tasks | 0 files |
+| Phase 10 P01 | 10 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,8 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [09-UAT]: Phone UAT passed 2026-10-13 (tag, Preacher-curl plates, pre-set types, cross-device type change both ways, first-time picker, 380px layout, clean finish); 09-SECURITY.md verified, 37/37 closed
 - [09-05]: Revert is git revert -m 1 --no-edit 8a20832 on main. Once schema 19 has synced, a revert keeps all data but pauses sync on every device until a 19+ build ships; a blank app means nothing migrated and the revert is clean
 - [09-05]: Shipped with WR-09, WR-06 and the info items open (none blocking); WR-09 (order-dependent conflicting concurrent merges) is the post-ship fix candidate
+- [Phase ?]: 10-01: exercise skip is add-alongside — entry gets skipped:true + reason, per-set skipped flags stay the only judgement input (D-09); SCHEMA stays 19
+- [Phase ?]: 10-01: finishWorkout strips every own key starting with _ from entries and sets; draft-only fields must start with _
 
 ### Pending Todos
 
@@ -176,9 +179,9 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-14T01:20:58.884Z
-Stopped at: Phase 10 UI-SPEC approved
-Resume file: .planning/phases/10-log-page-history-and-skip/10-UI-SPEC.md
+Last session: 2026-10-20T12:17:27.955Z
+Stopped at: Completed 10-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
