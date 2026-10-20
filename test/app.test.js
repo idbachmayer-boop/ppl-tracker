@@ -10056,6 +10056,162 @@ const lgTry = fn => { try{ return fn(); }catch(e){ return { threw: String(e && e
      !r.threw && r.whole && r.undo, r);
 }
 
+/* The finished session (D-09, D-13, D-16, D-18, D-22, D-23, LOG-05). finishWorkout's save() is the one
+   sanctioned copy from the draft into synced data: the per-set flags and the exercise marker go across,
+   nothing whose name starts with `_` does. */
+const lgToday = a => a.DB.sessions.find(s => s.workout === 'PUSH 1' && s.date === a.todayISO() && !s.deletedAt) || null;
+const lgUnderscored = row => {
+  const bad = [];
+  (row && Array.isArray(row.entries) ? row.entries : []).forEach((e, i) => {
+    Object.keys(e).filter(k => k.charAt(0) === '_').forEach(k => bad.push(i + '.' + k));
+    (Array.isArray(e.sets) ? e.sets : []).forEach((x, k) => Object.keys(x || {}).filter(n => n.charAt(0) === '_').forEach(n => bad.push(i + '.sets.' + k + '.' + n)));
+  });
+  return bad;
+};
+const lgHist = (a, LAT) => [lgSess(a, 'h0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])];
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox;
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    lgRun(a, []);
+    S.startWorkout('PUSH 1');
+    S.prompt = () => '';
+    a.DB.draft.entries.forEach((_, i) => S.skipExercise(i));
+    let alerts = 0;
+    S.alert = () => { alerts++; };
+    S.finishWorkout();
+    const row = lgToday(a);
+    return { alerts, row: !!row, n: row ? row.entries.length : 0,
+             every: !!row && row.entries.every(e => e.skipped === true && Array.isArray(e.sets) && e.sets.some(x => x && x.skipped === true)) };
+  });
+  ok('D-16: a workout with every exercise skipped finishes as a normal session, every entry marked and holding a skipped set',
+     !r.threw && r.alerts === 0 && r.row && r.n > 0 && r.every, r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    S.startWorkout('PUSH 1');
+    a.setVal(0, 0, 'w', '100'); a.setVal(0, 0, 'r', '8');
+    a.DB.draft.entries[0].sets[0]._cel = true;
+    S.prompt = () => 'shoulder';
+    S.skipExercise(LAT);
+    const had = { cel: a.DB.draft.entries[0].sets[0]._cel === true, snap: !!a.DB.draft.entries[LAT]._preSkip };
+    S.finishWorkout();
+    return { had, bad: lgUnderscored(lgToday(a)), row: !!lgToday(a) };
+  });
+  ok('T-10-02: no field starting with `_` survives on any entry or set of the finished session (_cel and _preSkip included)',
+     !r.threw && r.had.cel && r.had.snap && r.row && r.bad.length === 0, r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox;
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    lgRun(a, []);
+    S.startWorkout('PUSH 1');
+    Object.assign(a.DB.draft.entries[0], { skipped: 'true', reason: 'x', sets: [{ w: '100', r: '8', skipped: false, reason: '' }] });
+    Object.assign(a.DB.draft.entries[1], { skipped: true, reason: 42, sets: [{ w: '', r: '', skipped: true, reason: '' }] });
+    S.finishWorkout();
+    const row = lgToday(a);
+    return { e0: row && ['skipped', 'reason'].filter(k => k in row.entries[0]), e1: row && [row.entries[1].skipped, row.entries[1].reason] };
+  });
+  ok('T-10-04: a marker that is not the boolean true is dropped with its reason, and a non-string reason is stored as ""',
+     !r.threw && Array.isArray(r.e0) && r.e0.length === 0 && JSON.stringify(r.e1) === '[true,""]', r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    const flat = [-13, -11, -9, -7].map((off, n) => lgSess(a, 'f' + n, dayOff(off), LAT, [[25, 18], [25, 18], [25, 18]], { endedAt: 10 + n }));
+    lgRun(a, flat);
+    const streak0 = S.stallStreak('PUSH 1', LAT, 'DB lateral raise');
+    S.startWorkout('PUSH 1');
+    S.prompt = () => 'shoulder';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    const row = lgToday(a), e = row && row.entries[LAT];
+    const w1 = S.addWeightInfo('PUSH 1', LAT, 'DB lateral raise'), s1 = S.stallStreak('PUSH 1', LAT, 'DB lateral raise');
+    const marked = !!e && e.skipped === true;
+    delete e.skipped; delete e.reason;
+    const w2 = S.addWeightInfo('PUSH 1', LAT, 'DB lateral raise'), s2 = S.stallStreak('PUSH 1', LAT, 'DB lateral raise');
+    return { streak0, marked, top: [w1 && w1.allTop, w2 && w2.allTop], streak: [s1, s2] };
+  });
+  ok('D-09: with the marker deleted (what an older build sees) Add weight stays blocked and the stall streak is unchanged',
+     !r.threw && r.streak0 >= 3 && r.marked && JSON.stringify(r.top) === '[false,false]' && r.streak[0] === r.streak[1], r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    const before = lgCard(a, LAT).includes('class="flag"');
+    S.deloadExercise(LAT);
+    S.prompt = () => '';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    const row = lgToday(a);
+    return { before, deload: row && row.entries[LAT].deload, flag: lgCard(a, LAT).includes('class="flag"') };
+  });
+  ok('D-22/LOG-05: deload then skip with nothing done still blocks Add weight next time',
+     !r.threw && r.before === true && r.deload === false && r.flag === false, r);
+}
+let lgExportApp = null;
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), S = a.__sandbox, LAT = lgLat(a);
+    spyPushes(a);
+    S.confettiBurst = () => {};   // a first-time lift is a PR, and the harness canvas has no 2D context
+    lgRun(a, lgHist(a, LAT));
+    S.startWorkout('PUSH 1');
+    a.setVal(LAT, 0, 'w', '27.5'); a.setVal(LAT, 0, 'r', '20');
+    S.prompt = () => 'shoulder';
+    S.skipExercise(LAT);
+    S.finishWorkout();
+    lgExportApp = a;
+    const e = lgToday(a).entries[LAT];
+    return { sets: e.sets.map(x => [x.skipped, x.r]), flag: lgCard(a, LAT).includes('class="flag"') };
+  });
+  ok('LOG-05: a partial skip (one set at the top, the rest skipped) blocks Add weight next time',
+     !r.threw && JSON.stringify(r.sets) === '[[false,"20"],[true,""],[true,""]]' && r.flag === false, r);
+}
+{
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), LAT = lgLat(a);
+    const row = lgSess(a, 'bk', dayOff(-1), LAT, [[0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder' });
+    const valid = a.validateBackup(Object.assign(a.blank(), { sessions: [row] }));
+    const plain = JSON.parse(JSON.stringify(row));
+    delete plain.entries[LAT].skipped; delete plain.entries[LAT].reason;
+    const local = Object.assign(a.blank(), { sessions: [Object.assign(plain, { mtime: 1000 })], updatedAt: 1000 });
+    const remote = Object.assign(a.blank(), { sessions: [Object.assign(JSON.parse(JSON.stringify(row)), { mtime: 2000 })], updatedAt: 2000 });
+    const pick = db => { const s = db.sessions.find(z => z.id === 'bk'); return s ? [s.entries[LAT].skipped, s.entries[LAT].reason] : null; };
+    const merged = a.mergeDB(remote, JSON.parse(JSON.stringify(local)), false);
+    const replay = a.mergeDB(JSON.parse(JSON.stringify(merged)), JSON.parse(JSON.stringify(local)), false);
+    const reverse = a.mergeDB(JSON.parse(JSON.stringify(local)), JSON.parse(JSON.stringify(merged)), false);
+    return { valid, merged: pick(merged), replay: pick(replay), reverse: pick(reverse), schema: a.SCHEMA };
+  });
+  ok('D-09/D-23: validateBackup accepts the marker, the newer copy keeps it through the merge and a stale-device replay, and SCHEMA stays 19',
+     !r.threw && r.valid === null && JSON.stringify(r.merged) === '[true,"shoulder"]' && JSON.stringify(r.replay) === '[true,"shoulder"]'
+       && JSON.stringify(r.reverse) === '[true,"shoulder"]' && r.schema === 19, r);
+}
+{
+  const r = lgTry(() => {
+    const a = lgExportApp, LAT = lgLat(a);
+    const md = a.buildMarkdownExport();
+    const lat = md.split('\n').filter(l => l.includes(a.todayISO()) && l.includes('DB lateral raise'));
+    const dashed = lat.filter(l => /\|\s*—\s*\|\s*—\s*\|\s*$/.test(l));
+    return { skipped: lgToday(a).entries[LAT].sets.filter(x => x.skipped).length, lat: lat.length, dashed: dashed.length,
+             leak: ['_preSkip', '_cel', 'rest skipped'].filter(s => md.includes(s)), sample: lat.slice(0, 3) };
+  });
+  ok('D-18/D-23: the export lists each skipped set as a row of — cells and carries no draft-only field or skip copy',
+     !r.threw && r.skipped === 2 && r.lat === 3 && r.dashed === 2 && r.leak.length === 0, r);
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
