@@ -10538,6 +10538,274 @@ const lgLatCard = (a, LAT) => f2AppHtml(a).split('<div class="ex-card">')[LAT + 
   a.DB.draft = null;
 }
 
+/* The history panel's rows and the toggle, rule by rule (LOG-01, D-01 to D-07, D-24). Each case is a fresh
+   instance holding only the sessions it lists, in stored order, with a PUSH 1 draft started over them.
+   lgRows cuts the open panel's rows out of a card; a row holds spans only, never a <div>. */
+const lgRows = card => [...String(card).matchAll(/<div class="exh-row"[^>]*>([\s\S]*?)<\/div>/g)].map(m => m[1]);
+const lgPanelCard = (a, i) => { a.__sandbox.toggleExHist(i); return a.viewActive().split('<div class="ex-card">')[i + 1] || ''; };
+const lgRowHead = (a, date, wk) => '<span class="exh-date">' + a.esc(a.fmtDate(date)) + '</span> · <span class="muted" style="font-size:12px">' + a.esc(wk) + '</span> — ';
+const lgPanelCase = (list, fn) => lgCase(list, (a, LAT) => { a.__sandbox.startWorkout('PUSH 1'); return fn(a, LAT); });
+const LG_DELOAD = '<span class="muted" style="font-size:12px"> ↓ deload</span>';
+const LG_MEMO = String.fromCodePoint(0x1F4DD);
+{
+  const D = [-14, -12, -10, -8, -6, -4, -2];
+  const r = lgPanelCase((a, LAT) => D.map((d, k) => lgSess(a, 'o' + (k + 1), dayOff(d), LAT, [[20 + k, 20]])), (a, LAT) => {
+    const card = lgPanelCard(a, LAT), rows = lgRows(card);
+    return { label: card.includes('<div class="exh-label">Last 5 sessions · any workout</div>'), n: rows.length,
+             order: rows.map(x => D.findIndex(d => x.startsWith(lgRowHead(a, dayOff(d), 'PUSH 1')))),
+             ids: a.__sandbox.exerciseRecent(a.exKey('DB lateral raise'), 5).map(x => x.s.id) };
+  });
+  ok('D-01: seven sessions give exactly 5 rows, newest first, under "Last 5 sessions · any workout"',
+     !r.threw && r.label && r.n === 5 && JSON.stringify(r.order) === '[6,5,4,3,2]', r);
+  ok('D-01: exerciseRecent returns the same five sessions in the same order',
+     !r.threw && JSON.stringify(r.ids) === JSON.stringify(['o7', 'o6', 'o5', 'o4', 'o3']), r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 't1', dayOff(-3), LAT, [[20, 20]], { endedAt: 1 }), lgSess(a, 't2', dayOff(-3), LAT, [[22.5, 20]], { endedAt: 2 })],
+    (a, LAT) => ({ ids: a.__sandbox.exerciseRecent(a.exKey('DB lateral raise'), 5).map(x => x.s.id),
+                   rows: lgRows(lgPanelCard(a, LAT)), w: a.__sandbox.fmtSet('22.5', '20') }));
+  ok('D-01: two sessions on one date list the later-ended one first',
+     !r.threw && JSON.stringify(r.ids) === '["t2","t1"]' && r.rows.length === 2 && r.rows[0].includes(r.w), r);
+}
+{
+  const ALIAS = '  db LATERAL   Raise ';
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'p1', dayOff(-6), 0, [[20, 15]], { workout: 'PULL 1' }),
+                                lgSess(a, 'al', dayOff(-4), LAT, [[22.5, 20]], { name: ALIAS }),
+                                lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const rows = lgRows(lgPanelCard(a, LAT));
+    return { same: a.exKey(ALIAS) === a.exKey(a.DB.draft.entries[LAT]), n: rows.length,
+             pull: rows.length === 3 && rows[2].startsWith(lgRowHead(a, dayOff(-6), 'PULL 1')),
+             alias: rows.length === 3 && rows[1].startsWith(lgRowHead(a, dayOff(-4), 'PUSH 1')) };
+  });
+  ok('D-01: a PULL 1 session holding the exercise gives a row labelled PULL 1, and an alias spelling of the same exKey counts',
+     !r.threw && r.same && r.n === 3 && r.pull && r.alias, r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'lw', dayOff(-5), LAT, [[20, 20]], { name: 'Lean-away lateral raise' }),
+                                lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const before = lgRows(lgPanelCard(a, LAT)).length;
+    const merged = a.exMerge(a.exEnsure('Lean-away lateral raise'), a.exEnsure('DB lateral raise'));
+    a.render();
+    const after = lgRows(a.viewActive().split('<div class="ex-card">')[LAT + 1] || '');
+    return { before, merged, after: after.length, lw: after.length === 2 && after[1].startsWith(lgRowHead(a, dayOff(-5), 'PUSH 1')) };
+  });
+  ok('D-01/PROG-04: an exercise folded in by exMerge gives rows only after the merge',
+     !r.threw && r.before === 1 && r.merged === true && r.after === 2 && r.lw, r);
+}
+{
+  /* D-02/D-03 markers. The oldest session is the heaviest, so no later set takes the trophy. */
+  const r = lgPanelCase((a, LAT) => [
+    lgSess(a, 'd', dayOff(-10), LAT, [[30, 20], [30, 20]], { deload: true }),
+    lgSess(a, 'k1', dayOff(-8), LAT, [[0, 0, true], [0, 0, true]], { skipped: true, reason: 'shoulder' }),
+    lgSess(a, 'k2', dayOff(-6), LAT, [[25, 20], [0, 0, true]], { skipped: true, reason: 'shoulder' }),
+    lgSess(a, 's1', dayOff(-4), LAT, [[25, 20], [0, 0, true, 'elbow'], [0, 0, true]]),
+    lgSess(a, 'b', dayOff(-2), LAT, [], { blankSets: 3 }),
+  ], (a, LAT) => ({ rows: lgRows(lgPanelCard(a, LAT)), set: a.__sandbox.fmtSet('25', '20'),
+                    h: [-2, -4, -6, -8].map(d => lgRowHead(a, dayOff(d), 'PUSH 1')) }));
+  const R = r.rows || [], h = r.h || [];
+  ok('D-02/D-03: a deload entry\'s row ends its sets with the muted ↓ deload marker',
+     !r.threw && R.length === 5 && R[4].endsWith(LG_DELOAD), r);
+  ok('D-02: an all-skipped entry with a reason reads "— skipped: <em>shoulder</em>"',
+     !r.threw && R[3] === h[3] + 'skipped: <em>shoulder</em>', r);
+  ok('D-02: one done set then the marker reads the set, then "· rest skipped: <em>shoulder</em>"',
+     !r.threw && R[2] === h[2] + r.set + ' · rest skipped: <em>shoulder</em>', r);
+  ok('D-02: a single skipped set reads <em>skip: elbow</em> in its place, and one with no reason <em>skip</em>',
+     !r.threw && R[1] === h[1] + r.set + ', <em>skip: elbow</em>, <em>skip</em>', r);
+  ok('D-02: an entry with blank sets only reads "— no sets logged"',
+     !r.threw && R[0] === h[0] + 'no sets logged', r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'p1', dayOff(-4), LAT, [[20, 20]]),
+                                lgSess(a, 'p2', dayOff(-2), LAT, [[25, 20], [22.5, 20]], { note: 'felt heavy' })], (a, LAT) => {
+    const S = a.__sandbox, idx = a.prSetIndex(), byId = id => a.DB.sessions.find(s => s.id === id);
+    const p1 = byId('p1'), p2 = byId('p2');
+    const pr = [idx.isPR(p2, p2.entries[LAT], 0), idx.isPR(p2, p2.entries[LAT], 1), idx.isPR(p1, p1.entries[LAT], 0)];
+    const t = (w, rp, on) => S.fmtSet(w, rp) + (on ? ' ' + LG_TROPHY : '');
+    return { pr, rows: lgRows(lgPanelCard(a, LAT)),
+             want: [lgRowHead(a, dayOff(-2), 'PUSH 1') + t('25', '20', pr[0]) + ', ' + t('22.5', '20', pr[1])
+                      + '<span class="exh-note">' + LG_MEMO + ' felt heavy</span>',
+                    lgRowHead(a, dayOff(-4), 'PUSH 1') + t('20', '20', pr[2])] };
+  });
+  ok('D-02: a set prSetIndex marks carries the trophy, a set it does not mark has none, and the note sits on its own line',
+     !r.threw && JSON.stringify(r.pr) === '[true,false,true]' && JSON.stringify(r.rows) === JSON.stringify(r.want), r);
+}
+{
+  const r = lgPanelCase((a, LAT) => {
+    const del = lgSess(a, 'gone', dayOff(-5), LAT, [[40, 20]]); del.deletedAt = 1;
+    const day = lgSess(a, 'sday', dayOff(-3), LAT, [[45, 20]]); day.skipped = true; day.reason = 'sick';
+    return [lgSess(a, 'h1', dayOff(-9), LAT, [[20, 20]]), del, day, lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])];
+  }, (a, LAT) => {
+    const raw = a.DB.sessions.filter(s => (s.entries[LAT].sets || []).length).map(s => s.id);
+    const rows = lgRows(lgPanelCard(a, LAT));
+    return { raw, n: rows.length, dates: rows.map(x => [-2, -3, -5, -9].findIndex(d => x.startsWith(lgRowHead(a, dayOff(d), 'PUSH 1')))) };
+  });
+  ok('D-04: a soft-deleted session and a skipped day that carries the exercise give no row',
+     !r.threw && JSON.stringify(r.raw) === '["h1","gone","sday","h2"]' && r.n === 2 && JSON.stringify(r.dates) === '[0,3]', r);
+}
+{
+  const r = lgCase((a, LAT) => [lgSess(a, 'h1', dayOff(-9), LAT, [[20, 20]]), lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    a.__sandbox.editSession(a.DB.sessions.findIndex(s => s.id === 'h2'));
+    const card = lgPanelCard(a, LAT), rows = lgRows(card);
+    return { edit: a.DB.draft && a.DB.draft.editRef, label: card.includes('<div class="exh-label">Last session · any workout</div>'),
+             n: rows.length, h1: rows.length === 1 && rows[0].startsWith(lgRowHead(a, dayOff(-9), 'PUSH 1')) };
+  });
+  ok('D-05: the session being edited is left out, and one row reads "Last session · any workout"',
+     !r.threw && r.edit === 'h2' && r.label && r.n === 1 && r.h1, r);
+}
+{
+  const r = lgCase((a, LAT) => [lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    a.__sandbox.editSession(0);
+    const card = lgPanelCard(a, LAT);
+    return { label: card.includes('exh-label'),
+             empty: card.includes('<div class="exh-row" style="border-top:0">No other sessions of this exercise yet.</div>'),
+             link: controlsIn(card).filter(c => c.data.action === 'openExChart' && c.tag === 'button').length };
+  });
+  ok('D-05: editing the one session that holds the exercise shows no label, the empty copy, and the chart link',
+     !r.threw && !r.label && r.empty && r.link === 1, r);
+}
+{
+  /* D-06: one panel at a time, and no tap writes. Slot 0 and the lateral raise both have history. */
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 's0', dayOff(-3), 0, [[100, 8]], { name: a.PROGRAM['PUSH 1'].slots[0].examples[0] }),
+                                lgSess(a, 'l0', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const spy = spyPushes(a);
+    const base = { blob: JSON.stringify(a.__stored()), d: canon(a.DB.draft), u: a.DB.updatedAt, n: spy.n };
+    const same = () => JSON.stringify(a.__stored()) === base.blob && canon(a.DB.draft) === base.d
+      && a.DB.updatedAt === base.u && spy.n === base.n && a.TAB === 'train' && a.subState.train === 'log';
+    const tap = i => { const c = f2Find(a, f2At('toggleExHist', i)); if(c) fireListener(a, 'click', fakeEl(c.data)); return !!c; };
+    const out = { lat: LAT };
+    out.t1 = tap(0); out.s1 = same();
+    out.t2 = tap(LAT); out.s2 = same();
+    const v = a.viewActive(), c0 = v.split('<div class="ex-card">')[1] || '';
+    out.trues = v.split('aria-expanded="true"').length - 1;
+    out.a = { closed: c0.includes('aria-expanded="false"'), panel: c0.includes('class="exh"') };
+    out.t3 = tap(LAT); out.s3 = same();
+    out.zero = a.viewActive().split('aria-expanded="true"').length - 1;
+    return out;
+  });
+  ok('D-06: opening a second card\'s panel closes the first, so exactly one aria-expanded="true" renders',
+     !r.threw && r.lat !== 0 && r.t1 && r.t2 && r.trues === 1 && r.a.closed && !r.a.panel, r);
+  ok('D-06: tapping the open line again leaves no panel open',
+     !r.threw && r.t3 && r.zero === 0, r);
+  ok('D-06/LOG-01: no tap writes the stored blob, the draft or updatedAt, pushes, or leaves Train → Log',
+     !r.threw && r.s1 && r.s2 && r.s3, r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const path = nm => (new RegExp("'" + nm + "':'(<path d=\"[^\"]*\")").exec(a.__src) || [])[1] || null;
+    const cue = card => { const k = card.indexOf('<span class="muted" style="font-size:12px;margin-left:4px">'); return k < 0 ? '' : card.slice(k, card.indexOf('</span>', k)); };
+    const closed = cue(a.viewActive().split('<div class="ex-card">')[LAT + 1] || ''), open = cue(lgPanelCard(a, LAT));
+    const up = path('caret-up'), down = path('caret-down');
+    return { up: !!up, down: !!down, closed: [closed.includes(down), closed.includes(up)], open: [open.includes(up), open.includes(down)] };
+  });
+  ok('D-06: the closed line\'s cue is the caret-down icon and the open line\'s is caret-up',
+     !r.threw && r.up && r.down && JSON.stringify(r.closed) === '[true,false]' && JSON.stringify(r.open) === '[true,false]', r);
+}
+{
+  /* D-07/D-24: no real history means no control and no panel, even when openExHist names the slot. */
+  const plain = (a, i) => {
+    const card = lgLatCard(a, i), ctl = f2Find(a, f2At('toggleExHist', i));
+    a.__sandbox.toggleExHist(i);
+    return { div: card.includes('<div class="lasttime">'), copy: card.includes('No previous data — set your baseline.'),
+             ctl: !!ctl, panel: lgLatCard(a, i).includes('class="exh"') };
+  };
+  const isPlain = x => x && x.div && x.copy && !x.ctl && !x.panel;
+  const ex0 = (a, LAT) => a.PROGRAM['PUSH 1'].slots[LAT].examples[0];
+  const r0 = lgPanelCase((a, LAT) => [lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], a => plain(a, 0));
+  ok('D-07: a slot with no history keeps the plain "No previous data" line, has no toggleExHist control, and a direct toggle opens no panel',
+     !r0.threw && isPlain(r0), r0);
+  const rs = lgPanelCase((a, LAT) => [lgSess(a, 'k', dayOff(-3), LAT, [[0, 0, true], [0, 0, true]], { name: ex0(a, LAT), skipped: true, reason: 'x' })],
+    (a, LAT) => Object.assign(plain(a, LAT), { name: a.DB.draft.entries[LAT].name === ex0(a, LAT) }));
+  ok('D-24: a slot whose only history is one all-skipped attempt is not tappable and opens no panel',
+     !rs.threw && rs.name && isPlain(rs), rs);
+  const rd = lgPanelCase((a, LAT) => [lgSess(a, 'd', dayOff(-3), LAT, [[20, 20]], { name: ex0(a, LAT), deload: true })],
+    (a, LAT) => Object.assign(plain(a, LAT), { name: a.DB.draft.entries[LAT].name === ex0(a, LAT) }));
+  ok('D-24: a slot whose only history is one deloaded attempt is not tappable and opens no panel',
+     !rd.threw && rd.name && isPlain(rd), rd);
+  const rp = lgPanelCase((a, LAT) => [lgSess(a, 'x1', dayOff(-3), 0, [[15, 15]], { workout: 'PULL 1', name: ex0(a, LAT) })], (a, LAT) => {
+    const ctl = f2Find(a, f2At('toggleExHist', LAT));
+    if(ctl) fireListener(a, 'click', fakeEl(ctl.data));
+    const rows = lgRows(lgLatCard(a, LAT));
+    return { tag: ctl && ctl.tag, n: rows.length, pull: rows.length === 1 && rows[0].startsWith(lgRowHead(a, dayOff(-3), 'PULL 1')) };
+  });
+  ok('D-07: history found only in PULL 1 makes the PUSH 1 line a toggleExHist button, and its panel lists the PULL 1 row',
+     !rp.threw && rp.tag === 'button' && rp.n === 1 && rp.pull, rp);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'h2', dayOff(-4), LAT, [[25, 20]]),
+                                lgSess(a, 'o1', dayOff(-2), 0, [[60, 10]], { workout: 'PULL 1', name: a.PROGRAM['PULL 1'].slots[0].examples[0] })], (a, LAT) => {
+    a.__sandbox.toggleExHist(LAT);
+    a.DB.draft.entries[LAT].name = a.PROGRAM['PULL 1'].slots[0].examples[0]; a.render();
+    const c1 = lgLatCard(a, LAT), rows = lgRows(c1);
+    const other = { panel: c1.includes('class="exh"'), n: rows.length, pull: rows.length === 1 && rows[0].startsWith(lgRowHead(a, dayOff(-2), 'PULL 1')),
+                    ctl: !!f2Find(a, f2At('toggleExHist', LAT)) };
+    a.DB.draft.entries[LAT].name = 'Never logged zz lift'; a.render();
+    const c2 = lgLatCard(a, LAT);
+    return { other, none: { panel: c2.includes('class="exh"'), ctl: !!f2Find(a, f2At('toggleExHist', LAT)) } };
+  });
+  ok('LOG-01: the panel follows the slot, showing a swapped-in exercise\'s rows, and nothing for one never logged',
+     !r.threw && r.other.panel && r.other.n === 1 && r.other.pull && r.other.ctl && !r.none.panel && !r.none.ctl, r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const S = a.__sandbox, fire = (act, i) => { const c = f2Find(a, f2At(act, i)); if(c) fireListener(a, 'click', fakeEl(c.data)); return !!c; };
+    const view = () => { const c = lgLatCard(a, LAT); return { panel: c.includes('class="exh"'), open: c.includes('aria-expanded="true"'), slot: a.openExHist }; };
+    S.toggleExHist(LAT);
+    S.prompt = () => 'x';
+    const sk = fire('skipExercise', LAT), skipped = view();
+    const un = fire('unskipExercise', LAT), back = view();
+    S.toggleExCollapse(LAT);
+    const collapsed = view();
+    const ex = fire('toggleExCollapse', LAT), expanded = view();
+    return { sk, un, ex, skipped, back, collapsed, expanded };
+  });
+  ok('LOG-01: a skipped card shows no panel and keeps openExHist, and Undo brings the panel back open',
+     !r.threw && r.sk && r.un && !r.skipped.panel && r.skipped.slot === r.back.slot && r.back.panel && r.back.open, r);
+  ok('LOG-01: a collapsed card shows no panel and keeps openExHist, and expanding it brings the panel back open',
+     !r.threw && r.ex && !r.collapsed.panel && r.collapsed.slot !== -1 && r.expanded.panel && r.expanded.open, r);
+}
+{
+  const r = lgPanelCase((a, LAT) => [lgSess(a, 'h1', dayOff(-4), LAT, [[22.5, 20]], { workout: 'PULL 1' }), lgSess(a, 'h2', dayOff(-2), LAT, [[25, 20]])], (a, LAT) => {
+    const closed = a.viewActive().split('<div class="ex-card">').length;
+    const card = lgPanelCard(a, LAT);
+    return { closed, open: a.viewActive().split('<div class="ex-card">').length, panel: card.includes('class="exh"'),
+             pin: /Last time \([^)]*\):/.test(card), text: card.includes('Last time (') };
+  });
+  ok('LOG-01: an open panel holds no card opener, so every card splits where it did, and the Last time pins still match',
+     !r.threw && r.panel && r.open === r.closed && r.pin && r.text, r);
+}
+{
+  const r = lgPanelCase((a, LAT) => {
+    const w = lgSess(a, 'e4', dayOff(-2), LAT, [[25, 20]]); w.workout = EVIL;
+    return [lgSess(a, 'e1', dayOff(-8), LAT, [[25, 20]], { note: EVIL }),
+            lgSess(a, 'e2', dayOff(-6), LAT, [[25, 20], [0, 0, true, EVIL]]),
+            lgSess(a, 'e3', dayOff(-4), LAT, [[25, 20], [0, 0, true]], { skipped: true, reason: EVIL }), w];
+  }, (a, LAT) => {
+    const card = lgPanelCard(a, LAT), rows = lgRows(card), E = a.esc(EVIL);
+    return { n: rows.length, esc: card.includes('&quot;&gt;&lt;img'), img: card.includes('<img'),
+             attr: JSON.stringify(controlsIn(card)).includes('img'),
+             fields: [rows.some(x => x.includes('<span class="muted" style="font-size:12px">' + E + '</span>')),
+                      rows.some(x => x.includes('<em>skip: ' + E + '</em>')),
+                      rows.some(x => x.includes('rest skipped: <em>' + E + '</em>')),
+                      rows.some(x => x.includes('<span class="exh-note">' + LG_MEMO + ' ' + E + '</span>'))] };
+  });
+  ok('T-10-20/LOG-01: a hostile workout label, note, set reason and skip reason render as escaped text in the panel, never as markup or in an attribute',
+     !r.threw && r.n === 4 && r.esc && !r.img && !r.attr && JSON.stringify(r.fields) === '[true,true,true,true]', r);
+}
+{
+  const LONG = 'Felt heavy & slow on the last set, shoulder fine. '.repeat(7).slice(0, 300);
+  const r = lgPanelCase((a, LAT) => {
+    const key = Object.keys(a.PROGRAM).find(k => k.includes('&'));
+    const s = lgSess(a, 'lg2', dayOff(-2), LAT, [[25, 20]]); s.workout = key;
+    return [lgSess(a, 'lg1', dayOff(-4), LAT, [[25, 20]], { note: LONG }), s];
+  }, (a, LAT) => {
+    const key = Object.keys(a.PROGRAM).find(k => k.includes('&')), card = lgPanelCard(a, LAT);
+    return { key, len: LONG.length, label: card.includes('<span class="muted" style="font-size:12px">' + a.esc(key) + '</span>'),
+             note: card.includes('<span class="exh-note">' + LG_MEMO + ' ' + a.esc(LONG) + '</span>') };
+  });
+  ok('LOG-01: a long workout label with & and a 300-character note render whole in the panel',
+     !r.threw && !!r.key && r.len === 300 && r.label && r.note, r);
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
