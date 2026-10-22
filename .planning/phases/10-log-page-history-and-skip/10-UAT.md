@@ -66,3 +66,4 @@ blocked: 0
     - "Controls as a tight, evenly spaced group with centred glyphs"
     - "npm run csp:hash (the header template is inside the inline script)"
   debug_session: .planning/debug/log-card-header-spacing.md
+  decision: "Ian chose 2026-10-22: TWO ROWS (row 1 = meta/how-to left, skip + collapse as a tight right-pinned pair aligned with the per-set skip/× column; row 2 = rep-range badge + Add weight flag together, flex-wrap, left-aligned, no <br>) and fix the icon display GLOBALLY (.ph inline, so the Last time caret, skip-note icon and Warm-up/Rest icons also sit inline), with a visual check across the affected screens."
