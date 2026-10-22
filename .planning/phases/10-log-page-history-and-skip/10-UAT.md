@@ -1,5 +1,5 @@
 ---
-status: complete
+status: diagnosed
 phase: 10-log-page-history-and-skip
 source: [10-VERIFICATION.md]
 started: 2026-10-20T14:06:07Z
@@ -54,5 +54,15 @@ blocked: 0
   reason: "User reported: awkward spacing for the skip, history and other header buttons on the workout card; wants them all on one line or on clearly separate lines (screenshot: chart icon wraps under the muscle/pattern/how-to text, skip + collapse icons float with uneven gaps before the rep pill, Add weight badge wraps to its own line)"
   severity: cosmetic
   test: 5
-  artifacts: []
-  missing: []
+  root_cause: "Four causes. (1) Global svg{display:block} (index.html:219, the weight-chart rule) leaks into Phosphor .ph icons (index.html:199 never sets display), so the how-to arrow-square-out icon inside the inline <a> starts its own line; the same leak puts the Last time caret and the per-set .skip-note icon on their own lines. (2) .ex-head (index.html:94) is flex with justify-content:space-between and no grow on the meta, so leftover width lands between how-to and the skip button. (3) .ex-skip (index.html:84) is a 32px box with its glyph pinned left by (1), plus margin-right:4px and template whitespace, so gaps are 25px vs 4px. (4) The template puts the Add weight flag after a <br> in the nowrap right column (index.html:2192), so it wraps under the badge and can squeeze the meta to 5 lines with long flags. (1),(2),(4) predate Phase 10; 10-01 widened the rigid column by 40px."
+  artifacts:
+    - path: "index.html"
+      issue: "svg{display:block} at 219 leaks into .ph (199); .ex-head space-between at 94; .ex-skip sizing at 84; header template 2187-2194 (nowrap column, whitespace nodes, <br>+flag)"
+    - path: "test/app.test.js"
+      issue: "D-12 test at 9817-9824 pins the literal inline-style wording of the right column; must be retargeted to the property"
+  missing:
+    - "Icons render inline inside text (scoped .ex-meta .ph, or global .ph with a visual check across screens)"
+    - "A deliberate header structure at 380 and 412px: either one line, or title+controls row then a targets row (badge + flag) — Ian to choose"
+    - "Controls as a tight, evenly spaced group with centred glyphs"
+    - "npm run csp:hash (the header template is inside the inline script)"
+  debug_session: .planning/debug/log-card-header-spacing.md
