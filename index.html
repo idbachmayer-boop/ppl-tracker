@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-YqyU1GkbjGfE6MvOw4GtpHimhDverzR/ZJysw4nOlO8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-0uN7UigdWA9PHXLfLFAfIeQAhQ4rM6vos8Z0G4rxrv8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -81,7 +81,11 @@
     .flag { font-size: 11px; font-weight: 700; color: var(--flag-fg); background: var(--flag-bg); border: 1px solid var(--flag-bd); border-radius: 6px; padding: 2px 8px; }
 
     /* Exercise log card */
-    .ex-skip { min-width: 32px; min-height: 32px; margin-right: 4px; vertical-align: middle; }
+    .ex-head > .ex-meta { flex: 1 1 auto; min-width: 0; margin-top: 0; align-self: center; }
+    /* The two 32px boxes abut, and the 4px pull into .ex-body's 14px padding centres the caret glyph over the per-set × column and leaves the skip glyph 3px from the per-set skip column. */
+    .ex-controls { display: flex; align-items: center; flex: none; align-self: center; margin-right: -4px; }
+    .ex-controls .skip-set { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
+    .ex-targets { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: -4px 0 8px; }
     .exh { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 4px 12px; margin: -4px 0 12px; }
     .exh-label { font-size: 12px; line-height: 1.5; color: var(--muted); padding: 8px 0 4px; }
     .exh-row { font-size: 12px; line-height: 1.5; color: var(--text-2); padding: 8px 0; border-top: 1px solid var(--border-3); }
@@ -195,8 +199,10 @@
     .tab .ic { font-size: 19px; line-height: 1; display: flex; }
 
     /* Phosphor icons. Sized in em on purpose: several call sites already set the icon size with
-       an inline font-size on a wrapper span, and em keeps those working untouched. */
-    .ph { width: 1.15em; height: 1.15em; vertical-align: -.22em; flex: 0 0 auto; }
+       an inline font-size on a wrapper span, and em keeps those working untouched. The bare `svg`
+       rule in the Weight chart block belongs to the charts; without the display declaration here
+       every Phosphor icon took its block display and started its own line (G-10-5). */
+    .ph { display: inline-block; width: 1.15em; height: 1.15em; vertical-align: -.22em; flex: 0 0 auto; }
     .card-label .ph, h2 .ph, h3 .ph { width: 1em; height: 1em; vertical-align: -.13em; margin-right: .38em; }
     .tab .ic .ph { width: 22px; height: 22px; vertical-align: 0; }
     .fab .ph { width: 24px; height: 24px; }
@@ -2185,13 +2191,10 @@ function viewActive(){
       <div class="ex-accent ${barClass(g)}"></div>
       <div class="ex-body">
         <div class="ex-head">
-          <div><div class="ex-meta">${s.muscle} · ${s.movement}${s.note?' · '+s.note:''} · <a href="${gsearch(entry.name)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">how-to ${ph('arrow-square-out')}</a></div></div>
-          <div style="text-align:right;white-space:nowrap">
-            ${exUnfinished(entry).length ? `<button class="skip-set ex-skip" data-action="skipExercise" data-i="${esc(i)}" title="skip this exercise" aria-label="Skip this exercise">${ph('skip-forward')}</button>` : ''}
-            <button class="skip-set" data-action="toggleExCollapse" data-i="${esc(i)}" title="collapse" style="font-size:16px;vertical-align:middle">${ph('caret-up')}</button>
-            <span class="range-badge">${rangeText(rng)} reps</span>${flag?'<br>'+flag:''}
-          </div>
+          <div class="ex-meta">${s.muscle} · ${s.movement}${s.note?' · '+s.note:''} · <a href="${gsearch(entry.name)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600;white-space:nowrap">how-to ${ph('arrow-square-out')}</a></div>
+          <div class="ex-controls">${exUnfinished(entry).length ? `<button class="skip-set" data-action="skipExercise" data-i="${esc(i)}" title="skip this exercise" aria-label="Skip this exercise">${ph('skip-forward')}</button>` : ''}<button class="skip-set" data-action="toggleExCollapse" data-i="${esc(i)}" title="collapse">${ph('caret-up')}</button></div>
         </div>
+        <div class="ex-targets"><span class="range-badge">${rangeText(rng)} reps</span>${flag}</div>
         <select data-action="pickEx" data-i="${esc(i)}">${opts}</select>
         ${equipAsk.has(exKey(entry))
           ? equipPickerHTML(exKey(entry), entry.name)
