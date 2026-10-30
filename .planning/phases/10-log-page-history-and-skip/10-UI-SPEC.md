@@ -40,7 +40,7 @@ colour, font or icon. Every icon used is already in the `PH` map: `skip-forward`
 | Tool | none (single-file vanilla PWA, no build step; the shadcn gate does not apply, since the stack is not React/Next/Vite) |
 | Preset | not applicable |
 | Component library | none. Hand-written classes in `index.html` `<style>`: `.ex-card`/`.ex-accent`/`.ex-body`/`.ex-head`, `.lasttime`, `.last-note`, `.skip-note`, `.skip-set`, `.range-badge`, `.flag`, `.hist-item`, `.hist-detail`, `.btn`/`.btn-ghost`/`.btn-sm`, `.muted`, `:where(button.tap)` |
-| Icon library | Phosphor, inlined in the `PH` map via `ph(name, cls)`. **No new `PH` entry in this phase.** Used: `skip-forward` (skip, as on per-set and stair skips), `caret-down`/`caret-up` (open cue on the Last time line), `caret-right` (chart link), `caret-left` (back control) |
+| Icon library | Phosphor, inlined in the `PH` map via `ph(name, cls)`. **No new `PH` entry in this phase.** Used: `skip-forward` (skip, as on per-set and stair skips), `caret-down`/`caret-up` (open cue on the Last time line), `caret-right` (chart link), `caret-left` (back control). `.ph` is `display: inline-block` (G-10-5): the bare `svg { display:block }` rule belongs to the charts, and an icon placed before text outside a button or heading takes the `lead` class |
 | Font | System stack `-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif`. No `--font-mono` text added |
 | Theme | Nocturne. Every colour is a `:root` custom property; no hex literal in any new rule or inline style |
 
@@ -57,8 +57,8 @@ Declared values for new elements (multiples of 4):
 
 | Token | Value | Usage in this phase |
 |-------|-------|---------------------|
-| xs | 4px | Gap between the S1 skip button and the caret (`margin-right:4px`); S4 panel top and bottom padding; S4 link bottom padding; space before the S3 open cue |
-| sm | 8px | S4 row padding (top and bottom); S4 label top padding; S4 link top padding |
+| xs | 4px | Gap from header row 1 to row 2 (`.ex-targets` `margin-top:-4px` after `.ex-head`'s 8px), and the targets row's row-gap when the flag wraps; S4 panel top and bottom padding; S4 link bottom padding; space before the S3 open cue. The S1 and caret boxes abut, so there is no gap token between them (G-10-5) |
+| sm | 8px | Badge-to-flag gap on the targets row (`gap: 4px 8px`); S4 row padding (top and bottom); S4 label top padding; S4 link top padding |
 | md | 16px | S5 back control `margin-bottom` before `<h1>Progress</h1>` |
 | lg | 24px | Not used |
 | xl | 32px | S1 minimum tap area (see Exceptions) |
@@ -71,21 +71,39 @@ Exceptions:
   bottom margin, `.coach` 10px), and 16px would read as a section break.
 - **-4px top margin on the S4 panel**, the same tuck `.last-note` uses, so the panel reads as the
   Last time line opening downward (10px `.lasttime` bottom margin minus 4px leaves a 6px seam).
-- **32 × 32px minimum tap area on the S1 skip button** (`min-width:32px; min-height:32px`), not 44px.
-  A mis-tap only opens the reason prompt, whose Cancel changes nothing (D-10), so the cost of a miss is
-  one dismissal. 44px would push the header row taller on every card on a 380px phone. The visible icon
-  stays 15px (`.skip-set .ph`), the same as the caret beside it.
+- **32 × 32px tap box on the S1 skip button and the caret** (`.ex-controls .skip-set { width:32px;
+  height:32px }`), not 44px. A mis-tap only opens the reason prompt, whose Cancel changes nothing (D-10),
+  so the cost of a miss is one dismissal. 44px would push the header row taller on every card on a 380px
+  phone. The visible icon stays 15px (`.skip-set .ph`), centred in its box.
+- **-4px right margin on the controls group** (`.ex-controls`, G-10-5): the pull into `.ex-body`'s 14px
+  padding centres the caret glyph over the per-set × column, and leaves the skip glyph 3px from the
+  per-set skip column. Two 32px boxes are 3px wider than the per-set 24px + 5px column pitch, so 3px is
+  the floor while both stay 32 × 32.
 - **Inherited, not re-specified:** `.ex-body` 14px padding, `.lasttime` 7/9px padding and 6/10px margins,
   `.skip-note` 7/9px padding, `.hist-detail` 4/10px padding, `.btn-sm` 6/11px. This phase does not
   touch them. S2 keeps the stair card's `style="margin:0"` on its `.skip-note`.
 
-**Width check at about 380px (Ian's phone).** Card content width is about 318px (380 − 2×16 container −
-2×1 border − 2×14 `.ex-body`). The `.ex-head` right column (`text-align:right; white-space:nowrap`)
-holds, left to right: S1 skip (32px + 4px gap), caret (about 27px), a space, and the range badge (about
-68px for "8–12 reps"): about 135px, leaving about 175px for the muscle/movement/how-to meta, which
-already wraps. When the ⬆ Add weight flag shows, it sits on its own line in that column and is wider
-than the first row, so S1 adds no width in that case. Because the column is right-aligned and S1 is its
-**leftmost** item, hiding S1 (D-12) moves neither the caret nor the badge.
+**Width check at about 380px (Ian's phone), measured (G-10-5, 2026-10-22 decision; headless Chrome
+at 380 and 412px).** Card content width is about 318px (380 − 2×16 container − 2×1 border − 2×14
+`.ex-body`); 350px at 412. The header is two rows:
+- **Row 1** is the meta (`flex: 1 1 auto; min-width: 0`), the 8px `.ex-head` gap, and the 64px control
+  pair pulled 4px into the padding. That leaves the meta about 250px at 380 (282px at 412): one line for
+  every PUSH 1 slot, and two lines, inside the 32px row, for the LEGS 1 Quads slot with its long DB-only
+  note. The row is 32px tall on every card, and the meta's right edge stays 8px clear of the pair.
+- **Row 2** is the range badge plus the ⬆ Add weight flag, with `flex-wrap`, 4px under row 1 and 8px
+  above the select. "→ 27.5 lb" shares the badge's line 8px after it at both widths; the "(belt) or
+  harder variation" flag wraps under the badge's left edge at 380 and shares the line at 412.
+- The caret glyph sits over the per-set × glyph (0px off), the skip glyph 3px off the per-set skip
+  glyph, and nothing in either row leaves the card.
+
+The original check got four things wrong:
+1. It assumed icons render inline. The charts' `svg { display:block }` made every `.ph` a block box,
+   so the how-to icon took a line of its own at any width.
+2. Its badge estimate ignored `--font-mono`, which `.range-badge` and `.flag` use and which is wider.
+3. It treated the flag's forced second line (a literal `<br>`) as free. When the flag was wider than
+   row 1 it set the column's width, and the "(belt)" flag squeezed the meta to five lines at 380px.
+4. Its control spacing was incidental: `space-between` slack, template whitespace and a 4px margin, not
+   a token. The glyph gaps came out 25px (skip to caret) against 4px (caret to badge).
 
 ---
 
@@ -208,20 +226,35 @@ moves past it to the next exercise.
 
 ### S1 — Header skip button (new markup, one new class)
 
-New rule, in the `<style>` block next to `/* Exercise log card */`:
+**Revised 2026-10-22 (G-10-5).** Ian's UAT found the original header awkward at 412px: the how-to
+icon orphaned on its own line, uneven gaps around the controls, and the flag forced onto a second line.
+The two-row structure below replaces the right-hand column.
+
+Rules, in the `<style>` block under `/* Exercise log card */` (`.ex-head` itself is unchanged, because
+the stair-stepper card shares it):
 
 ```css
-.ex-skip { min-width: 32px; min-height: 32px; margin-right: 4px; vertical-align: middle; }
+.ex-head > .ex-meta { flex: 1 1 auto; min-width: 0; margin-top: 0; align-self: center; }
+.ex-controls { display: flex; align-items: center; flex: none; align-self: center; margin-right: -4px; }
+.ex-controls .skip-set { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
+.ex-targets { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: -4px 0 8px; }
 ```
 
-Markup, first item in the `.ex-head` right-hand column, before the existing caret:
+Markup. Row 1 is `.ex-head` with exactly two children; row 2 follows it directly:
 
 ```html
-<button class="skip-set ex-skip" data-action="skipExercise" data-i="{esc(i)}"
-        title="skip this exercise" aria-label="Skip this exercise" style="font-size:16px">{ph('skip-forward')}</button>
-<button class="skip-set" data-action="toggleExCollapse" …>{ph('caret-up')}</button>   (existing, unchanged)
-<span class="range-badge">…</span>{flag}                                              (existing, unchanged)
+<div class="ex-head">
+  <div class="ex-meta">{muscle} · {movement}[ · {note}] · <a href="…" target="_blank" rel="noopener"
+       style="color:var(--link);font-weight:600;white-space:nowrap">how-to {ph('arrow-square-out')}</a></div>
+  <div class="ex-controls">[<button class="skip-set" data-action="skipExercise" data-i="{esc(i)}"
+       title="skip this exercise" aria-label="Skip this exercise">{ph('skip-forward')}</button>]<button
+       class="skip-set" data-action="toggleExCollapse" data-i="{esc(i)}" title="collapse">{ph('caret-up')}</button></div>
+</div>
+<div class="ex-targets"><span class="range-badge">…</span>{flag}</div>
 ```
+
+Hiding S1 (D-12) moves neither the caret nor the badge: the pair is pinned right, so the caret keeps
+its place over the per-set × column, and the badge lives on its own row.
 
 - **Shown only when** the card has at least one unfinished set: a set that is neither done (reps
   entered) nor already skipped. Evaluated at render. Typing the last reps does not re-render, so the
@@ -389,14 +422,14 @@ Applicable state considerations resolved: 19 covered, 2 backstop, 0 unresolved, 
 | error | S4 link for an exercise with no chartable data | ✅ covered | Strength opens on its default exercise (or its existing "Log a few workouts" empty state) with the back control, and nothing throws |
 | long-text | S2 note, S3 note, S6 line | ✅ covered | Long names, set lists and reasons wrap inside the `.skip-note` left span or the text line; Undo stays on the right, `white-space:nowrap`. Nothing truncates |
 | long-text | S4 rows | ✅ covered | A row wraps at 12px inside the panel; a long workout label (`SPECIALIZED — CHEST & TRICEPS`) and a long note wrap; the note keeps its own line |
-| overflow | S1 in the `.ex-head` right column | ✅ covered | About 135px at 380px with S1 present (Spacing § Width check); the flag line, when shown, is already wider, so S1 adds no width. S1 is leftmost in a right-aligned column, so hiding it moves nothing |
+| overflow | S1 in the two-row header (G-10-5) | ✅ covered | Row 1 is the meta plus the 64px right-pinned control pair; row 2 is the badge and flag with flex-wrap (Spacing § Width check). Measured at 380 and 412px: every head 32px tall, no element clipped outside its card, the meta never overlaps the pair, and hiding S1 moves neither the caret nor the badge |
 | unclassified → state | S5 return | ✅ covered | The return point is used once: the next arrival at the Log tab scrolls to the top. It is cleared when a workout starts, finishes, is discarded or is opened for editing |
 | unclassified → state | S2 over collapse and panel state | ✅ covered | A skipped card ignores collapse and panel state without clearing them; Undo brings back the exact previous view |
 | empty | S1 skip button | ✅ covered | With no unfinished set (every set has reps or is already skipped) the button is not rendered (D-12); a stale tap re-checks and returns with no prompt and no write |
 | empty | S2 note with no reason | ✅ covered | An empty prompt answer skips with no reason; the note reads "{name} · skipped" (or done sets + "· rest skipped") with no colon and no empty quotes |
 | zero-one-many | S2 across cards | ✅ covered | Several cards can be skipped in one workout; each has its own Undo keyed by its slot, and undoing one leaves the others skipped. An all-skipped workout still finishes (D-16) |
 | unclassified → state | S7 reason prompt | ✅ covered | Cancel (`null`) aborts with no write; an empty answer skips with no reason; any text is stored as typed and only ever rendered through `esc()` into text nodes (D-10). Prompt copy is in the Copywriting Contract |
-| populated | S1, S2, S3 cue, S4 on the phone | backstop | On Ian's Android PWA at about 380px: the skip icon sits left of the caret without crowding the range badge or flag; the panel reads cleanly under the Last time line; a skipped card is one line with Undo on the right. Verified in his end-of-phase real workout (Settings → This version first) |
+| populated | S1, S2, S3 cue, S4 on the phone | backstop | On Ian's Android PWA at about 380px: skip and caret sit as a pair over the per-set skip/× column; the badge and ⬆ Add weight share the second row; the panel reads cleanly under the Last time line; a skipped card is one line with Undo on the right. Verified in his end-of-phase real workout (Settings → This version first) |
 | unclassified → state | S5 scroll restore on the phone | backstop | "Back to workout" and Train → Log land at the same scroll spot with the panel open (RESEARCH A1/A2: `scrollTo` right after render). Verified in Ian's UAT; the harness can only check the `scrollTo` call |
 
 Not applicable (dismissed with reason):
