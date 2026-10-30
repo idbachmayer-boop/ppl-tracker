@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-0uN7UigdWA9PHXLfLFAfIeQAhQ4rM6vos8Z0G4rxrv8=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-rEEv9FykoHBjAb6rlYI/lb5nNl6tKlDgFr/EKI2vJ1s=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1858,7 +1858,7 @@ function viewToday(){
   const cJournal = `<div class="card">
       ${kicker('What did you do today?')}
       <textarea id="journal-input" rows="3" placeholder="A few words about your day — wins, workouts, anything…" data-action="saveJournal" style="resize:vertical;line-height:1.5;min-height:72px;margin-top:8px">${esc(DB.journal[todayISO()]||'')}</textarea>
-      <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <button class="tap-inline" data-action="goSub" data-tab="train" data-sub="history" style="color:var(--link);cursor:pointer;font-weight:600">${part==='evening'?`${ph('calendar-blank')}Review your week →`:'See your week →'}</button></p>
+      <p class="muted" style="margin-top:8px">Journaled ${jWeek}/7 this week. <button class="tap-inline" data-action="goSub" data-tab="train" data-sub="history" style="color:var(--link);cursor:pointer;font-weight:600">${part==='evening'?`${ph('calendar-blank','lead')}Review your week →`:'See your week →'}</button></p>
     </div>`;
   /* Morning weigh-in — Ian and the cat in one card, because they happen at the same moment on the
      same scale. Inputs are inline (no trip to Progress) and open by default in the morning; later
@@ -2208,7 +2208,7 @@ function viewActive(){
         <button class="addset" data-action="addSet" data-i="${esc(i)}">+ Add set</button>
         ${isBarbell(entry)&&DB.unit==='lb'?`<div class="muted" id="plates-${i}" style="font-size:12px;margin-top:8px">${platesText(Math.max(0,...entry.sets.filter(x=>!x.skipped&&x.w!==''&&+x.w>0).map(x=>+x.w))||'', barWeight(entry), barStyle(entry))}</div>`:''}
         ${i===0?`<div class="warm">
-          <button class="warm-toggle" data-action="toggleWarm" data-i="${esc(i)}">${ph('fire')}Warm-up ramp</button>
+          <button class="warm-toggle" data-action="toggleWarm" data-i="${esc(i)}">${ph('fire','lead')}Warm-up ramp</button>
           <div class="warm-table hidden" id="warm-${i}"></div>
         </div>`:''}
         <input type="text" placeholder="Note — pain, tempo, how it felt…" value="${esc(entry.note||'')}" data-action="setNote" data-i="${esc(i)}" style="margin-top:10px;font-size:13px;padding:7px 9px">
@@ -2239,7 +2239,7 @@ function viewActive(){
           <div><label>Min</label><input type="number" inputmode="numeric" placeholder="min" value="${esc(stMin)}" data-action="stairTimeSet" data-part="m"></div>
           <div><label>Sec</label><input type="number" inputmode="numeric" placeholder="sec" value="${esc(stSec)}" data-action="stairTimeSet" data-part="s"></div>
         </div>
-        <button class="skip-set" style="font-size:12px;font-weight:600" data-action="skipStairs">${ph('skip-forward')}skip stair stepper</button>
+        <button class="skip-set" style="font-size:12px;font-weight:600" data-action="skipStairs">${ph('skip-forward','lead')}skip stair stepper</button>
       </div></div>`;
 
   const lblCss = 'font-size:10px;font-weight:700;color:var(--muted-2);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px';
@@ -2636,7 +2636,7 @@ function renderWeekReview(){
     if(dayComplete(iso)) tags.push(`<span style="font-size:11px">🧎 ${hasMobSession(iso)?'session':mobDoneOn(iso)}</span>`);
     if(sess.some(s=>prIdx.sessionHasPR(s))) tags.push(`<span style="font-size:11px">🏆 PR</span>`);
     const hasNote = note && note.trim();
-    const editLink = iso => `<button class="tap-inline" data-action="editJournal" data-iso="${esc(iso)}" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${ph('note-pencil')}${hasNote?'Edit note':'Add note'}</button>`;
+    const editLink = iso => `<button class="tap-inline" data-action="editJournal" data-iso="${esc(iso)}" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${ph('note-pencil','lead')}${hasNote?'Edit note':'Add note'}</button>`;
     let noteHTML;
     if(future){ noteHTML=''; }
     else if(editJournalDate===iso){
@@ -2718,7 +2718,7 @@ function viewHistory(){
     let right, detail='';
     const editRow = `<div style="display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap;border-top:1px solid var(--border-3);padding-top:10px">
         <label style="font-size:11px;font-weight:600;color:var(--muted)">Date <input type="date" value="${esc(s.date)}" max="${todayISO()}" data-action="changeSessionDate" data-idx="${esc(idx)}" style="width:auto;display:inline-block;margin-left:4px;padding:6px 8px"></label>
-        ${s.skipped?'':`<button data-action="editSession" data-idx="${esc(idx)}" style="background:none;border:none;color:var(--link);font-size:12px;font-weight:600;cursor:pointer;padding:0">${ph('pencil-simple')}Edit workout</button>`}
+        ${s.skipped?'':`<button data-action="editSession" data-idx="${esc(idx)}" style="background:none;border:none;color:var(--link);font-size:12px;font-weight:600;cursor:pointer;padding:0">${ph('pencil-simple','lead')}Edit workout</button>`}
         <button data-action="deleteSession" data-idx="${esc(idx)}" style="background:none;border:none;color:var(--danger);font-size:12px;font-weight:600;cursor:pointer;padding:0">Delete entry</button>
       </div>`;
     if(s.skipped){
@@ -2742,7 +2742,7 @@ function viewHistory(){
         else if(s.stairs && s.stairs.skipped)
           lines.push(`<strong>🪜 Stair Stepper</strong> — <em>skipped${s.stairs.reason?': '+esc(s.stairs.reason):''}</em>`);
         if(s.extras){
-          Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.sets && e.sets.length){ const d2=ACCESSORIES[w]; const lbl=d2?`${ph(d2.icon)}${d2.label}`:(w.charAt(0).toUpperCase()+w.slice(1)); lines.push(`<strong>${lbl}${e.name?' — '+esc(e.name):''}</strong> — ${setsOf(e)}`); } });
+          Object.keys(s.extras).forEach(w=>{ const e=s.extras[w]; if(e && e.sets && e.sets.length){ const d2=ACCESSORIES[w]; const lbl=d2?`${ph(d2.icon,'lead')}${d2.label}`:(w.charAt(0).toUpperCase()+w.slice(1)); lines.push(`<strong>${lbl}${e.name?' — '+esc(e.name):''}</strong> — ${setsOf(e)}`); } });
         }
         if(dayComplete(s.date)) lines.push(`<strong>🧎 Mobility</strong> — ${hasMobSession(s.date)?'yoga / full session':mobDoneOn(s.date)+' done that day'}`);
         const noteStr = s.note ? `<div style="margin-top:8px;font-size:13px;color:var(--text-2);line-height:1.5;white-space:pre-wrap">📝 ${esc(s.note)}</div>` : '';
@@ -3401,7 +3401,7 @@ function weeklyActivationDays(){ const m=+monday(new Date()); let c=0;
 function mobilityRows(){ const m=mobToday();
   const row=(x,i)=>`<label style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-3);cursor:pointer">
     <input type="checkbox" ${m[x.n]?'checked':''} data-action="toggleMobility" data-i="${esc(i)}">
-    <span style="flex:1"><span style="font-weight:600;font-size:14px">${x.n}</span> · <a href="${gsearch(x.n)}" target="_blank" rel="noopener" style="color:var(--link);font-size:12px">how-to ${ph('arrow-square-out')}</a><div class="muted" style="font-size:12px">${x.t}</div></span>
+    <span style="flex:1"><span style="font-weight:600;font-size:14px">${x.n}</span> · <a href="${gsearch(x.n)}" target="_blank" rel="noopener" style="color:var(--link);font-size:12px;white-space:nowrap">how-to ${ph('arrow-square-out')}</a><div class="muted" style="font-size:12px">${x.t}</div></span>
   </label>`;
   const section=(title,group)=>`<div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 2px">${title}</div>`
     + MOBILITY.map((x,i)=> x.g===group ? row(x,i) : '').join('');
@@ -3426,7 +3426,7 @@ function extraCard(id){
       <button class="x-set" data-action="exRmSet" data-id="${esc(id)}" data-k="${esc(k)}">${ph('x')}</button>
     </div>`).join('');
   return `<div class="phase-card">
-    <button class="phase-header" data-action="toggleAcc" data-key="${esc(id)}"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${ph(def.icon)}${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
+    <button class="phase-header" data-action="toggleAcc" data-key="${esc(id)}"><span style="display:flex;align-items:center;gap:8px"><span class="phase-title" style="font-size:14px">${ph(def.icon,'lead')}${def.label}</span><span class="range-badge">${rangeTxt} ${isSec?'sec':'reps'}</span>${logged?'<span class="flag">logged</span>':''}</span><span style="color:var(--muted-2);display:inline-block;transform:rotate(${open?180:0}deg);transition:.2s">${ph('caret-down')}</span></button>
     ${open?`<div class="phase-body">
       <select data-action="exPick" data-id="${esc(id)}" style="margin-bottom:8px">${opts}</select>
       ${(!isSec && equipAsk.has(exKey(e))) ? equipPickerHTML(exKey(e), e.name) : ''}
@@ -3437,10 +3437,10 @@ function extraCard(id){
   </div>`;
 }
 function accessoryBlocks(group, workout){
-  const warm = accItem('warmup',`${ph('fire')}Warm-up`, `<p><strong>General:</strong> loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles) until they feel warm. Optional 5–10 min easy treadmill or elliptical.</p><p><strong>First exercise:</strong> ramp up — empty bar → ~50% → ~75% → working sets (use the 🔥 ramp on exercise 1 below).</p>`);
+  const warm = accItem('warmup',`${ph('fire','lead')}Warm-up`, `<p><strong>General:</strong> loosen the major joints (shoulders, wrists, elbows, knees, hips, ankles) until they feel warm. Optional 5–10 min easy treadmill or elliptical.</p><p><strong>First exercise:</strong> ramp up — empty bar → ~50% → ~75% → working sets (use the 🔥 ramp on exercise 1 below).</p>`);
   const lifts = accessoryIdsFor(workout).map(id=>extraCard(id)).join('');
   const list = (STRETCHES[group]||STRETCHES.push).map(n=>`<li style="margin-bottom:5px"><a href="${gsearch(n)}" target="_blank" rel="noopener" style="color:var(--link);font-weight:600">${n}</a></li>`).join('');
-  const cooldown = accItem('stretch',`${ph('flower-lotus')}Cool-down stretches`, `<p>Hold each ~20–30s. Tap one to see how:</p><ul style="margin:0 0 4px 18px">${list}</ul>`);
+  const cooldown = accItem('stretch',`${ph('flower-lotus','lead')}Cool-down stretches`, `<p>Hold each ~20–30s. Tap one to see how:</p><ul style="margin:0 0 4px 18px">${list}</ul>`);
   return { warm, lifts, cooldown };
 }
 function skinSubTab(t){ skinSub=t; render(); }

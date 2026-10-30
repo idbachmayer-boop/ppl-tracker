@@ -2629,6 +2629,66 @@ const uiDraft = loadApp(APP_PATH);
   drawEvery(uiDraft, 'mid-workout');
 }
 
+/* G-10-5: once .ph renders inline, an icon written straight before a word touches it unless something
+   gives it a gap: the `lead` class, or an enclosing context the stylesheet gives `.ph` a margin-right
+   (a button, a heading, a card label). Those contexts are read from the parsed <style>, never listed
+   here, so a new spaced context needs no edit to this check. Walks every screen with data, plus the
+   Log tab mid-workout. */
+{
+  const spaced = cssRules(rawHtml).filter(r => parseFloat(r.decl['margin-right']) > 0)
+    .flatMap(r => r.sel).filter(s => / \.ph$/.test(s)).map(s => s.slice(0, -4).trim())
+    .filter(s => /^([a-z][a-z0-9]*)?(\.[\w-]+)*$/i.test(s) && s.length > 0)
+    .map(s => ({ tag: (s.match(/^[a-z][a-z0-9]*/i) || [''])[0].toLowerCase(), cls: (s.match(/\.[\w-]+/g) || []).map(c => c.slice(1)) }));
+  const VOID = /^(area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)$/i;
+  function gluedIcons(html){
+    const out = [], stack = [], TAG = /<(\/?)([a-zA-Z][\w-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
+    let m;
+    while((m = TAG.exec(html))){
+      const [, close, tagRaw, attrs] = m, tag = tagRaw.toLowerCase();
+      if(close){
+        const at = stack.map(x => x.tag).lastIndexOf(tag);
+        if(at >= 0) stack.length = at;
+        continue;
+      }
+      const cm = attrs.match(/\bclass="([^"]*)"/);
+      const cls = cm ? cm[1].split(/\s+/).filter(Boolean) : [];
+      if(VOID.test(tag) || /\/\s*$/.test(attrs)) continue;
+      stack.push({ tag, cls });
+      if(tag === 'svg' && cls.includes('ph')){
+        const end = html.indexOf('</svg>', TAG.lastIndex);
+        if(end < 0) continue;
+        const next = html.charAt(end + 6);
+        const ctx = stack.slice(0, -1);
+        const ok = cls.includes('lead') || !next || /[\s<]/.test(next)
+          || ctx.some(e => spaced.some(s => (!s.tag || s.tag === e.tag) && s.cls.every(c => e.cls.includes(c))));
+        if(!ok) out.push('[icon]' + html.slice(end + 6, end + 36).split('<')[0]);
+        stack.pop();
+        TAG.lastIndex = end + 6;
+      }
+    }
+    return out;
+  }
+  const glued = {};
+  const walk = (a, label) => {
+    const appEl = a.__sandbox.document.getElementById('app');
+    SCREENS.forEach(([name, tab, sub]) => {
+      appEl.innerHTML = '';
+      try { a.go(tab); if(sub) a.setSub(sub); } catch(e){ glued[label + name] = ['threw: ' + e.message]; return; }
+      const g = gluedIcons(appEl.innerHTML || '');
+      if(g.length) glued[label + name] = g;
+    });
+  };
+  const withData = loadApp(APP_PATH);
+  withData.DB = populatedDB(withData);
+  walk(withData, '');
+  const mid = loadApp(APP_PATH);
+  { const d = populatedDB(mid); d.draft = fullDraft(mid, 'PUSH 1'); d.updatedAt = 1000; mid.DB = d; }
+  walk(mid, 'mid-workout: ');
+  mid.DB.draft = null;
+  ok('G-10-5: no icon is glued to the word after it, on any screen',
+     spaced.length > 0 && Object.keys(glued).length === 0, { spaced: spaced.length, glued });
+}
+
 /* ── a draft that did not come from startWorkout() ──
    Found by the smoke check above on its first run. viewActive walks .entries, .stairs and .extras
    blind, because startWorkout() always builds all three — but a draft synced from a device on an
