@@ -332,3 +332,7 @@ None.
 ## Threat Flags
 
 None. The change is layout-only. No new interpolation of user-controlled values (T-10-40), the CSP hash was refreshed after each script edit (T-10-41), and no `data-action` or persistence path changed (T-10-42).
+
+## Self-Check: PASSED
+
+All four files present; commits f55b9df, 70e402c, 0e7deca and 62ac7a8 exist; no file deleted since 74c4018. Final tip: `TZ=America/Chicago npm test` 1250 passed, 0 failed, 2 skipped; `npm run csp:check` OK.
