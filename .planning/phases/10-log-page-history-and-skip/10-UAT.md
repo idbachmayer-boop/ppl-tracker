@@ -1,14 +1,18 @@
 ---
-status: diagnosed
+status: testing
 phase: 10-log-page-history-and-skip
 source: [10-VERIFICATION.md]
 started: 2026-10-20T14:06:07Z
-updated: 2026-10-22T11:40:33Z
+updated: 2026-11-11T13:30:00Z
 ---
 
 ## Current Test
 
-[testing complete]
+number: 5
+name: Layout at phone width (re-test after G-10-5 fix, build 5375e10)
+expected: |
+  Settings → This version ends with 5375e10. Each Log card header is two rows: muscle · movement · how-to with its icon on that line and skip + collapse paired at the right edge over the per-set skip/× icons; then the rep-range badge with ⬆ Add weight beside it (or wrapped neatly under it). Last time caret ends its line, skipped-set note icon sits before its text, skipped card is one line with Undo, filling every set hides skip without moving collapse. Warm-up ramp, Rest, Workout history, Progress → Strength, Weight chart and Settings show icons beside labels; charts unchanged. Nothing clipped.
+awaiting: user response
 
 ## Tests
 
@@ -30,7 +34,8 @@ result: pass
 
 ### 5. Layout at phone width (~380px)
 expected: Exercise header with the skip icon, the open history panel, and a skipped card all fit with no overflow or clipping.
-result: issue
+result: [pending] (re-test on build 5375e10 after G-10-5 fix, PR #16)
+previous_result: issue
 reported: "There is awkward spacing for the skip, history, and other buttons on the workout screen - can those be cleaned up so that they are all either on one line or separate lines?" (screenshot, Android ~412px: the card header wraps; the chart/external-link icon drops to a second line under "Biceps · Normal curl · how-to", the skip icon and collapse chevron float mid-row with wide gaps before the rep-range pill, and on the next card the ⬆ Add weight badge wraps onto its own line)
 severity: cosmetic
 
@@ -42,15 +47,17 @@ result: pass
 
 total: 6
 passed: 5
-issues: 1
-pending: 0
+issues: 0
+pending: 1
 skipped: 0
 blocked: 0
 
 ## Gaps
 - gap_id: G-10-5
   truth: "Exercise header with the skip icon, the open history panel, and a skipped card all fit with no overflow or clipping."
-  status: failed
+  status: fix_shipped_awaiting_retest
+  fixed_by: [10-05, 10-06]
+  shipped: "merge 5375e10 (PR #16), live 2026-11-11"
   reason: "User reported: awkward spacing for the skip, history and other header buttons on the workout card; wants them all on one line or on clearly separate lines (screenshot: chart icon wraps under the muscle/pattern/how-to text, skip + collapse icons float with uneven gaps before the rep pill, Add weight badge wraps to its own line)"
   severity: cosmetic
   test: 5
