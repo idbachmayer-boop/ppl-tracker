@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
 current_phase: 10
 current_phase_name: log-page-history-and-skip
-status: executing
-stopped_at: Completed 10-05-PLAN.md
-last_updated: "2026-10-30T12:35:37.004Z"
-last_activity: 2026-10-30
-last_activity_desc: Phase 10 execution started
+status: verifying
+stopped_at: Completed 10-06-PLAN.md
+last_updated: "2026-11-11T13:06:31.801Z"
+last_activity: 2026-11-11
+last_activity_desc: G-10-5 shipped (PR #16); awaiting phone UAT
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 14
-  completed_plans: 13
-  percent: 33
+  completed_plans: 14
+  percent: 50
 ---
 
 # Project State
@@ -28,12 +28,12 @@ See: .planning/PROJECT.md (updated 2026-10-09)
 
 ## Current Position
 
-Phase: 10 (log-page-history-and-skip) — EXECUTING
-Plan: 6 of 6 (10-05 complete; 10-06 ships G-10-5 to the phone)
-Status: Ready to execute
-Last activity: 2026-10-30 — Completed 10-05 (G-10-5: two-row Log card header, inline icons; not pushed)
+Phase: 10 (log-page-history-and-skip) — VERIFYING (phone re-check of UAT test 5 pending)
+Plan: 6 of 6 (10-06 complete: G-10-5 live as PR #16, merge 5375e10)
+Status: Phase complete — ready for verification
+Last activity: 2026-11-11 — Completed 10-06 (G-10-5 live, stamp 5375e10; phone re-check of UAT test 5 pending)
 
-Progress: [█████████░] 93%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -111,6 +111,7 @@ Progress: [█████████░] 93%
 | Phase 10 P03 | 14 min | 3 tasks | 3 files |
 | Phase 10 P04 | ~17 min (incl. push, PR, CI, deploy) | 3 tasks | 0 files |
 | Phase 10 P05 | 13 min | 3 tasks | 3 files |
+| Phase 10 P06 | ~10 min executor (spans 2026-10-31..11-11, waiting on Ian's merge) | 3 tasks | 0 files |
 
 ## Accumulated Context
 
@@ -148,7 +149,8 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [Phase 10]: 10-03: the history panel renders only when the Last time line is tappable (ref || alt); openExHist and logReturn are screen-only lets reset at the five collapsedEx.clear() sites
 - [Phase 10]: 10-03: landingY is the router's only scroll decision; the return point is used once on a Train → Log arrival and cleared
 - [Phase 10]: Phase 10 shipped as PR #15, merge commit 9a4e647 on main; live page verified (stamp 9a4e647, CSP OK, SCHEMA 19). Revert: git revert -m 1 --no-edit 9a4e647 — no sync pause, but Undo or finish any open skipped exercise first.
-- [Phase ?]: 10-05: Log card header is two rows (meta + right-pinned 32x32 skip/collapse pair; badge + flag with flex-wrap); .ph is inline-block globally and icons before text outside buttons/headings take 'lead' (G-10-5)
+- [Phase 10]: 10-05: Log card header is two rows (meta + right-pinned 32x32 skip/collapse pair; badge + flag with flex-wrap); .ph is inline-block globally and icons before text outside buttons/headings take 'lead' (G-10-5)
+- [Phase 10]: 10-06: G-10-5 shipped as PR #16, merge commit 5375e10 on main; live stamp 2026-11-11T13:02:19Z 5375e10, CSP OK, SCHEMA 19. Revert: git revert -m 1 --no-edit 5375e10 (render-only, clean). Phone re-check of UAT test 5 pending.
 
 ### Pending Todos
 
@@ -189,8 +191,8 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-30T12:35:36.985Z
-Stopped at: Completed 10-05-PLAN.md
+Last session: 2026-11-11T13:06:31.781Z
+Stopped at: Completed 10-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

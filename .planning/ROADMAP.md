@@ -143,7 +143,7 @@ Plans:
 - The skip reason is user text: through `esc()` when rendered, in double-quoted attributes only.
 - The inline history reads through `liveSessions()`, so a deleted session never ghosts back into it.
 
-**Plans:** 5/6 plans executed (2 gap-closure plans for UAT gap G-10-5)
+**Plans:** 6/6 plans executed (2 gap-closure plans for UAT gap G-10-5)
 
 Plans:
 **Wave 1**
@@ -168,7 +168,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 10-06-PLAN.md — Ship G-10-5: pre-flight, Ian pushes and merges with a merge commit (render-only, clean revert), live bytes checked, then UAT test 5 again on the phone (end-of-phase UAT)
+- [x] 10-06-PLAN.md — Ship G-10-5: pre-flight, Ian pushes and merges with a merge commit (render-only, clean revert), live bytes checked, then UAT test 5 again on the phone (end-of-phase UAT)
 
 **UI hint**: yes
 
@@ -258,7 +258,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 7. Content Security Policy | v1.0 | 7/7 | Complete | 2026-10-09 |
 | 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
 | 9. Equipment and Weight Steps | v1.1 | 5/5 | Complete    | 2026-10-13 |
-| 10. Log Page — History and Skip | v1.1 | 5/6 | In Progress|  |
+| 10. Log Page — History and Skip | v1.1 | 6/6 | In Progress|  |
 | 11. Lawn, Journal and Weather Loop | v1.1 | 0/TBD | Not started | - |
 | 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |
 | 13. Strength Index and Poor-Sleep Intensity | v1.1 | 0/TBD | Not started | - |
