@@ -18,11 +18,12 @@ every other feature can fail before that one does.
 
 **Shipped:** v1.0 Collections & lockdown (2026-10-09). Live on `main` as merge commit `f71c6e4` and
 later docs-only commits. See `.planning/MILESTONES.md`. v1.1 in progress: Phase 8 (progression
-correctness) live as `99e10c8` (2026-10-10); Phase 9 (equipment and weight steps) live as `8a20832` (2026-10-12).
+correctness) live as `99e10c8` (2026-10-10); Phase 9 (equipment and weight steps) live as `8a20832` (2026-10-12); Phase 10 (Log page history and skip) live as
+`9a4e647` (2026-10-20), with its two-row card header and inline icons as `5375e10` (2026-11-11).
 
 - `index.html` is 5,480 lines: HTML, CSS and inline JS, with no build step and no dependencies.
   `SCHEMA = 19`.
-- The test suite has 1,136 checks (0 failed, 2 skipped; 928 at v1.0 close, 226 at the start of v1.0). It blocks the
+- The test suite has 1,250 checks (0 failed, 2 skipped; 928 at v1.0 close, 226 at the start of v1.0). It blocks the
   deploy, and `npm run csp:check` runs in the deploy job.
 - Tech stack: vanilla JS, a service worker, Firebase Auth plus Firestore (union-merge sync),
   Open-Meteo weather, and GitHub Pages via Actions.
@@ -57,6 +58,7 @@ correctness) live as `99e10c8` (2026-10-10); Phase 9 (equipment and weight steps
 - ✓ **Content-Security-Policy.** Hash-based `script-src`, with `npm run csp:hash` / `csp:check` and the deploy check. Live as `f71c6e4`, with a signed-in sync round trip confirmed on the PC and the phone — v1.0
 - ✓ **Progression correctness (PROG-01..05).** ⬆ Add weight only after every set on the card hit the top of the range at the working weight (a skipped or blank set blocks it, recorded as `blankSets`); stall is 3 flat sessions in a row, each against the one before, per slot by `exKey`, bodyweight included. Live as `99e10c8`; phone UAT passed — v1.1 Phase 8
 - ✓ **Equipment and weight steps (EQUIP-01..06).** Every exercise has a synced equipment type (defaulted by migration 19, editable in Settings, asked once for an unknown name); add weight, deloads, warm-ups and the suggest line move by that type's loadable step; Preacher curl gets EZ-bar plate math; the exercise registry merges per row with an equipment clock and soft-deleted merges. Live as `8a20832`; phone UAT passed — v1.1 Phase 9
+- ✓ **Log page history and skip (LOG-01..05).** Tapping "Last time" on a workout card shows that exercise's last 5 sessions inline, with a Full chart link into Strength and a way back to the same spot; a whole exercise can be skipped with an optional reason and undone, survives a restart, shows in Workout history and next time's card, and blocks ⬆ Add weight. The card header is two rows with skip and collapse paired over the set controls, and icons sit inline app-wide. Live as `9a4e647` + `5375e10`; phone UAT 6/6 passed — v1.1 Phase 10
 - ✓ A test suite that blocks the deploy — 928 checks at v1.0 close (226 at initialization) — existing
 
 ### Active
@@ -66,7 +68,6 @@ correctness) live as `99e10c8` (2026-10-10); Phase 9 (equipment and weight steps
 v1.1 Training accuracy, lawn & sleep. Full list with REQ-IDs in `.planning/REQUIREMENTS.md`; source
 of every rule is `.planning/v1.1-BRIEF.md`.
 
-- [ ] Log page: last 5 sessions inline from "Last time", and skip exercise with undo (LOG)
 - [ ] Lawn: cool-day hold, rain history in its own synced collection, watering in the outlook, journal marks, weather fetch backoff (LAWN)
 - [ ] Sleep card on Today, and a local Erase that keeps the workout in progress (SLP)
 - [ ] Strength index on Progress and Today (STR)
@@ -199,4 +200,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-13 after Phase 9*
+*Last updated: 2026-11-11 after Phase 10*

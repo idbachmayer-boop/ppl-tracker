@@ -37,7 +37,7 @@ in `.planning/REQUIREMENTS.md`.
 
 - [x] **Phase 8: Progression Correctness** - Add weight only when every planned set hit the top of the range; progress and stall are measured session to session by `exKey`, bodyweight included. (completed 2026-10-10)
 - [x] **Phase 9: Equipment and Weight Steps** - Each exercise gets a synced equipment type, its own 2.5 or 5 lb step, step-aware deloads and warm-ups, and plate math for its own bar. (completed 2026-10-13)
-- [ ] **Phase 10: Log Page — History and Skip** - The last 5 sessions open inline from "Last time", and a whole exercise can be skipped with an optional reason and undone.
+- [x] **Phase 10: Log Page — History and Skip** - The last 5 sessions open inline from "Last time", and a whole exercise can be skipped with an optional reason and undone. (completed 2026-11-11)
 - [ ] **Phase 11: Lawn, Journal and Weather Loop** - Cool-day watering hold, rain history in its own synced collection, 💧 in the outlook, journal marks, and a weather fetch that backs off offline.
 - [ ] **Phase 12: Sleep Card and Erase** - A morning sleep card on Today, and a local Erase that keeps the workout in progress or is the documented exception.
 - [ ] **Phase 13: Strength Index and Poor-Sleep Intensity** - A strength index from 100 on Progress and Today, and a one-tap 10%-lighter offer after a poor night.
@@ -143,7 +143,7 @@ Plans:
 - The skip reason is user text: through `esc()` when rendered, in double-quoted attributes only.
 - The inline history reads through `liveSessions()`, so a deleted session never ghosts back into it.
 
-**Plans:** 6/6 plans executed (2 gap-closure plans for UAT gap G-10-5)
+**Plans:** 6/6 plans complete
 
 Plans:
 **Wave 1**
@@ -258,7 +258,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 7. Content Security Policy | v1.0 | 7/7 | Complete | 2026-10-09 |
 | 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
 | 9. Equipment and Weight Steps | v1.1 | 5/5 | Complete    | 2026-10-13 |
-| 10. Log Page — History and Skip | v1.1 | 6/6 | In Progress|  |
+| 10. Log Page — History and Skip | v1.1 | 6/6 | Complete    | 2026-11-11 |
 | 11. Lawn, Journal and Weather Loop | v1.1 | 0/TBD | Not started | - |
 | 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |
 | 13. Strength Index and Poor-Sleep Intensity | v1.1 | 0/TBD | Not started | - |

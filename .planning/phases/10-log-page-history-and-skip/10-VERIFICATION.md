@@ -1,7 +1,7 @@
 ---
 phase: 10-log-page-history-and-skip
 verified: 2026-11-11T13:20:00Z
-status: human_needed
+status: passed
 score: 26/28 must-haves verified (2 phone backstop truths await Ian's re-run of UAT test 5)
 behavior_unverified: 0
 overrides_applied: 0
@@ -9,15 +9,18 @@ re_verification:
   previous_status: human_needed
   previous_score: 12/17
   gaps_closed:
+
     - "G-10-5 (code side): the Log card header is two rows (meta + right-pinned 32x32 skip/collapse pair; rep-range badge + Add weight on row 2), .ph is inline-block app-wide, nine glued icons carry lead, and the fix is live as main 5375e10"
     - "Phone truths 13-16 (inline history, chart round-trip and scroll, skip surviving a PWA restart, history line and no Add weight next time): passed by Ian in 10-UAT.md tests 1-4"
     - "Judgment-tier prohibitions (WR-01/WR-02 bending lastAttemptEntry): accepted by Ian in 10-UAT.md test 6"
   gaps_remaining: []
   regressions: []
 human_verification:
+
   - test: "UAT test 5 again on Ian's phone. Settings → This version must end with 5375e10 first (never judge on 9a4e647). On the Log tab mid-workout (or start one, look, Discard): look at a card with ⬆ Add weight, one without, and a LEGS card with the long DB-only note; tap Last time; skip one set with a reason; skip a whole card from its header and Undo; fill every set on one card."
     expected: "Each header is two rows: 'Muscle · Movement · how-to ↗' with the arrow on the same line and skip + collapse as a tight pair at the right edge over the per-set skip/× icons; then the rep-range badge with ⬆ Add weight beside it, or tucked under it when long, left-aligned. No icon alone on a line, nothing cut off. The Last time caret ends its line; 'Set N skipped: reason' is one line with its icon before the text and Undo at the right; a skipped card is one line with Undo; filling every set removes the skip icon and the collapse icon does not move."
     why_human: "Backstop truth (10-06). Only the Android PWA at 380-412px with Roboto/Droid Sans Mono and Ian's real exercise names can judge this layout. The suite and both headless probes (10-05's and this verifier's) use desktop fonts."
+
   - test: "On the same build, glance at the screens the global icon fix touched: the Warm-up ramp toggle, the stopwatch bar's Rest label, Workout history with one workout opened (Edit workout), Progress → Strength and the Weight chart, Settings (Recently deleted, Version history)."
     expected: "Every icon sits beside its label with a small gap, and the charts look as they did before."
     why_human: "Backstop truth (10-06). Visual judgment on the real device; the 10-05 sweep measured it in desktop Chrome only."
@@ -40,18 +43,22 @@ re-run test 5 on the phone yet, so the status is `human_needed`, not `passed`.
 - **Tree identity.** HEAD `67f4a95`. `git diff --stat 5375e10 HEAD -- . ':!.planning'` is empty, so
   the code I verified is exactly what `main` ships. `git ls-remote origin refs/heads/main` =
   `5375e101…`, parents `9a4e647` (old main) and `4624870` (branch tip): a merge commit.
+
 - **Suite, run once:** `TZ=America/Chicago npm test` gives **1250 passed, 0 failed, 2 skipped**. The 2
   skips are the git-ignored `test/local/real-db-snapshot.json` checks. These pass by name: the three
   G-10-5 icon checks (inline `.ph`, charts keep block svg, no glued icon on any screen), the two G-10-5
   header checks (controls pair, targets row with no `<br>`), the retargeted D-12 header check, and the
   D-12 stale-tap check.
+
 - **`npm run csp:check`:** `CSP hash OK sha256-rEEv9FykoHBjAb6rlYI/lb5nNl6tKlDgFr/EKI2vJ1s=`.
 - **Live site** (signed-out GET with a cache-buster): stamp `2026-11-11T13:02:19Z 5375e10`.
   `node scripts/csp-hash.js --check` OK with the same hash. `const SCHEMA = 19;` ×1, the `.ph { display:
   inline-block` rule ×1, `class="ex-targets"` ×1 and `class="ex-controls"` ×1. With the `ppl-build`
   line removed, the **live bytes are identical to `git show 5375e10:index.html`**.
+
 - **`gh pr view 16`:** MERGED, merge commit `5375e10`, head `4624870`. `gh run list --branch main`:
   run 43025439049 on `5375e10`, "Deploy to GitHub Pages", success.
+
 - **The code, read:** `index.html:84-88` adds `.ex-head > .ex-meta`, `.ex-controls`,
   `.ex-controls .skip-set` and `.ex-targets`. `:98` leaves `.ex-head` unchanged for the stair stepper.
   `:205` makes `.ph` `display: inline-block`, and `:225` leaves `svg { display: block; width: 100% }`.
@@ -59,10 +66,12 @@ re-run test 5 on the phone yet, so the status is `human_needed`, not `passed`.
   `white-space:nowrap`) and `.ex-controls` (conditional skip button, then the caret). Then comes
   `.ex-targets` with the badge followed by `${flag}`, and there is no `<br>`. The `.ex-skip` class is
   gone from index.html and the tests.
+
 - **My own render probe** (scratchpad `v10probe`, synthetic data, never committed). It runs real
   `startWorkout` output for PUSH 1 and LEGS 1 through `test/harness.js`, with one set skipped, one card
   all done, and one card skipped via `skipExercise`. It renders with the real `<style>` in headless
   Chrome at 380px and 412px. Results, for all 12 main cards at each width (24 measurements):
+
   - `.ex-head` height 32px, and the targets row starts 4px below it;
   - the how-to `<a>` has 1 client rect, with the icon inside it;
   - meta right ≤ controls left, and 0 header/targets descendants sit outside the card box;
@@ -73,11 +82,13 @@ re-run test 5 on the phone yet, so the status is `human_needed`, not `passed`.
   The probe seeded no history, so no card carried ⬆ Add weight. The suite's targets-row check covers
   the flag's placement, and so does the 10-05 render table (flag on the badge's row with an 8px gap,
   or wrapped to its left edge).
+
 - **Diff scope** `9a4e647..5375e10`: index.html, test/app.test.js and `.planning/` only.
   test/harness.js, test/fixtures/merge-golden.json, sw.js and CLAUDE.md are unchanged. 0 changed lines
   in index.html mention `save(`, `saveLocal(`, `SCHEMA` or `MIGRATIONS`. Every `data-action` name in
   the diff appears once removed and once added, so none was renamed. No new `on*="` attribute and no
   `stopPropagation`. No TBD/FIXME/XXX/TODO/HACK was added in either file.
+
 - **Regression check on the Phase 10 machinery:** `exUnfinished`, `skipExercise`, `unskipExercise`,
   `skipTailHTML`, `skipNoteHTML`, `exerciseRecent`, `exhRowHTML`, `exhPanelHTML`, `toggleExHist`,
   `openExerciseChart`, `backToWorkout` and `landingY` are each defined once and still referenced. The
@@ -190,6 +201,7 @@ and only the cosmetic layout re-check is open.
 
 - **10-01..10-04 judgment-tier rows** (previous report): Ian accepted them in 10-UAT test 6, including
   the two flagged rows (WR-01/WR-02 bending `lastAttemptEntry`). They are no longer flagged.
+
 - **10-06 prohibitions** (judgment-tier, non-authoritative):
 
 | Prohibition | Verdict | Evidence |
@@ -234,6 +246,7 @@ up-to-date `main` and push.
 
 There are no code gaps. G-10-5 is closed on the code side. All four diagnosed causes are gone, as read
 in the code and measured in my own Chrome render at 380 and 412px:
+
 - the `.ph` block leak;
 - space-between on the header;
 - the left-pinned glyph in a loose box;
@@ -243,12 +256,14 @@ The fix is live as `5375e10`, byte-identical to `main` apart from the stamp, and
 The rest of Phase 10 was already confirmed on Ian's phone (UAT 1-4 and 6).
 
 Two advisory warnings from 10-REVIEW remain:
+
 - WR-02: an unescaped extras label on a touched line;
 - WR-01: a check weaker than its name.
 
 Neither blocks the goal.
 
 What remains is Ian's re-run of UAT test 5 on the phone. When it passes:
+
 1. Flip 10-UAT test 5 to pass, and close the phase through `/gsd-verify-work 10`.
 2. Write the deferred vault changelog entry (10-06 Follow-ups).
 

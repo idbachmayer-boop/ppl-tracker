@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
-current_phase: 10
-current_phase_name: log-page-history-and-skip
-status: verifying
-stopped_at: Completed 10-06-PLAN.md
-last_updated: "2026-11-11T13:06:31.801Z"
+current_phase: 11
+current_phase_name: Lawn, Journal and Weather Loop
+status: planning
+stopped_at: Phase 10 complete, ready to plan Phase 11
+last_updated: "2026-11-11T13:33:52.593Z"
 last_activity: 2026-11-11
-last_activity_desc: G-10-5 shipped (PR #16); awaiting phone UAT
+last_activity_desc: "Phase 10 complete: UAT 6/6 (G-10-5 retest passed on 5375e10), 10-SECURITY verified 45/45"
 progress:
   total_phases: 6
   completed_phases: 3
@@ -21,17 +21,17 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-09)
+See: .planning/PROJECT.md (updated 2026-11-11)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 10 — log-page-history-and-skip
+**Current focus:** Phase 11 — Lawn, Journal and Weather Loop
 
 ## Current Position
 
-Phase: 10 (log-page-history-and-skip) — VERIFYING (phone re-check of UAT test 5 pending)
-Plan: 6 of 6 (10-06 complete: G-10-5 live as PR #16, merge 5375e10)
-Status: Phase complete — ready for verification
-Last activity: 2026-11-11 — Completed 10-06 (G-10-5 live, stamp 5375e10; phone re-check of UAT test 5 pending)
+Phase: 11 — Lawn, Journal and Weather Loop
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-11-11 — Phase 10 complete, transitioned to Phase 11
 
 Progress: [██████████] 100%
 
@@ -39,7 +39,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 41
+- Total plans completed: 47
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -56,6 +56,7 @@ Progress: [██████████] 100%
 | 6 | 2 | - | - |
 | 8 | 3 | - | - |
 | 9 | 5 | - | - |
+| 10 | 6 | - | - |
 
 **Recent Trend:**
 
@@ -150,7 +151,8 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [Phase 10]: 10-03: landingY is the router's only scroll decision; the return point is used once on a Train → Log arrival and cleared
 - [Phase 10]: Phase 10 shipped as PR #15, merge commit 9a4e647 on main; live page verified (stamp 9a4e647, CSP OK, SCHEMA 19). Revert: git revert -m 1 --no-edit 9a4e647 — no sync pause, but Undo or finish any open skipped exercise first.
 - [Phase 10]: 10-05: Log card header is two rows (meta + right-pinned 32x32 skip/collapse pair; badge + flag with flex-wrap); .ph is inline-block globally and icons before text outside buttons/headings take 'lead' (G-10-5)
-- [Phase 10]: 10-06: G-10-5 shipped as PR #16, merge commit 5375e10 on main; live stamp 2026-11-11T13:02:19Z 5375e10, CSP OK, SCHEMA 19. Revert: git revert -m 1 --no-edit 5375e10 (render-only, clean). Phone re-check of UAT test 5 pending.
+- [Phase 10]: 10-06: G-10-5 shipped as PR #16, merge commit 5375e10 on main; live stamp 2026-11-11T13:02:19Z 5375e10, CSP OK, SCHEMA 19. Revert: git revert -m 1 --no-edit 5375e10 (render-only, clean). Phone re-check of UAT test 5 passed 2026-11-11.
+- [10-UAT]: Phase 10 phone UAT 6/6 passed 2026-11-11; 10-SECURITY.md verified, 45/45 closed. Open post-ship: 10-REVIEW WR-02 (unescaped extras fallback label in Workout history, pre-existing, index.html:2745) and WR-01 (weak glued-icon test)
 
 ### Pending Todos
 
@@ -191,10 +193,11 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-11-11T13:06:31.781Z
-Stopped at: Completed 10-06-PLAN.md
+Last session: 2026-11-11T14:10:00Z
+Stopped at: Phase 10 complete, ready to plan Phase 11
 Resume file: None
 
 ## Operator Next Steps
 
-- Discuss Phase 10: `/gsd-discuss-phase 10` (Log page: last 5 sessions inline from "Last time", and skip a whole exercise).
+- Discuss Phase 11: `/gsd-discuss-phase 11` (Lawn, Journal and Weather Loop). Open question first: how a rain row persists and reaches the cloud without a stale device looking newest.
+- Optional cleanup: `/gsd-code-review 10 --fix` for 10-REVIEW WR-01/WR-02.
