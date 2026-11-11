@@ -149,6 +149,46 @@ if(fs.existsSync(rulesPath)){
      /match\s*\/users\/\{(\w+)\}[\s\S]*?request\.auth\.uid\s*==\s*\1/.test(rules));
 }
 
+console.log('\n── G-10-5: icons render inline; the charts keep their block svg ──');
+/* The <style> block parsed into flat rules: { sel: [selector, …], decl: { property: value } }. The block
+   has no @media or other at-rule, so splitting on `}` is a faithful parse. A top-level function
+   declaration, so the icon-gap check further down reuses it. */
+function cssRules(html){
+  const m = String(html).match(/<style>([\s\S]*?)<\/style>/);
+  if(!m) return [];
+  return m[1].replace(/\/\*[\s\S]*?\*\//g, '').split('}').map(chunk => {
+    const at = chunk.indexOf('{');
+    if(at < 0) return null;
+    const sel = chunk.slice(0, at).split(',').map(s => s.trim().replace(/\s+/g, ' ')).filter(Boolean);
+    const decl = {};
+    chunk.slice(at + 1).split(';').forEach(d => {
+      const c = d.indexOf(':');
+      if(c > 0) decl[d.slice(0, c).trim().toLowerCase()] = d.slice(c + 1).trim();
+    });
+    return sel.length ? { sel, decl } : null;
+  }).filter(Boolean);
+}
+{
+  /* The Weight chart's bare `svg { display:block }` reached every Phosphor icon, because .ph never set
+     display. Each icon became a block box and took its own line: the how-to arrow, the Last time caret,
+     the Warm-up ramp fire (G-10-5). An icon must render inline, beside its words. */
+  const rules = cssRules(rawHtml);
+  const phRule = rules.find(r => r.sel.length === 1 && r.sel[0] === '.ph');
+  const lastCompound = s => s.split(/\s*[\s>+~]\s*/).pop();
+  const blockers = rules.filter(r => r.sel.some(s => /\.ph(?![\w-])/.test(lastCompound(s)))
+    && /^block\b/.test(r.decl.display || '')).map(r => r.sel.join(', '));
+  ok('G-10-5: every Phosphor icon renders inline with its text, never as a block on its own line',
+     !!phRule && /^(inline-block|inline)$/.test(phRule.decl.display || '') && blockers.length === 0,
+     { ph: phRule && phRule.decl, blockers });
+  /* The charts still need that block svg: it is what makes each one span the card. */
+  const svgRule = rules.find(r => r.sel.includes('svg'));
+  const charts = [...rawHtml.matchAll(/<svg\b[^>]*\bid="(?:chart|pchart|schart)"[^>]*>/g)].map(x => x[0]);
+  ok('G-10-5: the weight, pet and strength charts keep their full-width block svg',
+     !!svgRule && /^block$/.test(svgRule.decl.display || '') && svgRule.decl.width === '100%'
+       && charts.length === 3 && charts.every(t => !/\bclass=/.test(t)),
+     { svg: svgRule && svgRule.decl, charts });
+}
+
 const app = loadApp(APP_PATH);
 
 console.log('\n── the harness exports what the suite calls ──');
@@ -2587,6 +2627,66 @@ const uiDraft = loadApp(APP_PATH);
   d.draft = draftFor(uiDraft, 'PUSH 1');
   uiDraft.DB = d;
   drawEvery(uiDraft, 'mid-workout');
+}
+
+/* G-10-5: once .ph renders inline, an icon written straight before a word touches it unless something
+   gives it a gap: the `lead` class, or an enclosing context the stylesheet gives `.ph` a margin-right
+   (a button, a heading, a card label). Those contexts are read from the parsed <style>, never listed
+   here, so a new spaced context needs no edit to this check. Walks every screen with data, plus the
+   Log tab mid-workout. */
+{
+  const spaced = cssRules(rawHtml).filter(r => parseFloat(r.decl['margin-right']) > 0)
+    .flatMap(r => r.sel).filter(s => / \.ph$/.test(s)).map(s => s.slice(0, -4).trim())
+    .filter(s => /^([a-z][a-z0-9]*)?(\.[\w-]+)*$/i.test(s) && s.length > 0)
+    .map(s => ({ tag: (s.match(/^[a-z][a-z0-9]*/i) || [''])[0].toLowerCase(), cls: (s.match(/\.[\w-]+/g) || []).map(c => c.slice(1)) }));
+  const VOID = /^(area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)$/i;
+  function gluedIcons(html){
+    const out = [], stack = [], TAG = /<(\/?)([a-zA-Z][\w-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
+    let m;
+    while((m = TAG.exec(html))){
+      const [, close, tagRaw, attrs] = m, tag = tagRaw.toLowerCase();
+      if(close){
+        const at = stack.map(x => x.tag).lastIndexOf(tag);
+        if(at >= 0) stack.length = at;
+        continue;
+      }
+      const cm = attrs.match(/\bclass="([^"]*)"/);
+      const cls = cm ? cm[1].split(/\s+/).filter(Boolean) : [];
+      if(VOID.test(tag) || /\/\s*$/.test(attrs)) continue;
+      stack.push({ tag, cls });
+      if(tag === 'svg' && cls.includes('ph')){
+        const end = html.indexOf('</svg>', TAG.lastIndex);
+        if(end < 0) continue;
+        const next = html.charAt(end + 6);
+        const ctx = stack.slice(0, -1);
+        const ok = cls.includes('lead') || !next || /[\s<]/.test(next)
+          || ctx.some(e => spaced.some(s => (!s.tag || s.tag === e.tag) && s.cls.every(c => e.cls.includes(c))));
+        if(!ok) out.push('[icon]' + html.slice(end + 6, end + 36).split('<')[0]);
+        stack.pop();
+        TAG.lastIndex = end + 6;
+      }
+    }
+    return out;
+  }
+  const glued = {};
+  const walk = (a, label) => {
+    const appEl = a.__sandbox.document.getElementById('app');
+    SCREENS.forEach(([name, tab, sub]) => {
+      appEl.innerHTML = '';
+      try { a.go(tab); if(sub) a.setSub(sub); } catch(e){ glued[label + name] = ['threw: ' + e.message]; return; }
+      const g = gluedIcons(appEl.innerHTML || '');
+      if(g.length) glued[label + name] = g;
+    });
+  };
+  const withData = loadApp(APP_PATH);
+  withData.DB = populatedDB(withData);
+  walk(withData, '');
+  const mid = loadApp(APP_PATH);
+  { const d = populatedDB(mid); d.draft = fullDraft(mid, 'PUSH 1'); d.updatedAt = 1000; mid.DB = d; }
+  walk(mid, 'mid-workout: ');
+  mid.DB.draft = null;
+  ok('G-10-5: no icon is glued to the word after it, on any screen',
+     spaced.length > 0 && Object.keys(glued).length === 0, { spaced: spaced.length, glued });
 }
 
 /* ── a draft that did not come from startWorkout() ──
@@ -9804,6 +9904,28 @@ function lgCard(a, i, workout){
 const lgRaw = a => a.__sandbox.localStorage.getItem('ppl_tracker_v1');
 const lgCardOf = (a, i) => a.viewActive().split('<div class="ex-card">')[i + 1] || '';
 const lgTry = fn => { try{ return fn(); }catch(e){ return { threw: String(e && e.stack || e) }; } };
+/* Rendered-markup structure, read by property rather than wording (G-10-5). divOpenAt gives the start
+   index of the innermost <div> still open at `at`, or -1; divElement gives the balanced element text
+   from a <div start. Both stack-scan the <div and </div> tokens only. */
+function divOpenAt(html, at){
+  const stack = [], re = /<div\b|<\/div>/g;
+  let m;
+  while((m = re.exec(html)) && m.index < at){
+    if(m[0] === '</div>') stack.pop(); else stack.push(m.index);
+  }
+  return stack.length ? stack[stack.length - 1] : -1;
+}
+function divElement(html, start){
+  const re = /<div\b|<\/div>/g;
+  re.lastIndex = start;
+  let depth = 0, m;
+  while((m = re.exec(html))){
+    depth += m[0] === '</div>' ? -1 : 1;
+    if(depth === 0) return html.slice(start, m.index + 6);
+  }
+  return html.slice(start);
+}
+const tagStart = (html, needle) => { const i = html.indexOf(needle); return i < 0 ? -1 : html.lastIndexOf('<', i); };
 {
   const r = lgTry(() => {
     const a = f2Mid(d => {
@@ -9814,14 +9936,57 @@ const lgTry = fn => { try{ return fn(); }catch(e){ return { threw: String(e && e
     a.__sandbox.skipSet(1, 1);
     const cs = controlsIn(f2AppHtml(a));
     const card = lgCardOf(a, 2);
-    const col = card.indexOf('<div style="text-align:right;white-space:nowrap">');
-    const sk = card.indexOf('data-action="skipExercise"'), ca = card.indexOf('data-action="toggleExCollapse"');
-    const rb = card.indexOf('class="range-badge"');
+    const hs = card.indexOf('<div class="ex-head"'), head = hs < 0 ? '' : divElement(card, hs);
+    const sk = tagStart(card, 'data-action="skipExercise"'), ca = tagStart(card, 'data-action="toggleExCollapse"');
+    const inHead = x => hs >= 0 && x > hs && x < hs + head.length;
     return { s0: cs.some(f2At('skipExercise', 0)), s1: cs.some(f2At('skipExercise', 1)), s2: cs.some(f2At('skipExercise', 2)),
-             order: col >= 0 && col < sk && sk < ca && ca < rb && !card.slice(col, ca).includes('</div>') };
+             order: inHead(sk) && inHead(ca) && sk < ca && card.includes('class="range-badge"') };
   });
   ok('D-12: the skip button shows only on a card with an unfinished set, first in the header column, ahead of the caret and the range badge',
      !r.threw && r.s0 === false && r.s1 === false && r.s2 === true && r.order === true, r);
+}
+{
+  /* Ian's G-10-5 decision: skip and collapse are one tight pair on the header's first row, kept apart from
+     the rep-range badge and the Add weight flag. When nothing is left to skip the pair is just the caret. */
+  const r = lgTry(() => {
+    const a = f2Mid(d => { d.draft.entries[0].sets = [{ w: '135', r: '8', skipped: false, reason: '' }]; });
+    const group = card => {
+      const sk = tagStart(card, 'data-action="skipExercise"'), ca = tagStart(card, 'data-action="toggleExCollapse"');
+      const g = ca < 0 ? -1 : divOpenAt(card, ca);
+      const el = g < 0 ? '' : divElement(card, g);
+      return { sk, ca, g, skG: sk < 0 ? null : divOpenAt(card, sk), el,
+               controls: controlsIn(el).map(c => c.data.action) };
+    };
+    const live = group(lgCardOf(a, 2)), done = group(lgCardOf(a, 0));
+    return { live: { same: live.sk >= 0 && live.skG === live.g && live.g >= 0, badge: live.el.includes('class="range-badge"'),
+                     flag: live.el.includes('class="flag"'), controls: live.controls },
+             done: { skip: done.sk, controls: done.controls } };
+  });
+  ok('G-10-5: the skip and collapse controls sit together as one pair in the card header, apart from the rep range and the Add weight flag',
+     !r.threw && r.live.same && !r.live.badge && !r.live.flag
+       && JSON.stringify(r.live.controls) === JSON.stringify(['skipExercise', 'toggleExCollapse'])
+       && r.done.skip === -1 && JSON.stringify(r.done.controls) === JSON.stringify(['toggleExCollapse']), r);
+}
+{
+  /* The header's second row is the rep-range badge with ⬆ Add weight beside it, under the first row and
+     above the exercise picker. The flag used to be pushed onto its own line by a <br> (G-10-5). */
+  const r = lgTry(() => {
+    const a = loadApp(APP_PATH), LAT = lgLat(a);
+    lgRun(a, [lgSess(a, 't0', dayOff(-7), LAT, [[25, 20], [25, 20], [25, 20]])]);
+    a.__sandbox.startWorkout('PUSH 1');
+    const card = lgCardOf(a, LAT);
+    const hs = card.indexOf('<div class="ex-head"'), headEnd = hs < 0 ? -1 : hs + divElement(card, hs).length;
+    const rb = tagStart(card, 'class="range-badge"'), fl = tagStart(card, 'class="flag"');
+    const sel = card.indexOf('<select');
+    const row = rb < 0 ? -1 : divOpenAt(card, rb);
+    const out = { flag: fl >= 0, row, flagRow: fl < 0 ? null : divOpenAt(card, fl), headEnd, sel,
+                  br: hs >= 0 && sel > hs && /<br\b/i.test(card.slice(hs, sel)) };
+    a.DB.draft = null;
+    return out;
+  });
+  ok('G-10-5: the rep range and ⬆ Add weight share their own row under the header, with no forced line break',
+     !r.threw && r.flag && r.row >= 0 && r.flagRow === r.row && r.headEnd > 0 && r.row >= r.headEnd && r.row < r.sel
+       && r.br === false, r);
 }
 {
   const r = lgTry(() => {
