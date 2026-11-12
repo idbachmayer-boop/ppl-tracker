@@ -5,8 +5,8 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 11
 current_phase_name: Lawn, Journal and Weather Loop
 status: planning
-stopped_at: Phase 11 context gathered
-last_updated: "2026-11-12T01:29:22.410Z"
+stopped_at: Phase 11 UI-SPEC approved
+last_updated: "2026-11-12T13:01:59.820Z"
 last_activity: 2026-11-11
 last_activity_desc: "Phase 10 complete: UAT 6/6 (G-10-5 retest passed on 5375e10), 10-SECURITY verified 45/45"
 progress:
@@ -193,9 +193,9 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-11-12T01:29:22.394Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-lawn-journal-and-weather-loop/11-CONTEXT.md
+Last session: 2026-11-12T13:01:59.797Z
+Stopped at: Phase 11 UI-SPEC approved
+Resume file: .planning/phases/11-lawn-journal-and-weather-loop/11-UI-SPEC.md
 
 ## Operator Next Steps
 
