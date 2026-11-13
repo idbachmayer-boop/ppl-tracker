@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-rEEv9FykoHBjAb6rlYI/lb5nNl6tKlDgFr/EKI2vJ1s=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Es4jUmZHLOnJquS8vMNY/YnoI65u8b3Yw9++EI5h78E=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -3492,6 +3492,13 @@ function viewSkincare(){
 
 /* ───────────────────────── LAWN & WEATHER (Open-Meteo, no API key) ───────────────────────── */
 let weatherFetching=false;
+/* The weather backoff (Phase 11, LAWN-06). Device-local and memory-only: never in DB, never saved,
+   never synced, so a fresh app launch gets one immediate try. After a failed fetch the automatic
+   path (maybeFetchWeather) waits 5, then 15, then 60 minutes, and 60 for every later failure; one
+   success clears it. The refresh button, Load weather and Retry weather call fetchWeather directly
+   and skip the wait. */
+const WXFAIL = { n:0, retryAt:0 };
+const WX_BACKOFF_MS = [5*60000, 15*60000, 60*60000];
 function wxCode(c){ c=+c;
   if(c===0) return {icon:'☀️',text:'Clear'};
   if(c<=2) return {icon:'🌤️',text:'Mostly clear'};
@@ -3514,11 +3521,17 @@ async function fetchWeather(){
     /* saveLocal, NOT save(): the weather cache is derived data. Bumping updatedAt here is what let a
        4-day-stale device look "newest" merely by being opened, and then overwrite the cloud. */
     DB.wx={ at:Date.now(), lat, lon, data:await r.json() }; saveLocal();
-  }catch(e){ /* keep last cached result */ }
+    WXFAIL.n = 0; WXFAIL.retryAt = 0;
+  }catch(e){
+    /* Keep the last cached result, and back off: the next automatic try waits (see WXFAIL). */
+    WXFAIL.n++;
+    WXFAIL.retryAt = Date.now() + WX_BACKOFF_MS[Math.min(WXFAIL.n, WX_BACKOFF_MS.length) - 1];
+  }
   weatherFetching=false; render();
 }
+/* The only automatic caller (Today's and Care → Lawn's onRender), so the backoff gate lives here. */
 function maybeFetchWeather(){
-  if(!DB.lawn || DB.lawn.lat==null || weatherFetching) return; // only called from the Care/Lawn onRender
+  if(!DB.lawn || DB.lawn.lat==null || weatherFetching || Date.now() < WXFAIL.retryAt) return;
   const wx=DB.wx, stale = !wx || (Date.now()-wx.at>3600000) || wx.lat!==DB.lawn.lat || wx.lon!==DB.lawn.lon;
   if(stale) fetchWeather();
 }

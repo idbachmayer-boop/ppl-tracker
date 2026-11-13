@@ -203,7 +203,8 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'sleepUid', 'addSleep', 'removeSleep', 'viewSleep',
   'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown', 'exportShareFailed',
   'ACTIONS', 'dispatchAction',
-  'EQUIP_TYPES','EQUIP_LABEL','EQUIP_DEFAULTS','equipAsk'];
+  'EQUIP_TYPES','EQUIP_LABEL','EQUIP_DEFAULTS','equipAsk',
+  'WXFAIL','WX_BACKOFF_MS'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -11270,6 +11271,50 @@ const lgTrip = fn => lgTry(() => {
   ok('D-06/D-21: the seven history and return functions never save and never assign into the draft',
      bad.length === 0, bad);
 }
+
+console.log('\n── LAWN: lawn, journal and weather loop (LAWN-01..07) ──');
+/* Phase 11 helpers. The harness fetch settles on a macrotask (setImmediate), so "let the app run"
+   means turning the event loop, never a microtask flush. */
+function lwTicks(n){
+  let p = Promise.resolve();
+  for(let i = 0; i < n; i++) p = p.then(() => new Promise(r => setImmediate(r)));
+  return p;
+}
+/* An opts.fetch that answers every request with `data` as its JSON body. */
+function lwRes(data, extra){
+  return () => Object.assign({ ok:true, status:200, json: async () => data }, extra);
+}
+/* A location, so the weather paths run. */
+function lwLawn(a){
+  a.DB.lawn = { lat:44.94, lon:-93.36, label:'St. Louis Park' };
+  return a;
+}
+
+/* LAWN-06/07 tracer: offline with no cache on Care → Lawn, the app used to fetch, fail, render and
+   fetch again on every turn of the event loop (41 fetches in 40 turns). Now one failure waits. */
+asyncBlock('LAWN-06/07 tracer: offline Care → Lawn', async () => {
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  a.go('care'); a.setSub('lawn');
+  await lwTicks(40);
+  ok('LAWN-06/07 tracer: offline, Care → Lawn fetches once and then waits',
+     a.__fetchCalls() === 1 && a.WXFAIL.n === 1 && a.WXFAIL.retryAt === Date.now() + 300000 && a.weatherFetching === false,
+     { calls: a.__fetchCalls(), n: a.WXFAIL.n, waitMs: a.WXFAIL.retryAt - Date.now() });
+  a.render(); await lwTicks(40);
+  ok('LAWN-06: the renders after a failure start no second fetch', a.__fetchCalls() === 1, a.__fetchCalls());
+  a.WXFAIL.retryAt = 0; a.render(); await lwTicks(40);
+  ok('D-14: once the wait has passed, the next render fetches once more',
+     a.__fetchCalls() === 2 && a.WXFAIL.n === 2, { calls: a.__fetchCalls(), n: a.WXFAIL.n });
+
+  const b = loadApp(APP_PATH, null, { fetch: lwRes(makeWx({ todayISO: today }).data) });
+  b.DB = b.blank(); lwLawn(b); b.DB.wx = null;
+  b.WXFAIL.n = 2; b.WXFAIL.retryAt = 0;
+  b.go('care'); b.setSub('lawn');
+  await lwTicks(40);
+  ok('D-14: one success resets the backoff',
+     b.__fetchCalls() === 1 && b.WXFAIL.n === 0 && b.WXFAIL.retryAt === 0 && !!b.DB.wx && b.DB.wx.at === Date.now(),
+     { calls: b.__fetchCalls(), n: b.WXFAIL.n, retryAt: b.WXFAIL.retryAt, at: b.DB.wx && b.DB.wx.at });
+});
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
