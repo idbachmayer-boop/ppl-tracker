@@ -630,16 +630,17 @@ function waterVerdict(o){
 
 All other claims in this document were verified or cited.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should the Today screen also say "Offline — weather from …"?**
    - What we know: D-15 puts the note "next to the ↻ button", which exists only on the Lawn screen. Today's weather card is a tappable summary with no refresh control.
    - What's unclear: whether Today should show anything when its forecast is stale.
    - Recommendation: Lawn only, as D-15 reads. `wxGlance` returns `null` when today is not in the cache, which hides the card on its own after a long outage.
+   - **Resolved:** Lawn only (11-01; UI-SPEC Open Question 3).
 
-2. **Rows have no location.** Moving the saved location rewrites recent rows (Pitfall 7, A4). Accept for now; a `lat`/`lon` pair per row would be a schema decision for a later phase.
+2. **Rows have no location.** Moving the saved location rewrites recent rows (Pitfall 7, A4). Accept for now; a `lat`/`lon` pair per row would be a schema decision for a later phase. **Resolved:** accepted, with no location on rows (11-02, A4).
 
-3. **Toast and snapshot-ring noise from daily rain syncs (A5).** Decide during planning whether to suppress; not required for correctness.
+3. **Toast and snapshot-ring noise from daily rain syncs (A5).** Decide during planning whether to suppress; not required for correctness. **Resolved:** the noise is accepted, not suppressed (11-02 T-11-16, 11-05 A5).
 
 ## Environment Availability
 
