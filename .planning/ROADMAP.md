@@ -196,7 +196,7 @@ Plans:
 - Open for discuss-phase: rain rows come from the weather fetch, and `CLAUDE.md` says derived data uses `saveLocal()` (the weather cache once used `save()` and made a stale device look newest just by being opened). Decide how a rain row is persisted and reaches the cloud without reopening that hole.
 - Open for discuss-phase: the weather cache holds only 3 past days, so a day is saved only if the app is opened within that window. Confirm with Ian whether gaps are acceptable. Open-Meteo is already an allowed host; any other host needs a CSP change.
 
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 
 Plans:
 **Wave 1**
@@ -205,7 +205,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 11-02-PLAN.md — Rain history: a new synced `rainLog` list (last COLLECTIONS entry, SCHEMA 19 → 20, migration 20, golden regenerated) filled by `recordRain()` from a 14-past-day fetch, finished days only, changed amounts only, sent by the quiet push (`saveLocal()` + `schedulePush()`, never `save()`), with every recipe test and a stale-device control (LAWN-02)
+- [x] 11-02-PLAN.md — Rain history: a new synced `rainLog` list (last COLLECTIONS entry, SCHEMA 19 → 20, migration 20, golden regenerated) filled by `recordRain()` from a 14-past-day fetch, finished days only, changed amounts only, sent by the quiet push (`saveLocal()` + `schedulePush()`, never `save()`), with every recipe test and a stale-device control (LAWN-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -281,6 +281,6 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
 | 9. Equipment and Weight Steps | v1.1 | 5/5 | Complete    | 2026-10-13 |
 | 10. Log Page — History and Skip | v1.1 | 6/6 | Complete    | 2026-11-11 |
-| 11. Lawn, Journal and Weather Loop | v1.1 | 1/5 | In Progress|  |
+| 11. Lawn, Journal and Weather Loop | v1.1 | 2/5 | In Progress|  |
 | 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |
 | 13. Strength Index and Poor-Sleep Intensity | v1.1 | 0/TBD | Not started | - |

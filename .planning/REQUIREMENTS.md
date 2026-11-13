@@ -76,7 +76,7 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
 ### Lawn, journal and weather loop (LAWN)
 
 - [ ] **LAWN-01**: The lawn scheduler holds off watering when today's forecast high is below 60°F.
-- [ ] **LAWN-02**: Once a day is over, that day's rainfall is saved, with its exact amount, in its own
+- [x] **LAWN-02**: Once a day is over, that day's rainfall is saved, with its exact amount, in its own
   small synced collection, separate from `lawnLog`. The collection is added by the `CLAUDE.md` recipe:
   one `COLLECTIONS` entry placed last with an unused `label`, a `SCHEMA` bump and a migration, and the
   required tests (registry validity, a stale-device merge replay that keeps a deleted row deleted,
@@ -211,7 +211,7 @@ proposed and awaiting Ian's approval.
 | LOG-04 | Phase 10 | Complete |
 | LOG-05 | Phase 10 | Complete |
 | LAWN-01 | Phase 11 | Pending |
-| LAWN-02 | Phase 11 | Pending |
+| LAWN-02 | Phase 11 | Complete |
 | LAWN-03 | Phase 11 | Pending |
 | LAWN-04 | Phase 11 | Pending |
 | LAWN-05 | Phase 11 | Pending |

@@ -5,15 +5,15 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 11
 current_phase_name: lawn-journal-and-weather-loop
 status: executing
-stopped_at: Completed 11-01-PLAN.md
-last_updated: "2026-11-13T13:14:02.820Z"
+stopped_at: Completed 11-02-PLAN.md
+last_updated: "2026-11-13T13:28:23.093Z"
 last_activity: 2026-11-13
 last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 19
-  completed_plans: 15
+  completed_plans: 16
   percent: 50
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 11 (lawn-journal-and-weather-loop) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-11-13 — Phase 11 execution started
 
-Progress: [████████░░] 79%
+Progress: [████████░░] 84%
 
 ## Performance Metrics
 
@@ -114,6 +114,7 @@ Progress: [████████░░] 79%
 | Phase 10 P05 | 13 min | 3 tasks | 3 files |
 | Phase 10 P06 | ~10 min executor (spans 2026-10-31..11-11, waiting on Ian's merge) | 3 tasks | 0 files |
 | Phase 11 P01 | 12min | 3 tasks | 3 files |
+| Phase 11 P02 | 13 min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -157,6 +158,8 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [Phase 11]: Offline weather backs off 5/15/60 min in memory only (WXFAIL); manual refresh, Retry weather and the online event on weather screens skip the wait
 - [Phase 11]: A weather cache is usable only when daily.time holds today; index-1 fallbacks removed (wxTodayIndex)
 - [Phase 11]: Today fetches weather all year whenever a location is set (D-12)
+- [Phase 11]: Rain history lives in its own synced list collection rainLog ({ date, inches, mtime }), keyed by date, never in lawnLog (11-02)
+- [Phase 11]: A synced derived row reaches the cloud through the quiet push: touch + saveLocal + schedulePush, never save() (11-02, D-01)
 
 ### Pending Todos
 
@@ -197,8 +200,8 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-11-13T13:14:02.798Z
-Stopped at: Completed 11-01-PLAN.md
+Last session: 2026-11-13T13:28:23.063Z
+Stopped at: Completed 11-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
