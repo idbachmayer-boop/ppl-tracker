@@ -179,6 +179,7 @@ function loadApp(htmlPath, seed, opts){
     'equipAsk',
     /* The weather loop and its backoff (Phase 11, LAWN-06). */
     'WXFAIL','WX_BACKOFF_MS','fetchWeather','maybeFetchWeather','retryWeather','weatherScreenShowing',
+    'wxTodayIndex','wxGlance',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

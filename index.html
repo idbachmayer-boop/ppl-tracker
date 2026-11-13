@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-pbp+x1VQjLdHnspa4Y+wvjuhU3J0SJZDpdKr9JIh4iY=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-nHwJQxG44xvcO8yxlKciaSI/QwRG/S4O9KnZtfYaehw=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1775,10 +1775,17 @@ function render(){
 }
 
 /* ───────────────────────── TODAY (time-aware hub) ───────────────────────── */
+/* Where today sits in the cached forecast, or -1 when there is no usable cache. A cache is usable only
+   when daily.time holds today: after a long offline stretch an older day must never be read as
+   today (RESEARCH Pattern 8). */
+function wxTodayIndex(){
+  const wx=DB.wx, dy=wx && wx.data && wx.data.daily;
+  if(!dy || !Array.isArray(dy.time)) return -1;
+  return dy.time.indexOf(todayISO());
+}
 function wxGlance(){
-  const wx=DB.wx; if(!wx||!wx.data) return null;
-  const dy=wx.data.daily, cur=wx.data.current_weather;
-  let ti=dy.time.indexOf(todayISO()); if(ti<0) ti=dy.time.length>1?1:0;
+  const ti=wxTodayIndex(); if(ti<0) return null;
+  const dy=DB.wx.data.daily, cur=DB.wx.data.current_weather;
   const c=wxCode(cur?cur.weathercode:dy.weathercode[ti]);
   return { temp:Math.round(cur?cur.temperature:dy.temperature_2m_max[ti]), icon:c.icon, text:c.text,
     hi:Math.round(dy.temperature_2m_max[ti]), lo:Math.round(dy.temperature_2m_min[ti]),
@@ -3948,11 +3955,26 @@ function lawnHistory(){
 function viewLawn(){
   if(!DB.lawn || DB.lawn.lat==null) return lawnSetup();
   const locBar=`<div class="row" style="margin-bottom:14px"><span class="muted">${ph('map-pin','lead')}${esc(DB.lawn.label||'My location')}</span><button class="btn btn-sm btn-ghost" data-action="changeLawnLoc">Change</button></div>`;
-  const wx=DB.wx;
-  if(!wx || !wx.data) return `<h1>Lawn & Weather</h1>${locBar}<div class="empty">${weatherFetching?'Loading weather…':'<button class="btn btn-sm" data-action="fetchWeather">Load weather</button>'}</div>`;
+  const wx=DB.wx, ti=wxTodayIndex();
+  /* No usable forecast (none cached, or none that holds today): loading, never tried, or failed (S6). */
+  if(ti<0){
+    const empty = weatherFetching ? 'Loading weather…'
+      : WXFAIL.n>0 ? `<div style="font-size:13px;font-weight:700;color:var(--text-2)">Couldn’t load weather</div>
+        <div class="muted" style="font-size:11px;line-height:1.5;margin-top:4px">Check your connection, then tap Retry weather. It also tries again on its own.</div>
+        <button class="btn btn-sm" style="margin-top:8px" data-action="fetchWeather">Retry weather</button>`
+      : '<button class="btn btn-sm" data-action="fetchWeather">Load weather</button>';
+    return `<h1>Lawn & Weather</h1>${locBar}<div class="empty">${empty}</div>`;
+  }
   const d=wx.data, dy=d.daily, cur=d.current_weather, num=v=>(v==null?0:+v);
-  const times=dy.time, today=todayISO();
-  let ti=times.indexOf(today); if(ti<0) ti=times.length>1?1:0;
+  const times=dy.time;
+  /* S5: the last fetch failed, so say how old the forecast on screen is (D-15). */
+  let wxNote='';
+  if(WXFAIL.n>0){
+    const at=new Date(wx.at);
+    const when=(at.toLocaleDateString('en-CA')!==todayISO() ? at.toLocaleDateString('en-US',{weekday:'short'})+' ' : '')
+      + at.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    wxNote=`<div class="muted" style="font-size:11px;margin-top:4px">${weatherFetching ? 'Retrying…' : esc('Offline — weather from '+when)}</div>`;
+  }
   const P=dy.precipitation_sum, PP=dy.precipitation_probability_max, HI=dy.temperature_2m_max, LO=dy.temperature_2m_min, WC=dy.weathercode;
   const dayLabel=(k,idx)=> k===0?'today':k===1?'tomorrow':new Date(times[idx]+'T00:00').toLocaleDateString('en-US',{weekday:'long'});
   const cw=wxCode(cur?cur.weathercode:WC[ti]);
@@ -3981,8 +4003,8 @@ function viewLawn(){
     <div class="card">
       <div class="row"><div>
         <div class="stat-big" style="font-size:30px">${Math.round(num(cur?cur.temperature:HI[ti]))}°<span style="font-size:14px;color:var(--muted-2)">F</span></div>
-        <div class="stat-sub">${cw.icon} ${cw.text} · H ${Math.round(num(HI[ti]))}° / L ${Math.round(num(LO[ti]))}°</div>
-      </div><button class="btn btn-sm btn-ghost" data-action="fetchWeather">${ph('arrows-clockwise')}</button></div>
+        <div class="stat-sub">${cw.icon} ${cw.text} · H ${Math.round(num(HI[ti]))}° / L ${Math.round(num(LO[ti]))}°</div>${wxNote}
+      </div><button class="btn btn-sm btn-ghost" data-action="fetchWeather" title="Refresh weather" aria-label="Refresh weather">${ph('arrows-clockwise')}</button></div>
       <div style="display:flex;gap:3px;margin-top:14px;overflow-x:auto">${strip}</div>
     </div>
     ${lawnSeason(new Date()) ? cLawnCard(true) : `<div class="card"><div class="muted" style="font-size:13px">${ph('snowflake','lead')}Off-season (Nov–Mar) — smart watering & mowing scheduling resumes in April. Forecast still available above.</div></div>`}

@@ -11440,6 +11440,142 @@ asyncBlock('LAWN-06: one fetch at a time', async () => {
      a.__fetchCalls() === c1 + 1, { before: c1, after: a.__fetchCalls() });
 });
 
+/* The plan's prohibitions, read from the functions' own source with comments stripped (fetchWeather's
+   comment says "NOT save()"): the weather cache stays saveLocal(), no timer retries the weather, and
+   the backoff never reaches DB or storage. */
+asyncBlock('LAWN-06: the backoff stays in memory', async () => {
+  const a = loadApp(APP_PATH);
+  const src = n => f2StripJs(Function.prototype.toString.call(a.__sandbox[n] || ''));
+  const fns = ['fetchWeather', 'maybeFetchWeather', 'retryWeather', 'weatherScreenShowing', 'wxTodayIndex'];
+  const bad = fns.filter(n => typeof a.__sandbox[n] !== 'function' || /\bsave\(|\bset(Timeout|Interval)\(|DB\.\w*(wxfail|retry)/i.test(src(n)));
+  ok('LAWN-06: fetchWeather keeps saveLocal() and never save(), and no weather function sets a timer or writes the backoff into DB',
+     bad.length === 0 && /\bsaveLocal\(\)/.test(src('fetchWeather')), bad);
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  a.go('care'); a.setSub('lawn');
+  await lwTicks(10);
+  a.saveLocal();
+  const stored = JSON.stringify(a.__stored()), mem = JSON.stringify(a.DB);
+  ok('LAWN-06: after a failure, the backoff is in neither DB nor the stored blob',
+     a.WXFAIL.n === 1 && !/retryAt|WXFAIL/.test(stored) && !/retryAt|WXFAIL/.test(mem), { n: a.WXFAIL.n });
+});
+
+/* D-15 and RESEARCH Pattern 8: what Lawn and Today show while the weather is failing. Copy is built
+   with \u escapes: U+2019 (’), U+2026 (…), U+2014 (—). */
+const LW_COULDNT = 'Couldn’t load weather';
+const LW_S6_BODY = 'Check your connection, then tap Retry weather. It also tries again on its own.';
+const LW_OFFLINE = 'Offline — weather from ';
+const LW_RETRYING = 'Retrying…';
+/* Today's weather card: the goSub button to Care → Lawn that leads with a temperature. */
+function lwTodayCard(html){
+  return /data-sub="lawn"><span class="row">[\s\S]{0,200}?-?\d+° · /.test(String(html));
+}
+/* Every start tag of a control that runs fetchWeather. */
+function lwFetchTags(html){
+  return String(html).match(/<button[^>]*data-action="fetchWeather"[^>]*>/g) || [];
+}
+{
+  /* Pattern 8: a cache whose daily.time does not hold today is not usable. The old fallback read
+     index 1 and labelled a day two weeks old as today. */
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank(); lwLawn(a); setLog(a, { mowedDaysAgo: 3 });
+  a.DB.wx = makeWx({ todayISO: dayOff(-14) });
+  a.WXFAIL.retryAt = Date.now() + 3600000;                 // no automatic fetch while we read
+  const html = a.viewLawn();
+  const ctl = loadApp(APP_PATH);
+  ctl.DB = ctl.blank(); setup(ctl, { mowedDaysAgo: 3 });
+  const ctlHtml = ctl.viewLawn();
+  ok('Pattern 8: a cache without today shows no temperature and no Mowing outlook on Lawn (a usable cache shows both)',
+     !/stat-big/.test(html) && !/Mowing outlook/.test(html) && /stat-big/.test(ctlHtml) && /Mowing outlook/.test(ctlHtml),
+     { stale: /stat-big/.test(html), outlook: /Mowing outlook/.test(html) });
+  ok('Pattern 8: wxGlance() returns null for a cache without today (and a glance for a usable one)',
+     typeof a.wxGlance === 'function' && a.wxGlance() === null && !!ctl.wxGlance(),
+     typeof a.wxGlance === 'function' ? a.wxGlance() : 'wxGlance not exported');
+  a.go('today');
+  ctl.WXFAIL.retryAt = Date.now() + 3600000; ctl.go('today');
+  const appHtml = a.__sandbox.document.getElementById('app').innerHTML;
+  const ctlApp = ctl.__sandbox.document.getElementById('app').innerHTML;
+  ok('Pattern 8: Today shows no weather card from a cache without today (a usable cache shows it)',
+     !lwTodayCard(appHtml) && lwTodayCard(ctlApp), { stale: lwTodayCard(appHtml), usable: lwTodayCard(ctlApp) });
+}
+{
+  /* S6: no usable cache. Never tried, in flight, and failed. */
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  let html = a.viewLawn();
+  const loadTags = lwFetchTags(html);
+  ok('D-15: no cache and no failure keeps the Load weather button, and nothing else changes',
+     loadTags.length === 1 && /data-action="fetchWeather">Load weather<\/button>/.test(html) && html.indexOf(LW_COULDNT) < 0,
+     { tags: loadTags.length });
+  a.WXFAIL.n = 1;
+  html = a.viewLawn();
+  const ctls = controlsIn(html).filter(c => c.data.action === 'fetchWeather');
+  ok('D-15: no cache after a failure shows Couldn’t load weather, its body copy and one Retry weather button',
+     html.indexOf('<div style="font-size:13px;font-weight:700;color:var(--text-2)">' + LW_COULDNT + '</div>') >= 0 &&
+     html.indexOf('<div class="muted" style="font-size:11px;line-height:1.5;margin-top:4px">' + LW_S6_BODY + '</div>') >= 0 &&
+     ctls.length === 1 && ctls[0].tag === 'button' && /\bbtn-sm\b/.test(ctls[0].cls) &&
+     /data-action="fetchWeather">Retry weather<\/button>/.test(html) && html.indexOf('Load weather') < 0,
+     { controls: ctls.length });
+}
+asyncBlock('D-15: S6 loading and Retry weather', async () => {
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  a.WXFAIL.n = 1; a.WXFAIL.retryAt = Date.now() + 300000;
+  a.fetchWeather();                                          // in flight until the stub rejects
+  const html = a.viewLawn();
+  ok('D-15: no cache while a fetch is in flight shows Loading weather… and no button',
+     html.indexOf('Loading weather…') >= 0 && lwFetchTags(html).length === 0 && html.indexOf(LW_COULDNT) < 0,
+     { fetching: a.weatherFetching, tags: lwFetchTags(html).length });
+  await lwTicks(10);
+  const c0 = a.__fetchCalls();
+  fireAction(a, 'click', fakeEl({ action: 'fetchWeather' }));
+  await lwTicks(10);
+  ok('D-15: tapping Retry weather fetches once, even while the backoff wait is running',
+     a.WXFAIL.retryAt > Date.now() && a.__fetchCalls() === c0 + 1, { before: c0, after: a.__fetchCalls() });
+});
+asyncBlock('D-15: S5 offline note', async () => {
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank(); setup(a, { mowedDaysAgo: 3, wateredDaysAgo: 2 });
+  a.DB.wx.lat = a.DB.lawn.lat; a.DB.wx.lon = a.DB.lawn.lon;
+  const time = new Date(Date.now()).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+  const outlook = h => /Mowing outlook/.test(h) && /stat-big/.test(h);
+
+  let html = a.viewLawn();
+  ok('D-15: after a success there is no offline note, and the forecast and outlook render',
+     html.indexOf(LW_OFFLINE) < 0 && html.indexOf(LW_RETRYING) < 0 && outlook(html));
+
+  a.WXFAIL.n = 1;
+  html = a.viewLawn();
+  ok('D-15: a usable cache after a failure shows "Offline — weather from {time}" in a muted 11px note, with the forecast and outlook still there',
+     html.indexOf('<div class="muted" style="font-size:11px;margin-top:4px">' + LW_OFFLINE + time + '</div>') >= 0 && outlook(html),
+     { time, note: (html.match(/Offline[^<]*/) || [])[0] });
+
+  const yesterday = Date.now() - 86400000;
+  a.DB.wx.at = yesterday;
+  html = a.viewLawn();
+  const wd = new Date(yesterday).toLocaleDateString('en-US', { weekday:'short' });
+  ok('D-15: a cache fetched on an earlier day puts the short weekday first ("Offline — weather from Thu 12:00 PM")',
+     html.indexOf(LW_OFFLINE + wd + ' ' + time + '</div>') >= 0 && outlook(html),
+     { note: (html.match(/Offline[^<]*/) || [])[0] });
+  a.DB.wx.at = Date.now();
+
+  a.fetchWeather();                                          // a retry in flight
+  html = a.viewLawn();
+  ok('D-15: while a retry is in flight the note reads Retrying… and the offline text is gone',
+     a.weatherFetching === true && html.indexOf(LW_RETRYING) >= 0 && html.indexOf(LW_OFFLINE) < 0 && outlook(html),
+     { fetching: a.weatherFetching, note: (html.match(/(Offline|Retrying)[^<]*/) || [])[0] });
+  await lwTicks(10);
+
+  const refresh = lwFetchTags(a.viewLawn()).filter(t => /title="Refresh weather"/.test(t) && /aria-label="Refresh weather"/.test(t));
+  ok('D-15: the refresh button carries title and aria-label "Refresh weather"', refresh.length === 1, lwFetchTags(a.viewLawn()));
+
+  /* S7: Today keeps its weather card after a failure and shows no offline note. */
+  a.WXFAIL.n = 1; a.WXFAIL.retryAt = Date.now() + 300000;
+  a.go('today');
+  const today_ = a.__sandbox.document.getElementById('app').innerHTML;
+  ok('D-15 (S7): Today with a usable cache after a failure keeps its weather card and shows no Offline note',
+     lwTodayCard(today_) && today_.indexOf('Offline') < 0, { card: lwTodayCard(today_) });
+});
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
