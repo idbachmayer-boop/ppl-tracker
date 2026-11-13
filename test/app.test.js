@@ -416,6 +416,10 @@ console.log('\n── lawn wording, fixed strings ──');
   { name:'hot from 2pm',        o:{mowedDaysAgo:9,  wateredDaysAgo:4, wx:{hotFrom:{0:14}}},                mow:'Mow before 2pm (before the heat)' },
   { name:'growth spike',        o:{mowedDaysAgo:6,  wateredDaysAgo:4, wx:{precipByOffset:{'-2':0.6}}},     mow:'Mow today (8am–9pm)' },
   { name:'watered today',       o:{mowedDaysAgo:6,  wateredDaysAgo:0, wx:{}},                              water:'Watered today — hold off' },
+  { name:'cool day',            o:{mowedDaysAgo:6,  wateredDaysAgo:4, wx:{hiByOffset:{0:54}}},              water:'Cool day (high 54°F) — hold off' },
+  { name:'wet forecast, amount and chance', o:{mowedDaysAgo:6, wateredDaysAgo:4, wx:{precipByOffset:{0:0.4}, probByOffset:{0:70}}}, water:'Rain in the forecast (~0.40", 70% chance) — hold off' },
+  { name:'wet forecast, amount only',       o:{mowedDaysAgo:6, wateredDaysAgo:4, wx:{precipByOffset:{0:0.4}}},                    water:'Rain in the forecast (~0.40") — hold off' },
+  { name:'wet forecast, chance only',       o:{mowedDaysAgo:6, wateredDaysAgo:4, wx:{probByOffset:{0:70}}},                       water:'70% chance of rain — hold off' },
   { name:'no weather at all',   o:{mowedDaysAgo:6,  wateredDaysAgo:4, wx:null},                            mow:'Last mowed 6 days ago — wait a day or two' },
 ].forEach(c=>{
   setup(app, c.o); const s = app.lawnStatus();
@@ -12012,6 +12016,117 @@ const lw3App = loadApp(APP_PATH);
      got.text === 'Cool day (high 54°F) — hold off' && got.hard === true && got.recommend === false
        && got.next === 2 && !!nd && nd.off === 2 && nd.label === 'Sun'
        && cells.length === 7 && got.drops.join() === '0,0,1,0,0,0,0' && got.card === true, got);
+}
+
+/* Today's watering status for one fixture, on lw3App. */
+function lw3Water(o, k){ setup(lw3App, o); return lw3App.lawnStatus(k || 0).water; }
+/* Write one day's high straight into the cached daily array, which makeWx cannot do for null. */
+function lw3SetHigh(a, k, v){
+  const dy = a.DB.wx.data.daily, i = dy.time.indexOf(dayOff(k));
+  dy.temperature_2m_max[i] = v;
+  return i;
+}
+/* Every surface that names a watering day, against nextWaterDay(). An empty list means they agree. */
+function lw3Agree(a){
+  const k = lw3Next(a), cells = lwStrip(a), nd = a.nextDueDay('water'), w = a.lawnStatus().water, card = a.cLawnCard();
+  const drops = cells.map(lw3Drops), total = drops.reduce((s, n) => s + n, 0), bad = [];
+  if(k !== null && typeof k !== 'number') bad.push(String(k));
+  if(cells.length && total !== (k == null ? 0 : 1)) bad.push('droplets in the strip: ' + total);
+  if(cells.length && k != null && drops[k] !== 1) bad.push('no droplet on day ' + k + ': ' + drops.join());
+  if(k != null && k >= 1 && !(nd && nd.off === k)) bad.push('nextDueDay: ' + JSON.stringify(nd));
+  const markWatered = controlsIn(card).some(c => c.data.action === 'toggleLawnLog' && c.data.which === 'watered');
+  if(!w.unknown && w.recommend !== (k === 0)) bad.push('card recommend: ' + w.recommend);
+  if(!w.unknown && markWatered !== (k === 0)) bad.push('Mark watered on the card: ' + markWatered);
+  if(k !== 1 && card.includes('Watering tomorrow')) bad.push('the heads-up says Watering tomorrow');
+  return bad;
+}
+
+{
+  /* LAWN-01 boundary: the high as the weather card shows it, rounded to a whole °F, against 60. */
+  const rows = [[59, true], [59.4, true], [59.5, false], [60, false], [61, false]].map(([hi, holds]) => {
+    const w = lw3Water({ mowedDaysAgo: 3, wateredDaysAgo: 4, wx: { hiByOffset: { 0: hi } } });
+    const pass = holds ? (w.text === 'Cool day (high 59°F) — hold off' && w.recommend === false && w.hard === true)
+                       : (/^Time to water/.test(w.text) && w.recommend === true);
+    return { hi, pass, text: w.text, hard: w.hard };
+  });
+  rows.forEach(r => ok(`LAWN-01: a high of ${r.hi}°F ${r.hi < 59.5 ? 'holds as a cool day (high 59°F), hard' : 'waters as before'}`, r.pass, r));
+  /* Pitfall 4: a gap in the forecast is never a cool day. */
+  [['null', null], ['the string \'54\'', '54'], ['NaN', NaN], ['-Infinity', -Infinity]].forEach(([label, v]) => {
+    setup(lw3App, { mowedDaysAgo: 3, wateredDaysAgo: 4, wx: {} });
+    const i = lw3SetHigh(lw3App, 0, v), w = lw3App.lawnStatus().water;
+    ok(`LAWN-01 (Pitfall 4): a high of ${label} is not a cool day, and watering is decided as before`,
+       i >= 0 && w.recommend === true && /^Time to water/.test(w.text), { i, text: w.text });
+  });
+  /* D-09: Ian's per-day Override still waters on a cool day. */
+  setup(lw3App, { mowedDaysAgo: 3, wateredDaysAgo: 4, wx: { hiByOffset: { 0: 54 } } });
+  lw3App.DB.lawnLog[today] = Object.assign(lw3App.DB.lawnLog[today] || {}, { overrideWater: true });
+  const ov = lw3App.lawnStatus().water;
+  ok('D-09: the Override still waters on a cool day', ov.text === 'Watering anyway (override)' && ov.recommend === true, ov);
+}
+
+{
+  /* LAWN-04: the day's own forecast holds watering at the season's rainSkip or a 60% chance. Hard. */
+  const at = wx => lw3Water({ mowedDaysAgo: 3, wateredDaysAgo: 4, wx });
+  const r029 = at({ precipByOffset: { 0: 0.29 } }), r03 = at({ precipByOffset: { 0: 0.3 } });
+  const c59 = at({ probByOffset: { 0: 59 } }), c60 = at({ probByOffset: { 0: 60 } });
+  ok('LAWN-04: in summer, 0.29" of own-day rain still waters', r029.recommend === true, r029.text);
+  ok('LAWN-04: in summer, 0.3" of own-day rain holds, hard', r03.text === 'Rain in the forecast (~0.30") — hold off' && r03.hard === true, r03);
+  ok('LAWN-04: a 59% chance still waters', c59.recommend === true, c59.text);
+  ok('LAWN-04: a 60% chance holds, hard', c60.text === '60% chance of rain — hold off' && c60.hard === true, c60);
+  const both = at({ precipByOffset: { 0: 0.4 }, probByOffset: { 0: 70 } });
+  ok('LAWN-01/04: the cool and wet holds are hard holds',
+     both.hard === true && lw3Water({ mowedDaysAgo: 3, wateredDaysAgo: 4, wx: { hiByOffset: { 0: 54 } } }).hard === true, both);
+}
+
+{
+  /* LAWN-04 in spring: rainSkip is 0.5. A fresh instance, because lawnSeason is replaced on it. */
+  const sp = loadApp(APP_PATH);
+  sp.__sandbox.lawnSeason = () => 'spring';
+  setup(sp, { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: { precipByOffset: { 0: 0.49 } } });
+  const s049 = sp.lawnStatus();
+  setup(sp, { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: { precipByOffset: { 0: 0.5 } } });
+  const s05 = sp.lawnStatus();
+  ok('LAWN-04: in spring, 0.49" of own-day rain still waters', s049.season === 'spring' && s049.water.recommend === true, { season: s049.season, text: s049.water.text });
+  ok('LAWN-04: in spring, 0.5" of own-day rain holds', s05.season === 'spring' && s05.water.text === 'Rain in the forecast (~0.50") — hold off', { season: s05.season, text: s05.water.text });
+}
+
+{
+  /* D-08: the precedence documented above waterVerdict, one pair at a time. */
+  const t = (o, k) => lw3Water(o, k).text;
+  const cases = [
+    ['watered recently beats a wet forecast', t({ mowedDaysAgo: 3, wateredDaysAgo: 0, wx: { precipByOffset: { 0: 0.4 } } }), 'Watered today — hold off'],
+    ['the day\'s own forecast beats rain that already fell', t({ mowedDaysAgo: 3, wateredDaysAgo: 4, wx: { precipByOffset: { 0: 0.4, '-1': 0.4 } } }), 'Rain in the forecast (~0.40") — hold off'],
+    ['rain that already fell beats rain tomorrow', t({ mowedDaysAgo: 3, wateredDaysAgo: 4, wx: { precipByOffset: { '-1': 0.4, 1: 0.6 } } }), 'Rained recently (~0.40") — hold off'],
+    ['rain tomorrow beats a cool day', t({ mowedDaysAgo: 3, wateredDaysAgo: 4, wx: { precipByOffset: { 1: 0.6 }, hiByOffset: { 0: 54 } } }), 'Holding off — ~0.60" of rain expected tomorrow'],
+    ['a cool day beats the city rule (tomorrow is an even date)', t({ mowedDaysAgo: 3, wateredDaysAgo: 4, wx: { hiByOffset: { 1: 54 } } }, 1), 'Cool day (high 54°F) — hold off'],
+  ];
+  cases.forEach(([label, got, want]) => ok('D-08: ' + label, got === want, got));
+}
+
+{
+  /* D-07: the droplet skips held days and is absent when nothing qualifies or nothing is logged.
+     The chance fixture mows on day 1 with an older mow, so its 60% day is "too soon" rather than a
+     wet mow day; the wet-mark-beside-the-droplet case is the Lawn outlook checks' to make. */
+  const fixtures = [
+    ['the tracer (54°F today)',              { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: { hiByOffset: { 0: 54 } } },                 2],
+    ['cool on days 0 and 2',                 { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: { hiByOffset: { 0: 54, 2: 54 } } },          4],
+    ['cool on day 0, a 60% chance on day 2', { mowedDaysAgo: 2, wateredDaysAgo: 7, wx: { hiByOffset: { 0: 54 }, probByOffset: { 2: 60 } } }, 4],
+    ['cool on every odd date',               { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: { hiByOffset: { 0: 54, 2: 54, 4: 54, 6: 54 } } }, null],
+    ['watering never logged',                { mowedDaysAgo: 3, wateredDaysAgo: null, wx: {} },                                     null],
+    ['plain weather, watered a week ago',    { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: {} },                                         0],
+  ];
+  fixtures.forEach(([label, o, want]) => {
+    setup(lw3App, o);
+    const k = lw3Next(lw3App), drops = lwStrip(lw3App).map(lw3Drops);
+    ok(`D-07: ${label} → the next watering day is ${want}`, k === want, { k, drops: drops.join() });
+    if(want === null) ok(`D-07: ${label} → no droplet anywhere in the strip`, drops.length === 7 && drops.every(n => n === 0), drops.join());
+    ok(`D-08: ${label} → the strip, the card, the heads-up and the next line agree`, lw3Agree(lw3App).length === 0, lw3Agree(lw3App));
+  });
+  setup(lw3App, { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: {} });
+  const card = lw3App.cLawnCard();
+  ok('D-08: when nextWaterDay() is 0, Today\'s card holds the Watering block\'s Mark watered button',
+     lw3Next(lw3App) === 0 && controlsIn(card).some(c => c.data.action === 'toggleLawnLog' && c.data.which === 'watered'),
+     { k: lw3Next(lw3App) });
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
