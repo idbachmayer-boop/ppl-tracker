@@ -180,6 +180,8 @@ function loadApp(htmlPath, seed, opts){
     /* The weather loop and its backoff (Phase 11, LAWN-06). */
     'WXFAIL','WX_BACKOFF_MS','fetchWeather','maybeFetchWeather','retryWeather','weatherScreenShowing',
     'wxTodayIndex','wxGlance',
+    /* Rain history (Phase 11, LAWN-02). */
+    'recordRain','RAIN_SANE_MAX_IN',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
@@ -204,8 +206,9 @@ function loadApp(htmlPath, seed, opts){
   return api;
 }
 
-/* Build a weather blob shaped like Open-Meteo's: daily arrays start 3 days BEFORE today (past_days=3)
-   and run 6 days forward, with matching hourly series.
+/* Build a weather blob shaped like Open-Meteo's: daily arrays start `pastDays` days BEFORE today
+   (default 3; the app asks for past_days=14 since Phase 11) and run 6 days forward, with matching
+   hourly series.
    Options are all keyed by day offset from today:
      precipByOffset {0: 0.4}          daily precipitation totals, inches
      probByOffset   {0: 60}           daily max chance of rain, %
@@ -213,12 +216,12 @@ function loadApp(htmlPath, seed, opts){
      hotFrom        {0: 14}           hourly temps hit 90°F from this hour
      rainFrom       {0:{hour,perHour}} hourly precipitation from this hour to 9pm            */
 function makeWx(opts){
-  const { todayISO, precipByOffset = {}, probByOffset = {}, hotFrom = {}, hiByOffset = {}, rainFrom = {} } = opts;
+  const { todayISO, pastDays = 3, precipByOffset = {}, probByOffset = {}, hotFrom = {}, hiByOffset = {}, rainFrom = {} } = opts;
   const base = new Date(todayISO + 'T00:00');
   const iso = n => { const d = new Date(base); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
   const time = [], precipitation_sum = [], precipitation_probability_max = [],
         temperature_2m_max = [], temperature_2m_min = [], weathercode = [];
-  for(let n=-3; n<=6; n++){
+  for(let n=-pastDays; n<=6; n++){
     time.push(iso(n));
     precipitation_sum.push(precipByOffset[n] || 0);
     precipitation_probability_max.push(probByOffset[n] || 0);
@@ -227,7 +230,7 @@ function makeWx(opts){
     weathercode.push(0);
   }
   const hTime = [], hTemp = [], hPrecip = [];
-  for(let n=-3; n<=6; n++){
+  for(let n=-pastDays; n<=6; n++){
     for(let hr=0; hr<24; hr++){
       hTime.push(`${iso(n)}T${String(hr).padStart(2,'0')}:00`);
       const hot = hotFrom[n];

@@ -204,7 +204,7 @@ const REQUIRED_EXPORTS = ['COLLECTIONS','collectionProblems','MIGRATIONS','sessK
   'mdEscape', 'mdCell', 'mdHeader', 'exportRows', 'buildMarkdownExport', 'exportMarkdown', 'downloadMarkdown', 'exportShareFailed',
   'ACTIONS', 'dispatchAction',
   'EQUIP_TYPES','EQUIP_LABEL','EQUIP_DEFAULTS','equipAsk',
-  'WXFAIL','WX_BACKOFF_MS'];
+  'WXFAIL','WX_BACKOFF_MS','recordRain'];
 REQUIRED_EXPORTS.forEach(name => ok('exported: ' + name, app[name] !== undefined));
 
 /* A snapshot of the registry's own fields, comparable across the whole suite run (REG-01: nothing
@@ -1699,9 +1699,17 @@ ok("SLEEP-04: viewSleep reads through liveOf('sleep')", app.viewSleep.toString()
 {
   const keys = Object.keys(app.COLLECTIONS);
   const sleepLineMatches = app.__src.match(/^\s*sleep:/gm) || [];
-  ok('SLEEP-04: sleep is declared once, as the last entry',
-     keys[keys.length-1] === 'sleep' && sleepLineMatches.length === 1,
-     { lastKey: keys[keys.length-1], sleepLineCount: sleepLineMatches.length });
+  ok('SLEEP-04: sleep is declared exactly once',
+     keys.indexOf('sleep') >= 0 && sleepLineMatches.length === 1,
+     { keys, sleepLineCount: sleepLineMatches.length });
+}
+{
+  /* rainLog (Phase 11, LAWN-02) took over the last slot from sleep. */
+  const keys = Object.keys(app.COLLECTIONS);
+  const rainLineMatches = app.__src.match(/^\s*rainLog:/gm) || [];
+  ok('LAWN-02: rainLog is declared once, as the last entry',
+     keys[keys.length-1] === 'rainLog' && rainLineMatches.length === 1,
+     { lastKey: keys[keys.length-1], rainLineCount: rainLineMatches.length });
 }
 
 console.log('\n── DRY-RUN-A: a map-shaped collection declared in one line is picked up everywhere (DOC-04) ──');
@@ -1873,7 +1881,7 @@ ok('a fresh install still boots clean', (()=>{ const fresh = loadApp(APP_PATH); 
    by normalize()'s silent try/catch while `_schema` still advances. Booting the REAL app from every
    schema version — not just the current one — is the only way to catch that. */
 console.log('\n── every schema version boots, and every declared collection has its shape (REG-15) ──');
-const INTRODUCED_AT = { sessions:0, weights:0, hobbyLog:1, journal:2, mobilityLog:5, todos:6, cardio:7, ideas:8, lawnLog:10, petWeights:14, sleep:18 };
+const INTRODUCED_AT = { sessions:0, weights:0, hobbyLog:1, journal:2, mobilityLog:5, todos:6, cardio:7, ideas:8, lawnLog:10, petWeights:14, sleep:18, rainLog:20 };
 Object.keys(app.COLLECTIONS).forEach(name => {
   ok('boot: introduced-at table knows ' + name, name in INTRODUCED_AT, name);
 });
@@ -8395,8 +8403,8 @@ console.log('\n── EQUIP: equipment and weight steps (EQUIP-01..06) ──');
   const rows = Array.isArray(stored.exercises) ? stored.exercises : [];
   const types = EQ.EQUIP_TYPES || [];
   const lat = rows.find(r => r && r.id === 'db-lateral-raise');
-  ok('EQUIP-02/D-14: a schema-18 device boots into schema 19, and every STORED registry row carries a valid equip, mtime old + 1 and equipAt 0',
-     stored._schema === 19 && rows.length === 3 && rows.every(r => types.indexOf(r.equip) >= 0 && r.mtime === 1001 && r.equipAt === 0) &&
+  ok('EQUIP-02/D-14: a schema-18 device boots into the current schema, and every STORED registry row carries a valid equip, mtime old + 1 and equipAt 0',
+     stored._schema === app.SCHEMA && rows.length === 3 && rows.every(r => types.indexOf(r.equip) >= 0 && r.mtime === 1001 && r.equipAt === 0) &&
      !!lat && lat.equip === 'dumbbell',
      { schema: stored._schema, rows });
 
@@ -8508,8 +8516,8 @@ const EQ_EXPORT_NAMES = [
   ok('D-14: a row whose mtime is not a number gets mtime 1, never now', !!abc && abc.mtime === 1 && abc.equip === 'bodyweight', abc);
 
   const empty = app.normalize(eqSeed18([]));
-  ok('EQUIP-02: an empty registry stays empty and still reaches schema 19',
-     Array.isArray(empty.exercises) && empty.exercises.length === 0 && empty._schema === 19, { ex: empty.exercises, schema: empty._schema });
+  ok('EQUIP-02: an empty registry stays empty and still reaches the current schema',
+     Array.isArray(empty.exercises) && empty.exercises.length === 0 && empty._schema === app.SCHEMA, { ex: empty.exercises, schema: empty._schema });
   const typedRows = [ eqRow('Preacher curl', 7, { equip: 'cable', equipAt: 5 }), eqRow('DB fly', 7, { equip: 'dumbbell', equipAt: 5 }) ];
   const typed = app.normalize(eqSeed18(clone(typedRows)));
   ok('EQUIP-02/T-9-05: rows that already hold a valid equip come back byte-identical',
@@ -10361,9 +10369,9 @@ let lgExportApp = null;
     const reverse = a.mergeDB(JSON.parse(JSON.stringify(local)), JSON.parse(JSON.stringify(merged)), false);
     return { valid, merged: pick(merged), replay: pick(replay), reverse: pick(reverse), schema: a.SCHEMA };
   });
-  ok('D-09/D-23: validateBackup accepts the marker, the newer copy keeps it through the merge and a stale-device replay, and SCHEMA stays 19',
+  ok('D-09/D-23: validateBackup accepts the marker, the newer copy keeps it through the merge and a stale-device replay',
      !r.threw && r.valid === null && JSON.stringify(r.merged) === '[true,"shoulder"]' && JSON.stringify(r.replay) === '[true,"shoulder"]'
-       && JSON.stringify(r.reverse) === '[true,"shoulder"]' && r.schema === 19, r);
+       && JSON.stringify(r.reverse) === '[true,"shoulder"]', r);
 }
 {
   const r = lgTry(() => {
@@ -11574,6 +11582,46 @@ asyncBlock('D-15: S5 offline note', async () => {
   const today_ = a.__sandbox.document.getElementById('app').innerHTML;
   ok('D-15 (S7): Today with a usable cache after a failure keeps its weather card and shows no Offline note',
      lwTodayCard(today_) && today_.indexOf('Offline') < 0, { card: lwTodayCard(today_) });
+});
+
+/* LAWN-02 tracer: the weather fetch saves every finished day's rainfall in rainLog, quietly. The rows
+   are stamped by touch(), persisted with saveLocal() (updatedAt never moves) and sent by one
+   schedulePush(), which merges through pushNow's transaction (D-01, D-02, D-03, D-05). */
+asyncBlock('LAWN-02 tracer', async () => {
+  const wx = makeWx({ todayISO: today, pastDays: 14, precipByOffset: { '-1': 0.42, 0: 0.3 } });
+  const a = loadApp(APP_PATH, null, { fetch: lwRes(wx.data) });
+  const spy = spyPushes(a);
+  a.DB = a.blank(); a.DB.updatedAt = 1000; lwLawn(a); a.DB.wx = null; a.saveLocal();
+  a.go('care'); a.setSub('lawn');
+  await lwTicks(40);
+  const url = a.__fetchUrls()[0] || '';
+  const live = a.liveOf('rainLog');
+  const want = []; for(let n = -14; n <= -1; n++) want.push(dayOff(n));
+  const dates = live.map(r => r.date).sort();
+  const y = live.find(r => r.date === dayOff(-1));
+  const stored = a.__stored() || {};
+  const storedDates = (stored.rainLog || []).map(r => r.date).sort();
+  ok('LAWN-02 tracer: a fetch saves every finished day, yesterday at 0.42, never today, with no updatedAt bump and one push',
+     url.indexOf('https://api.open-meteo.com/') === 0 && url.indexOf('past_days=14') >= 0
+       && JSON.stringify(dates) === JSON.stringify(want)
+       && !!y && y.inches === 0.42 && y.mtime === Date.now()
+       && !live.some(r => r.date >= today)
+       && JSON.stringify(storedDates) === JSON.stringify(want)
+       && a.DB.updatedAt === 1000 && stored.updatedAt === 1000
+       && spy.n === 1,
+     { url, dates, y, storedDates, updatedAt: a.DB.updatedAt, storedUpdatedAt: stored.updatedAt, pushes: spy.n });
+
+  const cloud = fakeCloud(a, Object.assign(a.blank(), { updatedAt: 500 }), { signedIn: true });
+  try{
+    await a.pushNow(true);
+  } finally {
+    a.SYNC.docRef = null; a.SYNC.user = null;
+  }
+  const blob = cloud.writes.length ? JSON.parse(cloud.writes[0].blob) : {};
+  const cy = (blob.rainLog || []).find(r => r.date === dayOff(-1));
+  ok('LAWN-02 tracer: pushNow\'s transaction carries the rows to the cloud and keeps updatedAt at max(remote, local)',
+     cloud.writes.length === 1 && !!cy && cy.inches === 0.42 && blob.updatedAt === 1000,
+     { writes: cloud.writes.length, row: cy, updatedAt: blob.updatedAt });
 });
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

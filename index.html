@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-nHwJQxG44xvcO8yxlKciaSI/QwRG/S4O9KnZtfYaehw=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-oFcssEN1b1CQLXHsOJYESN7MJOdPynhgLEXBR6icV5Q=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -495,7 +495,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 19;
+const SCHEMA = 20;
 /* Which build is this? The deploy job stamps <meta name="ppl-build"> in <head> with
    "<ISO time> <short sha>", in the published copy only, so Settings can say which version a device
    is actually running — a phone still on a stale build has cost real confusion before.
@@ -542,9 +542,12 @@ const COLLECTIONS = {
      keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
   mobilityLog:{ kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Mobility', columns:[{field:'date',label:'date'},{field:'item',label:'stretch'}], format:dayFlagRows },
   lawnLog:    { kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Lawn', columns:[{field:'date',label:'date'},{field:'item',label:'task'}], format:dayFlagRows },
-  /* sleep (F1/SLEEP-01): last entry on purpose — keeps every existing collection's validation
-     precedence and merge order unchanged. No format: sleep rows are already flat. */
+  /* sleep (F1/SLEEP-01): appended after every collection before it (it was the last entry until
+     Phase 11), which kept their validation precedence and merge order unchanged.
+     No format: sleep rows are already flat. */
   sleep:      { kind:'list', key:'id',        sortBy:'date',      merge:'union', soft:true,  required:false, label:'Sleep', columns:[{field:'date',label:'date'},{field:'hours',label:'hours'},{field:'quality',label:'quality (1-5)'},{field:'note',label:'note'}] },
+  /* Phase 11, LAWN-02: one row per finished day, written by the weather fetch, read-only to Ian; a list keyed by date so rows merge by their own mtime. */
+  rainLog:    { kind:'list', key:'date',      sortBy:'date',      merge:'union', soft:true,  required:false, label:'Rainfall', columns:[{field:'date',label:'date'},{field:'inches',label:'rainfall',unit:'in'}] },
 };
 {
   const problems = collectionProblems(COLLECTIONS);
@@ -655,6 +658,7 @@ const MIGRATIONS = {
   17:d=>buildExerciseRegistry(d),
   18:d=>ensureCollectionDefaults(d), // sleep log — creates absent collections only (COLLECTIONS registry, F1)
   19:d=>stampEquipment(d), // equipment type per registry row (EQUIP-02), mtime old + 1 (D-14) — see stampEquipment()
+  20:d=>ensureCollectionDefaults(d), // rain history (LAWN-02): creates the absent list only, rewrites no row
 };
 /* Creates ABSENT collections only — never rewrites a row that already carries an mtime, so the
    four REG-16 guards a row-rewriting migration must satisfy (touch, persist immediately, stay
@@ -3523,14 +3527,21 @@ async function fetchWeather(){
   weatherFetching=true; render();
   try{
     const {lat,lon}=DB.lawn;
-    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max&hourly=temperature_2m,precipitation&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=3&forecast_days=7`;
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max&hourly=temperature_2m,precipitation&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=14&forecast_days=7`;
     const r=await fetch(url); if(!r.ok) throw 0;
     /* saveLocal, NOT save(): the weather cache is derived data. Bumping updatedAt here is what let a
-       4-day-stale device look "newest" merely by being opened, and then overwrite the cloud. */
+       4-day-stale device look "newest" merely by being opened, and then overwrite the cloud.
+       Rain rows (recordRain) are synced, so they go up through schedulePush → pushNow's transaction
+       and mergeDB, while saveLocal leaves updatedAt alone, so a stale device that writes rain can
+       never look newest and win lawnLog or mobilityLog (D-01). Never save() here. */
     /* A body without daily.time is a failure too, and never replaces the last good cache (D-15). */
     const data=await r.json();
     if(!(data && data.daily && Array.isArray(data.daily.time))) throw 0;
-    DB.wx={ at:Date.now(), lat, lon, data }; saveLocal();
+    DB.wx={ at:Date.now(), lat, lon, data };
+    /* Rain belongs to the place it was fetched for: a location changed mid-fetch writes no rows. */
+    const rainChanged = !!(DB.lawn && DB.lawn.lat===lat && DB.lawn.lon===lon) && recordRain(data.daily);
+    saveLocal();
+    if(rainChanged) schedulePush();
     WXFAIL.n = 0; WXFAIL.retryAt = 0;
   }catch(e){
     /* Keep the last cached result, and back off: the next automatic try waits (see WXFAIL). */
@@ -3544,6 +3555,35 @@ function maybeFetchWeather(){
   if(!DB.lawn || DB.lawn.lat==null || weatherFetching || Date.now() < WXFAIL.retryAt) return;
   const wx=DB.wx, stale = !wx || (Date.now()-wx.at>3600000) || wx.lat!==DB.lawn.lat || wx.lon!==DB.lawn.lon;
   if(stale) fetchWeather();
+}
+/* Rain history (LAWN-02): one rainLog row per finished day from the weather response's daily
+   series. Finished days only — a date must be before today as text, so today's partial total is
+   never saved. A dry day is a row at 0, so dry differs from never-fetched. An unchanged amount
+   writes nothing, which keeps an hourly fetch from making hourly writes; a changed one updates the
+   row in place and touch()es it, so the latest reading wins the merge. Tombstones stay tombstones:
+   a deleted date is never revived or given a second live row. Rows hold only date, inches and
+   mtime — no location. Amounts must be numbers from 0 to RAIN_SANE_MAX_IN inches, rounded half-up
+   to 3 decimals before storing and comparing. Returns true when a row was added or changed; it
+   never persists or pushes — its caller (fetchWeather) does, quietly. */
+const RAIN_SANE_MAX_IN = 40;
+function recordRain(daily){
+  if(!daily || typeof daily!=='object' || !Array.isArray(daily.time) || !Array.isArray(daily.precipitation_sum)) return false;
+  if(!Array.isArray(DB.rainLog)) DB.rainLog = [];
+  const byDate = Object.create(null);
+  for(const row of DB.rainLog){ if(row && typeof row.date==='string') byDate[row.date] = row; }
+  const today = todayISO();
+  let changed = false;
+  for(let i=0; i<daily.time.length; i++){
+    const date = daily.time[i], v = daily.precipitation_sum[i];
+    if(typeof date!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !(date < today)) continue;
+    if(!(typeof v==='number' && isFinite(v) && v>=0 && v<=RAIN_SANE_MAX_IN)) continue;
+    const inches = Math.round(v*1000)/1000;
+    const row = byDate[date];
+    if(!row){ const fresh = touch({ date, inches }); DB.rainLog.push(fresh); byDate[date] = fresh; changed = true; }
+    else if(row.deletedAt) continue;
+    else if(+row.inches !== inches){ row.inches = inches; touch(row); changed = true; }
+  }
+  return changed;
 }
 /* A reconnect retries at once, but only after a failure and only while a weather screen is showing:
    fetchWeather renders, and a render on Train → Log would rebuild the workout mid-set (RESEARCH
