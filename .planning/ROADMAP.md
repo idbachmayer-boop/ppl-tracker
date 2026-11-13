@@ -196,12 +196,12 @@ Plans:
 - Open for discuss-phase: rain rows come from the weather fetch, and `CLAUDE.md` says derived data uses `saveLocal()` (the weather cache once used `save()` and made a stale device look newest just by being opened). Decide how a rain row is persisted and reaches the cloud without reopening that hole.
 - Open for discuss-phase: the weather cache holds only 3 past days, so a day is saved only if the app is opened within that window. Confirm with Ian whether gaps are acceptable. Open-Meteo is already an allowed host; any other host needs a CSP change.
 
-**Plans:** 5 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 11-01-PLAN.md — The weather fetch stops looping offline: the harness fetch settles and counts, a failure backs off 5 → 15 → 60 minutes on Today and Lawn, the online event retries only on a weather screen, Today fetches all year, and Lawn keeps the last forecast with an offline note or offers Retry weather, never showing an old day as today (LAWN-06, LAWN-07)
+- [x] 11-01-PLAN.md — The weather fetch stops looping offline: the harness fetch settles and counts, a failure backs off 5 → 15 → 60 minutes on Today and Lawn, the online event retries only on a weather screen, Today fetches all year, and Lawn keeps the last forecast with an offline note or offers Retry weather, never showing an old day as today (LAWN-06, LAWN-07)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -218,6 +218,7 @@ Plans:
 **Wave 5** *(blocked on Wave 4 completion)*
 
 - [ ] 11-05-PLAN.md — Ship after the code review: pre-flight, Ian pushes and merges with a merge commit (the schema-20 door, with the honest sync-pause rollback), live bytes checked, then the phone checks: rain marks, offline behaviour, the second device, and the April lawn items (end-of-phase UAT)
+
 **UI hint**: yes
 
 ### Phase 12: Sleep Card and Erase
@@ -280,6 +281,6 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
 | 9. Equipment and Weight Steps | v1.1 | 5/5 | Complete    | 2026-10-13 |
 | 10. Log Page — History and Skip | v1.1 | 6/6 | Complete    | 2026-11-11 |
-| 11. Lawn, Journal and Weather Loop | v1.1 | 0/TBD | Not started | - |
+| 11. Lawn, Journal and Weather Loop | v1.1 | 1/5 | In Progress|  |
 | 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |
 | 13. Strength Index and Poor-Sleep Intensity | v1.1 | 0/TBD | Not started | - |

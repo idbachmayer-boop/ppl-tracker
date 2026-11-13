@@ -90,10 +90,10 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
 - [ ] **LAWN-05**: Week in Review in the journal shows 🚜 Mowed, 💧 Watered and 🌧 rain on each day they
   apply.
 
-- [ ] **LAWN-06**: A failed weather fetch backs off instead of looping fetch → fail → render, on both
+- [x] **LAWN-06**: A failed weather fetch backs off instead of looping fetch → fail → render, on both
   Today and Lawn, while offline (closes 04-REVIEW WR-01).
 
-- [ ] **LAWN-07**: The test harness's `fetch` settles, so a fetch-render loop fails the suite instead of
+- [x] **LAWN-07**: The test harness's `fetch` settles, so a fetch-render loop fails the suite instead of
   hiding (closes 04-REVIEW WR-05).
 
 ### Sleep card and Erase (SLP)
@@ -215,8 +215,8 @@ proposed and awaiting Ian's approval.
 | LAWN-03 | Phase 11 | Pending |
 | LAWN-04 | Phase 11 | Pending |
 | LAWN-05 | Phase 11 | Pending |
-| LAWN-06 | Phase 11 | Pending |
-| LAWN-07 | Phase 11 | Pending |
+| LAWN-06 | Phase 11 | Complete |
+| LAWN-07 | Phase 11 | Complete |
 | SLP-01 | Phase 12 | Pending |
 | SLP-02 | Phase 12 | Pending |
 | SLP-03 | Phase 12 | Pending |

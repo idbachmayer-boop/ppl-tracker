@@ -5,15 +5,15 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 11
 current_phase_name: lawn-journal-and-weather-loop
 status: executing
-stopped_at: Phase 11 UI-SPEC approved
-last_updated: "2026-11-13T13:00:23.096Z"
+stopped_at: Completed 11-01-PLAN.md
+last_updated: "2026-11-13T13:14:02.820Z"
 last_activity: 2026-11-13
 last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 19
-  completed_plans: 14
+  completed_plans: 15
   percent: 50
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 11 (lawn-journal-and-weather-loop) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 11
+Plan: 2 of 5
+Status: Ready to execute
 Last activity: 2026-11-13 — Phase 11 execution started
 
-Progress: [██████████] 100%
+Progress: [████████░░] 79%
 
 ## Performance Metrics
 
@@ -113,6 +113,7 @@ Progress: [██████████] 100%
 | Phase 10 P04 | ~17 min (incl. push, PR, CI, deploy) | 3 tasks | 0 files |
 | Phase 10 P05 | 13 min | 3 tasks | 3 files |
 | Phase 10 P06 | ~10 min executor (spans 2026-10-31..11-11, waiting on Ian's merge) | 3 tasks | 0 files |
+| Phase 11 P01 | 12min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -153,6 +154,9 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [Phase 10]: 10-05: Log card header is two rows (meta + right-pinned 32x32 skip/collapse pair; badge + flag with flex-wrap); .ph is inline-block globally and icons before text outside buttons/headings take 'lead' (G-10-5)
 - [Phase 10]: 10-06: G-10-5 shipped as PR #16, merge commit 5375e10 on main; live stamp 2026-11-11T13:02:19Z 5375e10, CSP OK, SCHEMA 19. Revert: git revert -m 1 --no-edit 5375e10 (render-only, clean). Phone re-check of UAT test 5 passed 2026-11-11.
 - [10-UAT]: Phase 10 phone UAT 6/6 passed 2026-11-11; 10-SECURITY.md verified, 45/45 closed. Open post-ship: 10-REVIEW WR-02 (unescaped extras fallback label in Workout history, pre-existing, index.html:2745) and WR-01 (weak glued-icon test)
+- [Phase 11]: Offline weather backs off 5/15/60 min in memory only (WXFAIL); manual refresh, Retry weather and the online event on weather screens skip the wait
+- [Phase 11]: A weather cache is usable only when daily.time holds today; index-1 fallbacks removed (wxTodayIndex)
+- [Phase 11]: Today fetches weather all year whenever a location is set (D-12)
 
 ### Pending Todos
 
@@ -193,9 +197,9 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-11-12T13:01:59.797Z
-Stopped at: Phase 11 UI-SPEC approved
-Resume file: .planning/phases/11-lawn-journal-and-weather-loop/11-UI-SPEC.md
+Last session: 2026-11-13T13:14:02.798Z
+Stopped at: Completed 11-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
