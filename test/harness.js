@@ -178,7 +178,7 @@ function loadApp(htmlPath, seed, opts){
     /* The D-16 first-time picker's in-memory queue (plan 09-04). A let, so it needs exporting. */
     'equipAsk',
     /* The weather loop and its backoff (Phase 11, LAWN-06). */
-    'WXFAIL','WX_BACKOFF_MS','fetchWeather','maybeFetchWeather',
+    'WXFAIL','WX_BACKOFF_MS','fetchWeather','maybeFetchWeather','retryWeather','weatherScreenShowing',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

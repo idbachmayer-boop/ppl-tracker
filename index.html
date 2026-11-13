@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Es4jUmZHLOnJquS8vMNY/YnoI65u8b3Yw9++EI5h78E=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-pbp+x1VQjLdHnspa4Y+wvjuhU3J0SJZDpdKr9JIh4iY=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -1707,7 +1707,7 @@ function todoAge(created){ return Math.floor((Date.now()-new Date(created+'T00:0
    bar, the router, and the sub-nav all generate from this list — no more
    four-site edits, and tab ids live in one place (kills the stale-string bugs). */
 const TABS = [
-  { id:'today', label:'Today', icon:'house', view:()=>viewToday(), onRender:()=>{ if(DB.lawn && DB.lawn.lat!=null && lawnSeason(new Date())) maybeFetchWeather(); } },
+  { id:'today', label:'Today', icon:'house', view:()=>viewToday(), onRender:()=>{ if(DB.lawn && DB.lawn.lat!=null) maybeFetchWeather(); } },
   { id:'train', label:'Train', icon:'barbell', sub:[['log','Log'],['history','History'],['cardio','Cardio'],['progress','Progress']],
     view:sub => sub==='log' ? (DB.draft ? viewActive() : viewPicker()) : sub==='history' ? viewHistory() : sub==='cardio' ? viewCardio() : viewWeight(),
     onRender:sub => { if(sub==='progress') drawActiveChart(); } },
@@ -3520,7 +3520,10 @@ async function fetchWeather(){
     const r=await fetch(url); if(!r.ok) throw 0;
     /* saveLocal, NOT save(): the weather cache is derived data. Bumping updatedAt here is what let a
        4-day-stale device look "newest" merely by being opened, and then overwrite the cloud. */
-    DB.wx={ at:Date.now(), lat, lon, data:await r.json() }; saveLocal();
+    /* A body without daily.time is a failure too, and never replaces the last good cache (D-15). */
+    const data=await r.json();
+    if(!(data && data.daily && Array.isArray(data.daily.time))) throw 0;
+    DB.wx={ at:Date.now(), lat, lon, data }; saveLocal();
     WXFAIL.n = 0; WXFAIL.retryAt = 0;
   }catch(e){
     /* Keep the last cached result, and back off: the next automatic try waits (see WXFAIL). */
@@ -3535,6 +3538,16 @@ function maybeFetchWeather(){
   const wx=DB.wx, stale = !wx || (Date.now()-wx.at>3600000) || wx.lat!==DB.lawn.lat || wx.lon!==DB.lawn.lon;
   if(stale) fetchWeather();
 }
+/* A reconnect retries at once, but only after a failure and only while a weather screen is showing:
+   fetchWeather renders, and a render on Train → Log would rebuild the workout mid-set (RESEARCH
+   Pitfall 5). Anywhere else, the next visit retries through the gate in maybeFetchWeather. */
+function weatherScreenShowing(){
+  return TAB==='today' || (TAB==='care' && subState.care==='lawn');
+}
+function retryWeather(){
+  if(WXFAIL.n > 0 && weatherScreenShowing()) fetchWeather();
+}
+window.addEventListener('online', retryWeather);
 function useMyLocation(){
   const msg=document.getElementById('loc-msg'); if(msg) msg.textContent='Getting your location…';
   if(!navigator.geolocation){ if(msg) msg.textContent='Geolocation not available — type a town instead.'; return; }

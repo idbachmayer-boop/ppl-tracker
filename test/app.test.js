@@ -9,7 +9,7 @@
  * The clock is frozen to midday Fri 7 Aug 2026 (see harness.js). Set TZ=America/Chicago; the suite
  * checks that itself below, because half these rules are date- and hour-sensitive.
  */
-const { loadApp, makeWx, freezeRunnerClock, APP_PATH, scanInlineHandlers } = require('./harness');
+const { loadApp, makeWx, freezeRunnerClock, APP_PATH, scanInlineHandlers, fetchCallCounts } = require('./harness');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -11316,6 +11316,130 @@ asyncBlock('LAWN-06/07 tracer: offline Care → Lawn', async () => {
      { calls: b.__fetchCalls(), n: b.WXFAIL.n, retryAt: b.WXFAIL.retryAt, at: b.DB.wx && b.DB.wx.at });
 });
 
+/* D-12: Today fetches whenever a location is set, all year (it used to fetch only in season). The
+   lawn card on Today still hides off-season. Season is overridden through the vm global, the way
+   RESEARCH Pattern 7 does it, because the frozen clock is always summer. */
+asyncBlock('D-12: Today fetches all year', async () => {
+  const a = loadApp(APP_PATH);
+  a.__sandbox.lawnSeason = () => null;
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  a.go('today');
+  await lwTicks(40);
+  ok('D-12: off-season, Today with a location and no cache fetches the forecast exactly once',
+     a.__fetchCalls() === 1, a.__fetchCalls());
+  ok('D-12: off-season, Today\'s lawn card stays hidden', a.cLawnCard() === '', a.cLawnCard());
+});
+
+/* LAWN-06, Today half: offline with a stale cache, Today fetches once over 40 turns, not once per
+   render. */
+asyncBlock('LAWN-06: Today backs off', async () => {
+  const a = loadApp(APP_PATH);
+  setup(a, { mowedDaysAgo: 3, wateredDaysAgo: 2, wx: {} });
+  a.go('today');
+  await lwTicks(40);
+  ok('LAWN-06: offline on Today with a stale cache, one fetch over 40 turns', a.__fetchCalls() === 1, a.__fetchCalls());
+  a.render(); await lwTicks(40);
+  ok('LAWN-06: on Today, the renders after a failure start no second fetch', a.__fetchCalls() === 1, a.__fetchCalls());
+});
+
+/* D-14 steps: 5, then 15, then 60 minutes, and 60 for every later failure. */
+asyncBlock('D-14: backoff steps', async () => {
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  a.go('care'); a.setSub('lawn');
+  await lwTicks(10);
+  const waits = [a.WXFAIL.retryAt - Date.now()];
+  for(let i = 0; i < 3; i++){
+    a.WXFAIL.retryAt = 0; a.render(); await lwTicks(10);
+    waits.push(a.WXFAIL.retryAt - Date.now());
+  }
+  ok('D-14: consecutive failures wait 5, 15, 60 and then 60 minutes',
+     JSON.stringify(waits) === JSON.stringify([300000, 900000, 3600000, 3600000]) && a.__fetchCalls() === 4,
+     { waits, calls: a.__fetchCalls() });
+});
+
+/* LAWN-06: every kind of failure backs off and leaves the last cached forecast exactly as it was, and
+   weatherFetching never stays latched (RESEARCH Pitfall 10). */
+[
+  ['a body with no daily.time', lwRes({})],
+  ['HTTP 429', lwRes(null, { ok:false, status:429 })],
+  ['HTTP 500', lwRes(null, { ok:false, status:500 })],
+  ['a body that is not JSON', lwRes(null, { json: async () => { throw new SyntaxError('Unexpected token <'); } })],
+].forEach(([kind, fetchFn]) => {
+  asyncBlock('LAWN-06: ' + kind + ' backs off', async () => {
+    const a = loadApp(APP_PATH, null, { fetch: fetchFn });
+    setup(a, { wx: {} });
+    const before = JSON.stringify(a.DB.wx);
+    a.go('care'); a.setSub('lawn');
+    await lwTicks(40);
+    ok('LAWN-06: ' + kind + ' counts as a failure, backs off, and leaves the cached forecast as it was',
+       a.__fetchCalls() === 1 && a.WXFAIL.n === 1 && JSON.stringify(a.DB.wx) === before,
+       { calls: a.__fetchCalls(), n: a.WXFAIL.n, cacheKept: JSON.stringify(a.DB.wx) === before });
+    ok('LAWN-06 (Pitfall 10): after ' + kind + ', weatherFetching is false', a.weatherFetching === false, a.weatherFetching);
+  });
+});
+
+/* D-14 online retry: the window `online` event retries at once, but only after a failure and only
+   while Today or Care → Lawn is showing. Anywhere else a render would rebuild the screen, and on
+   Train → Log that is the workout Ian is mid-set on (RESEARCH Pitfall 5). */
+function lwOnline(a){
+  return ((a.__winListeners && a.__winListeners.online) || []).filter(fn => fn === a.__sandbox.retryWeather);
+}
+asyncBlock('D-14: online retry', async () => {
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  a.go('care'); a.setSub('lawn');
+  await lwTicks(10);
+  const listeners = lwOnline(a);
+  ok('D-14: the window online event is wired to retryWeather', typeof a.__sandbox.retryWeather === 'function' && listeners.length === 1,
+     listeners.length);
+  const c0 = a.__fetchCalls();
+  listeners.forEach(fn => fn());
+  await lwTicks(10);
+  ok('D-14: online on Care → Lawn after a failure makes exactly one more fetch', a.__fetchCalls() === c0 + 1, { before: c0, after: a.__fetchCalls() });
+
+  const b = loadApp(APP_PATH);
+  b.DB = b.blank(); lwLawn(b); b.DB.wx = null;
+  b.go('care'); b.setSub('lawn');
+  await lwTicks(10);
+  b.go('train'); b.setSub('log');
+  const c1 = b.__fetchCalls();
+  lwOnline(b).forEach(fn => fn());
+  await lwTicks(10);
+  ok('D-14: online on Train → Log after a failure makes no fetch (the workout is never rebuilt)',
+     b.WXFAIL.n > 0 && lwOnline(b).length === 1 && b.__fetchCalls() === c1, { n: b.WXFAIL.n, before: c1, after: b.__fetchCalls() });
+
+  const c = loadApp(APP_PATH);
+  setup(c, { wx: {} });
+  c.DB.wx.lat = c.DB.lawn.lat; c.DB.wx.lon = c.DB.lawn.lon;       // fresh and for this place: no automatic fetch
+  c.go('care'); c.setSub('lawn');
+  await lwTicks(10);
+  const c2 = c.__fetchCalls();
+  lwOnline(c).forEach(fn => fn());
+  await lwTicks(10);
+  ok('D-14: online on Care → Lawn with no failure makes no fetch',
+     c.WXFAIL.n === 0 && lwOnline(c).length === 1 && c.__fetchCalls() === c2 && c2 === 0, { n: c.WXFAIL.n, before: c2, after: c.__fetchCalls() });
+});
+
+/* Edge LAWN-06 concurrency, and D-14's manual bypass: during the wait a manual fetch goes through
+   once, and while any fetch is in flight nothing starts a second one. */
+asyncBlock('LAWN-06: one fetch at a time', async () => {
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  a.go('care'); a.setSub('lawn');
+  await lwTicks(10);
+  const c0 = a.__fetchCalls();
+  a.fetchWeather();
+  await lwTicks(10);
+  ok('D-14: a manual fetchWeather during the wait makes exactly one fetch',
+     a.WXFAIL.retryAt > Date.now() && a.__fetchCalls() === c0 + 1, { before: c0, after: a.__fetchCalls() });
+  const c1 = a.__fetchCalls();
+  a.__sandbox.retryWeather(); a.__sandbox.retryWeather(); a.fetchWeather(); a.render();
+  await lwTicks(10);
+  ok('LAWN-06: while a fetch is in flight, retryWeather twice, a manual fetch and a render start only one',
+     a.__fetchCalls() === c1 + 1, { before: c1, after: a.__fetchCalls() });
+});
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
@@ -11328,7 +11452,16 @@ asyncBlock('LAWN-06/07 tracer: offline Care → Lawn', async () => {
 
 /* Every async block must settle before the summary prints or the process exits; asyncBlock()
    already turns a throw or a timeout into a FAIL, so Promise.all here never rejects. */
-Promise.all(pendingAsync).then(() => {
+Promise.all(pendingAsync).then(async () => {
+  /* LAWN-07: the fetch ledger. Every instance the suite created has had its event-loop turns by now;
+     50 more let any loop that is still running pile up. One instance on a weather screen makes one
+     fetch per backoff window, so a count past 25 can only be a fetch-render loop. */
+  await lwTicks(50);
+  const counts = fetchCallCounts();
+  const maxFetches = Math.max(0, ...counts);
+  ok('LAWN-07: no app instance in the whole run made more than 25 weather fetches (a fetch-render loop fails here)',
+     maxFetches <= 25, { max: maxFetches, instances: counts.length });
+
   if(WRITE){
     const dir = path.dirname(GOLDEN_PATH);
     if(!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
