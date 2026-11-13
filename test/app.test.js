@@ -12343,7 +12343,7 @@ function lw4HistMark(amt){ return LW4_HIST_MARK + LW4_RAIN + ' ' + amt + '"</spa
 
 /* D-13: only an explicit true shows a lawn tag. */
 [['an explicit false', { mowed: false, watered: false }], ['the override keys', { overrideMow: true, overrideWater: true }],
- ['a non-object day', 'x'], ['a missing day', undefined]].forEach(([name, day]) => {
+ ['a non-object day', 'x'], ['a missing day', undefined], ['stored strings and numbers', { mowed: 'false', watered: 1 }]].forEach(([name, day]) => {
   const a = lw4Set({}, day === undefined ? {} : { [dayOff(-1)]: day });
   const w = lwWeekRows(a)[3] || '';
   ok('D-13: ' + name + ' renders no Mowed or Watered tag', !w.includes(' Mowed</span>') && !w.includes(' Watered</span>'),
