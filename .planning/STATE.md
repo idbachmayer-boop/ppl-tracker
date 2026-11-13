@@ -5,15 +5,15 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 11
 current_phase_name: lawn-journal-and-weather-loop
 status: executing
-stopped_at: Completed 11-02-PLAN.md
-last_updated: "2026-11-13T13:28:23.093Z"
+stopped_at: Completed 11-03-PLAN.md
+last_updated: "2026-11-13T13:43:35.340Z"
 last_activity: 2026-11-13
 last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 19
-  completed_plans: 16
+  completed_plans: 17
   percent: 50
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 11 (lawn-journal-and-weather-loop) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-11-13 — Phase 11 execution started
 
-Progress: [████████░░] 84%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -115,6 +115,7 @@ Progress: [████████░░] 84%
 | Phase 10 P06 | ~10 min executor (spans 2026-10-31..11-11, waiting on Ian's merge) | 3 tasks | 0 files |
 | Phase 11 P01 | 12min | 3 tasks | 3 files |
 | Phase 11 P02 | 13 min | 3 tasks | 5 files |
+| Phase 11 P03 | 40min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -160,6 +161,8 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [Phase 11]: Today fetches weather all year whenever a location is set (D-12)
 - [Phase 11]: Rain history lives in its own synced list collection rainLog ({ date, inches, mtime }), keyed by date, never in lawnLog (11-02)
 - [Phase 11]: A synced derived row reaches the cloud through the quiet push: touch + saveLocal + schedulePush, never save() (11-02, D-01)
+- [Phase 11]: 11-03: waterVerdict decides watering in one place (override > recent > own-day wet > rain3 > tomorrow > cool > city > due); a wet hold carries why=both|amount|chance so lawnStatus words it without repeating the 60% test
+- [Phase 11]: 11-03: forecast values reach waterVerdict only as finite numbers or null (finiteWx), so a gap in the forecast is never a cool or wet day
 
 ### Pending Todos
 
@@ -200,8 +203,8 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-11-13T13:28:23.063Z
-Stopped at: Completed 11-02-PLAN.md
+Last session: 2026-11-13T13:43:35.310Z
+Stopped at: Completed 11-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -75,7 +75,7 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
 
 ### Lawn, journal and weather loop (LAWN)
 
-- [ ] **LAWN-01**: The lawn scheduler holds off watering when today's forecast high is below 60°F.
+- [x] **LAWN-01**: The lawn scheduler holds off watering when today's forecast high is below 60°F.
 - [x] **LAWN-02**: Once a day is over, that day's rainfall is saved, with its exact amount, in its own
   small synced collection, separate from `lawnLog`. The collection is added by the `CLAUDE.md` recipe:
   one `COLLECTIONS` entry placed last with an unused `label`, a `SCHEMA` bump and a migration, and the
@@ -83,7 +83,7 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
   `validateBackup()` shape, and a declaration-alone structural proof). The merge golden is regenerated.
 
 - [ ] **LAWN-03**: Lawn history shows 🌧 on every day with 0.1 inches of rain or more.
-- [ ] **LAWN-04**: The 7-day outlook shows 💧 on the day watering is next due. It skips any day whose
+- [x] **LAWN-04**: The 7-day outlook shows 💧 on the day watering is next due. It skips any day whose
   forecast rain meets the season's `rainSkip` (0.3 to 0.5 inches) or whose chance of rain is 60% or
   higher.
 
@@ -210,10 +210,10 @@ proposed and awaiting Ian's approval.
 | LOG-03 | Phase 10 | Complete |
 | LOG-04 | Phase 10 | Complete |
 | LOG-05 | Phase 10 | Complete |
-| LAWN-01 | Phase 11 | Pending |
+| LAWN-01 | Phase 11 | Complete |
 | LAWN-02 | Phase 11 | Complete |
 | LAWN-03 | Phase 11 | Pending |
-| LAWN-04 | Phase 11 | Pending |
+| LAWN-04 | Phase 11 | Complete |
 | LAWN-05 | Phase 11 | Pending |
 | LAWN-06 | Phase 11 | Complete |
 | LAWN-07 | Phase 11 | Complete |
