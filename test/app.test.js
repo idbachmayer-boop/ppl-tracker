@@ -12565,6 +12565,35 @@ function lwFlagReads(a){
        && on.overrideWater === true && on.overrideMow === true, on);
 }
 
+/* IN-03: rainByDate coerced the stored amount, so true read as 1.00" and '0.42' or [0.42] as 0.42,
+   while recordRain only ever writes a number. The reader now refuses what the writer would refuse,
+   in both views that show rain, and a fetch replaces such a row with the real reading. */
+[['true', true], ['the string \'0.42\'', '0.42'], ['the array [0.42]', [0.42]]].forEach(([name, v]) => {
+  const a = lw4Set({});
+  a.DB.rainLog = [{ date: dayOff(-1), inches: v, mtime: 1 }];
+  const html = a.lawnHistory(), week = a.renderWeekReview();
+  ok('Phase 11 IN-03: a stored rain amount of ' + name + ' is refused by rainByDate and shows in neither Lawn history nor Week in Review',
+     !a.rainByDate().has(dayOff(-1)) && !html.includes(LW4_RAIN) && !week.includes(LW4_RAIN),
+     { read: a.rainByDate().get(dayOff(-1)), hist: html.includes(LW4_RAIN), week: week.includes(LW4_RAIN) });
+});
+{
+  const a = lw4Set({});
+  a.DB.rainLog = [{ date: dayOff(-1), inches: '0.42', mtime: 1 }];
+  const daily = makeWx({ todayISO: today, precipByOffset: { '-1': 0.42 } }).data.daily;
+  const changed = a.recordRain(daily), row = a.DB.rainLog.find(r => r.date === dayOff(-1));
+  ok('Phase 11 IN-03: a fetch replaces a stored \'0.42\' with the number 0.42 and touches it, so the day shows again',
+     changed === true && row.inches === 0.42 && row.mtime > 1 && a.rainByDate().get(dayOff(-1)) === 0.42
+       && (lwHistRows(a)[1] || '').includes(lw4HistMark('0.42')),
+     { changed, row });
+  /* Guard (D-03): a stored number that matches the reading writes nothing. */
+  const b = lw4Set({});
+  b.DB.rainLog = [-3, -2, -1].map(k => ({ date: dayOff(k), inches: k === -1 ? 0.42 : 0, mtime: 1 }));
+  const same = b.recordRain(daily), brow = b.DB.rainLog.find(r => r.date === dayOff(-1));
+  ok('Phase 11 IN-03 guard: an unchanged numeric amount writes nothing, and a stored 0.42 still reads and shows',
+     same === false && brow.mtime === 1 && b.rainByDate().get(dayOff(-1)) === 0.42 && (lwHistRows(b)[1] || '').includes(lw4HistMark('0.42')),
+     { same, row: brow });
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
