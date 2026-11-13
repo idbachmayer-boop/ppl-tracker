@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-FmJ9xErWIdDPeLBPqMIi6Bt5biIFPDXp/RgTIxkdnew=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-AQgQ4pddkO+KXXWNEPlKesftueXuaaBqJyYW6lrFcM0=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -2650,9 +2650,9 @@ function renderWeekReview(){
     if(dayComplete(iso)) tags.push(`<span style="font-size:11px">🧎 ${hasMobSession(iso)?'session':mobDoneOn(iso)}</span>`);
     if(sess.some(s=>prIdx.sessionHasPR(s))) tags.push(`<span style="font-size:11px">🏆 PR</span>`);
     if(!future){
-      const lw = lawnDays[iso], ld = lw && typeof lw==='object' ? lw : {}, rv = rain.get(iso);
-      if(ld.mowed === true) tags.push(`<span style="font-size:11px">\u{1F69C} Mowed</span>`);
-      if(ld.watered === true) tags.push(`<span style="font-size:11px">\u{1F4A7} Watered</span>`);
+      const lw = lawnDays[iso], rv = rain.get(iso);
+      if(lawnFlag(lw, 'mowed')) tags.push(`<span style="font-size:11px">\u{1F69C} Mowed</span>`);
+      if(lawnFlag(lw, 'watered')) tags.push(`<span style="font-size:11px">\u{1F4A7} Watered</span>`);
       if(rv !== undefined && rv >= RAIN_MARK_IN) tags.push(`<span style="font-size:11px" title="Estimated rainfall">${RAIN_GLYPH} ${esc(rv.toFixed(2))}"</span>`);
     }
     const hasNote = note && note.trim();
@@ -3695,9 +3695,13 @@ function nextSprinkleDate(){ const base=new Date(); for(let i=1;i<=2;i++){ const
 function dsFmt(n){ if(n===Infinity) return 'never'; if(n===0) return 'today'; return n+' day'+(n>1?'s':'')+' ago'; }
 function dsWithDate(n){ if(n===Infinity) return 'never'; const d=new Date(); d.setDate(d.getDate()-n); return dsFmt(n)+' ('+d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+')'; }
 function fmtHour(h){ const ap=h>=12?'pm':'am'; let hh=h%12; if(hh===0) hh=12; return hh+ap; }
+/* One lawnLog day's flag (mowed, watered, overrideWater, overrideMow): on only when it is exactly
+   true. Every reader goes through this, so a hand-edited backup that stores 'false' or 1 reads the
+   same in the scheduler, the Lawn history, Week in Review (D-13) and the export (dayFlagRows). */
+function lawnFlag(day, key){ return !!day && typeof day==='object' && day[key]===true; }
 /* Days since the last date logged {key:true}. Infinity if never. */
 function daysSinceLawn(key){ const log=DB.lawnLog||{}; const base=new Date(); base.setHours(0,0,0,0);
-  for(let n=0;n<400;n++){ const d=new Date(base); d.setDate(d.getDate()-n); const iso=d.toLocaleDateString('en-CA'); if(log[iso] && log[iso][key]) return n; }
+  for(let n=0;n<400;n++){ const d=new Date(base); d.setDate(d.getDate()-n); const iso=d.toLocaleDateString('en-CA'); if(lawnFlag(log[iso], key)) return n; }
   return Infinity; }
 /* Scan a day's 8am–8pm hourly temps for the heat limit. Defaults to today; the home card also asks
    about tomorrow and the mow forecast asks about all 7 — the hourly array spans the whole forecast. */
@@ -3806,7 +3810,7 @@ function lawnStatus(dayOffset){
   const waterEvery = heatOn ? 1 : Math.ceil(7/rules.waterPerWeek);
   const heatNote = heatOn ? ` (${Math.round(hotHi)}°F ${num(HI[ti])>=num(HI[ti+1])?'today':'tomorrow'})` : '';
   const dom=now.getDate(), todayParity=dateParity(dom), sprinkleDayOK=(todayParity===LAWN_ADDR_PARITY);
-  const water={ recommend:false, hard:false, unknown:false, override:!!log.overrideWater, text:'', every:waterEvery, heat:heatOn };
+  const water={ recommend:false, hard:false, unknown:false, override:lawnFlag(log,'overrideWater'), text:'', every:waterEvery, heat:heatOn };
   /* Nothing logged yet is NOT a reason to stay silent — assume it's due and flag the guess. (This
      was the July regression: the ask-for-a-date state suppressed the recommendation entirely, so a
      lawn that genuinely needed water heard nothing at all.) */
@@ -3834,7 +3838,7 @@ function lawnStatus(dayOffset){
   const heat = lawnHeatWindow(rules.heatLimit, today);
   const when = off===0 ? 'today' : 'tomorrow';
   const v = mowVerdict({ dsMow, recentWet, rain3, heat, rain:lawnRainWindow(today), havewx });
-  const mow={ recommend:false, hard:false, unknown:(dsMow===Infinity), override:!!log.overrideMow, text:'' };
+  const mow={ recommend:false, hard:false, unknown:(dsMow===Infinity), override:lawnFlag(log,'overrideMow'), text:'' };
   if(mow.override){ mow.text='Mowing anyway (override)'; mow.recommend=true; }
   else if(v.blocked==='soon'){ mow.text=`Last mowed ${dsFmt(dsMow)} — too soon`; }
   else if(v.blocked==='wet'){ mow.text='Wet conditions — don’t mow'; mow.hard=true; }
@@ -3954,7 +3958,7 @@ function setLawnLog(iso, action, on){
 }
 function toggleLawnLog(action, iso){
   const t = iso || todayISO();
-  const cur = ((DB.lawnLog||{})[t]||{})[action];
+  const cur = lawnFlag((DB.lawnLog||{})[t], action);
   if(!setLawnLog(t, action, !cur)) return;
   const when = t===todayISO() ? '' : ' for '+fmtDate(t);
   toast(!cur ? (action==='watered'?'Logged watering 💧'+when:'Logged mowing 🚜'+when) : 'Unlogged'+when);
@@ -3969,7 +3973,7 @@ function setLawnDaysAgo(action, n){
 function logLawnPastDate(action){
   const el=document.getElementById('lawn-past-date'); const iso=el && el.value;
   if(!iso){ toast('Pick a date first'); return; }
-  if(((DB.lawnLog||{})[iso]||{})[action]){ toast('Already logged for '+fmtDate(iso)); return; }
+  if(lawnFlag((DB.lawnLog||{})[iso], action)){ toast('Already logged for '+fmtDate(iso)); return; }
   toggleLawnLog(action, iso);
 }
 /* First upcoming day the given task is recommended, using the SAME lawnStatus the card shows (its
@@ -4001,7 +4005,7 @@ function nextWaterDay(){
   return null;
 }
 function toggleLawnOverride(which){ const t=todayISO(); if(!DB.lawnLog) DB.lawnLog={}; const e=DB.lawnLog[t]||(DB.lawnLog[t]={});
-  const key = which==='water'?'overrideWater':'overrideMow'; e[key]=!e[key];
+  const key = which==='water'?'overrideWater':'overrideMow'; e[key]=!lawnFlag(e,key);
   save(); render(); }
 /* Home card. Quiet unless the lawn wants something: a task that's due gets a full block, one that
    isn't gets a single muted line with its reason and next expected day, and a day with nothing at
@@ -4046,7 +4050,7 @@ function cLawnCard(full){
       <div style="font-size:13px;line-height:1.5">${ph(r.override?'warning':(r.recommend?'check-circle':'pause'),'lead')}<strong>${label}:</strong> ${esc(r.text)}</div>
       <div class="muted" style="font-size:11px;margin-top:3px">${r.unknown?'No history yet':'Last '+since}${cadence?' · '+cadence:''}</div>
       <div class="row" style="gap:8px;margin-top:10px">
-        <button class="btn ${log[which.log]?'':'btn-ghost'}" style="flex:1" data-action="toggleLawnLog" data-which="${esc(which.log)}">${log[which.log]?`${ph('check')}${doneLabel}`:btnLabel}</button>
+        <button class="btn ${lawnFlag(log,which.log)?'':'btn-ghost'}" style="flex:1" data-action="toggleLawnLog" data-which="${esc(which.log)}">${lawnFlag(log,which.log)?`${ph('check')}${doneLabel}`:btnLabel}</button>
         <button class="btn btn-ghost btn-sm" data-action="toggleLawnOverride" data-which="${esc(which.ov)}">${r.override?`${ph('arrow-u-up-left')}Undo override`:'Override'}</button>
       </div>
       ${r.unknown?anchor(action):''}
@@ -4097,7 +4101,7 @@ function lawnHistory(){
         <span style="font-weight:600;font-size:13px;color:${n===0?'var(--text)':'var(--muted)'}">${n===0?'Today':new Date(iso+'T00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</span>${mark?`
         <span style="font-size:11px;color:var(--text-2);white-space:nowrap" title="Estimated rainfall">${RAIN_GLYPH} ${esc(rv.toFixed(2))}"</span>`:''}
       </span>
-      <span style="display:flex;gap:6px;flex:none">${pill(!!e.watered,'💧 Watered','watered',e.overrideWater)}${pill(!!e.mowed,'🚜 Mowed','mowed',e.overrideMow)}</span>
+      <span style="display:flex;gap:6px;flex:none">${pill(lawnFlag(e,'watered'),'💧 Watered','watered',lawnFlag(e,'overrideWater'))}${pill(lawnFlag(e,'mowed'),'🚜 Mowed','mowed',lawnFlag(e,'overrideMow'))}</span>
     </div>`);
   }
   return `<div class="card">

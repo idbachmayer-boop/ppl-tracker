@@ -12528,6 +12528,43 @@ asyncBlock('Phase 11 WR-03: online away from a weather screen retries on the nex
      b.WXFAIL.n === 0 && b.WXFAIL.retryAt === 0 && b.__fetchCalls() === 0, { n: b.WXFAIL.n, calls: b.__fetchCalls() });
 });
 
+/* IN-02 (D-13): Week in Review reads a lawn flag only when it is exactly true, but the Lawn history
+   pills, the scheduler (daysSinceLawn, the overrides), the card's buttons and the toggles read it as
+   truthy. A hand-edited backup storing 'false' or 1 read as logged in one place and not the other.
+   Every reader now agrees with Week in Review and the export. */
+function lwFlagReads(a){
+  const hist = lwHistRows(a), st = a.lawnStatus(), card = a.cLawnCard(true), week = a.renderWeekReview();
+  const pillsOn = r => (r || '').split('background:var(--accent-muted)').length - 1;
+  return { histToday: pillsOn(hist[0]), histYesterday: pillsOn(hist[1]),
+           weekMowed: week.includes(' Mowed</span>'), weekWatered: week.includes(' Watered</span>'),
+           dsWatered: a.__sandbox.daysSinceLawn('watered'), dsMowed: a.__sandbox.daysSinceLawn('mowed'),
+           overrideWater: st.water.override, overrideMow: st.mow.override,
+           markWatered: card.includes('Mark watered'), markMowed: card.includes('Mark mowed') };
+}
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = makeWx({ todayISO: today });
+  a.DB.lawnLog = { [dayOff(-1)]: { mowed: 'false', watered: 1 }, [today]: { overrideWater: 'false', overrideMow: 1, watered: 'yes' } };
+  const got = lwFlagReads(a);
+  ok('Phase 11 IN-02 (D-13): a stored \'false\', 1 or \'yes\' reads as not logged in Lawn history, the scheduler, the overrides, the card and Week in Review',
+     got.histToday === 0 && got.histYesterday === 0 && !got.weekMowed && !got.weekWatered
+       && got.dsWatered === Infinity && got.dsMowed === Infinity && got.overrideWater === false && got.overrideMow === false
+       && got.markWatered && got.markMowed, got);
+  a.toggleLawnLog('watered');
+  a.__sandbox.document.getElementById('lawn-past-date').value = dayOff(-1);
+  a.__sandbox.logLawnPastDate('mowed');
+  ok('Phase 11 IN-02: tapping Mark watered on a stored \'yes\' logs it, and the date picker logs over a stored \'false\'',
+     a.DB.lawnLog[today].watered === true && a.DB.lawnLog[dayOff(-1)].mowed === true,
+     { today: a.DB.lawnLog[today], yesterday: a.DB.lawnLog[dayOff(-1)] });
+
+  /* Guard: an explicit true still reads as logged everywhere. */
+  a.DB.lawnLog = { [dayOff(-1)]: { mowed: true, watered: true }, [today]: { overrideWater: true, overrideMow: true } };
+  const on = lwFlagReads(a);
+  ok('Phase 11 IN-02 guard: an explicit true still reads as logged in every reader',
+     on.histYesterday === 2 && on.weekMowed && on.weekWatered && on.dsWatered === 1 && on.dsMowed === 1
+       && on.overrideWater === true && on.overrideMow === true, on);
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
