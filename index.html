@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-4Qugf6I+C/pWn8WRDGyIoeq73RsQ1zH3xDUGRMzYEzA=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-/6gR2MjsHzOkyLDauoGggdRw8hh8fqt78rMyUW0/4co=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -2628,6 +2628,9 @@ function renderWeekReview(){
   const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const today = todayISO();
   const prIdx = prSetIndex();
+  /* Lawn and rain tags (LAWN-05, D-13): display only, shown all year. Rain comes through the one
+     rain reader, built once here; a lawn day that is not an object reads as nothing logged. */
+  const rain = rainByDate(), lawnDays = DB.lawnLog && typeof DB.lawnLog==='object' ? DB.lawnLog : {};
   let nW=0, nH=0, nJ=0;
   const rows = days.map((dn,di)=>{
     const dt = new Date(base); dt.setDate(dt.getDate()+di);
@@ -2646,6 +2649,12 @@ function renderWeekReview(){
     if(wt) tags.push(`<span style="font-size:11px">⚖️ ${(+wt.value).toFixed(1)}</span>`);
     if(dayComplete(iso)) tags.push(`<span style="font-size:11px">🧎 ${hasMobSession(iso)?'session':mobDoneOn(iso)}</span>`);
     if(sess.some(s=>prIdx.sessionHasPR(s))) tags.push(`<span style="font-size:11px">🏆 PR</span>`);
+    if(!future){
+      const lw = lawnDays[iso], ld = lw && typeof lw==='object' ? lw : {}, rv = rain.get(iso);
+      if(ld.mowed === true) tags.push(`<span style="font-size:11px">\u{1F69C} Mowed</span>`);
+      if(ld.watered === true) tags.push(`<span style="font-size:11px">\u{1F4A7} Watered</span>`);
+      if(rv !== undefined && rv >= RAIN_MARK_IN) tags.push(`<span style="font-size:11px" title="Estimated rainfall">${RAIN_GLYPH} ${esc(rv.toFixed(2))}"</span>`);
+    }
     const hasNote = note && note.trim();
     const editLink = iso => `<button class="tap-inline" data-action="editJournal" data-iso="${esc(iso)}" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${ph('note-pencil','lead')}${hasNote?'Edit note':'Add note'}</button>`;
     let noteHTML;
@@ -3584,6 +3593,25 @@ function recordRain(daily){
     else if(+row.inches !== inches){ row.inches = inches; touch(row); changed = true; }
   }
   return changed;
+}
+/* Rain by date (LAWN-03, LAWN-05): every screen that shows saved rain reads it through this one
+   reader, so a deleted or junk row never shows. It reads liveOf('rainLog') only, which drops a
+   soft-deleted row, and it keeps a row only when its date is a string and its amount is a finite
+   number from 0 to RAIN_SANE_MAX_IN, so a hand-edited backup can put neither markup nor a wild
+   number on screen. A day is marked at RAIN_MARK_IN inches or more, tested on the stored number
+   before the display rounds it to two decimals. Callers build the map once per render; it never
+   writes. */
+const RAIN_MARK_IN = 0.1;
+const RAIN_GLYPH = '\u{1F327}\uFE0F';
+function rainByDate(){
+  const out = new Map();
+  for(const r of liveOf('rainLog')){
+    if(typeof r.date !== 'string') continue;
+    const v = +r.inches;
+    if(!(isFinite(v) && v >= 0 && v <= RAIN_SANE_MAX_IN)) continue;
+    out.set(r.date, v);
+  }
+  return out;
 }
 /* A reconnect retries at once, but only after a failure and only while a weather screen is showing:
    fetchWeather renders, and a render on Train → Log would rebuild the workout mid-set (RESEARCH

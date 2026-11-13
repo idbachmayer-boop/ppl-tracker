@@ -184,6 +184,8 @@ function loadApp(htmlPath, seed, opts){
     'recordRain','RAIN_SANE_MAX_IN',
     /* One watering verdict and the outlook's droplet day (Phase 11, LAWN-01 and LAWN-04). */
     'waterVerdict','nextWaterDay','COOL_DAY_F','WET_CHANCE_PCT',
+    /* Rain, mowing and watering where Ian looks back at his days (Phase 11, LAWN-03 and LAWN-05). */
+    'rainByDate','RAIN_MARK_IN','RAIN_GLYPH','renderWeekReview',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},

@@ -12221,6 +12221,40 @@ const lw3DropIcon = require('vm').runInContext("ph('drop','lead')", lw3App.__san
      foot.replace(/<svg[\s\S]*?<\/svg>/g, '').slice(-500));
 }
 
+/* ── LAWN-03 / LAWN-05: the rain, mowing and watering Ian logged, where he looks back at his days ──
+   Under the frozen clock (Fri 7 Aug 2026) Week in Review shows Mon 3 Aug to Sun 9 Aug: row 3 is
+   yesterday (Thu 6 Aug), row 4 is today and rows 5 and 6 are future. Lawn history lists today first,
+   then the 13 days before it. Glyphs are built from escapes. */
+const LW4_RAIN = '\u{1F327}\uFE0F';
+const LW4_WEEK_ROW = '<div style="padding:9px 0;border-bottom:1px solid var(--border-3)">';
+/* The seven day rows of renderWeekReview(), Mon … Sun. Empty when the view is not exported. */
+function lwWeekRows(a){
+  const html = typeof a.renderWeekReview === 'function' ? a.renderWeekReview() : '';
+  return html.split(LW4_WEEK_ROW).slice(1);
+}
+/* The 14 .hist-item rows of lawnHistory(), today first. Each string starts just after `class="hist-item"`. */
+function lwHistRows(a){
+  return a.lawnHistory().split('<div class="hist-item"').slice(1);
+}
+/* The three Week in Review tags, exactly as S4 writes them. */
+const LW4_MOWED = '<span style="font-size:11px">' + LW3_TRACTOR + ' Mowed</span>';
+const LW4_WATERED = '<span style="font-size:11px">' + LW3_DROP + ' Watered</span>';
+function lw4RainTag(amt){ return '<span style="font-size:11px" title="Estimated rainfall">' + LW4_RAIN + ' ' + amt + '"</span>'; }
+
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  a.DB.lawnLog[dayOff(-1)] = { mowed: true, watered: true };
+  a.DB.lawnLog[dayOff(-2)] = { mowed: 'false', watered: false, overrideWater: true };
+  a.DB.rainLog = [{ date: dayOff(-1), inches: 0.42, mtime: 1 }];
+  const rows = lwWeekRows(a), thu = rows[3] || '', wed = rows[2] || '';
+  const iM = thu.indexOf(LW4_MOWED), iW = thu.indexOf(LW4_WATERED), iR = thu.indexOf(lw4RainTag('0.42'));
+  const wedHas = [' Mowed', ' Watered', LW4_RAIN].filter(s => wed.includes(s));
+  ok('LAWN-05 tracer: a logged mow, a watering and a saved rain row show in Week in Review',
+     rows.length === 7 && iM >= 0 && iW > iM && iR > iW && wedHas.length === 0,
+     { rows: rows.length, iM, iW, iR, wedHas });
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
