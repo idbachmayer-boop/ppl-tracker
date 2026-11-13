@@ -12255,6 +12255,187 @@ function lw4RainTag(amt){ return '<span style="font-size:11px" title="Estimated 
      { rows: rows.length, iM, iW, iR, wedHas });
 }
 
+/* Lawn history's rain mark and its source note (UI-SPEC S3), as the contract writes them. */
+const LW4_HIST_MARK = '<span style="font-size:11px;color:var(--text-2);white-space:nowrap" title="Estimated rainfall">';
+const LW4_NOTE = LW4_RAIN + ' is each day\u2019s rainfall from the weather service (an estimate, not a rain gauge), saved once the day is over.';
+const LW4_NOTE_P = '<p class="muted" style="font-size:11px;margin:-4px 0 8px">';
+const lw4A = loadApp(APP_PATH);
+/* A blank DB on lw4A with rain rows { dayOffset: inches } and lawnLog days { iso: day }. */
+function lw4Set(rain, lawn){
+  lw4A.DB = lw4A.blank();
+  Object.keys(rain || {}).forEach(k => lw4A.DB.rainLog.push({ date: dayOff(+k), inches: rain[k], mtime: 1 }));
+  Object.assign(lw4A.DB.lawnLog, lawn || {});
+  return lw4A;
+}
+/* The history mark for an amount, exactly as S3 writes it. */
+function lw4HistMark(amt){ return LW4_HIST_MARK + LW4_RAIN + ' ' + amt + '"</span>'; }
+
+{
+  const a = lw4Set({ '-1': 0.42, '-3': 0.1 });
+  const h = lwHistRows(a), html = a.lawnHistory();
+  ok('LAWN-03: Lawn history shows 0.42" beside yesterday in an 11px, var(--text-2), nowrap span titled Estimated rainfall',
+     (h[1] || '').includes(lw4HistMark('0.42')), (h[1] || '').replace(/<button[\s\S]*?<\/button>/g, '').slice(0, 400));
+  ok('LAWN-03: a day of exactly 0.1" shows 0.10"', (h[3] || '').includes(lw4HistMark('0.10')),
+     (h[3] || '').replace(/<button[\s\S]*?<\/button>/g, '').slice(0, 400));
+  const introEnd = html.indexOf('(* = logged against an override.)</p>') + '(* = logged against an override.)</p>'.length;
+  const noteAt = html.indexOf(LW4_NOTE_P + LW4_NOTE + '</p>');
+  ok('LAWN-03: the source note renders exactly once, directly under the intro paragraph',
+     html.split(LW4_NOTE).length - 1 === 1 && noteAt > 0 && /^\s*$/.test(html.slice(introEnd, noteAt)),
+     { count: html.split(LW4_NOTE).length - 1, introEnd, noteAt });
+  const LEFT = '<span style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;min-width:0">';
+  const PILLS = '<span style="display:flex;gap:6px;flex:none">';
+  const bad = h.map((r, i) => (/^ style="gap:8px">/.test(r) && r.includes(LEFT) && r.includes(PILLS) && r.indexOf(LEFT) < r.indexOf(PILLS)) ? null : i)
+    .filter(i => i !== null);
+  ok('LAWN-03: each history row has gap:8px, a wrapping left group (date and mark) and a flex:none pills group',
+     h.length === 14 && bad.length === 0, { rows: h.length, bad });
+  ok('LAWN-03: the mark sits in the left group, before the pills', (h[1] || '').indexOf(LW4_RAIN) > (h[1] || '').indexOf(LEFT)
+     && (h[1] || '').indexOf(LW4_RAIN) < (h[1] || '').indexOf(PILLS));
+  ok('LAWN-03: history rows stay newest first, each mark in its own day\'s row',
+     h.map(r => r.includes(LW4_RAIN) ? 1 : 0).join('') === '01010000000000', h.map(r => r.includes(LW4_RAIN) ? 1 : 0).join(''));
+}
+
+/* The 0.1" boundary on both surfaces, decided on the stored number before toFixed(2). */
+[[0.096, null], [0.099, null], [0.1, '0.10'], [0.11, '0.11']].forEach(([v, want]) => {
+  const a = lw4Set({ '-1': v });
+  const hist = lwHistRows(a)[1] || '', week = lwWeekRows(a)[3] || '';
+  const got = { hist: hist.includes(LW4_RAIN), week: week.includes(LW4_RAIN),
+                histAmt: !!want && hist.includes(lw4HistMark(want)), weekAmt: !!want && week.includes(lw4RainTag(want)) };
+  ok('LAWN-03: ' + v + '" ' + (want ? 'is marked ' + want + '"' : 'shows no mark') + ' in Lawn history and Week in Review',
+     want ? got.histAmt && got.weekAmt : !got.hist && !got.week, got);
+});
+{
+  const a = lw4Set({ '-1': 0.05 });
+  const html = a.lawnHistory(), week = a.renderWeekReview();
+  ok('LAWN-03: a 0.05" row is kept but unmarked, and with no mark there is no source note',
+     a.DB.rainLog.length === 1 && a.DB.rainLog[0].inches === 0.05 && !html.includes(LW4_RAIN) && !week.includes(LW4_RAIN)
+       && !html.includes('is each day'), { rows: a.DB.rainLog.length, note: html.includes('is each day') });
+  const none = lw4Set({}).lawnHistory();
+  ok('LAWN-03: with no rain rows at all there is no mark and no source note', !none.includes(LW4_RAIN) && !none.includes('is each day'));
+  const t = lw4Set({ '0': 0.5 });
+  ok('LAWN-03: a row dated today at 0.5" never marks today\'s history row', !(lwHistRows(t)[0] || '').includes(LW4_RAIN)
+     && !t.lawnHistory().includes('is each day'));
+}
+
+/* D-04: a soft-deleted row shows nothing on either surface. */
+{
+  const a = lw4Set({});
+  a.DB.rainLog = [{ date: dayOff(-1), inches: 0.5, mtime: 1, deletedAt: 5 }];
+  ok('D-04: a soft-deleted rain row at 0.5" shows no mark in Lawn history and no tag in Week in Review',
+     !(lwHistRows(a)[1] || '').includes(LW4_RAIN) && !(lwWeekRows(a)[3] || '').includes(LW4_RAIN));
+}
+
+/* T-11-30: a hand-edited backup can put anything in a row; none of it reaches the screen. */
+[['a markup string', EVIL], ['NaN', NaN], ['Infinity', Infinity], ['-1', -1], ['41', 41]].forEach(([name, v]) => {
+  const a = lw4Set({});
+  a.DB.rainLog = [{ date: dayOff(-1), inches: v, mtime: 1 }];
+  const html = a.lawnHistory(), week = a.renderWeekReview();
+  ok('D-13: a rain amount of ' + name + ' shows no mark or tag and no raw markup',
+     !html.includes(LW4_RAIN) && !week.includes(LW4_RAIN) && !html.includes('<img') && !week.includes('<img'),
+     { hist: html.includes(LW4_RAIN), week: week.includes(LW4_RAIN), img: html.includes('<img') || week.includes('<img') });
+});
+{
+  const a = lw4Set({});
+  a.DB.rainLog = [{ date: EVIL, inches: 0.5, mtime: 1 }];
+  const html = a.lawnHistory(), week = a.renderWeekReview();
+  ok('D-13: a rain row whose date is a markup string puts nothing in either output',
+     !html.includes(LW4_RAIN) && !week.includes(LW4_RAIN) && !html.includes('<img') && !week.includes('<img') && !html.includes('onerror') && !week.includes('onerror'));
+}
+
+/* D-13: only an explicit true shows a lawn tag. */
+[['an explicit false', { mowed: false, watered: false }], ['the override keys', { overrideMow: true, overrideWater: true }],
+ ['a non-object day', 'x'], ['a missing day', undefined]].forEach(([name, day]) => {
+  const a = lw4Set({}, day === undefined ? {} : { [dayOff(-1)]: day });
+  const w = lwWeekRows(a)[3] || '';
+  ok('D-13: ' + name + ' renders no Mowed or Watered tag', !w.includes(' Mowed</span>') && !w.includes(' Watered</span>'),
+     w.replace(/<svg[\s\S]*?<\/svg>/g, '').slice(0, 300));
+});
+{
+  const a = lw4Set({ '1': 0.5 }, { [dayOff(1)]: { mowed: true, watered: true } });
+  const w = lwWeekRows(a)[5] || '';
+  ok('D-13: a future day with a mow, a watering and 0.5" of rain shows no tag',
+     !w.includes(' Mowed</span>') && !w.includes(' Watered</span>') && !w.includes(LW4_RAIN));
+}
+
+/* LAWN-05: all three, in order, after the existing tags. */
+{
+  const a = lw4Set({ '-1': 0.42 }, { [dayOff(-1)]: { mowed: true, watered: true } });
+  a.DB.hobbyLog.push({ date: dayOff(-1), item: 'Chess', mtime: 1 });
+  a.DB.weights.push({ date: dayOff(-1), value: 180, mtime: 1 });
+  const w = lwWeekRows(a)[3] || '';
+  const at = { hobby: w.indexOf('Chess'), weight: w.indexOf('\u2696'), mowed: w.indexOf(LW4_MOWED),
+               watered: w.indexOf(LW4_WATERED), rain: w.indexOf(lw4RainTag('0.42')) };
+  ok('LAWN-05: a day that is mowed, watered and rainy shows all three tags, in that order, after the existing tags',
+     at.hobby >= 0 && at.weight > at.hobby && at.mowed > at.weight && at.watered > at.mowed && at.rain > at.watered, at);
+}
+
+/* D-11: the tags show all year; the Lawn history list stays hidden off-season. */
+{
+  const a = loadApp(APP_PATH);
+  setup(a, { mowedDaysAgo: 3, wx: {} });
+  a.DB.lawnLog[dayOff(-1)] = { mowed: true, watered: true };
+  a.DB.rainLog = [{ date: dayOff(-1), inches: 0.42, mtime: 1 }];
+  const inSeason = a.viewLawn().includes('Past 2 weeks');
+  a.__sandbox.lawnSeason = () => null;
+  const w = lwWeekRows(a)[3] || '';
+  ok('D-11: off-season, Week in Review still shows Mowed, Watered and the rain',
+     w.includes(LW4_MOWED) && w.includes(LW4_WATERED) && w.includes(lw4RainTag('0.42')));
+  ok('D-11: off-season, Care → Lawn keeps the Lawn history list hidden (it shows in season)',
+     inSeason && !a.viewLawn().includes('Past 2 weeks'), { inSeason });
+}
+
+/* T-11-32: no tag or mark is a control. */
+{
+  const a = lw4Set({ '-1': 0.42, '-3': 0.1 }, { [dayOff(-1)]: { mowed: true, watered: true } });
+  const pills = controlsIn(a.lawnHistory()).filter(c => c.data.action === 'toggleLawnLog' && c.data.which === 'watered');
+  const withData = { hist: controlsIn(a.lawnHistory()).length, week: controlsIn(a.renderWeekReview()).length };
+  const b = lw4Set({});
+  const without = { hist: controlsIn(b.lawnHistory()).length, week: controlsIn(b.renderWeekReview()).length };
+  ok('D-13: the 14 watered pills still count 14 with distinct dates, and the tags and marks add no control',
+     pills.length === 14 && new Set(pills.map(c => c.data.iso)).size === 14
+       && withData.hist === without.hist && withData.week === without.week, { pills: pills.length, withData, without });
+}
+
+/* LAWN-05 idempotency: a render writes nothing. */
+{
+  const a = lw4Set({ '-1': 0.42 }, { [dayOff(-1)]: { mowed: true, watered: true } });
+  a.saveLocal();
+  const realPush = a.__sandbox.schedulePush, spy = spyPushes(a);
+  const blob = JSON.stringify(a.__stored()), up = a.DB.updatedAt;
+  const w1 = a.renderWeekReview(), w2 = a.renderWeekReview(), h1 = a.lawnHistory(), h2 = a.lawnHistory();
+  ok('LAWN-05: rendering Week in Review and Lawn history twice gives identical HTML, and nothing is stored or pushed',
+     w1 === w2 && h1 === h2 && JSON.stringify(a.__stored()) === blob && a.DB.updatedAt === up && spy.n === 0,
+     { week: w1 === w2, hist: h1 === h2, blob: JSON.stringify(a.__stored()) === blob, updatedAt: a.DB.updatedAt === up, pushes: spy.n });
+  a.__sandbox.schedulePush = realPush;
+}
+
+/* LAWN-05 concurrency: data arriving by sync shows on the next render; nothing is cached. */
+{
+  const a = lw4Set({});
+  const before = { week: lwWeekRows(a)[3] || '', hist: lwHistRows(a)[1] || '' };
+  const other = clone(a.DB);
+  other.updatedAt = (+a.DB.updatedAt || 0) + 1000;
+  other.rainLog.push({ date: dayOff(-1), inches: 0.42, mtime: 2 });
+  other.lawnLog[dayOff(-1)] = { mowed: true };
+  a.DB = a.mergeDB(clone(a.DB), other, false);
+  const w = lwWeekRows(a)[3] || '', h = lwHistRows(a)[1] || '';
+  ok('LAWN-05: a rain row and a mow that arrive by sync show on the next render',
+     !before.week.includes(LW4_RAIN) && !before.hist.includes(LW4_RAIN)
+       && w.includes(LW4_MOWED) && w.includes(lw4RainTag('0.42')) && h.includes(lw4HistMark('0.42')),
+     { mowed: w.includes(LW4_MOWED), tag: w.includes(lw4RainTag('0.42')), mark: h.includes(lw4HistMark('0.42')) });
+}
+
+/* D-04: one reader. Comments stripped, so a sentence about DB.rainLog cannot pass or fail this. */
+{
+  const strip = f => String(f).replace(/\/\*[\s\S]*?\*\//g, '');
+  const wk = strip(lw4A.renderWeekReview), hi = strip(lw4A.lawnHistory), rd = strip(lw4A.rainByDate);
+  ok('D-04: Week in Review and Lawn history read rain only through rainByDate(), which reads liveOf(\'rainLog\')',
+     !/DB\.rainLog/.test(wk) && !/DB\.rainLog/.test(hi) && /rainByDate\(\)/.test(wk) && /rainByDate\(\)/.test(hi)
+       && rd.includes("liveOf('rainLog')") && !/DB\.rainLog/.test(rd),
+     { wk: /DB\.rainLog/.test(wk), hi: /DB\.rainLog/.test(hi), rd: rd.slice(0, 120) });
+  ok('D-13: no render path writes: rainByDate, renderWeekReview and lawnHistory call no save(), saveLocal() or touch()',
+     [wk, hi, rd].every(s => !/\b(save|saveLocal|touch)\(/.test(s)));
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */

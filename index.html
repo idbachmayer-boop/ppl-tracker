@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-/6gR2MjsHzOkyLDauoGggdRw8hh8fqt78rMyUW0/4co=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-pYmhSj4nspYrG1QuJ5CXqDrhQ7nzhL2P5EiK/uF7yFE=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -4062,7 +4062,11 @@ function cLawnCard(full){
    doing the job and forgetting to tap the button. Tapping a pill logs or unlogs that date, and the
    whole schedule (days-since, the mow forecast, the watering interval) recomputes off it. */
 function lawnHistory(){
-  const log=DB.lawnLog||{}, rows=[];
+  /* Each past day with RAIN_MARK_IN or more of saved rain shows the amount beside its date (LAWN-03,
+     D-10): plain text, never a control. Today is never marked, because today is never saved. When
+     any mark shows, one note says the figure is the weather service's estimate, not a gauge. */
+  const log=DB.lawnLog||{}, rows=[], rain=rainByDate();
+  let marked=false;
   for(let n=0;n<14;n++){
     const d=new Date(); d.setDate(d.getDate()-n);
     const iso=d.toLocaleDateString('en-CA'), e=log[iso]||{};
@@ -4070,14 +4074,20 @@ function lawnHistory(){
         style="font-size:11px;font-weight:700;padding:5px 9px;border-radius:999px;cursor:pointer;
         border:1px solid ${on?'var(--accent)':'var(--border-3)'};background:${on?'var(--accent-muted)':'transparent'};
         color:${on?'var(--accent-300)':'var(--muted-2)'}">${label}${on&&ov?' *':''}</button>`;
-    rows.push(`<div class="hist-item">
-      <span style="font-weight:600;font-size:13px;color:${n===0?'var(--text)':'var(--muted)'}">${n===0?'Today':new Date(iso+'T00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</span>
-      <span style="display:flex;gap:6px">${pill(!!e.watered,'💧 Watered','watered',e.overrideWater)}${pill(!!e.mowed,'🚜 Mowed','mowed',e.overrideMow)}</span>
+    const rv=n>0 ? rain.get(iso) : undefined, mark=rv!==undefined && rv>=RAIN_MARK_IN;
+    if(mark) marked=true;
+    rows.push(`<div class="hist-item" style="gap:8px">
+      <span style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;min-width:0">
+        <span style="font-weight:600;font-size:13px;color:${n===0?'var(--text)':'var(--muted)'}">${n===0?'Today':new Date(iso+'T00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</span>${mark?`
+        <span style="font-size:11px;color:var(--text-2);white-space:nowrap" title="Estimated rainfall">${RAIN_GLYPH} ${esc(rv.toFixed(2))}"</span>`:''}
+      </span>
+      <span style="display:flex;gap:6px;flex:none">${pill(!!e.watered,'💧 Watered','watered',e.overrideWater)}${pill(!!e.mowed,'🚜 Mowed','mowed',e.overrideMow)}</span>
     </div>`);
   }
   return `<div class="card">
     <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Past 2 weeks</div>
-    <p class="muted" style="font-size:12px;margin:6px 0 10px">Tap a day to add or correct it — forgot to log Sunday's mow? Fix it here and the schedule catches up. (* = logged against an override.)</p>
+    <p class="muted" style="font-size:12px;margin:6px 0 10px">Tap a day to add or correct it — forgot to log Sunday's mow? Fix it here and the schedule catches up. (* = logged against an override.)</p>${marked?`
+    <p class="muted" style="font-size:11px;margin:-4px 0 8px">${RAIN_GLYPH} is each day\u2019s rainfall from the weather service (an estimate, not a rain gauge), saved once the day is over.</p>`:''}
     <div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <input type="date" id="lawn-past-date" max="${todayISO()}" style="flex:1;min-width:130px;padding:8px">
       <button class="btn btn-sm btn-ghost" data-action="logLawnPastDate" data-which="watered">💧 Watered</button>
