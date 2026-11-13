@@ -12436,6 +12436,30 @@ function lw4HistMark(amt){ return LW4_HIST_MARK + LW4_RAIN + ' ' + amt + '"</spa
      [wk, hi, rd].every(s => !/\b(save|saveLocal|touch)\(/.test(s)));
 }
 
+console.log('\n── Phase 11 code review fixes (11-REVIEW.md) ──');
+/* WR-01 (D-07, D-08): a cache fetched yesterday, kept on screen while the fetch backs off (D-15),
+   covers only today through today+5. With every covered day held, the projections used to fall
+   through to day 6, which has no forecast at all, and name it as a watering day. */
+{
+  const a = loadApp(APP_PATH);
+  a.DB = a.blank();
+  const wet = {}; for(let n = -3; n <= 6; n++) wet[n] = 70;
+  setup(a, { mowedDaysAgo: 3, wateredDaysAgo: 4, wx: { todayISO: dayOff(-1), probByOffset: wet } });
+  const html = a.mowOutlookHTML();
+  const got = { covered: [0, 1, 2, 3, 4, 5, 6].map(k => a.lawnStatus(k).havewx).join(), next: lw3Next(a),
+                nextDue: a.nextDueDay('water'), waterLine: html.includes('Expect to water'), drops: lw3Drops(html), agree: lw3Agree(a) };
+  ok('Phase 11 WR-01 (D-07): with every covered day held, nextWaterDay, nextDueDay and the water line stay silent past a yesterday cache',
+     got.covered === 'true,true,true,true,true,true,false' && got.next === null && got.nextDue === null
+       && !got.waterLine && got.drops === 0 && got.agree.length === 0, got);
+  /* Guard: the last day the cache covers is still named. Day 4 (an odd date) is dry; 0..3 are wet. */
+  const dry = {}; for(let n = -3; n <= 4; n++) dry[n] = 70;
+  setup(a, { mowedDaysAgo: 3, wateredDaysAgo: 4, wx: { todayISO: dayOff(-1), probByOffset: dry } });
+  const nd = a.nextDueDay('water');
+  ok('Phase 11 WR-01 guard: the last day a yesterday cache covers is still the next watering day, on every surface',
+     lw3Next(a) === 4 && !!nd && nd.off === 4 && a.mowOutlookHTML().includes('Expect to water') && lw3Agree(a).length === 0,
+     { next: lw3Next(a), nextDue: nd, agree: lw3Agree(a) });
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */

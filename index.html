@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-pYmhSj4nspYrG1QuJ5CXqDrhQ7nzhL2P5EiK/uF7yFE=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-gszCsP+9UKvSEq1DKFzAH37+QYnRVRfV0MY3G8ECXCA=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -3963,10 +3963,13 @@ function logLawnPastDate(action){
 }
 /* First upcoming day the given task is recommended, using the SAME lawnStatus the card shows (its
    dayOffset already shifts the rain window, the odd/even sprinkling parity, the heat scan and
-   days-since together). Null past the forecast horizon — better silent than an invented day. */
+   days-since together). Null past the forecast horizon — better silent than an invented day. A day
+   the cached forecast does not cover (an older cache kept on screen while the fetch backs off, D-15)
+   has none of the forecast holds, so the search stops there instead of naming it (D-07). */
 function nextDueDay(kind){
   for(let off=1; off<=6; off++){
     const s = lawnStatus(off); if(!s.season) continue;
+    if(!s.havewx) return null;
     const r = kind==='water' ? s.water : s.mow;
     if(r && r.recommend && !r.unknown){ const d=new Date(); d.setDate(d.getDate()+off);
       return { off, label: off===1 ? 'tomorrow' : d.toLocaleDateString('en-US',{weekday:'short'}) }; }
@@ -3976,10 +3979,12 @@ function nextDueDay(kind){
 /* The one day the outlook marks with the droplet: the first day, today included, that the card
    itself would call a watering day. An override is a decision about today, not a due date, and a
    guess made with nothing logged is not a day to plan around. Null when no day in the forecast
-   qualifies — better silent than an invented day. */
+   qualifies — better silent than an invented day. It stops at the first day the cached forecast
+   does not cover, the same way nextDueDay does, so the two always agree (D-07, D-08). */
 function nextWaterDay(){
   for(let k=0; k<=6; k++){
     const s = lawnStatus(k); if(!s.season) continue;
+    if(!s.havewx) return null;
     if(s.water.recommend && !s.water.unknown && !s.water.override) return k;
   }
   return null;
