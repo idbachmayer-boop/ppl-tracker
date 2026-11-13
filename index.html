@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-gszCsP+9UKvSEq1DKFzAH37+QYnRVRfV0MY3G8ECXCA=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-HsPH+tMWBYR2nTZjvy5/IHqNiLTulBzxR4GeZfeyIH4=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -3533,7 +3533,10 @@ function wxCode(c){ c=+c;
 }
 async function fetchWeather(){
   if(!DB.lawn || DB.lawn.lat==null || weatherFetching) return;
-  weatherFetching=true; render();
+  /* Render only where weather shows (Today, Care → Lawn). A fetch started on Today and settling after
+     a switch to Train → Log would otherwise rebuild the workout mid-set (RESEARCH Pitfall 5); no other
+     screen reads DB.wx, and the next visit renders the fresh cache. */
+  weatherFetching=true; if(weatherScreenShowing()) render();
   try{
     const {lat,lon}=DB.lawn;
     const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max&hourly=temperature_2m,precipitation&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=14&forecast_days=7`;
@@ -3557,7 +3560,7 @@ async function fetchWeather(){
     WXFAIL.n++;
     WXFAIL.retryAt = Date.now() + WX_BACKOFF_MS[Math.min(WXFAIL.n, WX_BACKOFF_MS.length) - 1];
   }
-  weatherFetching=false; render();
+  weatherFetching=false; if(weatherScreenShowing()) render();
 }
 /* The only automatic caller (Today's and Care → Lawn's onRender), so the backoff gate lives here. */
 function maybeFetchWeather(){

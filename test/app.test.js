@@ -12460,6 +12460,40 @@ console.log('\n── Phase 11 code review fixes (11-REVIEW.md) ──');
      { next: lw3Next(a), nextDue: nd, agree: lw3Agree(a) });
 }
 
+/* WR-02 (RESEARCH Pitfall 5, widened by D-12): Today fetches all year and is the landing tab, so Ian
+   can open the app and tap Train → Log while the fetch is in flight. When it settled, fetchWeather
+   rendered whatever tab was open, rebuilding the workout mid-set. Renders are counted through the
+   vm global, which every internal render() call resolves through. */
+function lwCountRenders(a){
+  const real = a.__sandbox.render, log = [];
+  a.__sandbox.render = function(){ log.push(a.TAB); return real.apply(this, arguments); };
+  return log;
+}
+asyncBlock('Phase 11 WR-02: a weather fetch never rebuilds Train → Log', async () => {
+  const a = loadApp(APP_PATH, null, { fetch: lwRes(makeWx({ todayISO: today, pastDays: 14 }).data) });
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  const renders = lwCountRenders(a);
+  a.go('today');
+  const started = a.weatherFetching;
+  a.go('train'); a.setSub('log');
+  renders.length = 0;
+  await lwTicks(10);
+  ok('Phase 11 WR-02: a fetch started on Today that settles on Train → Log does not render the Log tab',
+     started === true && a.__fetchCalls() === 1 && a.weatherFetching === false && !!a.DB.wx && renders.length === 0,
+     { started, calls: a.__fetchCalls(), cached: !!a.DB.wx, renders });
+
+  /* Guard: a fetch that settles on a weather screen still renders it, so the forecast appears. */
+  const b = loadApp(APP_PATH, null, { fetch: lwRes(makeWx({ todayISO: today, pastDays: 14 }).data) });
+  b.DB = b.blank(); lwLawn(b); b.DB.wx = null;
+  const bRenders = lwCountRenders(b);
+  b.go('care'); b.setSub('lawn');
+  bRenders.length = 0;
+  await lwTicks(10);
+  ok('Phase 11 WR-02 guard: a fetch that settles on Care → Lawn renders it once with the forecast',
+     b.__fetchCalls() === 1 && !!b.DB.wx && bRenders.length >= 1 && bRenders.every(t => t === 'care'),
+     { calls: b.__fetchCalls(), renders: bRenders });
+});
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
