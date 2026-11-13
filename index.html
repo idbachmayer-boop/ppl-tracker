@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-HsPH+tMWBYR2nTZjvy5/IHqNiLTulBzxR4GeZfeyIH4=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-9RXIqi7U6l5yU4JIX9pIztJwHY1137q034HIJZSg2DM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -3617,13 +3617,16 @@ function rainByDate(){
   return out;
 }
 /* A reconnect retries at once, but only after a failure and only while a weather screen is showing:
-   fetchWeather renders, and a render on Train → Log would rebuild the workout mid-set (RESEARCH
-   Pitfall 5). Anywhere else, the next visit retries through the gate in maybeFetchWeather. */
+   a fetch started on Train → Log must never touch the workout Ian is mid-set on (RESEARCH Pitfall 5).
+   Anywhere else it clears the wait instead, so the next visit to Today or Care → Lawn retries through
+   maybeFetchWeather's gate. WXFAIL.n stays, so the offline note shows until a fetch succeeds. */
 function weatherScreenShowing(){
   return TAB==='today' || (TAB==='care' && subState.care==='lawn');
 }
 function retryWeather(){
-  if(WXFAIL.n > 0 && weatherScreenShowing()) fetchWeather();
+  if(WXFAIL.n === 0) return;
+  if(weatherScreenShowing()) fetchWeather();
+  else WXFAIL.retryAt = 0;
 }
 window.addEventListener('online', retryWeather);
 function useMyLocation(){

@@ -12494,6 +12494,40 @@ asyncBlock('Phase 11 WR-02: a weather fetch never rebuilds Train → Log', async
      { calls: b.__fetchCalls(), renders: bRenders });
 });
 
+/* WR-03 (D-14): coming back online away from a weather screen made no fetch, rightly, but left the
+   backoff armed, so the next visit to Care → Lawn or Today refused to retry for up to 60 minutes. */
+asyncBlock('Phase 11 WR-03: online away from a weather screen retries on the next visit', async () => {
+  let online = false;
+  const body = makeWx({ todayISO: today, pastDays: 14 }).data;
+  const a = loadApp(APP_PATH, null, { fetch: () => { if(!online) throw new TypeError('offline'); return { ok:true, status:200, json: async () => body }; } });
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  a.go('care'); a.setSub('lawn'); await lwTicks(10);
+  a.WXFAIL.retryAt = 0; a.render(); await lwTicks(10);
+  a.WXFAIL.retryAt = 0; a.render(); await lwTicks(10);
+  const failed = { n: a.WXFAIL.n, waitMin: (a.WXFAIL.retryAt - Date.now()) / 60000 };
+  a.go('train'); a.setSub('log');
+  online = true;
+  const c0 = a.__fetchCalls();
+  lwOnline(a).forEach(fn => fn());
+  await lwTicks(10);
+  const onLog = a.__fetchCalls() - c0;
+  a.go('care'); a.setSub('lawn'); await lwTicks(10);
+  ok('Phase 11 WR-03: online on Train → Log fetches nothing there, and the next Care → Lawn visit retries at once and succeeds',
+     failed.n === 3 && failed.waitMin === 60 && onLog === 0 && a.__fetchCalls() === c0 + 1 && a.WXFAIL.n === 0 && !!a.DB.wx,
+     { failed, onLog, after: a.__fetchCalls() - c0, n: a.WXFAIL.n, cached: !!a.DB.wx });
+
+  /* Guard: with no failure, going online anywhere leaves the hourly gate alone. */
+  const b = loadApp(APP_PATH);
+  setup(b, { wx: {} });
+  b.DB.wx.lat = b.DB.lawn.lat; b.DB.wx.lon = b.DB.lawn.lon;
+  b.go('train'); b.setSub('log');
+  lwOnline(b).forEach(fn => fn());
+  await lwTicks(10);
+  b.go('care'); b.setSub('lawn'); await lwTicks(10);
+  ok('Phase 11 WR-03 guard: online with no failure makes no fetch on the next visit to a fresh cache',
+     b.WXFAIL.n === 0 && b.WXFAIL.retryAt === 0 && b.__fetchCalls() === 0, { n: b.WXFAIL.n, calls: b.__fetchCalls() });
+});
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
