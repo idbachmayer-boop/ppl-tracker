@@ -11496,9 +11496,9 @@ function lwFetchTags(html){
   const ctl = loadApp(APP_PATH);
   ctl.DB = ctl.blank(); setup(ctl, { mowedDaysAgo: 3 });
   const ctlHtml = ctl.viewLawn();
-  ok('Pattern 8: a cache without today shows no temperature and no Mowing outlook on Lawn (a usable cache shows both)',
-     !/stat-big/.test(html) && !/Mowing outlook/.test(html) && /stat-big/.test(ctlHtml) && /Mowing outlook/.test(ctlHtml),
-     { stale: /stat-big/.test(html), outlook: /Mowing outlook/.test(html) });
+  ok('Pattern 8: a cache without today shows no temperature and no Lawn outlook on Lawn (a usable cache shows both)',
+     !/stat-big/.test(html) && !/Lawn outlook/.test(html) && /stat-big/.test(ctlHtml) && /Lawn outlook/.test(ctlHtml),
+     { stale: /stat-big/.test(html), outlook: /Lawn outlook/.test(html) });
   ok('Pattern 8: wxGlance() returns null for a cache without today (and a glance for a usable one)',
      typeof a.wxGlance === 'function' && a.wxGlance() === null && !!ctl.wxGlance(),
      typeof a.wxGlance === 'function' ? a.wxGlance() : 'wxGlance not exported');
@@ -11549,7 +11549,7 @@ asyncBlock('D-15: S5 offline note', async () => {
   a.DB = a.blank(); setup(a, { mowedDaysAgo: 3, wateredDaysAgo: 2 });
   a.DB.wx.lat = a.DB.lawn.lat; a.DB.wx.lon = a.DB.lawn.lon;
   const time = new Date(Date.now()).toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
-  const outlook = h => /Mowing outlook/.test(h) && /stat-big/.test(h);
+  const outlook = h => /Lawn outlook/.test(h) && /stat-big/.test(h);
 
   let html = a.viewLawn();
   ok('D-15: after a success there is no offline note, and the forecast and outlook render',
@@ -11990,7 +11990,7 @@ asyncBlock('D-01: the quiet push', async () => {
    The frozen clock is Fri 7 Aug 2026, an odd date with an odd address, so k = 1, 3 and 5 are held by
    the city rule and the watering day can never be k = 1 here. Glyphs are built from escapes so the
    test source never depends on how an editor saves an emoji. */
-const LW3_DROP = '\u{1F4A7}', LW3_UMB = '☔', LW3_TRACTOR = '\u{1F69C}', LW3_FIRE = '\u{1F525}';
+const LW3_DROP = '\u{1F4A7}', LW3_UMB = '\u2614', LW3_TRACTOR = '\u{1F69C}', LW3_FIRE = '\u{1F525}';
 const LW3_CELL = '<div style="text-align:center;flex:1;min-width:42px;padding:6px 2px;border-radius:8px;';
 /* The outlook strip's cells, index k. Empty when the strip is hidden or the card is absent. */
 function lwStrip(a){
@@ -12127,6 +12127,98 @@ function lw3Agree(a){
   ok('D-08: when nextWaterDay() is 0, Today\'s card holds the Watering block\'s Mark watered button',
      lw3Next(lw3App) === 0 && controlsIn(card).some(c => c.data.action === 'toggleLawnLog' && c.data.which === 'watered'),
      { k: lw3Next(lw3App) });
+}
+
+/* ── D-06: the Lawn outlook. One strip cell, read as its mark row, its label and its colour. ── */
+function lw3Cell(cell){
+  const mark = (/<div style="font-size:16px;margin:3px 0">([\s\S]*?)<\/div>/.exec(cell || '') || [])[1];
+  const lab = /<div style="font-size:9px;font-weight:700;color:([^"]*)">([^<]*)<\/div>/.exec(cell || '') || [];
+  const span = /<span style="([^"]*)">([^<]*)<\/span>/.exec(mark || '');
+  return { mark, color: lab[1], label: lab[2], pairStyle: span ? span[1] : null, pairText: span ? span[2] : null,
+           highlighted: (cell || '').includes('var(--accent-muted)') };
+}
+/* The phrase the outlook's water line opens with: the same `drop` icon the heads-up uses. */
+const lw3DropIcon = require('vm').runInContext("ph('drop','lead')", lw3App.__sandbox);
+
+{
+  const a = lw3App;
+  setup(a, { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: { hiByOffset: { 0: 54 } } });
+  const html = a.mowOutlookHTML();
+  ok('D-06: the strip\'s kicker reads Lawn outlook', html.includes('Lawn outlook') && !html.includes('Mowing outlook'), html.slice(0, 120));
+
+  /* A wet mow day that is not the water day: UMBRELLA, "wet", no droplet. */
+  setup(a, { mowedDaysAgo: 9, wateredDaysAgo: 0, wx: { probByOffset: { 0: 55 } } });
+  const wet0 = lw3Cell(lwStrip(a)[0]);
+  ok('D-06: a wet day that is not the water day shows UMBRELLA labelled wet, with no droplet',
+     lw3Next(a) === 2 && a.mowForecast().days[0].blocked === 'wet' && wet0.mark === LW3_UMB && wet0.label === 'wet'
+       && wet0.color === 'var(--chart)' && lw3Drops(lwStrip(a)[0] || '') === 0, wet0);
+  ok('D-08: with a wet mow day in the strip, the strip, the card, the heads-up and the next line still agree', lw3Agree(a).length === 0, lw3Agree(a));
+
+  /* Pair cells. Watered today, so the water day is day 2; mowed 6 days ago, so day 2 is the mow day
+     unless the weather blocks it. */
+  const pairs = [
+    ['a mow day',            {},                          'ok',   LW3_TRACTOR, 'both',  'var(--flag-fg)'],
+    ['a wet mow-blocked day', { probByOffset: { 2: 55 } }, 'wet',  LW3_UMB,     'water', 'var(--pull-fg)'],
+    ['a hot mow-blocked day', { hotFrom: { 2: 8 } },       'hot',  LW3_FIRE,    'water', 'var(--pull-fg)'],
+  ];
+  pairs.forEach(([label, wx, mowState, icon, want, color]) => {
+    setup(a, { mowedDaysAgo: 6, wateredDaysAgo: 0, wx });
+    const d2 = a.mowForecast().days[2], c = lw3Cell(lwStrip(a)[2]);
+    const isState = mowState === 'ok' ? d2.ok === true : d2.blocked === mowState;
+    ok(`D-06: ${label} that is also the water day pairs its mark with the droplet at 12px, nowrap, labelled ${want}`,
+       lw3Next(a) === 2 && isState && c.pairText === icon + LW3_DROP && /(^|;)font-size:12px(;|$)/.test(c.pairStyle || '')
+         && /(^|;)white-space:nowrap(;|$)/.test(c.pairStyle || '') && c.label === want && c.color === color,
+       { next: lw3Next(a), mow: d2.ok ? 'ok' : d2.blocked, cell: c });
+    ok(`D-08: ${label} paired with the water day → the surfaces agree`, lw3Agree(a).length === 0, lw3Agree(a));
+  });
+
+  /* A water day with no mow mark: the droplet alone at 16px. The tracer's day 2 is "not due". */
+  setup(a, { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: { hiByOffset: { 0: 54 } } });
+  const alone = lw3Cell(lwStrip(a)[2]);
+  ok('D-06: a water day with no mow mark shows the droplet alone at 16px, labelled water in var(--pull-fg)',
+     alone.mark === LW3_DROP && alone.label === 'water' && alone.color === 'var(--pull-fg)', alone);
+  /* The next-mow highlight stays on the mow day (day 5 here) and never moves to the water day. */
+  const lit = lwStrip(a).map((c, k) => lw3Cell(c).highlighted ? k : -1).filter(k => k >= 0);
+  ok('D-06: the next-mow highlight sits on exactly one cell, the next mow day, never the water day',
+     lit.length === 1 && lit[0] === a.mowForecast().next.k && lit[0] !== lw3Next(a), { lit, mow: a.mowForecast().next.k, water: lw3Next(a) });
+
+  /* S1 water line, after the mow line, with the drop icon. */
+  const line = '<div style="font-size:13px;line-height:1.5;margin-top:4px">' + lw3DropIcon;
+  const sun = a.mowOutlookHTML();
+  ok('D-07: the water line reads Expect to water Sunday (Aug 9), after the mow line, with the drop icon',
+     sun.includes(line + 'Expect to water <strong>Sunday</strong> (Aug 9) — before noon or after 6pm</div>')
+       && sun.indexOf('Expect to water') > sun.indexOf('Expect to mow') && sun.indexOf('Expect to mow') >= 0,
+     sun.replace(/<svg[\s\S]*?<\/svg>/g, '').slice(0, 400));
+  setup(a, { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: {} });
+  const tod = a.mowOutlookHTML();
+  ok('D-07: on a watering day the line reads today, with no date',
+     lw3Next(a) === 0 && tod.includes(line + 'Expect to water <strong>today</strong> — before noon or after 6pm</div>'),
+     tod.replace(/<svg[\s\S]*?<\/svg>/g, '').slice(0, 400));
+  setup(a, { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: { hiByOffset: { 0: 54, 2: 54, 4: 54, 6: 54 } } });
+  ok('D-07: with no watering day in the forecast there is no water line', lw3Next(a) === null && !a.mowOutlookHTML().includes('Expect to water'), lw3Next(a));
+
+  /* UI-SPEC Open Question 1: no mow ever logged hides the strip, and the water line still shows. */
+  setup(a, { mowedDaysAgo: null, wateredDaysAgo: 7, wx: {} });
+  const unk = a.mowOutlookHTML();
+  ok('LAWN-04: with no mow ever logged the strip stays hidden and the water line still renders',
+     unk.includes('Lawn outlook') && lwStrip(a).length === 0 && unk.includes('Expect to water <strong>today</strong>'),
+     unk.replace(/<svg[\s\S]*?<\/svg>/g, '').slice(0, 400));
+
+  /* S1 footnote: its numbers come from the constants and SEASON_RULES. */
+  setup(a, { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: {} });
+  const foot = a.mowOutlookHTML();
+  const summerBits = ['high under ' + a.COOL_DAY_F + '°F', 'rain of 0.3"', a.WET_CHANCE_PCT + '% chance', '85°F window'];
+  ok('D-06: the summer footnote states the cool-day, rain, chance and heat rules',
+     a.COOL_DAY_F === 60 && a.WET_CHANCE_PCT === 60 && summerBits.every(b => foot.includes(b)), summerBits.filter(b => !foot.includes(b)));
+}
+
+{
+  const fa = loadApp(APP_PATH);
+  fa.__sandbox.lawnSeason = () => 'fall';
+  setup(fa, { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: {} });
+  const foot = fa.mowOutlookHTML();
+  ok('D-06: the fall footnote states rain of 0.5" and the heat window', foot.includes('rain of 0.5"') && foot.includes('heat window'),
+     foot.replace(/<svg[\s\S]*?<\/svg>/g, '').slice(-500));
 }
 
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-h6cecLj0ECsENpcOggAyqGDPGD/bI/uy8q9BtXzmOSM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-4Qugf6I+C/pWn8WRDGyIoeq73RsQ1zH3xDUGRMzYEzA=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -3855,30 +3855,49 @@ function mowExpectText(f){
   const guess = f.unknown ? ' — log your last mow to pin this down' : '';
   return `Expect to mow <strong>${when}</strong>${date}${qual}${guess}`;
 }
-/* Per-day marker for the outlook strip. */
+/* Per-day mow marker for the outlook strip. Wet ground is the umbrella, so the droplet means only
+   "water this day". */
 function mowMark(d){
   if(d.ok) return { icon:'🚜', label:'mow', color:'var(--flag-fg)' };
-  if(d.blocked==='wet') return { icon:'💧', label:'wet', color:'var(--chart)' };
+  if(d.blocked==='wet') return { icon:'\u2614', label:'wet', color:'var(--chart)' };
   if(d.blocked==='hot') return { icon:'🔥', label:'hot', color:'var(--warm-fg)' };
   return { icon:'–', label:d.blocked==='soon'?'too soon':'not due', color:'var(--muted-2)' };
 }
+/* The Lawn outlook: the mow line, the water line, and the 7-day strip. The droplet sits on exactly
+   one cell, nextWaterDay()'s, so the strip can never promise a watering day the card would refuse.
+   On that cell a mow, wet or hot mark shares the row with the droplet at 12px; a mow day that is also
+   the water day reads "both". The next-mow highlight stays on the mow day. */
 function mowOutlookHTML(){
   const f = mowForecast(); if(!f) return '';
-  const wk = nextWaterDay();
+  const wk = nextWaterDay(), drop = '\u{1F4A7}';
   const strip = f.days.map(d=>{
     const target = f.next && d.iso===f.next.iso;
-    const m = d.k===wk ? { icon:'\u{1F4A7}', label:'water', color:'var(--pull-fg)' } : mowMark(d);
+    let m = mowMark(d), icon = m.icon;
+    if(d.k===wk){
+      if(m.icon==='–') { icon = drop; m = { label:'water', color:'var(--pull-fg)' }; }
+      else { icon = `<span style="font-size:12px;white-space:nowrap">${m.icon}${drop}</span>`;
+             m = d.ok ? { label:'both', color:'var(--flag-fg)' } : { label:'water', color:'var(--pull-fg)' }; }
+    }
     return `<div style="text-align:center;flex:1;min-width:42px;padding:6px 2px;border-radius:8px;${target?'background:var(--accent-muted);box-shadow:inset 0 0 0 1px rgba(145,132,217,.4)':''}">
       <div class="muted" style="font-size:10px;font-weight:700">${d.k===0?'Today':new Date(d.iso+'T00:00').toLocaleDateString('en-US',{weekday:'short'})}</div>
-      <div style="font-size:16px;margin:3px 0">${m.icon}</div>
+      <div style="font-size:16px;margin:3px 0">${icon}</div>
       <div style="font-size:9px;font-weight:700;color:${m.color}">${m.label}</div>
     </div>`;
   }).join('');
+  /* The water line, worded the way the mow line is: a date only when it is more than a day out. */
+  let waterLine = '';
+  if(wk!=null){
+    const wd = new Date(); wd.setDate(wd.getDate()+wk); const iso = wd.toLocaleDateString('en-CA');
+    const date = wk>1 ? ` (${new Date(iso+'T00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})})` : '';
+    waterLine = `<div style="font-size:13px;line-height:1.5;margin-top:4px">${ph('drop','lead')}Expect to water <strong>${mowDayLabel(iso, wk)}</strong>${date} — ${LAWN_HOURS_NOTE}</div>`;
+  }
+  const rules = SEASON_RULES[lawnSeason(new Date())];
   return `<div class="card">
-    ${kicker('Mowing outlook')}
+    ${kicker('Lawn outlook')}
     <div style="font-size:13px;line-height:1.5;margin-top:6px">${ph('tractor','lead')}${mowExpectText(f)}</div>
+    ${waterLine}
     ${f.unknown ? '' : `<div style="display:flex;gap:3px;margin-top:12px;overflow-x:auto">${strip}</div>`}
-    <p class="muted" style="font-size:11px;margin-top:10px">Projects the same rules forward — about a week between mows (day 5 when rain has pushed growth), no mowing on wet grass, and the ${SEASON_RULES[lawnSeason(new Date())].heatLimit?`${SEASON_RULES[lawnSeason(new Date())].heatLimit}°F`:'heat'} window. Rain in the forecast moves it, so check the day before.</p>
+    <p class="muted" style="font-size:11px;margin-top:10px">Projects the same rules forward. Mowing: about a week between mows, never on wet grass or in the ${rules.heatLimit?`${rules.heatLimit}°F`:'heat'} window. Watering: the next day it’s due, skipping cool days (high under ${COOL_DAY_F}°F), rain of ${rules.rainSkip}" or a ${WET_CHANCE_PCT}% chance of it, and the wrong sprinkling day. Check the day before.</p>
   </div>`;
 }
 /* Write one day's lawn log. `iso` is any past date — forgetting to tap the button on the day is the
