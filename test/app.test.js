@@ -11982,6 +11982,38 @@ asyncBlock('D-01: the quiet push', async () => {
      named.every(x => x.inDoc && x.isFn), named);
 }
 
+/* ── LAWN-01 / LAWN-04: one watering verdict, and the outlook marks the next watering day ──
+   The frozen clock is Fri 7 Aug 2026, an odd date with an odd address, so k = 1, 3 and 5 are held by
+   the city rule and the watering day can never be k = 1 here. Glyphs are built from escapes so the
+   test source never depends on how an editor saves an emoji. */
+const LW3_DROP = '\u{1F4A7}', LW3_UMB = '☔', LW3_TRACTOR = '\u{1F69C}', LW3_FIRE = '\u{1F525}';
+const LW3_CELL = '<div style="text-align:center;flex:1;min-width:42px;padding:6px 2px;border-radius:8px;';
+/* The outlook strip's cells, index k. Empty when the strip is hidden or the card is absent. */
+function lwStrip(a){
+  const html = typeof a.mowOutlookHTML === 'function' ? a.mowOutlookHTML() : '';
+  return html.split(LW3_CELL).slice(1);
+}
+/* nextWaterDay() through the export, so a missing function fails a check by name, never the run. */
+function lw3Next(a){
+  return typeof a.nextWaterDay === 'function' ? a.nextWaterDay() : 'nextWaterDay is not exported';
+}
+function lw3Drops(s){ return s.split(LW3_DROP).length - 1; }
+const lw3App = loadApp(APP_PATH);
+
+{
+  const a = lw3App;
+  setup(a, { mowedDaysAgo: 3, wateredDaysAgo: 7, wx: { hiByOffset: { 0: 54 } } });
+  const w = a.lawnStatus().water, nd = a.nextDueDay('water'), cells = lwStrip(a);
+  const got = {
+    text: w.text, hard: w.hard, recommend: w.recommend, next: lw3Next(a), nextDue: nd,
+    drops: cells.map(lw3Drops), card: a.cLawnCard(true).includes(a.esc('Cool day (high 54°F) — hold off')),
+  };
+  ok('LAWN-01/04 tracer: a cool day holds watering and the outlook marks Sunday',
+     got.text === 'Cool day (high 54°F) — hold off' && got.hard === true && got.recommend === false
+       && got.next === 2 && !!nd && nd.off === 2 && nd.label === 'Sun'
+       && cells.length === 7 && got.drops.join() === '0,0,1,0,0,0,0' && got.card === true, got);
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */

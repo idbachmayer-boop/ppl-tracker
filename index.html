@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-oFcssEN1b1CQLXHsOJYESN7MJOdPynhgLEXBR6icV5Q=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-h6cecLj0ECsENpcOggAyqGDPGD/bI/uy8q9BtXzmOSM=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -3716,6 +3716,29 @@ function mowVerdict(o){
   return { due, blocked, ok: blocked===null, growthSpike, overdue: o.dsMow > 9, before,
            beforeWhy: before==null ? null : (rain.status==='before' && rain.hour===before ? 'rain' : 'heat') };
 }
+/* ── The watering decision, in ONE place ─────────────────────────────────────────────────────
+   Today's card, tomorrow's heads-up, nextDueDay('water') and the outlook's droplet all read this
+   through lawnStatus(), so they can never disagree about which day is a watering day. Precedence:
+   override > watered recently > wet forecast for the day itself > rain already fell (3 days) > rain
+   tomorrow > cool day > the odd/even city rule > due. A decision Ian made beats everything. The rain
+   holds beat the city rule because they say more. The day's own forecast is tested before the 3-day
+   total, which already contains it, so a future day never reads "Rained recently". A cool day says
+   more than "it's an even date". The cool test reads the high the way the weather card shows it,
+   rounded to a whole °F, so a hold never says "high 60°F". A missing, non-numeric or non-finite
+   value arrives as null and is never a hold: an absent forecast must not stop the watering. */
+const COOL_DAY_F = 60, WET_CHANCE_PCT = 60;
+function waterVerdict(o){
+  if(o.override) return { blocked:null, why:'override' };
+  if(o.dsWater < o.every) return { blocked:'recent' };
+  const amount = !!o.havewx && o.rainOwn >= o.rainSkip;
+  const chance = !!o.havewx && o.chanceOwn != null && o.chanceOwn >= WET_CHANCE_PCT;
+  if(amount || chance) return { blocked:'wet', why: amount && chance ? 'both' : amount ? 'amount' : 'chance' };
+  if(o.havewx && o.rain3 >= o.rainSkip) return { blocked:'rain3' };
+  if(o.havewx && o.rainTomorrow >= o.rainSkip) return { blocked:'tomorrow' };
+  if(o.highF != null && Math.round(o.highF) < COOL_DAY_F) return { blocked:'cool' };
+  if(!o.sprinkleDayOK) return { blocked:'city' };
+  return { blocked:null };
+}
 /* The full recommendation object, computed fresh each render (this is what makes it adaptive).
    dayOffset shifts the whole calculation forward a day so the home card can answer "will I need to
    do this tomorrow?" — the forecast already carries 7 days, nothing new is fetched. Everything
@@ -3749,13 +3772,24 @@ function lawnStatus(dayOffset){
      was the July regression: the ask-for-a-date state suppressed the recommendation entirely, so a
      lawn that genuinely needed water heard nothing at all.) */
   water.unknown = (dsWater === Infinity);
-  if(water.override){ water.text='Watering anyway (override)'; water.recommend=true; }
-  else if(dsWater < waterEvery){ water.text=`Watered ${dsFmt(dsWater)} — hold off`; }
-  else if(havewx && rain3 >= rules.rainSkip){ water.text=`Rained recently (~${rain3.toFixed(2)}") — hold off`; water.hard=true; }
+  /* The decision lives in waterVerdict; this only words it. A forecast value reaches the verdict
+     only as a finite number, else null, so a gap in the forecast is never read as 0°F or 0%. */
+  const finiteWx = v => (havewx && typeof v === 'number' && isFinite(v)) ? v : null;
+  const rainOwn = havewx ? num(P[ti]) : 0, chanceOwn = finiteWx(PP[ti]), highF = finiteWx(HI[ti]);
   /* Forecast rain suppresses only when it's imminent AND real. A maybe-shower three days out must
      never cost the lawn three dry days — that was the thing that felt wrong. */
-  else if(havewx && rainTomorrow >= rules.rainSkip){ water.text=`Holding off — ~${rainTomorrow.toFixed(2)}" of rain expected tomorrow`; water.hard=true; }
-  else if(!sprinkleDayOK){ const nx=nextSprinkleDate(); water.text=`City rule — ${LAWN_ADDR_PARITY} address sprinkles on ${LAWN_ADDR_PARITY} days only (today is the ${todayParity} ${ordinal(dom)})${nx?`; next ${nx}`:''}`; water.hard=true; }
+  const wv = waterVerdict({ override:water.override, dsWater, every:waterEvery, havewx, rainOwn, chanceOwn,
+                            rain3, rainTomorrow, rainSkip:rules.rainSkip, highF, sprinkleDayOK });
+  if(wv.why==='override'){ water.text='Watering anyway (override)'; water.recommend=true; }
+  else if(wv.blocked==='recent'){ water.text=`Watered ${dsFmt(dsWater)} — hold off`; }
+  else if(wv.blocked==='wet'){ water.hard=true;
+    water.text = wv.why==='both'   ? `Rain in the forecast (~${rainOwn.toFixed(2)}", ${Math.round(chanceOwn)}% chance) — hold off`
+               : wv.why==='amount' ? `Rain in the forecast (~${rainOwn.toFixed(2)}") — hold off`
+               :                     `${Math.round(chanceOwn)}% chance of rain — hold off`; }
+  else if(wv.blocked==='rain3'){ water.text=`Rained recently (~${rain3.toFixed(2)}") — hold off`; water.hard=true; }
+  else if(wv.blocked==='tomorrow'){ water.text=`Holding off — ~${rainTomorrow.toFixed(2)}" of rain expected tomorrow`; water.hard=true; }
+  else if(wv.blocked==='cool'){ water.text=`Cool day (high ${Math.round(highF)}°F) — hold off`; water.hard=true; }
+  else if(wv.blocked==='city'){ const nx=nextSprinkleDate(); water.text=`City rule — ${LAWN_ADDR_PARITY} address sprinkles on ${LAWN_ADDR_PARITY} days only (today is the ${todayParity} ${ordinal(dom)})${nx?`; next ${nx}`:''}`; water.hard=true; }
   else { water.text = `Time to water${heatNote} — ${LAWN_HOURS_NOTE}${water.unknown?' · nothing logged yet, so this is a guess':` (last ${dsFmt(dsWater)})`}`; water.recommend=true; }
   // ── MOWING ── (rules live in mowVerdict so tomorrow's heads-up and the 7-day forecast match)
   const heat = lawnHeatWindow(rules.heatLimit, today);
@@ -3830,8 +3864,10 @@ function mowMark(d){
 }
 function mowOutlookHTML(){
   const f = mowForecast(); if(!f) return '';
+  const wk = nextWaterDay();
   const strip = f.days.map(d=>{
-    const m = mowMark(d), target = f.next && d.iso===f.next.iso;
+    const target = f.next && d.iso===f.next.iso;
+    const m = d.k===wk ? { icon:'\u{1F4A7}', label:'water', color:'var(--pull-fg)' } : mowMark(d);
     return `<div style="text-align:center;flex:1;min-width:42px;padding:6px 2px;border-radius:8px;${target?'background:var(--accent-muted);box-shadow:inset 0 0 0 1px rgba(145,132,217,.4)':''}">
       <div class="muted" style="font-size:10px;font-weight:700">${d.k===0?'Today':new Date(d.iso+'T00:00').toLocaleDateString('en-US',{weekday:'short'})}</div>
       <div style="font-size:16px;margin:3px 0">${m.icon}</div>
@@ -3887,6 +3923,17 @@ function nextDueDay(kind){
     const r = kind==='water' ? s.water : s.mow;
     if(r && r.recommend && !r.unknown){ const d=new Date(); d.setDate(d.getDate()+off);
       return { off, label: off===1 ? 'tomorrow' : d.toLocaleDateString('en-US',{weekday:'short'}) }; }
+  }
+  return null;
+}
+/* The one day the outlook marks with the droplet: the first day, today included, that the card
+   itself would call a watering day. An override is a decision about today, not a due date, and a
+   guess made with nothing logged is not a day to plan around. Null when no day in the forecast
+   qualifies — better silent than an invented day. */
+function nextWaterDay(){
+  for(let k=0; k<=6; k++){
+    const s = lawnStatus(k); if(!s.season) continue;
+    if(s.water.recommend && !s.water.unknown && !s.water.override) return k;
   }
   return null;
 }

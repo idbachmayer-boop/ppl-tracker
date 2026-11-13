@@ -182,6 +182,8 @@ function loadApp(htmlPath, seed, opts){
     'wxTodayIndex','wxGlance',
     /* Rain history (Phase 11, LAWN-02). */
     'recordRain','RAIN_SANE_MAX_IN',
+    /* One watering verdict and the outlook's droplet day (Phase 11, LAWN-01 and LAWN-04). */
+    'waterVerdict','nextWaterDay','COOL_DAY_F','WET_CHANCE_PCT',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
