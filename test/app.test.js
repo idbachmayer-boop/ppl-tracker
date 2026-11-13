@@ -11624,6 +11624,173 @@ asyncBlock('LAWN-02 tracer', async () => {
      { writes: cloud.writes.length, row: cy, updatedAt: blob.updatedAt });
 });
 
+/* ── LAWN-02: rainLog ships with the collection recipe's checks (CLAUDE.md "Adding a new tracked thing") ──
+   Copies the sleep blocks' structure: migration 20 rewrites nothing and settles, a deleted row
+   survives a stale device, one row per date, backups refused or accepted by shape, no consumer names
+   rainLog, and the export derives itself. */
+/* A populated schema-19 fixture: one row (carrying an mtime) in every legacy list, one day in every
+   legacy map, the rainLog key deleted, and _schema 19 — the shape migration 20 must leave untouched. */
+function lwRain19(tag, mtime){
+  const d = populatedLegacyDB(tag, mtime);
+  delete d.rainLog;
+  d._schema = 19;
+  return d;
+}
+
+ok('LAWN-02: blank() has an empty rainLog list', Array.isArray(app.blank().rainLog) && app.blank().rainLog.length === 0, app.blank().rainLog);
+
+{
+  const before = lwRain19('m20a', 42);
+  before.sleep = [{ id:'sl-m20', date:'2026-08-01', hours:7, quality:4, note:'', mtime:42 }];
+  const legacyBefore = {}; LEGACY_COLLECTIONS.forEach(name => { legacyBefore[name] = canon(before[name]); });
+  const mtimesBefore = JSON.stringify(LEGACY_LISTS.reduce((acc, name) => acc.concat((before[name] || []).map(r => r.mtime)), []).sort());
+  const after = app.normalize(clone(before));
+  const legacyUnchanged = LEGACY_COLLECTIONS.every(name => legacyBefore[name] === canon(after[name]));
+  const mtimesAfter = JSON.stringify(LEGACY_LISTS.reduce((acc, name) => acc.concat((after[name] || []).map(r => r.mtime)), []).sort());
+  const sleepUnchanged = canon(after.sleep) === canon(before.sleep);
+  ok('LAWN-02: migration 20 rewrites no existing row and gives a schema-19 blob an empty rainLog',
+     legacyUnchanged && mtimesBefore === mtimesAfter && sleepUnchanged
+       && Array.isArray(after.rainLog) && after.rainLog.length === 0 && after._schema === app.SCHEMA,
+     { legacyUnchanged, mtimesBefore, mtimesAfter, sleepUnchanged, rainLog: after.rainLog, schema: after._schema });
+}
+
+{
+  const booted = loadApp(APP_PATH, lwRain19('m20b', 7));
+  const stored = booted.__stored() || {};
+  ok('LAWN-02: a schema-19 device boots with an empty rainLog in the STORED blob and _schema 20',
+     JSON.stringify(stored.rainLog) === '[]' && stored._schema === 20, { rainLog: stored.rainLog, schema: stored._schema });
+}
+
+{
+  const withRain = lwRain19('m20c', 5);
+  withRain.rainLog = [{ date:'2026-08-01', inches:0.2, mtime:99 }];
+  const migrated = app.normalize(clone(withRain));
+  ok('LAWN-02: migration 20 keeps an existing rainLog list',
+     canon(migrated.rainLog) === canon(withRain.rainLog), { before: withRain.rainLog, after: migrated.rainLog });
+}
+
+{
+  const x = lwRain19('m20d', 3);
+  const once = app.MIGRATIONS[20](clone(x));
+  const twice = app.MIGRATIONS[20](app.MIGRATIONS[20](clone(x)));
+  const norm = app.normalize(clone(x));
+  const reset = clone(norm); reset._schema = 19;
+  const renorm = app.normalize(reset);
+  ok('LAWN-02: migration 20 is idempotent (applied twice, and a normalized blob reset to 19 settles to the same canon)',
+     canon(once) === canon(twice) && canon(norm) === canon(renorm), { step: canon(once) === canon(twice), renorm: canon(norm) === canon(renorm) });
+}
+
+{
+  const tooNew = Object.assign(app.blank(), { _schema: app.SCHEMA + 1 });
+  const normKept = app.normalize(clone(tooNew))._schema === app.SCHEMA + 1;
+  const s19 = Object.assign(app.blank(), { _schema:19, updatedAt:100 }); delete s19.rainLog;
+  const s20 = Object.assign(app.blank(), { _schema:20, updatedAt:200 });
+  const mergeStamped = app.mergeDB(clone(s19), clone(s20), false)._schema === app.SCHEMA
+    && app.mergeDB(clone(s20), clone(s19), false)._schema === app.SCHEMA;
+  ok('LAWN-02: _schema never goes down across migration 20', normKept && mergeStamped, { normKept, mergeStamped });
+}
+
+{
+  const oldSide = Object.assign(app.blank(), { _schema:19, updatedAt:500 }); delete oldSide.rainLog;
+  const newSide = Object.assign(app.blank(), { _schema:20, updatedAt:100, rainLog:[{ date:'2026-08-01', inches:0.2, mtime:1 }] });
+  const m1 = app.mergeDB(clone(oldSide), clone(newSide), false);
+  const m2 = app.mergeDB(clone(newSide), clone(oldSide), false);
+  ok('LAWN-02: a schema-19 device merged with a schema-20 device keeps every rain row',
+     canon(m1.rainLog) === canon(newSide.rainLog) && canon(m2.rainLog) === canon(newSide.rainLog), { m1: m1.rainLog, m2: m2.rainLog });
+}
+
+{
+  const A = Object.assign(app.blank(), { updatedAt:100, rainLog:[{ date:'2026-08-01', inches:0.2, deletedAt:900, mtime:900 }] });
+  const B = Object.assign(app.blank(), { updatedAt:500, rainLog:[{ date:'2026-08-01', inches:0.2, mtime:100 }] });
+  const stillDeleted = r => { const rows = (r.rainLog || []).filter(x => x.date === '2026-08-01'); return rows.length === 1 && !!rows[0].deletedAt; };
+  const results = [
+    app.mergeDB(clone(A), clone(B), false),
+    app.mergeDB(clone(B), clone(A), false),
+    app.mergeDB(clone(A), clone(B), true),
+    app.mergeDB(clone(B), clone(A), true),
+  ];
+  ok('D-04: a deleted rain row is not resurrected by a stale device, in either order or either localWins',
+     results.every(stillDeleted), results.map(r => r.rainLog));
+  const replay = app.mergeDB(clone(results[0]), clone(B), false);
+  ok('D-04: replaying the stale device again keeps the rain row deleted', stillDeleted(replay), replay.rainLog);
+}
+
+{
+  const A = Object.assign(app.blank(), { updatedAt:100, rainLog:[{ date:'2026-08-01', inches:0.2, deletedAt:900, mtime:900 }] });
+  const B = Object.assign(app.blank(), { updatedAt:500 }); delete B.rainLog;
+  const kept = r => { const rows = (r.rainLog || []).filter(x => x.date === '2026-08-01'); return rows.length === 1 && !!rows[0].deletedAt; };
+  const out1 = app.mergeDB(clone(A), clone(B), false);
+  const out2 = app.mergeDB(clone(B), clone(A), false);
+  ok('D-04: a device without any rainLog list cannot resurrect or remove a deleted rain row',
+     kept(out1) && kept(out2), { out1: out1.rainLog, out2: out2.rainLog });
+}
+
+{
+  const older = Object.assign(app.blank(), { updatedAt:900, rainLog:[{ date:'2026-08-01', inches:0.2, mtime:100 }] });
+  const newer = Object.assign(app.blank(), { updatedAt:100, rainLog:[{ date:'2026-08-01', inches:0.42, mtime:200 }] });
+  const out1 = app.mergeDB(clone(older), clone(newer), false);
+  const out2 = app.mergeDB(clone(newer), clone(older), false);
+  const one = r => { const rows = r.rainLog.filter(x => x.date === '2026-08-01'); return rows.length === 1 && rows[0].inches === 0.42; };
+  ok('LAWN-02: the same date on two devices merges to one row, and the newer mtime\'s amount wins in both orders',
+     one(out1) && one(out2), { out1: out1.rainLog, out2: out2.rainLog });
+}
+
+{
+  const stale = Object.assign(app.blank(), { updatedAt:100, rainLog:[{ date:'2026-08-01', inches:0.2, mtime:500 }] });
+  const fresh = Object.assign(app.blank(), { updatedAt:900, rainLog:[{ date:'2026-08-01', inches:0.42, mtime:500 }] });
+  const out1 = app.mergeDB(clone(stale), clone(fresh), false);
+  const out2 = app.mergeDB(clone(fresh), clone(stale), false);
+  const won = r => r.rainLog.length === 1 && r.rainLog[0].inches === 0.42;
+  ok('LAWN-02: on an exact mtime tie the newer device decides the rain amount, in both orders',
+     won(out1) && won(out2), { out1: out1.rainLog, out2: out2.rainLog });
+}
+
+{
+  const a = Object.assign(app.blank(), { updatedAt:100, rainLog:[{ date:'2026-08-03', inches:0.1, mtime:1 }] });
+  const b = Object.assign(app.blank(), { updatedAt:100, rainLog:[{ date:'2026-08-01', inches:0.2, mtime:1 }, { date:'2026-08-02', inches:0, mtime:1 }] });
+  const want = JSON.stringify(['2026-08-01','2026-08-02','2026-08-03']);
+  const m1 = app.mergeDB(clone(a), clone(b), false).rainLog.map(r => r.date);
+  const m2 = app.mergeDB(clone(b), clone(a), false).rainLog.map(r => r.date);
+  ok('LAWN-02: merged rain rows come back date-sorted, in both orders',
+     JSON.stringify(m1) === want && JSON.stringify(m2) === want, { m1, m2 });
+}
+
+{
+  const base = Object.assign(app.blank(), {
+    sessions: [{ id:'x', workout:'PUSH 1', date:'2026-07-15', endedAt:1, extras:{}, entries:[] }],
+    weights: [{ date:'2026-07-15', value:190 }],
+  });
+  const damaged = clone(base); damaged.rainLog = 'x';
+  ok('LAWN-02: a damaged rainLog section is refused',
+     app.validateBackup(damaged) === 'The rainLog section is damaged (expected a list).', app.validateBackup(damaged));
+  const older = clone(base); delete older.rainLog; older._schema = 12;
+  ok('LAWN-02: an older backup without rainLog is accepted', app.validateBackup(older) === null, app.validateBackup(older));
+}
+
+{
+  const stripComments = src => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const consumers = { blank: app.blank, liveOf: app.liveOf, validateBackup: app.validateBackup, mergeCollections: app.mergeCollections, mergeDB: app.mergeDB };
+  const hits = Object.keys(consumers).filter(name => stripComments(consumers[name].toString()).indexOf('rainLog') >= 0);
+  ok('LAWN-02: no derived consumer mentions rainLog', hits.length === 0, hits);
+  ok('LAWN-02: there is no liveRainLog wrapper', !/function\s+liveRainLog\s*\(/.test(app.__src));
+}
+
+{
+  const X = loadApp(APP_PATH);
+  X.DB = X.blank();
+  X.DB.rainLog = [{ date:'2026-08-01', inches:0.42, mtime:1 }, { date:'2026-07-31', inches:0, mtime:1 }];
+  /* liveOf throws for a list that is not soft, so a throw here is a named FAIL, never a crash. */
+  let text = '', threw = null;
+  try{ text = X.buildMarkdownExport(); }catch(e){ threw = String(e && e.message || e); }
+  const rain = mdSections(text)['Rainfall'];
+  const dates = rain ? rain.rows.map(r => r[0]) : [];
+  ok('LAWN-02: the export derives a Rainfall section, oldest first, with a rainfall (in) column, and no exporter edit',
+     !threw && !!rain && !rain.empty && JSON.stringify(dates) === JSON.stringify(['2026-07-31','2026-08-01'])
+       && JSON.stringify(rain.header) === JSON.stringify(['date','rainfall (in)'])
+       && rain.rows.some(r => r[1] === '0.42'),
+     { threw, header: rain && rain.header, rows: rain && rain.rows });
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
