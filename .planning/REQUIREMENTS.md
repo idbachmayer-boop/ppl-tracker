@@ -82,12 +82,12 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
   required tests (registry validity, a stale-device merge replay that keeps a deleted row deleted,
   `validateBackup()` shape, and a declaration-alone structural proof). The merge golden is regenerated.
 
-- [ ] **LAWN-03**: Lawn history shows 🌧 on every day with 0.1 inches of rain or more.
+- [x] **LAWN-03**: Lawn history shows 🌧 on every day with 0.1 inches of rain or more.
 - [x] **LAWN-04**: The 7-day outlook shows 💧 on the day watering is next due. It skips any day whose
   forecast rain meets the season's `rainSkip` (0.3 to 0.5 inches) or whose chance of rain is 60% or
   higher.
 
-- [ ] **LAWN-05**: Week in Review in the journal shows 🚜 Mowed, 💧 Watered and 🌧 rain on each day they
+- [x] **LAWN-05**: Week in Review in the journal shows 🚜 Mowed, 💧 Watered and 🌧 rain on each day they
   apply.
 
 - [x] **LAWN-06**: A failed weather fetch backs off instead of looping fetch → fail → render, on both
@@ -212,9 +212,9 @@ proposed and awaiting Ian's approval.
 | LOG-05 | Phase 10 | Complete |
 | LAWN-01 | Phase 11 | Complete |
 | LAWN-02 | Phase 11 | Complete |
-| LAWN-03 | Phase 11 | Pending |
+| LAWN-03 | Phase 11 | Complete |
 | LAWN-04 | Phase 11 | Complete |
-| LAWN-05 | Phase 11 | Pending |
+| LAWN-05 | Phase 11 | Complete |
 | LAWN-06 | Phase 11 | Complete |
 | LAWN-07 | Phase 11 | Complete |
 | SLP-01 | Phase 12 | Pending |

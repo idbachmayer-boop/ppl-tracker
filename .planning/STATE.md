@@ -5,15 +5,15 @@ milestone_name: Training accuracy, lawn & sleep
 current_phase: 11
 current_phase_name: lawn-journal-and-weather-loop
 status: executing
-stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-11-13T13:43:35.340Z"
+stopped_at: Completed 11-04-PLAN.md
+last_updated: "2026-11-13T19:56:08.222Z"
 last_activity: 2026-11-13
 last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
   percent: 50
 ---
 
@@ -29,11 +29,11 @@ See: .planning/PROJECT.md (updated 2026-11-11)
 ## Current Position
 
 Phase: 11 (lawn-journal-and-weather-loop) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-11-13 — Phase 11 execution started
 
-Progress: [█████████░] 89%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -116,6 +116,7 @@ Progress: [█████████░] 89%
 | Phase 11 P01 | 12min | 3 tasks | 3 files |
 | Phase 11 P02 | 13 min | 3 tasks | 5 files |
 | Phase 11 P03 | 40min | 3 tasks | 3 files |
+| Phase 11 P04 | 15 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -163,6 +164,8 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [Phase 11]: A synced derived row reaches the cloud through the quiet push: touch + saveLocal + schedulePush, never save() (11-02, D-01)
 - [Phase 11]: 11-03: waterVerdict decides watering in one place (override > recent > own-day wet > rain3 > tomorrow > cool > city > due); a wet hold carries why=both|amount|chance so lawnStatus words it without repeating the 60% test
 - [Phase 11]: 11-03: forecast values reach waterVerdict only as finite numbers or null (finiteWx), so a gap in the forecast is never a cool or wet day
+- [Phase 11]: Every rain display reads through rainByDate() (liveOf('rainLog'), string date, finite 0..40); the 0.1 inch mark is tested on the stored number before toFixed(2)
+- [Phase 11]: Week in Review lawn tags read lawnLog[day].mowed/.watered === true only; a stored string or number, false, or an override key renders nothing
 
 ### Pending Todos
 
@@ -203,8 +206,8 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-11-13T13:43:35.310Z
-Stopped at: Completed 11-03-PLAN.md
+Last session: 2026-11-13T19:56:08.201Z
+Stopped at: Completed 11-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

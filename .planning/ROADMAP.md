@@ -196,7 +196,7 @@ Plans:
 - Open for discuss-phase: rain rows come from the weather fetch, and `CLAUDE.md` says derived data uses `saveLocal()` (the weather cache once used `save()` and made a stale device look newest just by being opened). Decide how a rain row is persisted and reaches the cloud without reopening that hole.
 - Open for discuss-phase: the weather cache holds only 3 past days, so a day is saved only if the app is opened within that window. Confirm with Ian whether gaps are acceptable. Open-Meteo is already an allowed host; any other host needs a CSP change.
 
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -213,7 +213,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 11-04-PLAN.md — Rain, Mowed and Watered tags in Week in Review all year, the rain amount beside the date in Lawn history with an "estimate" note, both read through one live-rows reader, plus a render probe of every changed surface at 320-412px (LAWN-03, LAWN-05)
+- [x] 11-04-PLAN.md — Rain, Mowed and Watered tags in Week in Review all year, the rain amount beside the date in Lawn history with an "estimate" note, both read through one live-rows reader, plus a render probe of every changed surface at 320-412px (LAWN-03, LAWN-05)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -281,6 +281,6 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
 | 9. Equipment and Weight Steps | v1.1 | 5/5 | Complete    | 2026-10-13 |
 | 10. Log Page — History and Skip | v1.1 | 6/6 | Complete    | 2026-11-11 |
-| 11. Lawn, Journal and Weather Loop | v1.1 | 3/5 | In Progress|  |
+| 11. Lawn, Journal and Weather Loop | v1.1 | 4/5 | In Progress|  |
 | 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |
 | 13. Strength Index and Poor-Sleep Intensity | v1.1 | 0/TBD | Not started | - |
