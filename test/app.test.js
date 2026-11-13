@@ -11791,6 +11791,197 @@ ok('LAWN-02: blank() has an empty rainLog list', Array.isArray(app.blank().rainL
      { threw, header: rain && rain.header, rows: rain && rain.rows });
 }
 
+/* ── LAWN-02: the rain writer's rules (D-03, D-04) and the quiet push (D-01, D-11) ──
+   recordRain() is called directly on fresh instances with a daily series from makeWx. The harness
+   clock is frozen, so a later call cannot produce a larger mtime by waiting: rows that must show a
+   change are seeded at mtime 1 (RESEARCH Pitfall 8). */
+{
+  const wxd = () => makeWx({ todayISO: today, pastDays: 14, precipByOffset: { '-1': 0.42, 0: 0.3 } }).data.daily;
+  const want = []; for(let n = -14; n <= -1; n++) want.push(dayOff(n));
+
+  const a = loadApp(APP_PATH); a.DB = a.blank();
+  const first = a.__sandbox.recordRain(wxd());
+  const live = a.liveOf('rainLog');
+  const dry = live.find(r => r.date === dayOff(-2));
+  ok('D-03: the first call saves the 14 finished days, none today or later, and a dry day is a row at 0',
+     first === true && live.length === 14 && JSON.stringify(live.map(r => r.date).sort()) === JSON.stringify(want)
+       && !live.some(r => r.date >= today) && !!dry && dry.inches === 0,
+     { first, n: live.length, dates: live.map(r => r.date), dry });
+
+  const b = loadApp(APP_PATH); b.DB = b.blank();
+  b.DB.rainLog = live.map(r => ({ date: r.date, inches: r.inches, mtime: 1 }));
+  const again = b.__sandbox.recordRain(wxd());
+  ok('D-03: a day already saved with the same amount is not rewritten (returns false, every mtime stays 1)',
+     again === false && b.DB.rainLog.length === 14 && b.DB.rainLog.every(r => r.mtime === 1),
+     { again, mtimes: b.DB.rainLog.map(r => r.mtime) });
+
+  const c = loadApp(APP_PATH); c.DB = c.blank();
+  c.DB.rainLog = [{ date: dayOff(-1), inches: 0.2, mtime: 1 }];
+  const changed = c.__sandbox.recordRain(wxd());
+  const yRows = c.DB.rainLog.filter(r => r.date === dayOff(-1));
+  ok('D-03: a changed amount updates the row in place with mtime Date.now(), and the date keeps one row',
+     changed === true && yRows.length === 1 && yRows[0].inches === 0.42 && yRows[0].mtime === Date.now(),
+     { changed, yRows });
+
+  const d = loadApp(APP_PATH); d.DB = d.blank();
+  const daily = wxd(); daily.precipitation_sum[daily.time.indexOf(dayOff(-2))] = 0.5;
+  d.DB.rainLog = [{ date: dayOff(-2), inches: 0.1, deletedAt: 5, mtime: 5 }];
+  d.__sandbox.recordRain(daily);
+  const dRows = d.DB.rainLog.filter(r => r.date === dayOff(-2));
+  ok('D-04: a soft-deleted rain row stays deleted: a fetch never revives it or adds a second live row for its date',
+     dRows.length === 1 && dRows[0].inches === 0.1 && dRows[0].deletedAt === 5 && dRows[0].mtime === 5
+       && !d.liveOf('rainLog').some(r => r.date === dayOff(-2)),
+     dRows);
+}
+
+{
+  /* Hostile and boundary amounts, one finished day each. */
+  const cases = [[null, null], ['', null], ['0.25', null], [NaN, null], [Infinity, null], [-0.1, null], [40.01, null],
+                 [40, 40], [0.4249, 0.425], [0.0004, 0]];
+  const a = loadApp(APP_PATH); a.DB = a.blank();
+  const time = cases.map((_, i) => dayOff(-(i + 1)));
+  a.__sandbox.recordRain({ time, precipitation_sum: cases.map(x => x[0]) });
+  const got = cases.map((x, i) => { const row = a.DB.rainLog.find(r => r.date === time[i]); return row ? row.inches : null; });
+  const expected = cases.map(x => x[1]);
+  const b = loadApp(APP_PATH); b.DB = b.blank();
+  b.DB.rainLog = [{ date: dayOff(-1), inches: 0.425, mtime: 1 }];
+  const same = b.__sandbox.recordRain({ time: [dayOff(-1)], precipitation_sum: [0.42501] });
+  ok('LAWN-02: an amount is saved only as a finite number from 0 to 40, rounded half-up to 3 decimals; 0.42501 against a stored 0.425 is unchanged',
+     JSON.stringify(got) === JSON.stringify(expected) && same === false && b.DB.rainLog[0].mtime === 1 && b.DB.rainLog[0].inches === 0.425,
+     { got, expected, same, row: b.DB.rainLog[0] });
+}
+
+{
+  const a = loadApp(APP_PATH); a.DB = a.blank();
+  const dates = ['2026-8-1', '', 12345, null, '2026-08-01T00:00'];
+  const r = a.__sandbox.recordRain({ time: dates, precipitation_sum: dates.map(() => 0.3) });
+  ok('LAWN-02: a date is accepted only as a zero-padded YYYY-MM-DD string', r === false && a.DB.rainLog.length === 0, { r, rows: a.DB.rainLog });
+}
+
+{
+  const a = loadApp(APP_PATH); a.DB = a.blank();
+  a.DB.rainLog = [{ date: '2026-08-01', inches: 0.2, mtime: 9 }];
+  const before = canon(a.DB.rainLog);
+  const shapes = [undefined, {}, { time: 'x' }, { time: [today], precipitation_sum: null }];
+  const out = shapes.map(s => { try{ return a.__sandbox.recordRain(s); }catch(e){ return 'threw: ' + e.message; } });
+  ok('LAWN-02: a missing or malformed daily object saves nothing and throws nothing',
+     out.every(x => x === false) && canon(a.DB.rainLog) === before, { out, rows: a.DB.rainLog });
+}
+
+{
+  const a = loadApp(APP_PATH); a.DB = a.blank();
+  a.DB.rainLog = [{ date: dayOff(-3), inches: 0.1, deletedAt: 5, mtime: 5 }];
+  a.__sandbox.recordRain(makeWx({ todayISO: today, pastDays: 14, precipByOffset: { '-1': 0.42, '-3': 0.7 } }).data.daily);
+  a.__sandbox.recordRain(makeWx({ todayISO: today, pastDays: 14, precipByOffset: { '-1': 0.5 } }).data.daily);
+  const allowed = ['date', 'inches', 'mtime', 'deletedAt'];
+  const extra = a.DB.rainLog.filter(r => Object.keys(r).some(k => allowed.indexOf(k) < 0));
+  ok('LAWN-02: a saved rain row holds only date, inches and mtime (and deletedAt when deleted) — no location',
+     a.DB.rainLog.length === 14 && extra.length === 0, extra);
+}
+
+asyncBlock('D-03: an unchanged fetch writes nothing', async () => {
+  const wx = makeWx({ todayISO: today, pastDays: 14, precipByOffset: { '-1': 0.42 } });
+  const a = loadApp(APP_PATH, null, { fetch: lwRes(wx.data) });
+  const spy = spyPushes(a);
+  a.DB = a.blank(); a.DB.updatedAt = 1000; lwLawn(a); a.DB.wx = null; a.saveLocal();
+  a.go('care'); a.setSub('lawn');
+  await lwTicks(40);
+  const pushes1 = spy.n, rows1 = canon((a.__stored() || {}).rainLog);
+  a.WXFAIL.n = 0; a.WXFAIL.retryAt = 0; a.DB.wx.at = 0;
+  a.render(); await lwTicks(40);
+  const stored = a.__stored() || {};
+  ok('D-03: a second fetch whose amounts all match schedules no push and leaves the stored rainLog and updatedAt unchanged',
+     a.__fetchCalls() === 2 && pushes1 === 1 && spy.n === 1 && canon(stored.rainLog) === rows1 && stored.updatedAt === 1000 && a.DB.updatedAt === 1000,
+     { calls: a.__fetchCalls(), pushes1, pushes: spy.n, same: canon(stored.rainLog) === rows1, updatedAt: stored.updatedAt });
+});
+
+asyncBlock('LAWN-02: a location moved mid-fetch', async () => {
+  const wx = makeWx({ todayISO: today, pastDays: 14, precipByOffset: { '-1': 0.42 } });
+  let a = null;
+  a = loadApp(APP_PATH, null, { fetch: () => { a.DB.lawn = { lat: 40.71, lon: -74.01, label: 'Elsewhere' }; return lwRes(wx.data)(); } });
+  const spy = spyPushes(a);
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  a.go('settings');
+  await a.fetchWeather();
+  ok('LAWN-02: when the saved location changes while a fetch is in flight, that response writes no rain rows (Pitfall 7)',
+     a.__fetchCalls() === 1 && a.liveOf('rainLog').length === 0 && spy.n === 0,
+     { calls: a.__fetchCalls(), rows: a.DB.rainLog, pushes: spy.n });
+});
+
+asyncBlock('D-11: rain is saved all year', async () => {
+  const wx = makeWx({ todayISO: today, pastDays: 14, precipByOffset: { '-1': 0.42 } });
+  const a = loadApp(APP_PATH, null, { fetch: lwRes(wx.data) });
+  spyPushes(a);
+  a.__sandbox.lawnSeason = () => null;
+  a.DB = a.blank(); lwLawn(a); a.DB.wx = null;
+  a.go('care'); a.setSub('lawn');
+  await lwTicks(40);
+  ok('D-11: off-season, a fetch from Care → Lawn still writes the 14 finished days', a.liveOf('rainLog').length === 14, a.liveOf('rainLog').length);
+});
+
+/* D-01: the quiet push. A stale device (updatedAt 1000) writes rain and pushes to a cloud at 2000.
+   The rows go up, but the map collections still go to the newer side. The control calls save()
+   instead, which bumps updatedAt, and the stale lawnLog day wins: the 2026-07-25 shape. */
+async function lwQuietPush(useSave){
+  const d = dayOff(-3);
+  const wx = makeWx({ todayISO: today, pastDays: 14, precipByOffset: { '-1': 0.42 } });
+  const a = loadApp(APP_PATH, null, { fetch: lwRes(wx.data) });
+  spyPushes(a);
+  a.DB = a.blank(); a.DB.updatedAt = 1000; lwLawn(a); a.DB.wx = null;
+  a.DB.lawnLog[d] = { mowed: true, watered: false };
+  a.DB.mobilityLog[d] = { x: false };
+  a.saveLocal();
+  a.go('care'); a.setSub('lawn');
+  await lwTicks(40);
+  const remote = Object.assign(a.blank(), { updatedAt: 2000 });
+  remote.lawnLog[d] = { mowed: false, watered: true };
+  remote.mobilityLog[d] = { x: true };
+  const cloud = fakeCloud(a, remote, { signedIn: true });
+  try{
+    if(useSave) a.__sandbox.save();
+    await a.pushNow(true);
+  } finally {
+    a.SYNC.docRef = null; a.SYNC.user = null;
+  }
+  const blob = cloud.writes.length ? JSON.parse(cloud.writes[cloud.writes.length - 1].blob) : {};
+  return { d, remote, blob, writes: cloud.writes.length };
+}
+asyncBlock('D-01: the quiet push', async () => {
+  const q = await lwQuietPush(false);
+  const lawnDay = q.blob.lawnLog && q.blob.lawnLog[q.d], mobDay = q.blob.mobilityLog && q.blob.mobilityLog[q.d];
+  const rain = (q.blob.rainLog || []).find(r => r.date === dayOff(-1));
+  ok('D-01: a stale device that writes rain and pushes keeps the cloud\'s lawnLog and mobilityLog days and updatedAt 2000, and adds the rain rows',
+     q.writes === 1 && canon(lawnDay) === canon(q.remote.lawnLog[q.d]) && canon(mobDay) === canon(q.remote.mobilityLog[q.d])
+       && q.blob.updatedAt === 2000 && !!rain && rain.inches === 0.42,
+     { writes: q.writes, lawnDay, mobDay, updatedAt: q.blob.updatedAt, rain });
+  const c = await lwQuietPush(true);
+  const cLawn = c.blob.lawnLog && c.blob.lawnLog[c.d];
+  ok('LAWN-02 control: a rain write through save() would flip the lawnLog day',
+     c.writes === 1 && canon(cLawn) === canon({ mowed: true, watered: false }), { writes: c.writes, lawnDay: cLawn, updatedAt: c.blob.updatedAt });
+});
+
+{
+  const srcs = { fetchWeather: app.__sandbox.fetchWeather, recordRain: app.__sandbox.recordRain };
+  const bad = Object.keys(srcs).filter(name => {
+    const s = f2StripJs(typeof srcs[name] === 'function' ? srcs[name].toString() : '');
+    return !s || /(^|[^\w.])save\(/.test(s) || ['fbDb', 'SYNC', 'runTransaction'].some(w => s.indexOf(w) >= 0);
+  });
+  ok('D-01: fetchWeather and recordRain call no save( and reach no fbDb, SYNC or runTransaction (the only remote write is pushNow\'s transaction)',
+     bad.length === 0, bad);
+}
+
+{
+  /* CLAUDE.md is where the next agent learns the quiet push. Names only, never the wording. */
+  const claudeMdPath = APP_PATH.replace(/index\.html$/, 'CLAUDE.md');
+  const claudeMd = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, 'utf8') : '';
+  const named = [
+    { n: 'recordRain', inDoc: claudeMd.includes('recordRain'), isFn: typeof app.recordRain === 'function' },
+    { n: 'schedulePush', inDoc: claudeMd.includes('schedulePush'), isFn: typeof app.__sandbox.schedulePush === 'function' },
+  ];
+  ok('D-01 rule: CLAUDE.md names recordRain and schedulePush, and both are functions in index.html',
+     named.every(x => x.inDoc && x.isFn), named);
+}
+
 /* REG-01: nothing in the whole suite run — boot, merge, render, the smoke-draw — may ever mutate
    COLLECTIONS. Recompute the same snapshot taken right after boot and diff it against
    REGISTRY_AT_START, naming only the collections that differ. */
