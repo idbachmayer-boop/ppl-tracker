@@ -2,44 +2,44 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Training accuracy, lawn & sleep
-current_phase: 10
-current_phase_name: log-page-history-and-skip
+current_phase: 11
+current_phase_name: lawn-journal-and-weather-loop
 status: executing
-stopped_at: Completed 10-05-PLAN.md
-last_updated: "2026-10-30T12:35:37.004Z"
-last_activity: 2026-10-30
-last_activity_desc: Phase 10 execution started
+stopped_at: Completed 11-04-PLAN.md
+last_updated: "2026-11-13T19:56:08.222Z"
+last_activity: 2026-11-13
+last_activity_desc: Phase 11 execution started
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 14
-  completed_plans: 13
-  percent: 33
+  completed_phases: 3
+  total_plans: 19
+  completed_plans: 18
+  percent: 50
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-09)
+See: .planning/PROJECT.md (updated 2026-11-11)
 
 **Core value:** The data Ian has already logged must never be lost, corrupted, or resurrected after deletion — every other feature can fail before that one does.
-**Current focus:** Phase 10 — log-page-history-and-skip
+**Current focus:** Phase 11 — lawn-journal-and-weather-loop
 
 ## Current Position
 
-Phase: 10 (log-page-history-and-skip) — EXECUTING
-Plan: 6 of 6 (10-05 complete; 10-06 ships G-10-5 to the phone)
+Phase: 11 (lawn-journal-and-weather-loop) — EXECUTING
+Plan: 5 of 5
 Status: Ready to execute
-Last activity: 2026-10-30 — Completed 10-05 (G-10-5: two-row Log card header, inline icons; not pushed)
+Last activity: 2026-11-13 — Phase 11 execution started
 
-Progress: [█████████░] 93%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 41
+- Total plans completed: 47
 - Average duration: - min
 - Total execution time: 0 hours
 
@@ -56,6 +56,7 @@ Progress: [█████████░] 93%
 | 6 | 2 | - | - |
 | 8 | 3 | - | - |
 | 9 | 5 | - | - |
+| 10 | 6 | - | - |
 
 **Recent Trend:**
 
@@ -111,6 +112,11 @@ Progress: [█████████░] 93%
 | Phase 10 P03 | 14 min | 3 tasks | 3 files |
 | Phase 10 P04 | ~17 min (incl. push, PR, CI, deploy) | 3 tasks | 0 files |
 | Phase 10 P05 | 13 min | 3 tasks | 3 files |
+| Phase 10 P06 | ~10 min executor (spans 2026-10-31..11-11, waiting on Ian's merge) | 3 tasks | 0 files |
+| Phase 11 P01 | 12min | 3 tasks | 3 files |
+| Phase 11 P02 | 13 min | 3 tasks | 5 files |
+| Phase 11 P03 | 40min | 3 tasks | 3 files |
+| Phase 11 P04 | 15 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -148,7 +154,18 @@ SUMMARY files under `.planning/milestones/v1.0-phases/`.
 - [Phase 10]: 10-03: the history panel renders only when the Last time line is tappable (ref || alt); openExHist and logReturn are screen-only lets reset at the five collapsedEx.clear() sites
 - [Phase 10]: 10-03: landingY is the router's only scroll decision; the return point is used once on a Train → Log arrival and cleared
 - [Phase 10]: Phase 10 shipped as PR #15, merge commit 9a4e647 on main; live page verified (stamp 9a4e647, CSP OK, SCHEMA 19). Revert: git revert -m 1 --no-edit 9a4e647 — no sync pause, but Undo or finish any open skipped exercise first.
-- [Phase ?]: 10-05: Log card header is two rows (meta + right-pinned 32x32 skip/collapse pair; badge + flag with flex-wrap); .ph is inline-block globally and icons before text outside buttons/headings take 'lead' (G-10-5)
+- [Phase 10]: 10-05: Log card header is two rows (meta + right-pinned 32x32 skip/collapse pair; badge + flag with flex-wrap); .ph is inline-block globally and icons before text outside buttons/headings take 'lead' (G-10-5)
+- [Phase 10]: 10-06: G-10-5 shipped as PR #16, merge commit 5375e10 on main; live stamp 2026-11-11T13:02:19Z 5375e10, CSP OK, SCHEMA 19. Revert: git revert -m 1 --no-edit 5375e10 (render-only, clean). Phone re-check of UAT test 5 passed 2026-11-11.
+- [10-UAT]: Phase 10 phone UAT 6/6 passed 2026-11-11; 10-SECURITY.md verified, 45/45 closed. Open post-ship: 10-REVIEW WR-02 (unescaped extras fallback label in Workout history, pre-existing, index.html:2745) and WR-01 (weak glued-icon test)
+- [Phase 11]: Offline weather backs off 5/15/60 min in memory only (WXFAIL); manual refresh, Retry weather and the online event on weather screens skip the wait
+- [Phase 11]: A weather cache is usable only when daily.time holds today; index-1 fallbacks removed (wxTodayIndex)
+- [Phase 11]: Today fetches weather all year whenever a location is set (D-12)
+- [Phase 11]: Rain history lives in its own synced list collection rainLog ({ date, inches, mtime }), keyed by date, never in lawnLog (11-02)
+- [Phase 11]: A synced derived row reaches the cloud through the quiet push: touch + saveLocal + schedulePush, never save() (11-02, D-01)
+- [Phase 11]: 11-03: waterVerdict decides watering in one place (override > recent > own-day wet > rain3 > tomorrow > cool > city > due); a wet hold carries why=both|amount|chance so lawnStatus words it without repeating the 60% test
+- [Phase 11]: 11-03: forecast values reach waterVerdict only as finite numbers or null (finiteWx), so a gap in the forecast is never a cool or wet day
+- [Phase 11]: Every rain display reads through rainByDate() (liveOf('rainLog'), string date, finite 0..40); the 0.1 inch mark is tested on the stored number before toFixed(2)
+- [Phase 11]: Week in Review lawn tags read lawnLog[day].mowed/.watered === true only; a stored string or number, false, or an override key renders nothing
 
 ### Pending Todos
 
@@ -189,10 +206,11 @@ Items acknowledged and deferred at milestone close on 2026-10-09 (`audit-open` r
 
 ## Session Continuity
 
-Last session: 2026-10-30T12:35:36.985Z
-Stopped at: Completed 10-05-PLAN.md
+Last session: 2026-11-13T19:56:08.201Z
+Stopped at: Completed 11-04-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
 
-- Discuss Phase 10: `/gsd-discuss-phase 10` (Log page: last 5 sessions inline from "Last time", and skip a whole exercise).
+- Discuss Phase 11: `/gsd-discuss-phase 11` (Lawn, Journal and Weather Loop). Open question first: how a rain row persists and reaches the cloud without a stale device looking newest.
+- Optional cleanup: `/gsd-code-review 10 --fix` for 10-REVIEW WR-01/WR-02.

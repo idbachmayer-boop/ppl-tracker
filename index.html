@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-rEEv9FykoHBjAb6rlYI/lb5nNl6tKlDgFr/EKI2vJ1s=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-70FDmmB7pjZH0SLKU0JG51GWi86LCQE/O5wtdS1xNtw=' https://www.gstatic.com/firebasejs/10.14.1/ https://apis.google.com/js/api.js https://apis.google.com/_/scs/abc-static/; connect-src https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://api.open-meteo.com https://geocoding-api.open-meteo.com; frame-src https://ppl-tracker-a1d87.firebaseapp.com/__/auth/; img-src 'self' data:; style-src 'self' 'unsafe-inline'; manifest-src blob:; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -495,7 +495,7 @@ const GUIDE = [
 
 /* ───────────────────────── Storage ───────────────────────── */
 const KEY = "ppl_tracker_v1";
-const SCHEMA = 19;
+const SCHEMA = 20;
 /* Which build is this? The deploy job stamps <meta name="ppl-build"> in <head> with
    "<ISO time> <short sha>", in the published copy only, so Settings can say which version a device
    is actually running — a phone still on a stale build has cost real confusion before.
@@ -542,9 +542,12 @@ const COLLECTIONS = {
      keys — these encode "off" as false/absent, and unioning resurrects unchecked boxes forever. */
   mobilityLog:{ kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Mobility', columns:[{field:'date',label:'date'},{field:'item',label:'stretch'}], format:dayFlagRows },
   lawnLog:    { kind:'map',  merge:'replace-whole', soft:false, required:false, explicitFalse:true, label:'Lawn', columns:[{field:'date',label:'date'},{field:'item',label:'task'}], format:dayFlagRows },
-  /* sleep (F1/SLEEP-01): last entry on purpose — keeps every existing collection's validation
-     precedence and merge order unchanged. No format: sleep rows are already flat. */
+  /* sleep (F1/SLEEP-01): appended after every collection before it (it was the last entry until
+     Phase 11), which kept their validation precedence and merge order unchanged.
+     No format: sleep rows are already flat. */
   sleep:      { kind:'list', key:'id',        sortBy:'date',      merge:'union', soft:true,  required:false, label:'Sleep', columns:[{field:'date',label:'date'},{field:'hours',label:'hours'},{field:'quality',label:'quality (1-5)'},{field:'note',label:'note'}] },
+  /* Phase 11, LAWN-02: one row per finished day, written by the weather fetch, read-only to Ian; a list keyed by date so rows merge by their own mtime. */
+  rainLog:    { kind:'list', key:'date',      sortBy:'date',      merge:'union', soft:true,  required:false, label:'Rainfall', columns:[{field:'date',label:'date'},{field:'inches',label:'rainfall',unit:'in'}] },
 };
 {
   const problems = collectionProblems(COLLECTIONS);
@@ -655,6 +658,7 @@ const MIGRATIONS = {
   17:d=>buildExerciseRegistry(d),
   18:d=>ensureCollectionDefaults(d), // sleep log — creates absent collections only (COLLECTIONS registry, F1)
   19:d=>stampEquipment(d), // equipment type per registry row (EQUIP-02), mtime old + 1 (D-14) — see stampEquipment()
+  20:d=>ensureCollectionDefaults(d), // rain history (LAWN-02): creates the absent list only, rewrites no row
 };
 /* Creates ABSENT collections only — never rewrites a row that already carries an mtime, so the
    four REG-16 guards a row-rewriting migration must satisfy (touch, persist immediately, stay
@@ -1707,7 +1711,7 @@ function todoAge(created){ return Math.floor((Date.now()-new Date(created+'T00:0
    bar, the router, and the sub-nav all generate from this list — no more
    four-site edits, and tab ids live in one place (kills the stale-string bugs). */
 const TABS = [
-  { id:'today', label:'Today', icon:'house', view:()=>viewToday(), onRender:()=>{ if(DB.lawn && DB.lawn.lat!=null && lawnSeason(new Date())) maybeFetchWeather(); } },
+  { id:'today', label:'Today', icon:'house', view:()=>viewToday(), onRender:()=>{ if(DB.lawn && DB.lawn.lat!=null) maybeFetchWeather(); } },
   { id:'train', label:'Train', icon:'barbell', sub:[['log','Log'],['history','History'],['cardio','Cardio'],['progress','Progress']],
     view:sub => sub==='log' ? (DB.draft ? viewActive() : viewPicker()) : sub==='history' ? viewHistory() : sub==='cardio' ? viewCardio() : viewWeight(),
     onRender:sub => { if(sub==='progress') drawActiveChart(); } },
@@ -1775,10 +1779,17 @@ function render(){
 }
 
 /* ───────────────────────── TODAY (time-aware hub) ───────────────────────── */
+/* Where today sits in the cached forecast, or -1 when there is no usable cache. A cache is usable only
+   when daily.time holds today: after a long offline stretch an older day must never be read as
+   today (RESEARCH Pattern 8). */
+function wxTodayIndex(){
+  const wx=DB.wx, dy=wx && wx.data && wx.data.daily;
+  if(!dy || !Array.isArray(dy.time)) return -1;
+  return dy.time.indexOf(todayISO());
+}
 function wxGlance(){
-  const wx=DB.wx; if(!wx||!wx.data) return null;
-  const dy=wx.data.daily, cur=wx.data.current_weather;
-  let ti=dy.time.indexOf(todayISO()); if(ti<0) ti=dy.time.length>1?1:0;
+  const ti=wxTodayIndex(); if(ti<0) return null;
+  const dy=DB.wx.data.daily, cur=DB.wx.data.current_weather;
   const c=wxCode(cur?cur.weathercode:dy.weathercode[ti]);
   return { temp:Math.round(cur?cur.temperature:dy.temperature_2m_max[ti]), icon:c.icon, text:c.text,
     hi:Math.round(dy.temperature_2m_max[ti]), lo:Math.round(dy.temperature_2m_min[ti]),
@@ -2617,6 +2628,9 @@ function renderWeekReview(){
   const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const today = todayISO();
   const prIdx = prSetIndex();
+  /* Lawn and rain tags (LAWN-05, D-13): display only, shown all year. Rain comes through the one
+     rain reader, built once here; a lawn day that is not an object reads as nothing logged. */
+  const rain = rainByDate(), lawnDays = DB.lawnLog && typeof DB.lawnLog==='object' ? DB.lawnLog : {};
   let nW=0, nH=0, nJ=0;
   const rows = days.map((dn,di)=>{
     const dt = new Date(base); dt.setDate(dt.getDate()+di);
@@ -2635,6 +2649,12 @@ function renderWeekReview(){
     if(wt) tags.push(`<span style="font-size:11px">⚖️ ${(+wt.value).toFixed(1)}</span>`);
     if(dayComplete(iso)) tags.push(`<span style="font-size:11px">🧎 ${hasMobSession(iso)?'session':mobDoneOn(iso)}</span>`);
     if(sess.some(s=>prIdx.sessionHasPR(s))) tags.push(`<span style="font-size:11px">🏆 PR</span>`);
+    if(!future){
+      const lw = lawnDays[iso], rv = rain.get(iso);
+      if(lawnFlag(lw, 'mowed')) tags.push(`<span style="font-size:11px">\u{1F69C} Mowed</span>`);
+      if(lawnFlag(lw, 'watered')) tags.push(`<span style="font-size:11px">\u{1F4A7} Watered</span>`);
+      if(rv !== undefined && rv >= RAIN_MARK_IN) tags.push(`<span style="font-size:11px" title="Estimated rainfall">${RAIN_GLYPH} ${esc(rv.toFixed(2))}"</span>`);
+    }
     const hasNote = note && note.trim();
     const editLink = iso => `<button class="tap-inline" data-action="editJournal" data-iso="${esc(iso)}" style="color:var(--link);cursor:pointer;font-size:12px;font-weight:600">${ph('note-pencil','lead')}${hasNote?'Edit note':'Add note'}</button>`;
     let noteHTML;
@@ -3492,6 +3512,13 @@ function viewSkincare(){
 
 /* ───────────────────────── LAWN & WEATHER (Open-Meteo, no API key) ───────────────────────── */
 let weatherFetching=false;
+/* The weather backoff (Phase 11, LAWN-06). Device-local and memory-only: never in DB, never saved,
+   never synced, so a fresh app launch gets one immediate try. After a failed fetch the automatic
+   path (maybeFetchWeather) waits 5, then 15, then 60 minutes, and 60 for every later failure; one
+   success clears it. The refresh button, Load weather and Retry weather call fetchWeather directly
+   and skip the wait. */
+const WXFAIL = { n:0, retryAt:0 };
+const WX_BACKOFF_MS = [5*60000, 15*60000, 60*60000];
 function wxCode(c){ c=+c;
   if(c===0) return {icon:'☀️',text:'Clear'};
   if(c<=2) return {icon:'🌤️',text:'Mostly clear'};
@@ -3506,22 +3533,107 @@ function wxCode(c){ c=+c;
 }
 async function fetchWeather(){
   if(!DB.lawn || DB.lawn.lat==null || weatherFetching) return;
-  weatherFetching=true; render();
+  /* Render only where weather shows (Today, Care → Lawn). A fetch started on Today and settling after
+     a switch to Train → Log would otherwise rebuild the workout mid-set (RESEARCH Pitfall 5); no other
+     screen reads DB.wx, and the next visit renders the fresh cache. */
+  weatherFetching=true; if(weatherScreenShowing()) render();
   try{
     const {lat,lon}=DB.lawn;
-    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max&hourly=temperature_2m,precipitation&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=3&forecast_days=7`;
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max&hourly=temperature_2m,precipitation&temperature_unit=fahrenheit&windspeed_unit=mph&precipitation_unit=inch&timezone=auto&past_days=14&forecast_days=7`;
     const r=await fetch(url); if(!r.ok) throw 0;
     /* saveLocal, NOT save(): the weather cache is derived data. Bumping updatedAt here is what let a
-       4-day-stale device look "newest" merely by being opened, and then overwrite the cloud. */
-    DB.wx={ at:Date.now(), lat, lon, data:await r.json() }; saveLocal();
-  }catch(e){ /* keep last cached result */ }
-  weatherFetching=false; render();
+       4-day-stale device look "newest" merely by being opened, and then overwrite the cloud.
+       Rain rows (recordRain) are synced, so they go up through schedulePush → pushNow's transaction
+       and mergeDB, while saveLocal leaves updatedAt alone, so a stale device that writes rain can
+       never look newest and win lawnLog or mobilityLog (D-01). Never save() here. */
+    /* A body without daily.time is a failure too, and never replaces the last good cache (D-15). */
+    const data=await r.json();
+    if(!(data && data.daily && Array.isArray(data.daily.time))) throw 0;
+    DB.wx={ at:Date.now(), lat, lon, data };
+    /* Rain belongs to the place it was fetched for: a location changed mid-fetch writes no rows. */
+    const rainChanged = !!(DB.lawn && DB.lawn.lat===lat && DB.lawn.lon===lon) && recordRain(data.daily);
+    saveLocal();
+    if(rainChanged) schedulePush();
+    WXFAIL.n = 0; WXFAIL.retryAt = 0;
+  }catch(e){
+    /* Keep the last cached result, and back off: the next automatic try waits (see WXFAIL). */
+    WXFAIL.n++;
+    WXFAIL.retryAt = Date.now() + WX_BACKOFF_MS[Math.min(WXFAIL.n, WX_BACKOFF_MS.length) - 1];
+  }
+  weatherFetching=false; if(weatherScreenShowing()) render();
 }
+/* The only automatic caller (Today's and Care → Lawn's onRender), so the backoff gate lives here. */
 function maybeFetchWeather(){
-  if(!DB.lawn || DB.lawn.lat==null || weatherFetching) return; // only called from the Care/Lawn onRender
+  if(!DB.lawn || DB.lawn.lat==null || weatherFetching || Date.now() < WXFAIL.retryAt) return;
   const wx=DB.wx, stale = !wx || (Date.now()-wx.at>3600000) || wx.lat!==DB.lawn.lat || wx.lon!==DB.lawn.lon;
   if(stale) fetchWeather();
 }
+/* Rain history (LAWN-02): one rainLog row per finished day from the weather response's daily
+   series. Finished days only — a date must be before today as text, so today's partial total is
+   never saved. A dry day is a row at 0, so dry differs from never-fetched. An unchanged amount
+   writes nothing, which keeps an hourly fetch from making hourly writes; a changed one updates the
+   row in place and touch()es it, so the latest reading wins the merge. On this device a tombstone
+   stays a tombstone: a date it holds as deleted is never revived or given a second live row. That
+   guarantee is device-local. A device that never received the tombstone still writes a live row with
+   a newer mtime, and mergeUnion's newest-action-wins rule lets that row beat the tombstone. This is
+   accepted because rain has no delete path (D-04), so a tombstone can only come from a hand-edited
+   backup. A rain delete or correction feature must first give deletion precedence in the merge for
+   this collection, the way exMerge's tombstones do for the registry. Rows hold only date, inches and
+   mtime — no location. Amounts must be numbers from 0 to RAIN_SANE_MAX_IN inches, rounded half-up
+   to 3 decimals before storing and comparing. Returns true when a row was added or changed; it
+   never persists or pushes — its caller (fetchWeather) does, quietly. */
+const RAIN_SANE_MAX_IN = 40;
+function recordRain(daily){
+  if(!daily || typeof daily!=='object' || !Array.isArray(daily.time) || !Array.isArray(daily.precipitation_sum)) return false;
+  if(!Array.isArray(DB.rainLog)) DB.rainLog = [];
+  const byDate = Object.create(null);
+  for(const row of DB.rainLog){ if(row && typeof row.date==='string') byDate[row.date] = row; }
+  const today = todayISO();
+  let changed = false;
+  for(let i=0; i<daily.time.length; i++){
+    const date = daily.time[i], v = daily.precipitation_sum[i];
+    if(typeof date!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !(date < today)) continue;
+    if(!(typeof v==='number' && isFinite(v) && v>=0 && v<=RAIN_SANE_MAX_IN)) continue;
+    const inches = Math.round(v*1000)/1000;
+    const row = byDate[date];
+    if(!row){ const fresh = touch({ date, inches }); DB.rainLog.push(fresh); byDate[date] = fresh; changed = true; }
+    else if(row.deletedAt) continue;
+    else if(row.inches !== inches){ row.inches = inches; touch(row); changed = true; }   // a stored '0.42' is not 0.42: rainByDate refuses it, so the reading replaces it
+  }
+  return changed;
+}
+/* Rain by date (LAWN-03, LAWN-05): every screen that shows saved rain reads it through this one
+   reader, so a deleted or junk row never shows. It reads liveOf('rainLog') only, which drops a
+   soft-deleted row, and it keeps a row only when its date is a string and its amount is a finite
+   number from 0 to RAIN_SANE_MAX_IN, so a hand-edited backup can put neither markup nor a wild
+   number on screen. A day is marked at RAIN_MARK_IN inches or more, tested on the stored number
+   before the display rounds it to two decimals. Callers build the map once per render; it never
+   writes. */
+const RAIN_MARK_IN = 0.1;
+const RAIN_GLYPH = '\u{1F327}\uFE0F';
+function rainByDate(){
+  const out = new Map();
+  for(const r of liveOf('rainLog')){
+    if(typeof r.date !== 'string') continue;
+    const v = r.inches;   // never coerced: true, '0.42' and [0.42] are refused, exactly as recordRain refuses them
+    if(typeof v !== 'number' || !isFinite(v) || v < 0 || v > RAIN_SANE_MAX_IN) continue;
+    out.set(r.date, v);
+  }
+  return out;
+}
+/* A reconnect retries at once, but only after a failure and only while a weather screen is showing:
+   a fetch started on Train → Log must never touch the workout Ian is mid-set on (RESEARCH Pitfall 5).
+   Anywhere else it clears the wait instead, so the next visit to Today or Care → Lawn retries through
+   maybeFetchWeather's gate. WXFAIL.n stays, so the offline note shows until a fetch succeeds. */
+function weatherScreenShowing(){
+  return TAB==='today' || (TAB==='care' && subState.care==='lawn');
+}
+function retryWeather(){
+  if(WXFAIL.n === 0) return;
+  if(weatherScreenShowing()) fetchWeather();
+  else WXFAIL.retryAt = 0;
+}
+window.addEventListener('online', retryWeather);
 function useMyLocation(){
   const msg=document.getElementById('loc-msg'); if(msg) msg.textContent='Getting your location…';
   if(!navigator.geolocation){ if(msg) msg.textContent='Geolocation not available — type a town instead.'; return; }
@@ -3583,9 +3695,13 @@ function nextSprinkleDate(){ const base=new Date(); for(let i=1;i<=2;i++){ const
 function dsFmt(n){ if(n===Infinity) return 'never'; if(n===0) return 'today'; return n+' day'+(n>1?'s':'')+' ago'; }
 function dsWithDate(n){ if(n===Infinity) return 'never'; const d=new Date(); d.setDate(d.getDate()-n); return dsFmt(n)+' ('+d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+')'; }
 function fmtHour(h){ const ap=h>=12?'pm':'am'; let hh=h%12; if(hh===0) hh=12; return hh+ap; }
+/* One lawnLog day's flag (mowed, watered, overrideWater, overrideMow): on only when it is exactly
+   true. Every reader goes through this, so a hand-edited backup that stores 'false' or 1 reads the
+   same in the scheduler, the Lawn history, Week in Review (D-13) and the export (dayFlagRows). */
+function lawnFlag(day, key){ return !!day && typeof day==='object' && day[key]===true; }
 /* Days since the last date logged {key:true}. Infinity if never. */
 function daysSinceLawn(key){ const log=DB.lawnLog||{}; const base=new Date(); base.setHours(0,0,0,0);
-  for(let n=0;n<400;n++){ const d=new Date(base); d.setDate(d.getDate()-n); const iso=d.toLocaleDateString('en-CA'); if(log[iso] && log[iso][key]) return n; }
+  for(let n=0;n<400;n++){ const d=new Date(base); d.setDate(d.getDate()-n); const iso=d.toLocaleDateString('en-CA'); if(lawnFlag(log[iso], key)) return n; }
   return Infinity; }
 /* Scan a day's 8am–8pm hourly temps for the heat limit. Defaults to today; the home card also asks
    about tomorrow and the mow forecast asks about all 7 — the hourly array spans the whole forecast. */
@@ -3643,6 +3759,29 @@ function mowVerdict(o){
   return { due, blocked, ok: blocked===null, growthSpike, overdue: o.dsMow > 9, before,
            beforeWhy: before==null ? null : (rain.status==='before' && rain.hour===before ? 'rain' : 'heat') };
 }
+/* ── The watering decision, in ONE place ─────────────────────────────────────────────────────
+   Today's card, tomorrow's heads-up, nextDueDay('water') and the outlook's droplet all read this
+   through lawnStatus(), so they can never disagree about which day is a watering day. Precedence:
+   override > watered recently > wet forecast for the day itself > rain already fell (3 days) > rain
+   tomorrow > cool day > the odd/even city rule > due. A decision Ian made beats everything. The rain
+   holds beat the city rule because they say more. The day's own forecast is tested before the 3-day
+   total, which already contains it, so a future day never reads "Rained recently". A cool day says
+   more than "it's an even date". The cool test reads the high the way the weather card shows it,
+   rounded to a whole °F, so a hold never says "high 60°F". A missing, non-numeric or non-finite
+   value arrives as null and is never a hold: an absent forecast must not stop the watering. */
+const COOL_DAY_F = 60, WET_CHANCE_PCT = 60;
+function waterVerdict(o){
+  if(o.override) return { blocked:null, why:'override' };
+  if(o.dsWater < o.every) return { blocked:'recent' };
+  const amount = !!o.havewx && o.rainOwn >= o.rainSkip;
+  const chance = !!o.havewx && o.chanceOwn != null && o.chanceOwn >= WET_CHANCE_PCT;
+  if(amount || chance) return { blocked:'wet', why: amount && chance ? 'both' : amount ? 'amount' : 'chance' };
+  if(o.havewx && o.rain3 >= o.rainSkip) return { blocked:'rain3' };
+  if(o.havewx && o.rainTomorrow >= o.rainSkip) return { blocked:'tomorrow' };
+  if(o.highF != null && Math.round(o.highF) < COOL_DAY_F) return { blocked:'cool' };
+  if(!o.sprinkleDayOK) return { blocked:'city' };
+  return { blocked:null };
+}
 /* The full recommendation object, computed fresh each render (this is what makes it adaptive).
    dayOffset shifts the whole calculation forward a day so the home card can answer "will I need to
    do this tomorrow?" — the forecast already carries 7 days, nothing new is fetched. Everything
@@ -3671,24 +3810,35 @@ function lawnStatus(dayOffset){
   const waterEvery = heatOn ? 1 : Math.ceil(7/rules.waterPerWeek);
   const heatNote = heatOn ? ` (${Math.round(hotHi)}°F ${num(HI[ti])>=num(HI[ti+1])?'today':'tomorrow'})` : '';
   const dom=now.getDate(), todayParity=dateParity(dom), sprinkleDayOK=(todayParity===LAWN_ADDR_PARITY);
-  const water={ recommend:false, hard:false, unknown:false, override:!!log.overrideWater, text:'', every:waterEvery, heat:heatOn };
+  const water={ recommend:false, hard:false, unknown:false, override:lawnFlag(log,'overrideWater'), text:'', every:waterEvery, heat:heatOn };
   /* Nothing logged yet is NOT a reason to stay silent — assume it's due and flag the guess. (This
      was the July regression: the ask-for-a-date state suppressed the recommendation entirely, so a
      lawn that genuinely needed water heard nothing at all.) */
   water.unknown = (dsWater === Infinity);
-  if(water.override){ water.text='Watering anyway (override)'; water.recommend=true; }
-  else if(dsWater < waterEvery){ water.text=`Watered ${dsFmt(dsWater)} — hold off`; }
-  else if(havewx && rain3 >= rules.rainSkip){ water.text=`Rained recently (~${rain3.toFixed(2)}") — hold off`; water.hard=true; }
+  /* The decision lives in waterVerdict; this only words it. A forecast value reaches the verdict
+     only as a finite number, else null, so a gap in the forecast is never read as 0°F or 0%. */
+  const finiteWx = v => (havewx && typeof v === 'number' && isFinite(v)) ? v : null;
+  const rainOwn = havewx ? num(P[ti]) : 0, chanceOwn = finiteWx(PP[ti]), highF = finiteWx(HI[ti]);
   /* Forecast rain suppresses only when it's imminent AND real. A maybe-shower three days out must
      never cost the lawn three dry days — that was the thing that felt wrong. */
-  else if(havewx && rainTomorrow >= rules.rainSkip){ water.text=`Holding off — ~${rainTomorrow.toFixed(2)}" of rain expected tomorrow`; water.hard=true; }
-  else if(!sprinkleDayOK){ const nx=nextSprinkleDate(); water.text=`City rule — ${LAWN_ADDR_PARITY} address sprinkles on ${LAWN_ADDR_PARITY} days only (today is the ${todayParity} ${ordinal(dom)})${nx?`; next ${nx}`:''}`; water.hard=true; }
+  const wv = waterVerdict({ override:water.override, dsWater, every:waterEvery, havewx, rainOwn, chanceOwn,
+                            rain3, rainTomorrow, rainSkip:rules.rainSkip, highF, sprinkleDayOK });
+  if(wv.why==='override'){ water.text='Watering anyway (override)'; water.recommend=true; }
+  else if(wv.blocked==='recent'){ water.text=`Watered ${dsFmt(dsWater)} — hold off`; }
+  else if(wv.blocked==='wet'){ water.hard=true;
+    water.text = wv.why==='both'   ? `Rain in the forecast (~${rainOwn.toFixed(2)}", ${Math.round(chanceOwn)}% chance) — hold off`
+               : wv.why==='amount' ? `Rain in the forecast (~${rainOwn.toFixed(2)}") — hold off`
+               :                     `${Math.round(chanceOwn)}% chance of rain — hold off`; }
+  else if(wv.blocked==='rain3'){ water.text=`Rained recently (~${rain3.toFixed(2)}") — hold off`; water.hard=true; }
+  else if(wv.blocked==='tomorrow'){ water.text=`Holding off — ~${rainTomorrow.toFixed(2)}" of rain expected tomorrow`; water.hard=true; }
+  else if(wv.blocked==='cool'){ water.text=`Cool day (high ${Math.round(highF)}°F) — hold off`; water.hard=true; }
+  else if(wv.blocked==='city'){ const nx=nextSprinkleDate(); water.text=`City rule — ${LAWN_ADDR_PARITY} address sprinkles on ${LAWN_ADDR_PARITY} days only (today is the ${todayParity} ${ordinal(dom)})${nx?`; next ${nx}`:''}`; water.hard=true; }
   else { water.text = `Time to water${heatNote} — ${LAWN_HOURS_NOTE}${water.unknown?' · nothing logged yet, so this is a guess':` (last ${dsFmt(dsWater)})`}`; water.recommend=true; }
   // ── MOWING ── (rules live in mowVerdict so tomorrow's heads-up and the 7-day forecast match)
   const heat = lawnHeatWindow(rules.heatLimit, today);
   const when = off===0 ? 'today' : 'tomorrow';
   const v = mowVerdict({ dsMow, recentWet, rain3, heat, rain:lawnRainWindow(today), havewx });
-  const mow={ recommend:false, hard:false, unknown:(dsMow===Infinity), override:!!log.overrideMow, text:'' };
+  const mow={ recommend:false, hard:false, unknown:(dsMow===Infinity), override:lawnFlag(log,'overrideMow'), text:'' };
   if(mow.override){ mow.text='Mowing anyway (override)'; mow.recommend=true; }
   else if(v.blocked==='soon'){ mow.text=`Last mowed ${dsFmt(dsMow)} — too soon`; }
   else if(v.blocked==='wet'){ mow.text='Wet conditions — don’t mow'; mow.hard=true; }
@@ -3748,28 +3898,49 @@ function mowExpectText(f){
   const guess = f.unknown ? ' — log your last mow to pin this down' : '';
   return `Expect to mow <strong>${when}</strong>${date}${qual}${guess}`;
 }
-/* Per-day marker for the outlook strip. */
+/* Per-day mow marker for the outlook strip. Wet ground is the umbrella, so the droplet means only
+   "water this day". */
 function mowMark(d){
   if(d.ok) return { icon:'🚜', label:'mow', color:'var(--flag-fg)' };
-  if(d.blocked==='wet') return { icon:'💧', label:'wet', color:'var(--chart)' };
+  if(d.blocked==='wet') return { icon:'\u2614', label:'wet', color:'var(--chart)' };
   if(d.blocked==='hot') return { icon:'🔥', label:'hot', color:'var(--warm-fg)' };
   return { icon:'–', label:d.blocked==='soon'?'too soon':'not due', color:'var(--muted-2)' };
 }
+/* The Lawn outlook: the mow line, the water line, and the 7-day strip. The droplet sits on exactly
+   one cell, nextWaterDay()'s, so the strip can never promise a watering day the card would refuse.
+   On that cell a mow, wet or hot mark shares the row with the droplet at 12px; a mow day that is also
+   the water day reads "both". The next-mow highlight stays on the mow day. */
 function mowOutlookHTML(){
   const f = mowForecast(); if(!f) return '';
+  const wk = nextWaterDay(), drop = '\u{1F4A7}';
   const strip = f.days.map(d=>{
-    const m = mowMark(d), target = f.next && d.iso===f.next.iso;
+    const target = f.next && d.iso===f.next.iso;
+    let m = mowMark(d), icon = m.icon;
+    if(d.k===wk){
+      if(m.icon==='–') { icon = drop; m = { label:'water', color:'var(--pull-fg)' }; }
+      else { icon = `<span style="font-size:12px;white-space:nowrap">${m.icon}${drop}</span>`;
+             m = d.ok ? { label:'both', color:'var(--flag-fg)' } : { label:'water', color:'var(--pull-fg)' }; }
+    }
     return `<div style="text-align:center;flex:1;min-width:42px;padding:6px 2px;border-radius:8px;${target?'background:var(--accent-muted);box-shadow:inset 0 0 0 1px rgba(145,132,217,.4)':''}">
       <div class="muted" style="font-size:10px;font-weight:700">${d.k===0?'Today':new Date(d.iso+'T00:00').toLocaleDateString('en-US',{weekday:'short'})}</div>
-      <div style="font-size:16px;margin:3px 0">${m.icon}</div>
+      <div style="font-size:16px;margin:3px 0">${icon}</div>
       <div style="font-size:9px;font-weight:700;color:${m.color}">${m.label}</div>
     </div>`;
   }).join('');
+  /* The water line, worded the way the mow line is: a date only when it is more than a day out. */
+  let waterLine = '';
+  if(wk!=null){
+    const wd = new Date(); wd.setDate(wd.getDate()+wk); const iso = wd.toLocaleDateString('en-CA');
+    const date = wk>1 ? ` (${new Date(iso+'T00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})})` : '';
+    waterLine = `<div style="font-size:13px;line-height:1.5;margin-top:4px">${ph('drop','lead')}Expect to water <strong>${mowDayLabel(iso, wk)}</strong>${date} — ${LAWN_HOURS_NOTE}</div>`;
+  }
+  const rules = SEASON_RULES[lawnSeason(new Date())];
   return `<div class="card">
-    ${kicker('Mowing outlook')}
+    ${kicker('Lawn outlook')}
     <div style="font-size:13px;line-height:1.5;margin-top:6px">${ph('tractor','lead')}${mowExpectText(f)}</div>
+    ${waterLine}
     ${f.unknown ? '' : `<div style="display:flex;gap:3px;margin-top:12px;overflow-x:auto">${strip}</div>`}
-    <p class="muted" style="font-size:11px;margin-top:10px">Projects the same rules forward — about a week between mows (day 5 when rain has pushed growth), no mowing on wet grass, and the ${SEASON_RULES[lawnSeason(new Date())].heatLimit?`${SEASON_RULES[lawnSeason(new Date())].heatLimit}°F`:'heat'} window. Rain in the forecast moves it, so check the day before.</p>
+    <p class="muted" style="font-size:11px;margin-top:10px">Projects the same rules forward. Mowing: about a week between mows, never on wet grass or in the ${rules.heatLimit?`${rules.heatLimit}°F`:'heat'} window. Watering: the next day it’s due, skipping cool days (high under ${COOL_DAY_F}°F), rain of ${rules.rainSkip}" or a ${WET_CHANCE_PCT}% chance of it, and the wrong sprinkling day. Check the day before.</p>
   </div>`;
 }
 /* Write one day's lawn log. `iso` is any past date — forgetting to tap the button on the day is the
@@ -3787,7 +3958,7 @@ function setLawnLog(iso, action, on){
 }
 function toggleLawnLog(action, iso){
   const t = iso || todayISO();
-  const cur = ((DB.lawnLog||{})[t]||{})[action];
+  const cur = lawnFlag((DB.lawnLog||{})[t], action);
   if(!setLawnLog(t, action, !cur)) return;
   const when = t===todayISO() ? '' : ' for '+fmtDate(t);
   toast(!cur ? (action==='watered'?'Logged watering 💧'+when:'Logged mowing 🚜'+when) : 'Unlogged'+when);
@@ -3802,23 +3973,39 @@ function setLawnDaysAgo(action, n){
 function logLawnPastDate(action){
   const el=document.getElementById('lawn-past-date'); const iso=el && el.value;
   if(!iso){ toast('Pick a date first'); return; }
-  if(((DB.lawnLog||{})[iso]||{})[action]){ toast('Already logged for '+fmtDate(iso)); return; }
+  if(lawnFlag((DB.lawnLog||{})[iso], action)){ toast('Already logged for '+fmtDate(iso)); return; }
   toggleLawnLog(action, iso);
 }
 /* First upcoming day the given task is recommended, using the SAME lawnStatus the card shows (its
    dayOffset already shifts the rain window, the odd/even sprinkling parity, the heat scan and
-   days-since together). Null past the forecast horizon — better silent than an invented day. */
+   days-since together). Null past the forecast horizon — better silent than an invented day. A day
+   the cached forecast does not cover (an older cache kept on screen while the fetch backs off, D-15)
+   has none of the forecast holds, so the search stops there instead of naming it (D-07). */
 function nextDueDay(kind){
   for(let off=1; off<=6; off++){
     const s = lawnStatus(off); if(!s.season) continue;
+    if(!s.havewx) return null;
     const r = kind==='water' ? s.water : s.mow;
     if(r && r.recommend && !r.unknown){ const d=new Date(); d.setDate(d.getDate()+off);
       return { off, label: off===1 ? 'tomorrow' : d.toLocaleDateString('en-US',{weekday:'short'}) }; }
   }
   return null;
 }
+/* The one day the outlook marks with the droplet: the first day, today included, that the card
+   itself would call a watering day. An override is a decision about today, not a due date, and a
+   guess made with nothing logged is not a day to plan around. Null when no day in the forecast
+   qualifies — better silent than an invented day. It stops at the first day the cached forecast
+   does not cover, the same way nextDueDay does, so the two always agree (D-07, D-08). */
+function nextWaterDay(){
+  for(let k=0; k<=6; k++){
+    const s = lawnStatus(k); if(!s.season) continue;
+    if(!s.havewx) return null;
+    if(s.water.recommend && !s.water.unknown && !s.water.override) return k;
+  }
+  return null;
+}
 function toggleLawnOverride(which){ const t=todayISO(); if(!DB.lawnLog) DB.lawnLog={}; const e=DB.lawnLog[t]||(DB.lawnLog[t]={});
-  const key = which==='water'?'overrideWater':'overrideMow'; e[key]=!e[key];
+  const key = which==='water'?'overrideWater':'overrideMow'; e[key]=!lawnFlag(e,key);
   save(); render(); }
 /* Home card. Quiet unless the lawn wants something: a task that's due gets a full block, one that
    isn't gets a single muted line with its reason and next expected day, and a day with nothing at
@@ -3863,7 +4050,7 @@ function cLawnCard(full){
       <div style="font-size:13px;line-height:1.5">${ph(r.override?'warning':(r.recommend?'check-circle':'pause'),'lead')}<strong>${label}:</strong> ${esc(r.text)}</div>
       <div class="muted" style="font-size:11px;margin-top:3px">${r.unknown?'No history yet':'Last '+since}${cadence?' · '+cadence:''}</div>
       <div class="row" style="gap:8px;margin-top:10px">
-        <button class="btn ${log[which.log]?'':'btn-ghost'}" style="flex:1" data-action="toggleLawnLog" data-which="${esc(which.log)}">${log[which.log]?`${ph('check')}${doneLabel}`:btnLabel}</button>
+        <button class="btn ${lawnFlag(log,which.log)?'':'btn-ghost'}" style="flex:1" data-action="toggleLawnLog" data-which="${esc(which.log)}">${lawnFlag(log,which.log)?`${ph('check')}${doneLabel}`:btnLabel}</button>
         <button class="btn btn-ghost btn-sm" data-action="toggleLawnOverride" data-which="${esc(which.ov)}">${r.override?`${ph('arrow-u-up-left')}Undo override`:'Override'}</button>
       </div>
       ${r.unknown?anchor(action):''}
@@ -3895,7 +4082,11 @@ function cLawnCard(full){
    doing the job and forgetting to tap the button. Tapping a pill logs or unlogs that date, and the
    whole schedule (days-since, the mow forecast, the watering interval) recomputes off it. */
 function lawnHistory(){
-  const log=DB.lawnLog||{}, rows=[];
+  /* Each past day with RAIN_MARK_IN or more of saved rain shows the amount beside its date (LAWN-03,
+     D-10): plain text, never a control. Today is never marked, because today is never saved. When
+     any mark shows, one note says the figure is the weather service's estimate, not a gauge. */
+  const log=DB.lawnLog||{}, rows=[], rain=rainByDate();
+  let marked=false;
   for(let n=0;n<14;n++){
     const d=new Date(); d.setDate(d.getDate()-n);
     const iso=d.toLocaleDateString('en-CA'), e=log[iso]||{};
@@ -3903,14 +4094,20 @@ function lawnHistory(){
         style="font-size:11px;font-weight:700;padding:5px 9px;border-radius:999px;cursor:pointer;
         border:1px solid ${on?'var(--accent)':'var(--border-3)'};background:${on?'var(--accent-muted)':'transparent'};
         color:${on?'var(--accent-300)':'var(--muted-2)'}">${label}${on&&ov?' *':''}</button>`;
-    rows.push(`<div class="hist-item">
-      <span style="font-weight:600;font-size:13px;color:${n===0?'var(--text)':'var(--muted)'}">${n===0?'Today':new Date(iso+'T00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</span>
-      <span style="display:flex;gap:6px">${pill(!!e.watered,'💧 Watered','watered',e.overrideWater)}${pill(!!e.mowed,'🚜 Mowed','mowed',e.overrideMow)}</span>
+    const rv=n>0 ? rain.get(iso) : undefined, mark=rv!==undefined && rv>=RAIN_MARK_IN;
+    if(mark) marked=true;
+    rows.push(`<div class="hist-item" style="gap:8px">
+      <span style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;min-width:0">
+        <span style="font-weight:600;font-size:13px;color:${n===0?'var(--text)':'var(--muted)'}">${n===0?'Today':new Date(iso+'T00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</span>${mark?`
+        <span style="font-size:11px;color:var(--text-2);white-space:nowrap" title="Estimated rainfall">${RAIN_GLYPH} ${esc(rv.toFixed(2))}"</span>`:''}
+      </span>
+      <span style="display:flex;gap:6px;flex:none">${pill(lawnFlag(e,'watered'),'💧 Watered','watered',lawnFlag(e,'overrideWater'))}${pill(lawnFlag(e,'mowed'),'🚜 Mowed','mowed',lawnFlag(e,'overrideMow'))}</span>
     </div>`);
   }
   return `<div class="card">
     <div class="muted" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Past 2 weeks</div>
-    <p class="muted" style="font-size:12px;margin:6px 0 10px">Tap a day to add or correct it — forgot to log Sunday's mow? Fix it here and the schedule catches up. (* = logged against an override.)</p>
+    <p class="muted" style="font-size:12px;margin:6px 0 10px">Tap a day to add or correct it — forgot to log Sunday's mow? Fix it here and the schedule catches up. (* = logged against an override.)</p>${marked?`
+    <p class="muted" style="font-size:11px;margin:-4px 0 8px">${RAIN_GLYPH} is each day\u2019s rainfall from the weather service (an estimate, not a rain gauge), saved once the day is over.</p>`:''}
     <div class="row" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <input type="date" id="lawn-past-date" max="${todayISO()}" style="flex:1;min-width:130px;padding:8px">
       <button class="btn btn-sm btn-ghost" data-action="logLawnPastDate" data-which="watered">💧 Watered</button>
@@ -3922,11 +4119,26 @@ function lawnHistory(){
 function viewLawn(){
   if(!DB.lawn || DB.lawn.lat==null) return lawnSetup();
   const locBar=`<div class="row" style="margin-bottom:14px"><span class="muted">${ph('map-pin','lead')}${esc(DB.lawn.label||'My location')}</span><button class="btn btn-sm btn-ghost" data-action="changeLawnLoc">Change</button></div>`;
-  const wx=DB.wx;
-  if(!wx || !wx.data) return `<h1>Lawn & Weather</h1>${locBar}<div class="empty">${weatherFetching?'Loading weather…':'<button class="btn btn-sm" data-action="fetchWeather">Load weather</button>'}</div>`;
+  const wx=DB.wx, ti=wxTodayIndex();
+  /* No usable forecast (none cached, or none that holds today): loading, never tried, or failed (S6). */
+  if(ti<0){
+    const empty = weatherFetching ? 'Loading weather…'
+      : WXFAIL.n>0 ? `<div style="font-size:13px;font-weight:700;color:var(--text-2)">Couldn’t load weather</div>
+        <div class="muted" style="font-size:11px;line-height:1.5;margin-top:4px">Check your connection, then tap Retry weather. It also tries again on its own.</div>
+        <button class="btn btn-sm" style="margin-top:8px" data-action="fetchWeather">Retry weather</button>`
+      : '<button class="btn btn-sm" data-action="fetchWeather">Load weather</button>';
+    return `<h1>Lawn & Weather</h1>${locBar}<div class="empty">${empty}</div>`;
+  }
   const d=wx.data, dy=d.daily, cur=d.current_weather, num=v=>(v==null?0:+v);
-  const times=dy.time, today=todayISO();
-  let ti=times.indexOf(today); if(ti<0) ti=times.length>1?1:0;
+  const times=dy.time;
+  /* S5: the last fetch failed, so say how old the forecast on screen is (D-15). */
+  let wxNote='';
+  if(WXFAIL.n>0){
+    const at=new Date(wx.at);
+    const when=(at.toLocaleDateString('en-CA')!==todayISO() ? at.toLocaleDateString('en-US',{weekday:'short'})+' ' : '')
+      + at.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    wxNote=`<div class="muted" style="font-size:11px;margin-top:4px">${weatherFetching ? 'Retrying…' : esc('Offline — weather from '+when)}</div>`;
+  }
   const P=dy.precipitation_sum, PP=dy.precipitation_probability_max, HI=dy.temperature_2m_max, LO=dy.temperature_2m_min, WC=dy.weathercode;
   const dayLabel=(k,idx)=> k===0?'today':k===1?'tomorrow':new Date(times[idx]+'T00:00').toLocaleDateString('en-US',{weekday:'long'});
   const cw=wxCode(cur?cur.weathercode:WC[ti]);
@@ -3955,8 +4167,8 @@ function viewLawn(){
     <div class="card">
       <div class="row"><div>
         <div class="stat-big" style="font-size:30px">${Math.round(num(cur?cur.temperature:HI[ti]))}°<span style="font-size:14px;color:var(--muted-2)">F</span></div>
-        <div class="stat-sub">${cw.icon} ${cw.text} · H ${Math.round(num(HI[ti]))}° / L ${Math.round(num(LO[ti]))}°</div>
-      </div><button class="btn btn-sm btn-ghost" data-action="fetchWeather">${ph('arrows-clockwise')}</button></div>
+        <div class="stat-sub">${cw.icon} ${cw.text} · H ${Math.round(num(HI[ti]))}° / L ${Math.round(num(LO[ti]))}°</div>${wxNote}
+      </div><button class="btn btn-sm btn-ghost" data-action="fetchWeather" title="Refresh weather" aria-label="Refresh weather">${ph('arrows-clockwise')}</button></div>
       <div style="display:flex;gap:3px;margin-top:14px;overflow-x:auto">${strip}</div>
     </div>
     ${lawnSeason(new Date()) ? cLawnCard(true) : `<div class="card"><div class="muted" style="font-size:13px">${ph('snowflake','lead')}Off-season (Nov–Mar) — smart watering & mowing scheduling resumes in April. Forecast still available above.</div></div>`}

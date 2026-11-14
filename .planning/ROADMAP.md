@@ -37,7 +37,7 @@ in `.planning/REQUIREMENTS.md`.
 
 - [x] **Phase 8: Progression Correctness** - Add weight only when every planned set hit the top of the range; progress and stall are measured session to session by `exKey`, bodyweight included. (completed 2026-10-10)
 - [x] **Phase 9: Equipment and Weight Steps** - Each exercise gets a synced equipment type, its own 2.5 or 5 lb step, step-aware deloads and warm-ups, and plate math for its own bar. (completed 2026-10-13)
-- [ ] **Phase 10: Log Page — History and Skip** - The last 5 sessions open inline from "Last time", and a whole exercise can be skipped with an optional reason and undone.
+- [x] **Phase 10: Log Page — History and Skip** - The last 5 sessions open inline from "Last time", and a whole exercise can be skipped with an optional reason and undone. (completed 2026-11-11)
 - [ ] **Phase 11: Lawn, Journal and Weather Loop** - Cool-day watering hold, rain history in its own synced collection, 💧 in the outlook, journal marks, and a weather fetch that backs off offline.
 - [ ] **Phase 12: Sleep Card and Erase** - A morning sleep card on Today, and a local Erase that keeps the workout in progress or is the documented exception.
 - [ ] **Phase 13: Strength Index and Poor-Sleep Intensity** - A strength index from 100 on Progress and Today, and a one-tap 10%-lighter offer after a poor night.
@@ -143,7 +143,7 @@ Plans:
 - The skip reason is user text: through `esc()` when rendered, in double-quoted attributes only.
 - The inline history reads through `liveSessions()`, so a deleted session never ghosts back into it.
 
-**Plans:** 5/6 plans executed (2 gap-closure plans for UAT gap G-10-5)
+**Plans:** 6/6 plans complete
 
 Plans:
 **Wave 1**
@@ -168,7 +168,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 10-06-PLAN.md — Ship G-10-5: pre-flight, Ian pushes and merges with a merge commit (render-only, clean revert), live bytes checked, then UAT test 5 again on the phone (end-of-phase UAT)
+- [x] 10-06-PLAN.md — Ship G-10-5: pre-flight, Ian pushes and merges with a merge commit (render-only, clean revert), live bytes checked, then UAT test 5 again on the phone (end-of-phase UAT)
 
 **UI hint**: yes
 
@@ -196,7 +196,29 @@ Plans:
 - Open for discuss-phase: rain rows come from the weather fetch, and `CLAUDE.md` says derived data uses `saveLocal()` (the weather cache once used `save()` and made a stale device look newest just by being opened). Decide how a rain row is persisted and reaches the cloud without reopening that hole.
 - Open for discuss-phase: the weather cache holds only 3 past days, so a day is saved only if the app is opened within that window. Confirm with Ian whether gaps are acceptable. Open-Meteo is already an allowed host; any other host needs a CSP change.
 
-**Plans**: TBD
+**Plans:** 4/5 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 11-01-PLAN.md — The weather fetch stops looping offline: the harness fetch settles and counts, a failure backs off 5 → 15 → 60 minutes on Today and Lawn, the online event retries only on a weather screen, Today fetches all year, and Lawn keeps the last forecast with an offline note or offers Retry weather, never showing an old day as today (LAWN-06, LAWN-07)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 11-02-PLAN.md — Rain history: a new synced `rainLog` list (last COLLECTIONS entry, SCHEMA 19 → 20, migration 20, golden regenerated) filled by `recordRain()` from a 14-past-day fetch, finished days only, changed amounts only, sent by the quiet push (`saveLocal()` + `schedulePush()`, never `save()`), with every recipe test and a stale-device control (LAWN-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 11-03-PLAN.md — One watering verdict with a cool-day hold (under 60°F) and a wet-forecast hold (rainSkip or 60%), and the Mowing outlook becomes the Lawn outlook with one water mark on the next watering day, wet as an umbrella, pair cells and a water line (LAWN-01, LAWN-04)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 11-04-PLAN.md — Rain, Mowed and Watered tags in Week in Review all year, the rain amount beside the date in Lawn history with an "estimate" note, both read through one live-rows reader, plus a render probe of every changed surface at 320-412px (LAWN-03, LAWN-05)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 11-05-PLAN.md — Ship after the code review: pre-flight, Ian pushes and merges with a merge commit (the schema-20 door, with the honest sync-pause rollback), live bytes checked, then the phone checks: rain marks, offline behaviour, the second device, and the April lawn items (end-of-phase UAT)
+
 **UI hint**: yes
 
 ### Phase 12: Sleep Card and Erase
@@ -258,7 +280,7 @@ Phases execute in numeric order: 8 → 9 → 10 → 11 → 12 → 13
 | 7. Content Security Policy | v1.0 | 7/7 | Complete | 2026-10-09 |
 | 8. Progression Correctness | v1.1 | 3/3 | Complete    | 2026-10-10 |
 | 9. Equipment and Weight Steps | v1.1 | 5/5 | Complete    | 2026-10-13 |
-| 10. Log Page — History and Skip | v1.1 | 5/6 | In Progress|  |
-| 11. Lawn, Journal and Weather Loop | v1.1 | 0/TBD | Not started | - |
+| 10. Log Page — History and Skip | v1.1 | 6/6 | Complete    | 2026-11-11 |
+| 11. Lawn, Journal and Weather Loop | v1.1 | 4/5 | In Progress|  |
 | 12. Sleep Card and Erase | v1.1 | 0/TBD | Not started | - |
 | 13. Strength Index and Poor-Sleep Intensity | v1.1 | 0/TBD | Not started | - |

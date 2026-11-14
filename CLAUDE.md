@@ -48,7 +48,11 @@ then stamped the new schema anyway, so the migration could never run again. If y
 rows: stamp `mtime`, save immediately, and add a test that replays a stale-device merge.
 
 **Derived data uses `saveLocal()`.** `save()` bumps `updatedAt` and triggers a push. The weather cache
-using `save()` is what let a stale device look "newest" merely by being opened.
+using `save()` is what let a stale device look "newest" merely by being opened. A derived row that
+must sync, such as the `rainLog` rows `recordRain()` writes from the weather fetch, is stamped with
+`touch()`, persisted with `saveLocal()`, and sent with `schedulePush()`, which merges through
+`pushNow`'s transaction; never `save()`, because the `updatedAt` bump would let a stale device win
+`lawnLog`.
 
 **The in-progress workout never leaves the device.** On 2026-07-25 a stale draft looped between
 devices, and in September 2026 a malformed one from an older build took out the Log tab; the workout

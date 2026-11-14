@@ -81,7 +81,20 @@
   },
   "project_code": null,
   "phase_naming": "sequential",
-  "agent_skills": {},
+  "agent_skills": {
+    "gsd-planner": "global:overlay-gsd-planner",
+    "gsd-plan-checker": "global:overlay-gsd-planner",
+    "gsd-executor": "global:overlay-gsd-executor",
+    "gsd-phase-researcher": "global:overlay-gsd-researcher",
+    "gsd-pattern-mapper": "global:overlay-gsd-researcher",
+    "gsd-code-reviewer": "global:overlay-gsd-review",
+    "gsd-code-fixer": "global:overlay-gsd-review",
+    "gsd-verifier": "global:overlay-gsd-verifier",
+    "gsd-security-auditor": "global:overlay-gsd-security",
+    "gsd-ui-researcher": "global:overlay-gsd-ui",
+    "gsd-ui-checker": "global:overlay-gsd-ui",
+    "gsd-roadmapper": "global:overlay-gsd-roadmapper"
+  },
   "claude_md_path": "./.claude/CLAUDE.md",
   "plan_review": {
     "source_grounding": true,

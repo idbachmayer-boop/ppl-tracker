@@ -75,25 +75,25 @@ sleep work in this milestone is `SLP`, not `SLEEP`.
 
 ### Lawn, journal and weather loop (LAWN)
 
-- [ ] **LAWN-01**: The lawn scheduler holds off watering when today's forecast high is below 60°F.
-- [ ] **LAWN-02**: Once a day is over, that day's rainfall is saved, with its exact amount, in its own
+- [x] **LAWN-01**: The lawn scheduler holds off watering when today's forecast high is below 60°F.
+- [x] **LAWN-02**: Once a day is over, that day's rainfall is saved, with its exact amount, in its own
   small synced collection, separate from `lawnLog`. The collection is added by the `CLAUDE.md` recipe:
   one `COLLECTIONS` entry placed last with an unused `label`, a `SCHEMA` bump and a migration, and the
   required tests (registry validity, a stale-device merge replay that keeps a deleted row deleted,
   `validateBackup()` shape, and a declaration-alone structural proof). The merge golden is regenerated.
 
-- [ ] **LAWN-03**: Lawn history shows 🌧 on every day with 0.1 inches of rain or more.
-- [ ] **LAWN-04**: The 7-day outlook shows 💧 on the day watering is next due. It skips any day whose
+- [x] **LAWN-03**: Lawn history shows 🌧 on every day with 0.1 inches of rain or more.
+- [x] **LAWN-04**: The 7-day outlook shows 💧 on the day watering is next due. It skips any day whose
   forecast rain meets the season's `rainSkip` (0.3 to 0.5 inches) or whose chance of rain is 60% or
   higher.
 
-- [ ] **LAWN-05**: Week in Review in the journal shows 🚜 Mowed, 💧 Watered and 🌧 rain on each day they
+- [x] **LAWN-05**: Week in Review in the journal shows 🚜 Mowed, 💧 Watered and 🌧 rain on each day they
   apply.
 
-- [ ] **LAWN-06**: A failed weather fetch backs off instead of looping fetch → fail → render, on both
+- [x] **LAWN-06**: A failed weather fetch backs off instead of looping fetch → fail → render, on both
   Today and Lawn, while offline (closes 04-REVIEW WR-01).
 
-- [ ] **LAWN-07**: The test harness's `fetch` settles, so a fetch-render loop fails the suite instead of
+- [x] **LAWN-07**: The test harness's `fetch` settles, so a fetch-render loop fails the suite instead of
   hiding (closes 04-REVIEW WR-05).
 
 ### Sleep card and Erase (SLP)
@@ -210,13 +210,13 @@ proposed and awaiting Ian's approval.
 | LOG-03 | Phase 10 | Complete |
 | LOG-04 | Phase 10 | Complete |
 | LOG-05 | Phase 10 | Complete |
-| LAWN-01 | Phase 11 | Pending |
-| LAWN-02 | Phase 11 | Pending |
-| LAWN-03 | Phase 11 | Pending |
-| LAWN-04 | Phase 11 | Pending |
-| LAWN-05 | Phase 11 | Pending |
-| LAWN-06 | Phase 11 | Pending |
-| LAWN-07 | Phase 11 | Pending |
+| LAWN-01 | Phase 11 | Complete |
+| LAWN-02 | Phase 11 | Complete |
+| LAWN-03 | Phase 11 | Complete |
+| LAWN-04 | Phase 11 | Complete |
+| LAWN-05 | Phase 11 | Complete |
+| LAWN-06 | Phase 11 | Complete |
+| LAWN-07 | Phase 11 | Complete |
 | SLP-01 | Phase 12 | Pending |
 | SLP-02 | Phase 12 | Pending |
 | SLP-03 | Phase 12 | Pending |

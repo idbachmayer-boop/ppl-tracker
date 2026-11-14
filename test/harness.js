@@ -31,6 +31,9 @@ function frozenDateClass(fixedMs){
 }
 const FrozenDate = frozenDateClass(FROZEN_MS);
 
+/* One fetch counter per loadApp instance (see the fetch stub below and fetchCallCounts()). */
+const FETCH_LEDGER = [];
+
 /* The test file does its own date arithmetic ("three days ago"), so its clock has to agree with the
    app's or every relative fixture drifts by a day. Freezing the runner's global Date keeps one
    definition of "today" across both sides. */
@@ -77,6 +80,12 @@ function loadApp(htmlPath, seed, opts){
     addEventListener(type, fn, opts){ (listeners[type] = listeners[type] || []).push({ fn, opts }); },
     head: el(),
   };
+  /* Every fetch this instance made (LAWN-07), and the window listeners the app registered, by event
+     type, so a test can fire the very `online` listener a reconnect would reach. */
+  let fetchCalls = 0;
+  const fetchUrls = [];
+  const winListeners = {};
+  FETCH_LEDGER.push(() => fetchCalls);
   const sandbox = {
     console,
     Date: FrozenDate,
@@ -88,12 +97,22 @@ function loadApp(htmlPath, seed, opts){
     },
     navigator: { serviceWorker:{ register(){ return Promise.resolve(); } }, geolocation:{ getCurrentPosition(){} } },
     location: { reload(){}, href:'http://localhost/' },
-    /* No network: a request never settles. It used to reject at once, which was harmless only while
-       the suite exited before any promise ran. Once async checks let the event loop turn, a rejecting
-       fetch spins forever on any instance left on the Lawn tab with a stale weather cache:
-       fetchWeather() → fails → render() → maybeFetchWeather() → fetchWeather() → … all in
-       microtasks, so no timer, no timeout and no exit ever runs again. */
-    fetch: () => new Promise(() => {}),
+    /* No network. A request rejects with a TypeError, as an offline browser's does, but on a
+       macrotask (setImmediate), never in a microtask, so the event loop keeps turning and timers and
+       process.exit still run. Each call is counted and its URL recorded, so a fetch-render loop shows
+       up as a count the suite can fail on, instead of hanging the run or hiding behind a request
+       that never settles (LAWN-07, 04-REVIEW WR-05). `opts.fetch(url, init)` injects a response for
+       online tests; it settles on a macrotask too, and whatever it throws becomes the rejection.
+       There is no path from here to a real request. */
+    fetch: (url, init) => {
+      fetchCalls++;
+      fetchUrls.push(String(url));
+      return new Promise((resolve, reject) => setImmediate(() => {
+        if(opts && typeof opts.fetch === 'function'){
+          try{ resolve(opts.fetch(String(url), init)); }catch(e){ reject(e); }
+        } else reject(new TypeError('offline (harness)'));
+      }));
+    },
     setTimeout, clearTimeout, setInterval, clearInterval,
     requestAnimationFrame: () => 0,
     getComputedStyle: () => ({ getPropertyValue: () => '' }),
@@ -103,7 +122,8 @@ function loadApp(htmlPath, seed, opts){
     Blob: function Blob(){}, FileReader: function FileReader(){},
     innerWidth: 400, innerHeight: 800,
     firebase: undefined,
-    addEventListener(){}, removeEventListener(){}, scrollTo(){},
+    addEventListener(type, fn){ (winListeners[type] = winListeners[type] || []).push(fn); },
+    removeEventListener(){}, scrollTo(){},
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
@@ -157,11 +177,21 @@ function loadApp(htmlPath, seed, opts){
     'EQUIP_TYPES','EQUIP_LABEL','EQUIP_DEFAULTS',
     /* The D-16 first-time picker's in-memory queue (plan 09-04). A let, so it needs exporting. */
     'equipAsk',
+    /* The weather loop and its backoff (Phase 11, LAWN-06). */
+    'WXFAIL','WX_BACKOFF_MS','fetchWeather','maybeFetchWeather','retryWeather','weatherScreenShowing',
+    'wxTodayIndex','wxGlance',
+    /* Rain history (Phase 11, LAWN-02). */
+    'recordRain','RAIN_SANE_MAX_IN',
+    /* One watering verdict and the outlook's droplet day (Phase 11, LAWN-01 and LAWN-04). */
+    'waterVerdict','nextWaterDay','COOL_DAY_F','WET_CHANCE_PCT',
+    /* Rain, mowing and watering where Ian looks back at his days (Phase 11, LAWN-03 and LAWN-05). */
+    'rainByDate','RAIN_MARK_IN','RAIN_GLYPH','renderWeekReview',
   ];
   const api = vm.runInContext(`({
     ${names.map(n=>`${n}: (typeof ${n}!=='undefined' ? ${n} : undefined)`).join(',\n    ')},
     get DB(){ return DB; }, set DB(v){ DB = v; },
     get TAB(){ return TAB; },
+    get weatherFetching(){ return weatherFetching; },
     /* The Log tab's screen-only state (Phase 10, D-06 and D-21). Read-only on purpose: a test reaches
        them only through the app's own functions, the way a tap does. */
     get openExHist(){ return typeof openExHist !== 'undefined' ? openExHist : undefined; },
@@ -174,11 +204,15 @@ function loadApp(htmlPath, seed, opts){
   api.__src = code;
   api.__stored = () => { try{ return JSON.parse(store['ppl_tracker_v1']); }catch(e){ return null; } };
   api.__listeners = listeners;
+  api.__fetchCalls = () => fetchCalls;
+  api.__fetchUrls = () => fetchUrls.slice();
+  api.__winListeners = winListeners;
   return api;
 }
 
-/* Build a weather blob shaped like Open-Meteo's: daily arrays start 3 days BEFORE today (past_days=3)
-   and run 6 days forward, with matching hourly series.
+/* Build a weather blob shaped like Open-Meteo's: daily arrays start `pastDays` days BEFORE today
+   (default 3; the app asks for past_days=14 since Phase 11) and run 6 days forward, with matching
+   hourly series.
    Options are all keyed by day offset from today:
      precipByOffset {0: 0.4}          daily precipitation totals, inches
      probByOffset   {0: 60}           daily max chance of rain, %
@@ -186,12 +220,12 @@ function loadApp(htmlPath, seed, opts){
      hotFrom        {0: 14}           hourly temps hit 90°F from this hour
      rainFrom       {0:{hour,perHour}} hourly precipitation from this hour to 9pm            */
 function makeWx(opts){
-  const { todayISO, precipByOffset = {}, probByOffset = {}, hotFrom = {}, hiByOffset = {}, rainFrom = {} } = opts;
+  const { todayISO, pastDays = 3, precipByOffset = {}, probByOffset = {}, hotFrom = {}, hiByOffset = {}, rainFrom = {} } = opts;
   const base = new Date(todayISO + 'T00:00');
   const iso = n => { const d = new Date(base); d.setDate(d.getDate() + n); return d.toLocaleDateString('en-CA'); };
   const time = [], precipitation_sum = [], precipitation_probability_max = [],
         temperature_2m_max = [], temperature_2m_min = [], weathercode = [];
-  for(let n=-3; n<=6; n++){
+  for(let n=-pastDays; n<=6; n++){
     time.push(iso(n));
     precipitation_sum.push(precipByOffset[n] || 0);
     precipitation_probability_max.push(probByOffset[n] || 0);
@@ -200,7 +234,7 @@ function makeWx(opts){
     weathercode.push(0);
   }
   const hTime = [], hTemp = [], hPrecip = [];
-  for(let n=-3; n<=6; n++){
+  for(let n=-pastDays; n<=6; n++){
     for(let hr=0; hr<24; hr++){
       hTime.push(`${iso(n)}T${String(hr).padStart(2,'0')}:00`);
       const hot = hotFrom[n];
@@ -276,4 +310,8 @@ function scanInlineHandlers(raw){
 
 const APP_PATH = path.join(__dirname, '..', 'index.html');
 
-module.exports = { loadApp, makeWx, freezeRunnerClock, FROZEN_MS, APP_PATH, scanInlineHandlers };
+/* Fetches made by each loadApp instance so far, one number per instance, in creation order. The
+   suite's tail fails when any instance made more than a handful: a fetch-render loop (LAWN-07). */
+function fetchCallCounts(){ return FETCH_LEDGER.map(f => f()); }
+
+module.exports = { loadApp, makeWx, freezeRunnerClock, FROZEN_MS, APP_PATH, scanInlineHandlers, fetchCallCounts };
